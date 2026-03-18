@@ -81,6 +81,92 @@
     .message-content {
       white-space: pre-wrap;
     }
+    .message-content.markdown-rendered {
+      white-space: normal;
+    }
+    .message-content.markdown-rendered pre {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      overflow-x: auto;
+      margin: 0.5rem 0;
+      white-space: pre;
+    }
+    .message-content.markdown-rendered code {
+      background: #334155;
+      padding: 0.15em 0.4em;
+      border-radius: 4px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 0.9em;
+    }
+    .message-content.markdown-rendered pre code {
+      background: transparent;
+      padding: 0;
+    }
+    .message-content.markdown-rendered ul,
+    .message-content.markdown-rendered ol {
+      margin: 0.5rem 0;
+      padding-left: 1.5rem;
+    }
+    .message-content.markdown-rendered li {
+      margin: 0.2rem 0;
+    }
+    .message-content.markdown-rendered a {
+      color: #60a5fa;
+      text-decoration: underline;
+    }
+    .message-content.markdown-rendered a:hover {
+      color: #93c5fd;
+    }
+    .message-content.markdown-rendered strong {
+      font-weight: 700;
+    }
+    .message-content.markdown-rendered em {
+      font-style: italic;
+    }
+    .message.assistant .message-content.markdown-rendered {
+      white-space: normal;
+    }
+    .message.assistant .message-content pre {
+      background: #0f172a;
+      padding: 0.75rem 1rem;
+      border-radius: 6px;
+      overflow-x: auto;
+      margin: 0.5rem 0;
+      font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace;
+      font-size: 0.875rem;
+      line-height: 1.5;
+    }
+    .message.assistant .message-content code {
+      background: #0f172a;
+      padding: 0.15rem 0.35rem;
+      border-radius: 4px;
+      font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace;
+      font-size: 0.875em;
+    }
+    .message.assistant .message-content pre code {
+      padding: 0;
+      background: none;
+    }
+    .message.assistant .message-content ul,
+    .message.assistant .message-content ol {
+      margin: 0.5rem 0;
+      padding-left: 1.5rem;
+    }
+    .message.assistant .message-content a {
+      color: #60a5fa;
+      text-decoration: underline;
+    }
+    .message.assistant .message-content a:hover {
+      color: #93c5fd;
+    }
+    .message.assistant .message-content strong {
+      font-weight: 700;
+    }
+    .message.assistant .message-content em {
+      font-style: italic;
+    }
     .message-meta {
       font-size: 0.7rem;
       color: #64748b;
@@ -257,6 +343,60 @@
     #input-row #clear:hover {
       background: #64748b;
     }
+    /* Voice input/output */
+    .btn-mic, .btn-speaker {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.5rem;
+      background: #334155;
+      color: #e2e8f0;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-mic:hover:not(:disabled), .btn-speaker:hover {
+      background: #475569;
+    }
+    .btn-mic:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .btn-mic.listening {
+      background: #dc2626;
+      animation: mic-pulse 1.2s ease-in-out infinite;
+    }
+    .btn-mic.listening:hover { background: #b91c1c; }
+    @keyframes mic-pulse {
+      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); }
+      50% { opacity: 0.9; box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); }
+    }
+    .message-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    .message-header .message-label { margin-bottom: 0; }
+    .btn-speaker {
+      padding: 0.25rem 0.4rem;
+      font-size: 0.875rem;
+      background: transparent;
+      color: #94a3b8;
+    }
+    .btn-speaker:hover { color: #e2e8f0; }
+    .btn-speaker.speaking { color: #2563eb; }
+    .auto-speak-toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      cursor: pointer;
+      user-select: none;
+    }
+    .auto-speak-toggle input { cursor: pointer; }
     .backend-badge {
       font-size: 0.7rem;
       font-weight: 600;
@@ -266,7 +406,74 @@
       border-radius: 4px;
       color: #94a3b8;
     }
+    #continue-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    #continue-modal {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1.25rem;
+      max-width: 320px;
+    }
+    #continue-modal p { margin: 0 0 1rem 0; }
+    #continue-modal .modal-buttons { display: flex; gap: 0.5rem; justify-content: flex-end; }
+    #continue-modal button { padding: 0.5rem 1rem; cursor: pointer; border-radius: 6px; border: none; }
+    #continue-modal .btn-yes { background: #2563eb; color: white; }
+    #continue-modal .btn-no { background: #334155; color: #e2e8f0; }
+    /* Markdown styling for assistant messages */
+    .message.assistant .message-content pre {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      overflow-x: auto;
+      margin: 0.5rem 0;
+      font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace;
+      font-size: 0.875rem;
+      line-height: 1.5;
+    }
+    .message.assistant .message-content code {
+      background: #0f172a;
+      padding: 0.2em 0.4em;
+      border-radius: 4px;
+      font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace;
+      font-size: 0.9em;
+    }
+    .message.assistant .message-content pre code {
+      padding: 0;
+      background: none;
+    }
+    .message.assistant .message-content ul,
+    .message.assistant .message-content ol {
+      margin: 0.5rem 0;
+      padding-left: 1.5rem;
+    }
+    .message.assistant .message-content li {
+      margin: 0.25rem 0;
+    }
+    .message.assistant .message-content a {
+      color: #60a5fa;
+      text-decoration: underline;
+    }
+    .message.assistant .message-content a:hover {
+      color: #93c5fd;
+    }
+    .message.assistant .message-content strong {
+      font-weight: 700;
+    }
+    .message.assistant .message-content em {
+      font-style: italic;
+    }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
   <header>
@@ -274,8 +481,18 @@
     <span id="backend-badge" class="backend-badge" title="Backend (from server config)">—</span>
     <input type="text" id="model" list="model-presets" placeholder="Model" value="">
     <button id="clear-btn" type="button">New chat</button>
+    <button id="export-btn" type="button">Export chat</button>
+    <button id="import-btn" type="button">Import chat</button>
+    <input type="file" id="import-file" accept=".json" style="display:none">
     <datalist id="model-presets"></datalist>
   </header>
+  <div id="continue-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100;align-items:center;justify-content:center;flex-direction:column;gap:1rem;">
+    <p style="margin:0;font-size:1rem;">Continue previous chat?</p>
+    <div class="modal-buttons" style="display:flex;gap:0.5rem;">
+      <button id="continue-yes" type="button" class="btn-yes">Yes</button>
+      <button id="continue-no" type="button" class="btn-no">No</button>
+    </div>
+  </div>
   <div id="chat-container"></div>
   <div id="input-area">
     <div id="system-prompt-row">
@@ -291,13 +508,19 @@
     </div>
     <textarea id="prompt" rows="2" placeholder="Your message..."></textarea>
     <div class="button-row">
+      <button id="mic-btn" class="btn-mic" type="button" title="Speech-to-text not supported" aria-label="Voice input" disabled>🎤</button>
       <button id="send">Send</button>
       <button id="stop" type="button" style="display:none;background:#dc2626">Stop</button>
+      <label class="auto-speak-toggle" title="Read new assistant responses aloud">
+        <input type="checkbox" id="auto-speak" />
+        Speak new
+      </label>
     </div>
   </div>
 
   <script>
     const API = '/v1/chat/completions';
+    const STORAGE_KEY = 'siskelbot-messages';
     const chatContainer = document.getElementById('chat-container');
     const promptInput = document.getElementById('prompt');
     const sendBtn = document.getElementById('send');
@@ -314,6 +537,26 @@
 
     let config = { backend: 'vllm', modelPresets: [], modelPlaceholder: 'meta-llama/Llama-3-8B-Instruct' };
     let activeAbortController = null;
+
+    function persistMessages() {
+      if (messages.length > 0) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+      } else {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    }
+
+    function loadFromStorage() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return null;
+        return parsed;
+      } catch (_) {
+        return null;
+      }
+    }
 
     async function loadConfig() {
       try {
@@ -359,6 +602,7 @@
     function clearHistory() {
       messages = [];
       while (chatContainer.firstChild) chatContainer.removeChild(chatContainer.firstChild);
+      persistMessages();
     }
 
     systemPresetSelect.addEventListener('change', () => {
@@ -377,12 +621,19 @@
     function addMessage(role, content, meta = null) {
       const el = document.createElement('div');
       el.className = `message ${role}`;
+      const label = role === 'user' ? 'User' : 'Assistant';
+      const contentHtml = role === 'assistant' ? renderAssistantMarkdown(content) : escapeHtml(content);
+      const contentClass = role === 'assistant' ? ' message-content markdown-rendered' : ' message-content';
+      const headerHtml = role === 'assistant'
+        ? `<div class="message-header"><div class="message-label">${label}</div><button class="btn-speaker" type="button" aria-label="Read aloud" title="Read aloud">&#128266;</button></div>`
+        : `<div class="message-label">${label}</div>`;
       el.innerHTML = `
-        <div class="message-label">${role === 'user' ? 'User' : 'Assistant'}</div>
-        <div class="message-content">${escapeHtml(content)}</div>
+        ${headerHtml}
+        <div class="${contentClass.trim()}">${contentHtml}</div>
         ${meta ? `<div class="message-meta">${escapeHtml(meta)}</div>` : ''}
       `;
       chatContainer.appendChild(el);
+      if (role === 'assistant') attachSpeakerButton(el);
       scrollToBottom();
       return el;
     }
@@ -413,11 +664,118 @@
       return div.innerHTML;
     }
 
+    // --- Voice: Text-to-Speech ---
+    const synth = window.speechSynthesis;
+    let currentUtterance = null;
+
+    function speakText(text, onEnd) {
+      if (!synth || !text || !text.trim()) return;
+      synth.cancel();
+      const u = new SpeechSynthesisUtterance(text.trim());
+      u.rate = 1;
+      u.pitch = 1;
+      u.onend = () => {
+        document.querySelectorAll('.btn-speaker.speaking').forEach(b => b.classList.remove('speaking'));
+        if (onEnd) onEnd();
+      };
+      u.onerror = () => document.querySelectorAll('.btn-speaker.speaking').forEach(b => b.classList.remove('speaking'));
+      currentUtterance = u;
+      synth.speak(u);
+    }
+
+    function attachSpeakerButton(msgEl) {
+      const btn = msgEl.querySelector('.btn-speaker');
+      const contentEl = msgEl.querySelector('.message-content');
+      if (!btn || !contentEl) return;
+      btn.addEventListener('click', () => {
+        const text = contentEl.textContent || '';
+        if (!text.trim()) return;
+        if (btn.classList.contains('speaking')) {
+          synth.cancel();
+          btn.classList.remove('speaking');
+          return;
+        }
+        document.querySelectorAll('.btn-speaker.speaking').forEach(b => b.classList.remove('speaking'));
+        btn.classList.add('speaking');
+        speakText(text);
+      });
+    }
+
+    // --- Voice: Speech-to-Text ---
+    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const micBtn = document.getElementById('mic-btn');
+    const autoSpeakCheckbox = document.getElementById('auto-speak');
+
+    if (micBtn) {
+      if (SpeechRecognitionAPI) {
+        micBtn.disabled = false;
+        micBtn.title = 'Click to start voice input (speech-to-text)';
+        let recognition = null;
+        let isListening = false;
+
+        micBtn.addEventListener('click', () => {
+        if (isListening) {
+          if (recognition) recognition.stop();
+          return;
+        }
+        recognition = new SpeechRecognitionAPI();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+
+        recognition.onstart = () => {
+          isListening = true;
+          micBtn.classList.add('listening');
+        };
+        recognition.onend = () => {
+          isListening = false;
+          micBtn.classList.remove('listening');
+        };
+        recognition.onerror = (e) => {
+          if (e.error !== 'aborted') {
+            isListening = false;
+            micBtn.classList.remove('listening');
+          }
+        };
+        recognition.onresult = (e) => {
+          let final = '';
+          let interim = '';
+          for (let i = e.resultIndex; i < e.results.length; i++) {
+            const result = e.results[i];
+            const transcript = result[0].transcript;
+            if (result.isFinal) {
+              final += transcript;
+            } else {
+              interim += transcript;
+            }
+          }
+          if (final) {
+            const sep = promptInput.value && !promptInput.value.endsWith(' ') ? ' ' : '';
+            promptInput.value += sep + final;
+          }
+        };
+
+        recognition.start();
+      });
+      } else {
+        micBtn.title = 'Speech-to-text not supported (Chrome/Edge recommended)';
+      }
+    }
+
+    function renderAssistantMarkdown(text) {
+      if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+        return escapeHtml(text);
+      }
+      const raw = marked.parse(text || '', { async: false });
+      return DOMPurify.sanitize(raw || '', { ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'a', 'ul', 'ol', 'li', 'pre', 'code', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr'] });
+    }
+
     function updateAssistantContent(el, content, meta) {
       const contentEl = el.querySelector('.message-content');
       const metaEl = el.querySelector('.message-meta');
-      contentEl.textContent = content;
+      contentEl.innerHTML = renderAssistantMarkdown(content);
       contentEl.classList.remove('typing-indicator');
+      contentEl.classList.add('markdown-rendered');
       if (meta) {
         if (metaEl) metaEl.textContent = meta;
         else {
@@ -434,11 +792,12 @@
       const el = document.createElement('div');
       el.className = 'message assistant';
       el.innerHTML = `
-        <div class="message-label">Assistant</div>
-        <div class="message-content">${escapeHtml(content)}</div>
+        <div class="message-header"><div class="message-label">Assistant</div><button class="btn-speaker" type="button" aria-label="Read aloud" title="Read aloud">&#128266;</button></div>
+        <div class="message-content markdown-rendered">${renderAssistantMarkdown(content)}</div>
         ${meta ? `<div class="message-meta">${escapeHtml(meta)}</div>` : ''}
       `;
       chatContainer.appendChild(el);
+      attachSpeakerButton(el);
       scrollToBottom();
       return el;
     }
@@ -544,6 +903,12 @@
           }
 
           messages.push({ role: 'assistant', content: content });
+          persistMessages();
+          if (autoSpeakCheckbox?.checked && content?.trim() && content !== '(No response)' && content !== '(Cancelled)') {
+            const btn = assistantEl?.querySelector('.btn-speaker');
+            if (btn) btn.classList.add('speaking');
+            speakText(content);
+          }
           break;
         } catch (err) {
           if (err.name === 'AbortError') {
@@ -570,6 +935,64 @@
       sendBtn.disabled = false;
       stopBtn.style.display = 'none';
       scrollToBottom();
+    };
+
+    // --- Init: Continue previous chat? ---
+    const continueModal = document.getElementById('continue-modal');
+    const continueYes = document.getElementById('continue-yes');
+    const continueNo = document.getElementById('continue-no');
+    const exportBtn = document.getElementById('export-btn');
+    const importBtn = document.getElementById('import-btn');
+    const importFileInput = document.getElementById('import-file');
+
+    const stored = loadFromStorage();
+    if (stored && stored.length > 0) {
+      continueModal.style.display = 'flex';
+      continueYes.onclick = () => {
+        messages = stored.filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string');
+        continueModal.style.display = 'none';
+        messages.forEach(m => addMessage(m.role, m.content, null));
+        persistMessages();
+      };
+      continueNo.onclick = () => {
+        localStorage.removeItem(STORAGE_KEY);
+        continueModal.style.display = 'none';
+      };
+    }
+
+    exportBtn.onclick = () => {
+      const d = new Date();
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const blob = new Blob([JSON.stringify(messages, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `chat-${dateStr}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    };
+
+    importBtn.onclick = () => importFileInput.click();
+    importFileInput.onchange = (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = JSON.parse(reader.result);
+          if (!Array.isArray(data)) throw new Error('Expected array');
+          const valid = data.filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string');
+          if (valid.length === 0) throw new Error('No valid messages');
+          messages = valid;
+          while (chatContainer.firstChild) chatContainer.removeChild(chatContainer.firstChild);
+          messages.forEach(m => addMessage(m.role, m.content, null));
+          persistMessages();
+          alert('Chat imported successfully.');
+        } catch (err) {
+          alert('Invalid import file: ' + (err.message || 'Unknown error'));
+        }
+        e.target.value = '';
+      };
+      reader.readAsText(file);
     };
   </script>
 </body>

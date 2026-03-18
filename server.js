@@ -30,6 +30,16 @@ function getBackend() {
 }
 
 const BACKEND = getBackend();
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+// Production security: warn if API_KEY not set (backend may be exposed)
+if (IS_PRODUCTION && !API_KEY) {
+  console.warn(
+    "[SECURITY] NODE_ENV=production but API_KEY is not set. " +
+      "The /v1/chat/completions endpoint is publicly accessible. " +
+      "Set API_KEY in Vercel env vars to protect it."
+  );
+}
 
 // Model presets per backend (for /config)
 const MODEL_PRESETS = {
@@ -121,11 +131,15 @@ function logRequest(req, res, next) {
 
 // Config endpoint for client (backend, model presets)
 app.get("/config", (req, res) => {
-  res.json({
+  const payload = {
     backend: BACKEND,
     modelPresets: MODEL_PRESETS[BACKEND] || [],
     modelPlaceholder: MODEL_PRESETS[BACKEND]?.[0] || "model",
-  });
+  };
+  if (IS_PRODUCTION && !API_KEY) {
+    payload.productionHint = "Set API_KEY in Vercel env vars to protect /v1/chat/completions";
+  }
+  res.json(payload);
 });
 
 app.post("/v1/chat/completions", chatRateLimiter, apiKeyAuth, logRequest, async (req, res) => {
@@ -232,10 +246,13 @@ app.get("/health", async (req, res) => {
 
 app.use(express.static(join(__dirname, "client")));
 
-app.listen(PORT, () => {
-  console.log(`Proxy: http://localhost:${PORT}`);
-  console.log(`Backend: ${BACKEND}`);
-  if (BACKEND === "vllm") console.log(`vLLM:  ${VLLM_URL}`);
-  if (BACKEND === "ollama") console.log(`Ollama: ${OLLAMA_URL}`);
-  if (BACKEND === "openai") console.log(`OpenAI: api.openai.com (key set)`);
-});
+if (process.env.VERCEL !== "1") {
+  app.listen(PORT, () => {
+    console.log(`Proxy: http://localhost:${PORT}`);
+    console.log(`Backend: ${BACKEND}`);
+    if (BACKEND === "vllm") console.log(`vLLM:  ${VLLM_URL}`);
+    if (BACKEND === "ollama") console.log(`Ollama: ${OLLAMA_URL}`);
+    if (BACKEND === "openai") console.log(`OpenAI: api.openai.com (key set)`);
+  });
+}
+export default app;
