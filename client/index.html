@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Streaming Assistant</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    header {
+      flex-shrink: 0;
+      padding: 0.75rem 1rem;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.125rem;
+      font-weight: 600;
+    }
+    header input {
+      flex: 1;
+      min-width: 0;
+      padding: 0.5rem 0.75rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.875rem;
+    }
+    header input::placeholder {
+      color: #64748b;
+    }
+    #chat-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .message {
+      max-width: 85%;
+      align-self: flex-start;
+      padding: 0.875rem 1rem;
+      border-radius: 12px;
+      word-break: break-word;
+    }
+    .message.user {
+      align-self: flex-end;
+      background: #2563eb;
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+    .message.assistant {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-bottom-left-radius: 4px;
+    }
+    .message-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      opacity: 0.8;
+      margin-bottom: 0.375rem;
+    }
+    .message.user .message-label { color: #93c5fd; }
+    .message.assistant .message-label { color: #94a3b8; }
+    .message-content {
+      white-space: pre-wrap;
+    }
+    .message-meta {
+      font-size: 0.7rem;
+      color: #64748b;
+      margin-top: 0.5rem;
+    }
+    .typing-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      color: #94a3b8;
+    }
+    .typing-indicator span {
+      width: 4px;
+      height: 4px;
+      background: #64748b;
+      border-radius: 50%;
+      animation: bounce 1.4s ease-in-out infinite both;
+    }
+    .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+    .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+    .typing-indicator span:nth-child(3) { animation-delay: 0s; }
+    @keyframes bounce {
+      0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+      40% { transform: scale(1); opacity: 1; }
+    }
+    #system-area {
+      flex-shrink: 0;
+      padding: 0.75rem 1rem;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+    }
+    #system-area label {
+      display: block;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      margin-bottom: 0.25rem;
+    }
+    #system-area select {
+      padding: 0.4rem 0.6rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.8rem;
+      margin-right: 0.5rem;
+      margin-bottom: 0.25rem;
+    }
+    #system-area textarea {
+      width: 100%;
+      padding: 0.5rem 0.75rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.8125rem;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 36px;
+      max-height: 80px;
+      margin-top: 0.25rem;
+    }
+    #system-area textarea::placeholder {
+      color: #64748b;
+    }
+    #input-area {
+      flex-shrink: 0;
+      padding: 1rem;
+      background: #1e293b;
+      border-top: 1px solid #334155;
+    }
+    #input-area textarea {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      margin-bottom: 0.5rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-size: 1rem;
+      font-family: inherit;
+      resize: none;
+      min-height: 52px;
+      max-height: 120px;
+    }
+    #input-area textarea::placeholder {
+      color: #64748b;
+    }
+    #input-area textarea:focus {
+      outline: none;
+      border-color: #2563eb;
+    }
+    #input-area .button-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.25rem;
+    }
+    #input-area button {
+      padding: 0.5rem 1.25rem;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.9375rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    #input-area button:hover {
+      background: #1d4ed8;
+    }
+    #input-area .button-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.25rem;
+    }
+    #input-area #stop:hover {
+      background: #b91c1c;
+    }
+    #input-area button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    #input-area #clearBtn {
+      background: #334155;
+    }
+    #input-area #clearBtn:hover {
+      background: #475569;
+    }
+    .error-message {
+      color: #f87171;
+      background: rgba(248, 113, 113, 0.1);
+      border: 1px solid #dc2626;
+    }
+    #system-prompt-area {
+      margin-bottom: 0.5rem;
+    }
+    #system-prompt-area label {
+      display: block;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      margin-bottom: 0.25rem;
+    }
+    #system-preset {
+      padding: 0.4rem 0.6rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.875rem;
+      margin-bottom: 0.25rem;
+    }
+    #system-prompt-area textarea {
+      width: 100%;
+      padding: 0.5rem 0.75rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.8125rem;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 36px;
+      max-height: 80px;
+    }
+    #input-row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: flex-end;
+    }
+    #input-row textarea { flex: 1; margin-bottom: 0; }
+    #input-row button { flex-shrink: 0; }
+    #input-row #clear {
+      background: #475569;
+    }
+    #input-row #clear:hover {
+      background: #64748b;
+    }
+    .backend-badge {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      padding: 0.25rem 0.5rem;
+      background: #334155;
+      border-radius: 4px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Streaming Assistant</h1>
+    <span id="backend-badge" class="backend-badge" title="Backend (from server config)">—</span>
+    <input type="text" id="model" list="model-presets" placeholder="Model" value="">
+    <button id="clear-btn" type="button">New chat</button>
+    <datalist id="model-presets"></datalist>
+  </header>
+  <div id="chat-container"></div>
+  <div id="input-area">
+    <div id="system-prompt-row">
+      <label for="system-preset">System prompt:</label>
+      <select id="system-preset">
+        <option value="none">None</option>
+        <option value="default">Default</option>
+        <option value="concise">Concise</option>
+        <option value="code">Code assistant</option>
+        <option value="custom">Custom</option>
+      </select>
+      <textarea id="system-prompt" rows="2" placeholder="Optional system instructions (or select a preset above)"></textarea>
+    </div>
+    <textarea id="prompt" rows="2" placeholder="Your message..."></textarea>
+    <div class="button-row">
+      <button id="send">Send</button>
+      <button id="stop" type="button" style="display:none;background:#dc2626">Stop</button>
+    </div>
+  </div>
+
+  <script>
+    const API = '/v1/chat/completions';
+    const chatContainer = document.getElementById('chat-container');
+    const promptInput = document.getElementById('prompt');
+    const sendBtn = document.getElementById('send');
+    const clearBtn = document.getElementById('clear-btn');
+    const modelInput = document.getElementById('model');
+    const backendBadge = document.getElementById('backend-badge');
+    const modelPresetsDatalist = document.getElementById('model-presets');
+    const systemPresetSelect = document.getElementById('system-preset');
+    const systemPromptTextarea = document.getElementById('system-prompt');
+    const stopBtn = document.getElementById('stop');
+
+    const MAX_RETRIES = 2;
+    const RETRY_DELAY_MS = 800;
+
+    let config = { backend: 'vllm', modelPresets: [], modelPlaceholder: 'meta-llama/Llama-3-8B-Instruct' };
+    let activeAbortController = null;
+
+    async function loadConfig() {
+      try {
+        const res = await fetch('/config');
+        if (res.ok) {
+          config = await res.json();
+          backendBadge.textContent = config.backend;
+          modelInput.placeholder = `Model (e.g. ${config.modelPlaceholder})`;
+          if (!modelInput.value && config.modelPlaceholder) modelInput.value = config.modelPlaceholder;
+          modelPresetsDatalist.innerHTML = (config.modelPresets || []).map(m => `<option value="${m}">`).join('');
+        }
+      } catch (_) {}
+    }
+    loadConfig();
+
+    const SYSTEM_PROMPT_PRESETS = {
+      none: '',
+      default: 'You are a helpful assistant. Be clear and informative.',
+      concise: 'You are a helpful assistant. Be concise. Prefer short answers.',
+      code: 'You are a helpful coding assistant. Provide clear code examples, explain your reasoning, and follow best practices.',
+      custom: '', // User types in textarea
+    };
+
+    let messages = [];
+    let streamStartTime = 0;
+    let ttfb = null;
+
+    function getSystemPromptContent() {
+      const preset = systemPresetSelect.value;
+      if (preset === 'none') return '';
+      if (preset === 'custom') return systemPromptTextarea.value.trim();
+      const presetText = SYSTEM_PROMPT_PRESETS[preset] || '';
+      return systemPromptTextarea.value.trim() || presetText;
+    }
+
+    function buildApiMessages() {
+      const systemContent = getSystemPromptContent();
+      const apiMessages = [];
+      if (systemContent) apiMessages.push({ role: 'system', content: systemContent });
+      return apiMessages.concat(messages);
+    }
+
+    function clearHistory() {
+      messages = [];
+      while (chatContainer.firstChild) chatContainer.removeChild(chatContainer.firstChild);
+    }
+
+    systemPresetSelect.addEventListener('change', () => {
+      const preset = systemPresetSelect.value;
+      if (preset && preset !== 'none' && preset !== 'custom' && SYSTEM_PROMPT_PRESETS[preset]) {
+        systemPromptTextarea.value = SYSTEM_PROMPT_PRESETS[preset];
+      }
+    });
+
+    if (clearBtn) clearBtn.onclick = clearHistory;
+
+    function scrollToBottom() {
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    function addMessage(role, content, meta = null) {
+      const el = document.createElement('div');
+      el.className = `message ${role}`;
+      el.innerHTML = `
+        <div class="message-label">${role === 'user' ? 'User' : 'Assistant'}</div>
+        <div class="message-content">${escapeHtml(content)}</div>
+        ${meta ? `<div class="message-meta">${escapeHtml(meta)}</div>` : ''}
+      `;
+      chatContainer.appendChild(el);
+      scrollToBottom();
+      return el;
+    }
+
+    function addTypingIndicator() {
+      const el = document.createElement('div');
+      el.className = 'message assistant';
+      el.id = 'typing-indicator';
+      el.innerHTML = `
+        <div class="message-label">Assistant</div>
+        <div class="message-content typing-indicator">
+          <span></span><span></span><span></span> typing...
+        </div>
+      `;
+      chatContainer.appendChild(el);
+      scrollToBottom();
+      return el;
+    }
+
+    function removeTypingIndicator() {
+      const el = document.getElementById('typing-indicator');
+      if (el) el.remove();
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function updateAssistantContent(el, content, meta) {
+      const contentEl = el.querySelector('.message-content');
+      const metaEl = el.querySelector('.message-meta');
+      contentEl.textContent = content;
+      contentEl.classList.remove('typing-indicator');
+      if (meta) {
+        if (metaEl) metaEl.textContent = meta;
+        else {
+          const metaDiv = document.createElement('div');
+          metaDiv.className = 'message-meta';
+          metaDiv.textContent = meta;
+          el.appendChild(metaDiv);
+        }
+      }
+      scrollToBottom();
+    }
+
+    function createAssistantBubble(content, meta) {
+      const el = document.createElement('div');
+      el.className = 'message assistant';
+      el.innerHTML = `
+        <div class="message-label">Assistant</div>
+        <div class="message-content">${escapeHtml(content)}</div>
+        ${meta ? `<div class="message-meta">${escapeHtml(meta)}</div>` : ''}
+      `;
+      chatContainer.appendChild(el);
+      scrollToBottom();
+      return el;
+    }
+
+    stopBtn.onclick = () => {
+      if (activeAbortController) {
+        activeAbortController.abort();
+      }
+    };
+
+    sendBtn.onclick = async () => {
+      const model = modelInput.value.trim() || config.modelPlaceholder || 'model';
+      const prompt = promptInput.value.trim();
+
+      if (!prompt) return;
+
+      if (activeAbortController) activeAbortController.abort();
+      activeAbortController = new AbortController();
+      const signal = activeAbortController.signal;
+
+      sendBtn.disabled = true;
+      stopBtn.style.display = 'inline-block';
+
+      addMessage('user', prompt);
+      promptInput.value = '';
+
+      addTypingIndicator();
+      streamStartTime = performance.now();
+      ttfb = null;
+
+      const userMsg = { role: 'user', content: prompt };
+      messages.push(userMsg);
+
+      const payload = JSON.stringify({
+        model: model,
+        messages: buildApiMessages(),
+        stream: true,
+      });
+
+      let lastError = null;
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const res = await fetch(API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+            signal,
+          });
+
+          if (!res.ok) {
+            const isRetryable = res.status >= 500 || res.status === 429;
+            if (isRetryable && attempt < MAX_RETRIES) {
+              await new Promise(r => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
+              continue;
+            }
+            let msg = res.statusText;
+            try {
+              const err = await res.json();
+              msg = err.body || err.hint || err.message || err.error || msg;
+            } catch (_) {}
+            throw new Error(msg);
+          }
+
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let content = '';
+          let assistantEl = null;
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.slice(6);
+                if (data === '[DONE]') continue;
+                try {
+                  const parsed = JSON.parse(data);
+                  const delta = parsed.choices?.[0]?.delta?.content;
+                  if (delta) {
+                    if (ttfb === null) ttfb = Math.round(performance.now() - streamStartTime);
+                    content += delta;
+                    if (!assistantEl) {
+                      removeTypingIndicator();
+                      assistantEl = createAssistantBubble(content, `First token: ${ttfb}ms`);
+                    } else {
+                      updateAssistantContent(assistantEl, content, `First token: ${ttfb}ms`);
+                    }
+                  }
+                } catch (_) {}
+              }
+            }
+          }
+
+          if (!content) {
+            removeTypingIndicator();
+            assistantEl = createAssistantBubble('(No response)', null);
+          }
+
+          messages.push({ role: 'assistant', content: content });
+          break;
+        } catch (err) {
+          if (err.name === 'AbortError') {
+            removeTypingIndicator();
+            messages.pop(); // undo user message so they can retry
+            const cancelledEl = createAssistantBubble('(Cancelled)', null);
+            cancelledEl.querySelector('.message-content').style.fontStyle = 'italic';
+            break;
+          }
+          lastError = err;
+          const isRetryable = err.message?.includes('fetch') || err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError');
+          if (isRetryable && attempt < MAX_RETRIES) {
+            await new Promise(r => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
+            continue;
+          }
+          removeTypingIndicator();
+          const backendHint = config.backend === 'vllm' ? 'vLLM (vllm serve <model> --max-model-len 4096)' : config.backend === 'ollama' ? 'Ollama (ollama serve)' : config.backend === 'openai' ? 'OpenAI (OPENAI_API_KEY)' : config.backend;
+          const errMsg = 'Error: ' + (lastError?.message || err.message) + '\n\nBackend: ' + backendHint + ' — visit /health to verify.';
+          addMessage('assistant', errMsg, null).classList.add('error-message');
+        }
+      }
+
+      activeAbortController = null;
+      sendBtn.disabled = false;
+      stopBtn.style.display = 'none';
+      scrollToBottom();
+    };
+  </script>
+</body>
+</html>

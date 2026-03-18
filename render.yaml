@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: experimentagent
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: PORT
+        sync: false
+      - key: BACKEND
+        sync: false
+      - key: VLLM_URL
+        sync: false
+      - key: OLLAMA_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
