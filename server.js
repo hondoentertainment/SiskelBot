@@ -526,6 +526,7 @@ async function runAgentLoop(req, res, config, model) {
 
   let lastContent = "";
   let iteration = 0;
+  const toolCallsLog = [];
 
   while (iteration < MAX_AGENT_ITERATIONS) {
     iteration++;
@@ -570,6 +571,7 @@ async function runAgentLoop(req, res, config, model) {
         } catch (_) {
           args = {};
         }
+        toolCallsLog.push({ name, args, iteration });
         try {
           const result = await runTool(name, args, toolCtx);
           return { tool_call_id: tc.id, content: result.content };
@@ -594,7 +596,7 @@ async function runAgentLoop(req, res, config, model) {
     lastContent = "(Agent reached max iterations without final response)";
   }
 
-  return { content: lastContent, iteration };
+  return { content: lastContent, iteration, toolCalls: toolCallsLog };
 }
 
 app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRateLimiter, chatRateLimiter, logRequest, async (req, res) => {
@@ -630,15 +632,18 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
       const bodyWithTools = { ...req.body, tools, tool_choice: req.body?.tool_choice ?? "auto" };
       if (!hasTools) req.body = bodyWithTools;
 
-      let content, iteration;
+      let content, iteration, toolCalls, swarmSteps;
       if (agentMode && swarmMode && ENABLE_AGENT_SWARM) {
-        ({ content, iteration } = await runSwarm(req, res, config, model, {
+        const swarmResult = await runSwarm(req, res, config, model, {
           backendFetch,
           maxIterations: MAX_AGENT_ITERATIONS,
           allowRecipeExecution: ALLOW_RECIPE_STEP_EXECUTION,
-        }));
+        });
+        content = swarmResult.content;
+        iteration = swarmResult.iteration;
+        swarmSteps = swarmResult.swarmSteps;
       } else {
-        ({ content, iteration } = await runAgentLoop(req, res, config, model));
+        ({ content, iteration, toolCalls } = await runAgentLoop(req, res, config, model));
       }
 
       res.setHeader("Content-Type", "text/event-stream");
@@ -647,6 +652,16 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
       res.setHeader("X-Agent-Iteration", String(iteration));
       setQuotaHeaders(res, workspace, userId);
       res.flushHeaders();
+
+      if (toolCalls?.length || swarmSteps?.length) {
+        const activityEvent = JSON.stringify({
+          type: "agent_activity",
+          toolCalls: toolCalls || [],
+          swarmSteps: swarmSteps || [],
+          iteration,
+        });
+        res.write(`data: ${activityEvent}\n\n`);
+      }
 
       const inputTokens = estimate.inputFromMessages(req.body?.messages || []);
       const outputTokens = estimate.outputFromChars(content?.length || 0);

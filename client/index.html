@@ -333,6 +333,13 @@
       background: rgba(248, 113, 113, 0.1);
       border: 1px solid #dc2626;
     }
+    .agent-activity-block {
+      margin: 0.5rem 0; padding: 0.5rem; background: #0f172a; border: 1px solid #334155; border-radius: 6px; font-size: 0.8125rem;
+    }
+    .agent-activity-block summary { cursor: pointer; font-weight: 600; }
+    .agent-activity-label { color: #94a3b8; margin-right: 0.35rem; }
+    .agent-activity-meta { color: #64748b; font-size: 0.75rem; }
+    .agent-activity-block ul { margin: 0.25rem 0 0 1rem; padding: 0; }
     #system-prompt-area {
       margin-bottom: 0.5rem;
     }
@@ -1539,6 +1546,7 @@
     <span id="notice-text"></span>
     <div class="notice-actions">
       <button id="retry-last" type="button" hidden>Retry last</button>
+      <button id="notice-open-settings" type="button" class="header-button" hidden>Open Settings</button>
       <button id="dismiss-notice" type="button">Dismiss</button>
     </div>
   </div>
@@ -1858,11 +1866,22 @@
       }
     }
 
-    function showNotice(message, variant = 'warning', canRetry = false) {
+    function showNotice(message, variant = 'warning', opts = false) {
       lastErrorMessage = message;
       noticeText.textContent = message;
       noticeBanner.className = `notice-banner visible ${variant}`;
+      const canRetry = typeof opts === 'boolean' ? opts : (opts && opts.canRetry);
+      const openSettings = opts && opts.openSettings;
       retryLastBtn.hidden = !canRetry;
+      const openSettingsBtn = document.getElementById('notice-open-settings');
+      if (openSettingsBtn) {
+        openSettingsBtn.hidden = !openSettings;
+        openSettingsBtn.onclick = () => {
+          const settingsToggle = document.getElementById('settings-toggle');
+          if (settingsToggle) settingsToggle.open = true;
+          clearNotice();
+        };
+      }
     }
 
     function clearNotice() {
@@ -3982,12 +4001,27 @@
       announce('Assistant message updated');
     }
 
-    function createAssistantBubble(content, meta) {
+    function renderAgentActivityBlock(toolCalls, swarmSteps, iteration) {
+      if ((!toolCalls || !toolCalls.length) && (!swarmSteps || !swarmSteps.length)) return '';
+      const parts = [];
+      if (swarmSteps && swarmSteps.length) {
+        parts.push('<div class="agent-activity-swarm"><span class="agent-activity-label">Swarm</span><ul>' +
+          swarmSteps.map(s => `<li>${escapeHtml(s.specialist)} <span class="agent-activity-meta">${s.latencyMs}ms</span></li>`).join('') + '</ul></div>');
+      }
+      if (toolCalls && toolCalls.length) {
+        parts.push('<div class="agent-activity-tools"><span class="agent-activity-label">Tools</span><ul>' +
+          toolCalls.map(t => `<li><code>${escapeHtml(t.name)}</code>${t.args && Object.keys(t.args).length ? ` <span class="agent-activity-meta">${escapeHtml(JSON.stringify(t.args).slice(0, 60))}…</span>` : ''}</li>`).join('') + '</ul></div>');
+      }
+      return `<details class="agent-activity-block" open><summary>Agent activity ${iteration ? '(' + iteration + ' iter)' : ''}</summary>${parts.join('')}</details>`;
+    }
+
+    function createAssistantBubble(content, meta, activityHtml) {
       const el = document.createElement('div');
       el.className = 'message assistant';
       el.innerHTML = `
         <div class="message-header"><div class="message-label">Assistant</div><button class="btn-speaker" type="button" aria-label="Read aloud" title="Read aloud">&#128266;</button></div>
-        <div class="message-content markdown-rendered">${renderAssistantMarkdown(content)}</div>
+        ${activityHtml || ''}
+        <div class="message-content markdown-rendered">${renderAssistantMarkdown(content || '')}</div>
         ${meta ? `<div class="message-meta">${escapeHtml(meta)}</div>` : ''}
       `;
       chatContainer.appendChild(el);
@@ -4316,6 +4350,14 @@
                 if (data === '[DONE]') continue;
                 try {
                   const parsed = JSON.parse(data);
+                  if (parsed.type === 'agent_activity') {
+                    if (!assistantEl) {
+                      removeTypingIndicator();
+                      const activityHtml = renderAgentActivityBlock(parsed.toolCalls || [], parsed.swarmSteps || [], parsed.iteration);
+                      assistantEl = createAssistantBubble('', null, activityHtml);
+                    }
+                    continue;
+                  }
                   const delta = parsed.choices?.[0]?.delta?.content;
                   if (delta) {
                     if (ttfb === null) ttfb = Math.round(performance.now() - streamStartTime);
@@ -4346,7 +4388,8 @@
 
           if (!content) {
             removeTypingIndicator();
-            assistantEl = createAssistantBubble('(No response)', meta);
+            if (assistantEl) updateAssistantContent(assistantEl, '(No response)', meta);
+            else assistantEl = createAssistantBubble('(No response)', meta);
           }
 
           messages.push({ role: 'assistant', content: content });
