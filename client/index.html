@@ -3,9 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <link rel="manifest" href="/app.webmanifest">
   <title>Streaming Assistant</title>
   <style>
     * { box-sizing: border-box; }
+    html { color-scheme: dark; }
     body {
       font-family: system-ui, -apple-system, sans-serif;
       margin: 0;
@@ -15,6 +18,29 @@
       background: #0f172a;
       color: #e2e8f0;
     }
+    .skip-link {
+      position: absolute;
+      left: 1rem;
+      top: -3rem;
+      background: #e2e8f0;
+      color: #0f172a;
+      padding: 0.5rem 0.75rem;
+      border-radius: 6px;
+      z-index: 1001;
+    }
+    .skip-link:focus {
+      top: 1rem;
+    }
+    a:focus-visible,
+    button:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible,
+    select:focus-visible,
+    summary:focus-visible,
+    [tabindex]:not([tabindex="-1"]):focus-visible {
+      outline: 2px solid #60a5fa;
+      outline-offset: 2px;
+    }
     header {
       flex-shrink: 0;
       padding: 0.75rem 1rem;
@@ -22,6 +48,7 @@
       border-bottom: 1px solid #334155;
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 0.75rem;
     }
     header h1 {
@@ -192,6 +219,13 @@
       0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
       40% { transform: scale(1); opacity: 1; }
     }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
     #system-area {
       flex-shrink: 0;
       padding: 0.75rem 1rem;
@@ -344,6 +378,55 @@
       background: #64748b;
     }
     /* Voice input/output */
+    .btn-image {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.5rem;
+      background: #334155;
+      color: #e2e8f0;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-image:hover { background: #475569; }
+    .btn-image:disabled { opacity: 0.5; cursor: not-allowed; }
+    .attached-images-row, .attached-images {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin: 0.5rem 0;
+      align-items: center;
+    }
+    .attached-image-preview {
+      position: relative;
+      width: 48px;
+      height: 48px;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid #334155;
+    }
+    .attached-image-preview img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .attached-image-preview .remove-img {
+      position: absolute;
+      top: 2px;
+      right: 2px;
+      width: 18px;
+      height: 18px;
+      padding: 0;
+      font-size: 0.7rem;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      line-height: 1;
+    }
     .btn-mic, .btn-speaker {
       display: inline-flex;
       align-items: center;
@@ -405,6 +488,517 @@
       background: #334155;
       border-radius: 4px;
       color: #94a3b8;
+    }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .header-button,
+    summary.header-button {
+      padding: 0.45rem 0.75rem;
+      background: #334155;
+      color: #e2e8f0;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      list-style: none;
+    }
+    summary.header-button::-webkit-details-marker {
+      display: none;
+    }
+    #settings-panel {
+      width: 100%;
+      background: #111827;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 0.9rem;
+    }
+    .settings-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 0.75rem;
+    }
+    .settings-field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .settings-field label {
+      font-size: 0.75rem;
+      color: #94a3b8;
+    }
+    .settings-field input {
+      width: 100%;
+      padding: 0.5rem 0.65rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+    }
+    .settings-help {
+      font-size: 0.75rem;
+      color: #94a3b8;
+      margin-top: 0.75rem;
+    }
+    .notice-banner {
+      margin: 0.75rem 1rem 0;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: #172033;
+      color: #cbd5e1;
+      display: none;
+      gap: 0.75rem;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .notice-banner.visible {
+      display: flex;
+    }
+    .notice-banner.warning {
+      border-color: #f59e0b;
+      background: rgba(245, 158, 11, 0.12);
+    }
+    .notice-banner.error {
+      border-color: #dc2626;
+      background: rgba(220, 38, 38, 0.12);
+    }
+    .notice-actions {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .notice-actions button {
+      padding: 0.45rem 0.7rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      background: #334155;
+      color: #e2e8f0;
+    }
+    .status-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+      color: #94a3b8;
+      font-size: 0.8rem;
+    }
+    .status-pill {
+      padding: 0.2rem 0.45rem;
+      border-radius: 999px;
+      background: #0f172a;
+      border: 1px solid #334155;
+    }
+    .chat-toolbar {
+      flex-shrink: 0;
+      padding: 0.5rem 1rem;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+    }
+    .search-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex: 1;
+      min-width: 0;
+    }
+    .search-row input {
+      flex: 1;
+      min-width: 120px;
+      padding: 0.45rem 0.65rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.875rem;
+    }
+    .search-row input::placeholder { color: #64748b; }
+    .search-match-count {
+      font-size: 0.75rem;
+      color: #94a3b8;
+      white-space: nowrap;
+    }
+    .conversation-meta-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .tags-input {
+      padding: 0.4rem 0.6rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.8rem;
+      min-width: 160px;
+    }
+    .tags-input::placeholder { color: #64748b; }
+    .pin-btn.pinned { background: #2563eb; color: white; }
+    /* Phase 12: Conversations panel */
+    #conversations-panel {
+      width: 100%;
+      background: #111827;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 0.9rem;
+    }
+    .conversations-search-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .conversations-search-row input {
+      flex: 1;
+      min-width: 0;
+      padding: 0.45rem 0.65rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.875rem;
+    }
+    .conversations-search-row input::placeholder { color: #64748b; }
+    .conversations-match-count {
+      font-size: 0.75rem;
+      color: #94a3b8;
+      white-space: nowrap;
+    }
+    .conversations-list {
+      max-height: 240px;
+      overflow-y: auto;
+      font-size: 0.8rem;
+      padding: 0.5rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      list-style: none;
+      margin: 0;
+    }
+    .conversations-list.empty { color: #64748b; padding: 0.75rem; }
+    .conversation-item {
+      padding: 0.5rem 0.6rem;
+      margin: 0.25rem 0;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+      transition: background 0.15s;
+    }
+    .conversation-item:hover {
+      background: #334155;
+    }
+    .conversation-item.active {
+      border-color: #2563eb;
+      background: rgba(37, 99, 235, 0.15);
+    }
+    .conversation-item-title {
+      font-weight: 500;
+      color: #e2e8f0;
+    }
+    .conversation-item-meta {
+      font-size: 0.7rem;
+      color: #64748b;
+    }
+    .conversation-item-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.2rem;
+      margin-top: 0.2rem;
+    }
+    /* Phase 27: Notification center */
+    .notifications-bell {
+      position: relative;
+      padding: 0.4rem 0.6rem;
+    }
+    .notifications-badge {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      min-width: 1.2rem;
+      height: 1.2rem;
+      padding: 0 4px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      line-height: 1.2rem;
+      text-align: center;
+      background: #dc2626;
+      color: white;
+      border-radius: 10px;
+    }
+    .notifications-badge.empty { display: none; }
+    .notifications-panel {
+      min-width: 280px;
+      max-width: 360px;
+      max-height: 320px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .notifications-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .notifications-list {
+      max-height: 220px;
+      overflow-y: auto;
+      font-size: 0.8rem;
+      padding: 0.5rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      list-style: none;
+      margin: 0;
+    }
+    .notifications-list.empty { color: #64748b; padding: 0.75rem; }
+    .notification-item {
+      padding: 0.5rem 0.6rem;
+      margin: 0.25rem 0;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .notification-item:hover { background: #334155; }
+    .notification-item.read { opacity: 0.7; }
+    .notification-item-title { font-weight: 500; color: #e2e8f0; }
+    .notification-item-body { font-size: 0.75rem; color: #94a3b8; margin-top: 0.2rem; }
+    .notification-item-meta { font-size: 0.65rem; color: #64748b; margin-top: 0.2rem; }
+    .conversation-tag {
+      font-size: 0.65rem;
+      padding: 0.15rem 0.35rem;
+      background: #334155;
+      border-radius: 4px;
+      color: #94a3b8;
+    }
+    .conversations-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .conversation-export-row {
+      display: flex;
+      gap: 0.35rem;
+      flex-wrap: wrap;
+    }
+    #health-panel {
+      width: 100%;
+      background: #111827;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 0.9rem;
+    }
+    .health-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
+    .health-row dt { font-weight: 600; color: #cbd5e1; }
+    .health-row dd { margin: 0; }
+    .health-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+    .health-backends { margin-top: 0.5rem; }
+    .health-backends .backend-item {
+      padding: 0.35rem 0.5rem;
+      border-radius: 4px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      display: inline-block;
+      margin: 0.25rem 0.25rem 0 0;
+      font-size: 0.75rem;
+    }
+    .health-backends .backend-item.reachable { border-color: #22c55e; color: #86efac; }
+    .health-backends .backend-item.unreachable { border-color: #dc2626; color: #fca5a5; }
+    .health-actions { display: flex; gap: 0.5rem; margin: 0.5rem 0; }
+    #integrations-panel {
+      width: 100%;
+      background: #111827;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 0.9rem;
+    }
+    .integrations-status { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.75rem; font-size: 0.8rem; }
+    .integrations-status span { padding: 0.25rem 0.5rem; border-radius: 4px; background: #0f172a; border: 1px solid #334155; }
+    .integrations-status .connected { border-color: #22c55e; color: #86efac; }
+    .integrations-status .missing { border-color: #64748b; color: #94a3b8; }
+    .integrations-actions { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+    .integrations-list { max-height: 200px; overflow-y: auto; font-size: 0.8rem; padding: 0.5rem; background: #0f172a; border: 1px solid #334155; border-radius: 6px; }
+    .integrations-list li { padding: 0.25rem 0; list-style: none; }
+    .integrations-list.empty { color: #64748b; }
+    .webhook-event-label { display: block; margin: 0.2rem 0; font-size: 0.8rem; }
+    .webhooks-list { max-height: 150px; overflow-y: auto; font-size: 0.8rem; padding: 0.5rem; background: #0f172a; border: 1px solid #334155; border-radius: 6px; list-style: none; margin: 0; }
+    .webhooks-list li { padding: 0.35rem 0; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+    .webhooks-list.empty { color: #64748b; }
+    #monitoring-panel { width: 100%; background: #111827; border: 1px solid #334155; border-radius: 8px; padding: 0.9rem; }
+    .monitoring-summary-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin-bottom: 0.75rem; font-size: 0.8rem; color: #94a3b8; }
+    .monitoring-summary-badge { padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600; }
+    .monitoring-summary-badge.ok { background: rgba(34, 197, 94, 0.2); color: #86efac; }
+    .monitoring-summary-badge.alerts { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+    .monitoring-alerts { margin: 0.5rem 0; padding: 0.5rem; background: rgba(220, 38, 38, 0.1); border: 1px solid #dc2626; border-radius: 6px; font-size: 0.8rem; }
+    .monitoring-alerts:empty { display: none; }
+    .monitoring-alerts li { margin: 0.25rem 0; }
+    #monitoring-panel {
+      width: 100%;
+      background: #111827;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 0.9rem;
+    }
+    .monitoring-summary-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
+    .monitoring-summary-row .summary-badge {
+      padding: 0.25rem 0.5rem;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+    .monitoring-summary-row .summary-badge.ok {
+      background: rgba(34, 197, 94, 0.2);
+      color: #86efac;
+      border: 1px solid #22c55e;
+    }
+    .monitoring-summary-row .summary-badge.alerts {
+      background: rgba(245, 158, 11, 0.2);
+      color: #fbbf24;
+      border: 1px solid #f59e0b;
+    }
+    .monitoring-summary-row .summary-badge.idle {
+      background: #334155;
+      color: #94a3b8;
+      border: 1px solid #475569;
+    }
+    .monitoring-alerts {
+      margin: 0.5rem 0;
+      padding: 0.5rem;
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid #f59e0b;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      color: #fbbf24;
+    }
+    .monitoring-alerts.error {
+      background: rgba(220, 38, 38, 0.1);
+      border-color: #dc2626;
+      color: #fca5a5;
+    }
+    .monitoring-alerts ul { margin: 0.25rem 0 0 1rem; padding: 0; list-style: disc; }
+    .monitoring-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap; }
+    #monitoring-panel {
+      width: 100%;
+      background: #111827;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 0.9rem;
+    }
+    .monitoring-summary-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin-bottom: 0.5rem; font-size: 0.8rem; color: #94a3b8; }
+    .monitoring-summary-row .summary-badge { padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: 600; }
+    .monitoring-summary-row .summary-badge.ok { background: rgba(34, 197, 94, 0.2); color: #86efac; }
+    .monitoring-summary-row .summary-badge.alerts { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+    .monitoring-alerts { margin: 0.5rem 0; padding: 0.5rem; background: rgba(220, 38, 38, 0.1); border: 1px solid #dc2626; border-radius: 6px; font-size: 0.8rem; }
+    .monitoring-alerts.empty { display: none; }
+    .monitoring-alerts ul { margin: 0; padding-left: 1.25rem; }
+    .monitoring-alerts li { margin: 0.25rem 0; }
+    .monitoring-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+    /* Phase 5: Context | Phase 6: Recipes */
+    #context-panel, #recipes-panel { width: 100%; background: #111827; border: 1px solid #334155; border-radius: 8px; padding: 0.9rem; }
+    .context-list, .context-list, .context-list, .context-list, .context-list, .context-list, .context-list, .context-list, .context-docs, .recipes-list { max-height: 180px; overflow-y: auto; font-size: 0.8rem; margin: 0.5rem 0; }
+    .context-doc-item, .recipe-item { padding: 0.5rem; margin: 0.35rem 0; background: #0f172a; border: 1px solid #334155; border-radius: 6px; display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; }
+    .context-doc-item .doc-title, .recipe-item .recipe-name { font-weight: 500; color: #e2e8f0; }
+    .context-doc-item .doc-meta, .recipe-item .recipe-meta { font-size: 0.75rem; color: #64748b; }
+    .context-actions, .recipe-actions { display: flex; gap: 0.35rem; flex-shrink: 0; }
+    .context-actions button, .recipe-actions button { padding: 0.3rem 0.6rem; font-size: 0.75rem; background: #334155; color: #e2e8f0; border: none; border-radius: 4px; cursor: pointer; }
+    .context-actions button:hover, .recipe-actions button:hover { background: #475569; }
+    .context-actions .btn-delete, .recipe-actions .btn-delete { background: #7f1d1d; color: #fca5a5; }
+    .context-actions .btn-delete:hover, .recipe-actions .btn-delete:hover { background: #991b1b; }
+    .context-add, .recipe-add { margin-top: 0.5rem; }
+    .context-add input, .recipe-add input { width: 100%; padding: 0.5rem; margin-bottom: 0.35rem; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; font-size: 0.875rem; }
+    .context-add textarea, .recipe-add textarea { width: 100%; min-height: 60px; padding: 0.5rem; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; font-size: 0.8125rem; resize: vertical; }
+    .context-add .file-input-wrap { margin-top: 0.5rem; }
+    #status-report-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 1002; }
+    #status-report-modal.visible { display: flex; }
+    [data-modal-overlay] { cursor: default; }
+    [data-modal-overlay] .modal-content, [data-modal-overlay] .approval-dialog { cursor: default; }
+    #status-report-modal .modal-content { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1.25rem; max-width: 480px; max-height: 80vh; overflow-y: auto; }
+    #status-report-modal pre { font-size: 0.8rem; white-space: pre-wrap; word-break: break-word; color: #94a3b8; }
+    #context-add-modal, #recipe-create-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 1001; }
+    #context-add-modal .modal-content, #recipe-create-modal .modal-content { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1.25rem; max-width: 400px; width: 90%; }
+    #context-add-modal .modal-buttons, #recipe-create-modal .modal-buttons { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.75rem; }
+    .install-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0.5rem 1rem;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      font-size: 0.875rem;
+      color: #94a3b8;
+    }
+    .install-banner-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+    .offline-indicator {
+      padding: 0.25rem 0.5rem;
+      background: rgba(245, 158, 11, 0.2);
+      color: #fbbf24;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    @media (max-width: 768px) {
+      .header-button, summary.header-button { min-width: 44px; min-height: 44px; padding: 0.6rem 0.9rem; display: inline-flex; align-items: center; justify-content: center; }
+      header input, header select { min-height: 44px; padding: 0.6rem 0.9rem; }
+      #input-area button, #input-area .btn-mic { min-width: 44px; min-height: 44px; padding: 0.6rem 0.9rem; }
+      #input-area textarea { font-size: 16px; }
+      #prompt { font-size: 16px; }
+      .context-actions button, .recipe-actions button, .conversations-list button, .knowledge-add-actions button { min-width: 44px; min-height: 44px; padding: 0.5rem 0.75rem; }
+      .tags-input, .search-row input { min-height: 44px; padding: 0.6rem 0.75rem; }
+      #input-area { position: sticky; bottom: 0; z-index: 10; }
+    }
+    @media (max-width: 720px) {
+      header input {
+        width: 100%;
+        flex-basis: 100%;
+      }
+      .header-actions {
+        width: 100%;
+      }
+      .notice-banner {
+        flex-direction: column;
+        align-items: flex-start;
+      }
     }
     #continue-modal-overlay {
       position: fixed;
@@ -471,56 +1065,567 @@
     .message.assistant .message-content em {
       font-style: italic;
     }
+    /* Task plan (Phase 3: Action-Oriented Agent) */
+    .task-plan-card {
+      max-width: 85%;
+      align-self: flex-start;
+      padding: 1rem;
+      background: #1e293b;
+      border: 1px solid #475569;
+      border-radius: 12px;
+      border-left: 4px solid #2563eb;
+    }
+    .task-plan-card .task-plan-title {
+      font-weight: 600;
+      font-size: 0.95rem;
+      margin-bottom: 0.5rem;
+      color: #e2e8f0;
+    }
+    .task-plan-card .task-plan-steps {
+      list-style: none;
+      margin: 0.5rem 0 1rem 0;
+      padding: 0;
+    }
+    .task-plan-card .task-plan-step {
+      padding: 0.5rem 0.75rem;
+      margin: 0.35rem 0;
+      background: #0f172a;
+      border-radius: 6px;
+      border-left: 3px solid #334155;
+      font-size: 0.875rem;
+    }
+    .task-plan-card .task-plan-step .step-action { font-weight: 500; color: #94a3b8; }
+    .task-plan-card .task-plan-step .step-payload { font-size: 0.8rem; color: #64748b; margin-top: 0.25rem; }
+    .task-plan-card .task-plan-approval {
+      margin-bottom: 0.75rem;
+      padding: 0.5rem 0.75rem;
+      background: rgba(245, 158, 11, 0.15);
+      border-radius: 6px;
+      font-size: 0.8rem;
+      color: #fbbf24;
+    }
+    .task-plan-card .task-plan-actions {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .task-plan-card .task-plan-actions button {
+      padding: 0.4rem 0.85rem;
+      background: #334155;
+      color: #e2e8f0;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.875rem;
+    }
+    .task-plan-card .task-plan-actions button:hover {
+      background: #475569;
+    }
+    .task-plan-card .task-plan-actions button.btn-execute {
+      background: #2563eb;
+      color: white;
+    }
+    .task-plan-card .task-plan-actions button.btn-execute:hover {
+      background: #1d4ed8;
+    }
+    #approval-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1001;
+    }
+    #approval-modal.visible {
+      display: flex;
+    }
+    #approval-modal .approval-dialog {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1.25rem;
+      max-width: 360px;
+    }
+    #approval-modal .approval-dialog p { margin: 0 0 1rem 0; }
+    #approval-modal .modal-buttons { display: flex; gap: 0.5rem; justify-content: flex-end; }
+    #approval-modal button { padding: 0.5rem 1rem; cursor: pointer; border-radius: 6px; border: none; }
+    #approval-modal .btn-confirm { background: #2563eb; color: white; }
+    #approval-modal .btn-cancel { background: #334155; color: #e2e8f0; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="/templates.js"></script>
 </head>
 <body>
-  <header>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div id="install-banner" class="install-banner" role="region" aria-label="Install app" style="display:none;">
+  <span>Install SiskelBot for quick access</span>
+  <div class="install-banner-actions">
+    <button id="install-app-btn" type="button" class="header-button">Install</button>
+    <button id="install-dismiss-btn" type="button" class="header-button" aria-label="Dismiss">✕</button>
+  </div>
+</div>
+<header>
     <h1>Streaming Assistant</h1>
+    <span id="offline-indicator" class="offline-indicator" aria-live="polite" style="display:none;">Offline</span>
     <span id="backend-badge" class="backend-badge" title="Backend (from server config)">—</span>
+    <label class="sr-only" for="profile-select">Profile</label>
+    <select id="profile-select" aria-label="Switch profile">
+      <option value="">— Profile —</option>
+    </select>
+    <label class="sr-only" for="model">Model</label>
     <input type="text" id="model" list="model-presets" placeholder="Model" value="">
-    <button id="clear-btn" type="button">New chat</button>
-    <button id="export-btn" type="button">Export chat</button>
-    <button id="import-btn" type="button">Import chat</button>
+    <div id="workspace-switcher-wrap" class="workspace-switcher-wrap" style="display:none;">
+      <label class="sr-only" for="workspace-select">Workspace</label>
+      <select id="workspace-select" aria-label="Switch workspace" title="Workspace">
+        <option value="default">Default</option>
+      </select>
+    </div>
+    <div class="header-actions">
+      <details id="notifications-toggle">
+        <summary class="header-button notifications-bell" aria-label="Notifications">
+          <span aria-hidden="true">🔔</span>
+          <span id="notifications-badge" class="notifications-badge" aria-live="polite">0</span>
+        </summary>
+        <div id="notifications-panel" class="panel-content notifications-panel">
+          <div class="notifications-actions">
+            <button id="notifications-mark-read-btn" type="button" class="header-button">Mark read</button>
+            <button id="notifications-mark-all-read-btn" type="button" class="header-button">Mark all read</button>
+          </div>
+          <ul id="notifications-list" class="notifications-list" aria-label="Notifications"></ul>
+          <p id="notifications-empty" class="panel-hint" style="display:none;">No notifications</p>
+        </div>
+      </details>
+      <button id="clear-btn" class="header-button" type="button">New chat</button>
+      <button id="export-btn" class="header-button" type="button">Export chat</button>
+      <button id="import-btn" class="header-button" type="button">Import chat</button>
+      <details id="conversations-toggle">
+        <summary class="header-button">Conversations</summary>
+        <div id="conversations-panel" class="panel-content">
+          <p class="panel-hint">Saved conversations. Click to switch, max 50 shown.</p>
+          <div class="conversations-search-row">
+            <label class="sr-only" for="conversations-search">Search conversations</label>
+            <input type="search" id="conversations-search" placeholder="Search by title or tags..." autocomplete="off" aria-label="Search conversations">
+            <span id="conversations-match-count" class="conversations-match-count" aria-live="polite"></span>
+          </div>
+          <ul id="conversations-list" class="conversations-list" aria-label="Saved conversations"></ul>
+          <div class="conversations-actions" id="conversations-server-actions" style="display:none;">
+            <button id="conversations-sync-btn" type="button" class="header-button" title="Sync with server">Sync with server</button>
+            <button id="conversations-load-btn" type="button" class="header-button" title="Load from server">Load from server</button>
+          </div>
+        </div>
+      </details>
+      <details id="health-toggle">
+        <summary class="header-button">Status</summary>
+        <div id="health-panel">
+          <dl class="health-row">
+            <dt>Backend:</dt><dd id="health-backend">—</dd>
+            <dt>Reachable:</dt><dd id="health-reachable">—</dd>
+            <dt>Latency:</dt><dd id="health-latency">—</dd>
+            <dt>Last check:</dt><dd id="health-last-check">—</dd>
+          </dl>
+          <div class="health-actions">
+            <button id="health-refresh-btn" type="button" class="header-button" aria-label="Refresh backend status" title="Force refresh (bypasses 5s cache)">Refresh</button>
+            <button id="full-report-btn" type="button" class="header-button" aria-label="Full status report" title="Fetch aggregated health and integrations report">Full report</button>
+          </div>
+          <div class="health-backends" id="health-backends"></div>
+        </div>
+      </details>
+      <details id="integrations-toggle">
+        <summary class="header-button">Integrations</summary>
+        <div id="integrations-panel">
+          <div class="integrations-status">
+            <span id="github-status" class="missing">GitHub: —</span>
+            <span id="vercel-status" class="missing">Vercel: —</span>
+          </div>
+          <div class="integrations-actions">
+            <button id="refresh-repos-btn" type="button" class="header-button" disabled>Refresh repos</button>
+            <button id="refresh-deployments-btn" type="button" class="header-button" disabled>Refresh deployments</button>
+          </div>
+          <ul id="integrations-list" class="integrations-list empty" aria-live="polite"></ul>
+          <div class="webhooks-section" style="margin-top:1rem;padding-top:1rem;border-top:1px solid #334155;">
+            <p class="panel-hint" style="margin:0 0 0.5rem 0;">Event webhooks (Phase 22)</p>
+            <form id="webhook-add-form" class="webhook-form" aria-label="Add webhook">
+              <label for="webhook-url" class="sr-only">Webhook URL</label>
+              <input type="url" id="webhook-url" placeholder="https://example.com/webhook" required style="width:100%;padding:0.5rem;margin-bottom:0.35rem;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;">
+              <fieldset style="border:1px solid #334155;border-radius:6px;padding:0.5rem;margin-bottom:0.35rem;">
+                <legend style="font-size:0.75rem;">Events</legend>
+                <label class="webhook-event-label"><input type="checkbox" name="webhook-events" value="message_sent"> message_sent</label>
+                <label class="webhook-event-label"><input type="checkbox" name="webhook-events" value="plan_created"> plan_created</label>
+                <label class="webhook-event-label"><input type="checkbox" name="webhook-events" value="recipe_executed"> recipe_executed</label>
+                <label class="webhook-event-label"><input type="checkbox" name="webhook-events" value="schedule_completed"> schedule_completed</label>
+              </fieldset>
+              <label for="webhook-secret" class="sr-only">Optional signing secret</label>
+              <input type="password" id="webhook-secret" placeholder="Optional signing secret (HMAC)" autocomplete="off" style="width:100%;padding:0.5rem;margin-bottom:0.35rem;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;">
+              <button type="submit" class="header-button">Add webhook</button>
+            </form>
+            <ul id="webhooks-list" class="webhooks-list empty" aria-label="Webhook subscriptions"></ul>
+          </div>
+        </div>
+      </details>
+      <details id="usage-toggle">
+        <summary class="header-button">Usage</summary>
+        <div id="usage-panel">
+          <div class="usage-status" id="usage-status">Loading…</div>
+          <p class="usage-hint">Last 7 days (approximate token counts)</p>
+          <div class="usage-analytics" id="usage-analytics" style="display:none;">
+            <div class="usage-cost" id="usage-cost"></div>
+            <details class="usage-by-model" id="usage-by-model-toggle">
+              <summary>Per-model breakdown</summary>
+              <ul id="usage-by-model-list" class="usage-by-model-list"></ul>
+            </details>
+            <div class="usage-model-comparison" id="usage-model-comparison" style="display:none;"></div>
+            <div class="usage-export">
+              <button id="usage-export-csv" type="button" class="header-button">Export CSV</button>
+              <button id="usage-export-json" type="button" class="header-button">Export JSON</button>
+            </div>
+          </div>
+          <div class="usage-actions">
+            <label class="sr-only" for="usage-days">Days</label>
+            <select id="usage-days" aria-label="Usage period">
+              <option value="7" selected>7 days</option>
+              <option value="14">14 days</option>
+              <option value="30">30 days</option>
+            </select>
+            <button id="usage-refresh-btn" type="button" class="header-button" aria-label="Refresh usage">Refresh</button>
+          </div>
+        </div>
+      </details>
+      <details id="knowledge-toggle">
+        <summary class="header-button">Knowledge</summary>
+        <div id="knowledge-panel" class="panel-content">
+          <p class="panel-hint">Index documents for retrieval. Search matches are included in chat when &quot;Include in chat&quot; is on.</p>
+          <label class="knowledge-toggle-include">
+            <input type="checkbox" id="knowledge-include-in-chat" aria-label="Include knowledge in chat"> Include in chat
+          </label>
+          <div class="knowledge-add">
+            <label for="knowledge-paste" class="sr-only">Paste or type document text</label>
+            <textarea id="knowledge-paste" rows="3" placeholder="Paste text or type to index..." aria-label="Document text"></textarea>
+            <label for="knowledge-title" class="sr-only">Optional title</label>
+            <input type="text" id="knowledge-title" placeholder="Optional title" aria-label="Document title">
+            <div class="knowledge-add-actions">
+              <input type="file" id="knowledge-file" accept=".txt,.md,.json" aria-label="Upload file" style="display:none">
+              <button id="knowledge-upload-btn" type="button" class="header-button">Add from file</button>
+              <button id="knowledge-index-btn" type="button" class="header-button">Index</button>
+            </div>
+          </div>
+          <div class="knowledge-search-wrap">
+            <label for="knowledge-search" class="sr-only">Search knowledge base</label>
+            <input type="search" id="knowledge-search" placeholder="Search knowledge..." autocomplete="off" aria-label="Search knowledge">
+            <button id="knowledge-search-btn" type="button" class="header-button">Search</button>
+          </div>
+          <div id="knowledge-results" class="knowledge-results" aria-live="polite"></div>
+          <ul id="knowledge-list" class="knowledge-list" aria-label="Indexed documents"></ul>
+        </div>
+      </details>
+      <details id="knowledge-toggle">
+        <summary class="header-button">Knowledge</summary>
+        <div id="knowledge-panel" class="panel-content">
+          <label class="use-knowledge-toggle" title="Include matching knowledge in chat">
+            <input type="checkbox" id="use-knowledge" />
+            Include in chat
+          </label>
+          <div class="knowledge-add">
+            <label for="knowledge-paste" class="sr-only">Paste or type document text</label>
+            <textarea id="knowledge-paste" rows="3" placeholder="Paste or type text to index..." aria-label="Document text"></textarea>
+            <div class="knowledge-add-actions">
+              <input type="file" id="knowledge-file" accept=".txt,.md,.json,.csv" aria-label="Upload document" style="display:none">
+              <button id="knowledge-upload-btn" type="button" class="header-button">Add from file</button>
+              <button id="knowledge-index-btn" type="button" class="header-button">Index</button>
+            </div>
+          </div>
+          <div class="knowledge-search-row">
+            <label class="sr-only" for="knowledge-search">Search knowledge</label>
+            <input type="search" id="knowledge-search" placeholder="Search..." autocomplete="off">
+            <button id="knowledge-search-btn" type="button" class="header-button">Search</button>
+          </div>
+          <ul id="knowledge-list" class="knowledge-list" aria-label="Indexed documents"></ul>
+          <div id="knowledge-search-results" class="knowledge-search-results" aria-live="polite"></div>
+        </div>
+      </details>
+      <details id="context-toggle">
+        <summary class="header-button">Context</summary>
+        <div id="context-panel" class="panel-content">
+          <p class="panel-hint">Add docs to include in every request. Supports .txt, .md, .json, .pdf.</p>
+          <label class="context-rag-toggle" title="Use RAG: search context by relevance instead of full concat">
+            <input type="checkbox" id="context-use-rag" aria-label="Use RAG over context"> Use RAG
+          </label>
+          <label class="context-rag-toggle" title="Use semantic search (embeddings) when RAG is on. Requires OPENAI_API_KEY and indexed docs with embeddings.">
+            <input type="checkbox" id="context-use-semantic" aria-label="Use semantic search for RAG"> Use semantic search
+          </label>
+          <div class="context-actions">
+            <input type="file" id="context-file" accept=".txt,.md,.json,.pdf" aria-label="Upload context document" style="display:none">
+            <button id="context-upload-btn" type="button" class="header-button">Add from file</button>
+            <button id="context-add-btn" type="button" class="header-button">Add manual</button>
+            <button id="context-sync-btn" type="button" class="header-button" title="Merge local data with server">Sync with server</button>
+            <button id="context-load-btn" type="button" class="header-button" title="Replace local data with server data">Load from server</button>
+          </div>
+          <ul id="context-list" class="context-list" aria-label="Context documents"></ul>
+        </div>
+      </details>
+      <details id="knowledge-toggle">
+        <summary class="header-button">Knowledge</summary>
+        <div id="knowledge-panel" class="panel-content">
+          <p class="panel-hint">Index documents for search. Use when relevant for chat (toggle below). Max 1MB per doc.</p>
+          <label class="knowledge-include-toggle">
+            <input type="checkbox" id="use-knowledge" aria-describedby="use-knowledge-hint" />
+            Include in chat
+          </label>
+          <span id="use-knowledge-hint" class="sr-only">When enabled, matching knowledge snippets are added to your message context</span>
+          <div class="knowledge-add">
+            <textarea id="knowledge-paste" rows="3" placeholder="Paste text to index..." aria-label="Paste text to add to knowledge"></textarea>
+            <div class="knowledge-add-actions">
+              <input type="file" id="knowledge-file" accept=".txt,.md,.json" aria-label="Upload file to index" style="display:none">
+              <button id="knowledge-upload-btn" type="button" class="header-button">Add from file</button>
+              <button id="knowledge-index-btn" type="button" class="header-button">Index</button>
+              <label class="knowledge-embed-toggle" title="Store embeddings for semantic search (requires OPENAI_API_KEY)">
+                <input type="checkbox" id="knowledge-store-embeddings" aria-label="Store embeddings when indexing"> Store embeddings
+              </label>
+            </div>
+          </div>
+          <div class="knowledge-search-row">
+            <label class="sr-only" for="knowledge-search-input">Search knowledge</label>
+            <input type="search" id="knowledge-search-input" placeholder="Search knowledge..." aria-label="Search knowledge">
+            <button id="knowledge-search-btn" type="button" class="header-button">Search</button>
+          </div>
+          <div id="knowledge-search-results" class="knowledge-results" aria-live="polite"></div>
+          <ul id="knowledge-list" class="knowledge-items" aria-label="Indexed documents"></ul>
+        </div>
+      </details>
+      <details id="recipes-toggle">
+        <summary class="header-button">Recipes</summary>
+        <div id="recipes-panel" class="panel-content">
+          <p class="panel-hint">Saved workflows. Run loads into task planner. Actions: <span id="recipes-actions-hint">build, deploy, copy, webhook</span></p>
+          <div class="recipes-actions">
+            <button id="recipe-create-btn" type="button" class="header-button">New recipe</button>
+            <button id="recipes-sync-btn" type="button" class="header-button" title="Merge local data with server">Sync with server</button>
+            <button id="recipes-load-btn" type="button" class="header-button" title="Replace local data with server data">Load from server</button>
+          </div>
+          <ul id="recipes-list" class="recipes-list" aria-label="Saved recipes"></ul>
+          <div id="scheduled-recipes-section" class="scheduled-recipes-section" style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid #334155;">
+            <p class="panel-hint" style="margin:0 0 0.35rem 0;">Scheduled recipes</p>
+            <ul id="scheduled-recipes-list" class="recipes-list" aria-label="Scheduled recipes"></ul>
+          </div>
+        </div>
+      </details>
+      <details id="settings-toggle">
+        <summary class="header-button">Settings</summary>
+        <div id="settings-panel">
+          <div class="settings-grid">
+            <div class="settings-field">
+              <label for="temperature">Temperature</label>
+              <input id="temperature" type="number" min="0" max="2" step="0.1" value="0.7">
+            </div>
+            <div class="settings-field">
+              <label for="top-p">Top p</label>
+              <input id="top-p" type="number" min="0" max="1" step="0.05" value="0.95">
+            </div>
+            <div class="settings-field">
+              <label for="max-tokens">Max tokens</label>
+              <input id="max-tokens" type="number" min="1" max="4096" step="1" value="512">
+            </div>
+            <div class="settings-field">
+              <label for="client-api-key">Deployment API key</label>
+              <input id="client-api-key" type="password" placeholder="Optional for protected deployments" autocomplete="off">
+            </div>
+            <div id="user-api-key-wrap" class="settings-field settings-field-full" style="display:none;">
+              <div id="oauth-auth-section" style="display:none;">
+                <p class="settings-hint" style="margin:0 0 0.5rem 0;">Sign in or use API key</p>
+                <div id="oauth-buttons" style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.5rem;"></div>
+                <div id="oauth-signed-in" style="display:none;margin-bottom:0.5rem;">
+                  <span id="oauth-user-label"></span>
+                  <button id="oauth-logout-btn" type="button" class="header-button" style="margin-left:0.5rem;">Logout</button>
+                </div>
+              </div>
+              <label for="user-api-key">User API key</label>
+              <input id="user-api-key" type="password" placeholder="Optional for programmatic access when using OAuth" autocomplete="off">
+            </div>
+            <div class="settings-field settings-field-full">
+              <label class="settings-toggle-row" title="When on, Execute can run build/deploy steps server-side. Default: off.">
+                <input type="checkbox" id="allow-recipe-execution" aria-describedby="allow-recipe-execution-hint">
+                Allow recipe step execution
+              </label>
+              <span id="allow-recipe-execution-hint" class="sr-only">When enabled, Execute runs build and deploy steps on the server. Requires server ALLOW_RECIPE_STEP_EXECUTION=1.</span>
+            </div>
+            <div class="settings-field settings-field-full">
+              <label class="settings-toggle-row" title="When on, the LLM can call tools (search context, get recipe, execute steps). Default: off.">
+                <input type="checkbox" id="agent-mode" aria-describedby="agent-mode-hint">
+                Agent mode
+              </label>
+              <span id="agent-mode-hint" class="sr-only">When enabled, the assistant can use tools: search context, list context, get recipe, and (if allowed above) execute steps.</span>
+            </div>
+            <div id="backup-restore-section" class="settings-field settings-field-full" style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid #334155;">
+              <p class="panel-hint" style="margin:0 0 0.5rem 0;font-weight:600;">Backup &amp; Restore</p>
+              <p class="settings-help" style="margin:0 0 0.5rem 0;font-size:0.8rem;">Zip data to backups. Requires admin (QUOTA_ADMIN_USER_IDS or BACKUP_ADMIN_KEY).</p>
+              <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.5rem;">
+                <button id="backup-create-btn" type="button" class="header-button">Create backup</button>
+                <button id="backup-refresh-btn" type="button" class="header-button">List backups</button>
+              </div>
+              <div id="backup-list" aria-label="Backup list" style="font-size:0.8125rem;max-height:160px;overflow-y:auto;"></div>
+              <p id="backup-status" class="panel-hint" style="margin:0.35rem 0 0 0;font-size:0.75rem;"></p>
+            </div>
+          </div>
+          <p class="settings-help">Press <code>Ctrl</code>/<code>Cmd</code> + <code>Enter</code> to send. Your deployment API key is stored only in this browser session.</p>
+        </div>
+      </details>
+    </div>
     <input type="file" id="import-file" accept=".json" style="display:none">
     <datalist id="model-presets"></datalist>
   </header>
-  <div id="continue-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100;align-items:center;justify-content:center;flex-direction:column;gap:1rem;">
-    <p style="margin:0;font-size:1rem;">Continue previous chat?</p>
+  <div id="notice-banner" class="notice-banner" role="status" aria-live="polite">
+    <span id="notice-text"></span>
+    <div class="notice-actions">
+      <button id="retry-last" type="button" hidden>Retry last</button>
+      <button id="dismiss-notice" type="button">Dismiss</button>
+    </div>
+  </div>
+  <div id="continue-modal" data-modal-overlay role="dialog" aria-modal="true" aria-labelledby="continue-title" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100;align-items:center;justify-content:center;flex-direction:column;gap:1rem;">
+    <p id="continue-title" style="margin:0;font-size:1rem;">Continue previous chat?</p>
     <div class="modal-buttons" style="display:flex;gap:0.5rem;">
       <button id="continue-yes" type="button" class="btn-yes">Yes</button>
       <button id="continue-no" type="button" class="btn-no">No</button>
     </div>
   </div>
-  <div id="chat-container"></div>
-  <div id="input-area">
-    <div id="system-prompt-row">
-      <label for="system-preset">System prompt:</label>
-      <select id="system-preset">
-        <option value="none">None</option>
-        <option value="default">Default</option>
-        <option value="concise">Concise</option>
-        <option value="code">Code assistant</option>
-        <option value="custom">Custom</option>
-      </select>
-      <textarea id="system-prompt" rows="2" placeholder="Optional system instructions (or select a preset above)"></textarea>
+  <div id="approval-modal" data-modal-overlay role="dialog" aria-modal="true" aria-labelledby="approval-title">
+    <div class="approval-dialog">
+      <p id="approval-title">This task requires approval before execution. Continue?</p>
+      <div class="modal-buttons">
+        <button id="approval-confirm" type="button" class="btn-confirm">Execute</button>
+        <button id="approval-cancel" type="button" class="btn-cancel">Cancel</button>
+      </div>
     </div>
-    <textarea id="prompt" rows="2" placeholder="Your message..."></textarea>
+  </div>
+  <div id="status-report-modal" data-modal-overlay class="status-report-overlay" role="dialog" aria-modal="true" aria-labelledby="status-report-title">
+    <div class="modal-content">
+      <p id="status-report-title" style="margin:0 0 0.5rem 0;font-weight:600;">Status Report</p>
+      <pre id="status-report-body"></pre>
+      <button id="status-report-close" type="button" class="header-button" style="margin-top:0.5rem;">Close</button>
+    </div>
+  </div>
+  <div id="context-add-modal" data-modal-overlay class="context-add-overlay" role="dialog" aria-modal="true" aria-labelledby="context-add-title" style="display:none;">
+    <div class="modal-content">
+      <p id="context-add-title" style="margin:0 0 0.5rem 0;font-weight:600;">Add context document</p>
+      <label style="display:block;margin-bottom:0.35rem;">Title <input id="context-add-title-input" type="text" placeholder="Document title" style="width:100%;padding:0.5rem;"></label>
+      <label style="display:block;margin-bottom:0.5rem;">Content <textarea id="context-add-content-input" rows="6" placeholder="Paste or type context..." style="width:100%;padding:0.5rem;"></textarea></label>
+      <div class="modal-buttons">
+        <button id="context-add-save" type="button" class="btn-confirm">Save</button>
+        <button id="context-add-cancel" type="button" class="btn-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+  <div id="recipe-create-modal" data-modal-overlay class="recipe-create-overlay" role="dialog" aria-modal="true" aria-labelledby="recipe-create-title" style="display:none;">
+    <div class="modal-content">
+      <p id="recipe-create-title" style="margin:0 0 0.5rem 0;font-weight:600;">New recipe</p>
+      <label style="display:block;margin-bottom:0.35rem;">Name <input id="recipe-create-name-input" type="text" placeholder="Recipe name" style="width:100%;padding:0.5rem;"></label>
+      <label style="display:block;margin-bottom:0.35rem;">Description <input id="recipe-create-desc-input" type="text" placeholder="Optional description" style="width:100%;padding:0.5rem;"></label>
+      <label style="display:block;margin-bottom:0.35rem;">Steps (JSON)</label>
+      <div style="display:flex;gap:0.35rem;margin-bottom:0.35rem;">
+        <select id="recipe-add-step-select" aria-label="Add step" style="padding:0.4rem;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:0.875rem;">
+          <option value="">— Add step —</option>
+        </select>
+        <button id="recipe-add-step-btn" type="button" class="header-button" style="flex-shrink:0;">Add</button>
+      </div>
+      <textarea id="recipe-create-steps-input" rows="4" placeholder='[{"action":"build","payload":{}},{"action":"deploy","payload":{"target":"vercel"}}]' style="width:100%;padding:0.5rem;font-family:monospace;font-size:0.8rem;"></textarea>
+      <p id="recipe-actions-hint" class="panel-hint" style="font-size:0.75rem;margin-top:0.35rem;color:#64748b;">Available actions: build, deploy, copy, webhook</p>
+      <div class="modal-buttons">
+        <button id="recipe-create-save" type="button" class="btn-confirm">Save</button>
+        <button id="recipe-create-cancel" type="button" class="btn-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+  <div id="recipe-schedule-modal" data-modal-overlay class="recipe-create-overlay" role="dialog" aria-modal="true" aria-labelledby="recipe-schedule-title" style="display:none;">
+    <div class="modal-content">
+      <p id="recipe-schedule-title" style="margin:0 0 0.5rem 0;font-weight:600;">Schedule recipe</p>
+      <p id="recipe-schedule-name" style="margin:0 0 0.5rem 0;color:#94a3b8;font-size:0.875rem;"></p>
+      <label style="display:block;margin-bottom:0.35rem;">Preset <select id="schedule-preset" aria-label="Schedule preset" style="width:100%;padding:0.5rem;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;">
+        <option value="">— Custom —</option>
+        <option value="0 9 * * 1-5">Daily 9am (weekdays)</option>
+        <option value="0 9 * * *">Daily 9am</option>
+        <option value="0 0 * * 1">Weekly Monday midnight</option>
+        <option value="0 */1 * * *">Every hour</option>
+        <option value="*/15 * * * *">Every 15 min</option>
+      </select></label>
+      <label style="display:block;margin-bottom:0.35rem;">Cron <input id="schedule-cron-input" type="text" placeholder="0 9 * * 1-5" style="width:100%;padding:0.5rem;font-family:monospace;"></label>
+      <label style="display:block;margin-bottom:0.35rem;">Timezone <input id="schedule-timezone-input" type="text" placeholder="America/New_York (optional)" style="width:100%;padding:0.5rem;"></label>
+      <label class="settings-toggle-row" style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;"><input type="checkbox" id="schedule-enabled" checked> Enabled</label>
+      <p id="schedule-next-run" style="font-size:0.8rem;color:#64748b;margin:0.5rem 0;"></p>
+      <div class="modal-buttons">
+        <button id="schedule-save" type="button" class="btn-confirm">Save</button>
+        <button id="schedule-remove" type="button" class="btn-no" style="margin-right:auto;">Remove schedule</button>
+        <button id="schedule-cancel" type="button" class="btn-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+  <main id="main-content" role="main">
+  <div class="chat-toolbar">
+    <div class="search-row">
+      <label class="sr-only" for="history-search">Search messages</label>
+      <input type="search" id="history-search" placeholder="Search messages..." autocomplete="off">
+      <span id="search-match-count" class="search-match-count" aria-live="polite"></span>
+    </div>
+    <div class="conversation-meta-row">
+      <button id="pin-btn" type="button" class="header-button pin-btn" title="Pin conversation">📌 Pin</button>
+      <input type="text" id="tags-input" placeholder="Tags (comma-separated)" class="tags-input">
+      <div class="conversation-export-row">
+        <button id="copy-link-btn" type="button" class="header-button" title="Copy shareable JSON to clipboard">Copy link</button>
+      </div>
+    </div>
+  </div>
+  <div class="sr-only" id="live-region" aria-live="polite" aria-atomic="false"></div>
+  <div id="chat-container" role="log" aria-live="polite" aria-relevant="additions text"></div>
+  <div id="input-area">
+    <div class="status-row">
+      <span class="status-pill" id="connection-status">Ready</span>
+      <span id="shortcut-hint">Shortcut: Ctrl/Cmd + Enter to send</span>
+    </div>
+    <div id="system-prompt-row">
+      <label for="template-select">Template:</label>
+      <select id="template-select">
+        <option value="">— Template —</option>
+      </select>
+      <label for="system-prompt" class="sr-only">System prompt</label>
+      <textarea id="system-prompt" rows="2" placeholder="Optional system instructions (or select a template above)"></textarea>
+    </div>
+    <textarea id="prompt" rows="2" placeholder="Your message..." aria-label="Message input"></textarea>
+    <div class="attached-images-wrap" id="attached-images-wrap" style="display:none;">
+      <div class="attached-images" id="attached-images"></div>
+      <button type="button" id="clear-attachments" class="header-button" aria-label="Remove attached images">Remove images</button>
+    </div>
     <div class="button-row">
+      <input type="file" id="image-upload" accept=".png,.jpg,.jpeg,.webp" multiple aria-label="Attach image" style="display:none">
+      <button id="image-upload-btn" class="btn-mic" type="button" title="Attach image (PNG, JPG, WebP)" aria-label="Attach image">🖼️</button>
       <button id="mic-btn" class="btn-mic" type="button" title="Speech-to-text not supported" aria-label="Voice input" disabled>🎤</button>
-      <button id="send">Send</button>
-      <button id="stop" type="button" style="display:none;background:#dc2626">Stop</button>
+      <button id="send" aria-label="Send message">Send</button>
+      <button id="plan-task-btn" type="button" title="Get a structured task plan from the LLM" aria-label="Plan task">Plan task</button>
+      <button id="stop" type="button" style="display:none;background:#dc2626" aria-label="Stop response">Stop</button>
       <label class="auto-speak-toggle" title="Read new assistant responses aloud">
         <input type="checkbox" id="auto-speak" />
         Speak new
       </label>
     </div>
   </div>
+  </main>
 
   <script>
     const API = '/v1/chat/completions';
     const STORAGE_KEY = 'siskelbot-messages';
+    const STORAGE_VERSION = 1;
+    const SESSION_API_KEY = 'siskelbot-api-key';
+    const SESSION_USER_API_KEY = 'siskelbot-user-api-key';
+    const SESSION_WORKSPACE_KEY = 'siskelbot-workspace';
+    const SESSION_SEARCH_KEY = 'siskelbot-history-search';
+    const CONTEXT_STORAGE_KEY = 'siskelbot-context';
+    const CONTEXT_RAG_STORAGE_KEY = 'siskelbot-context-use-rag';
+    const CONTEXT_SEMANTIC_SEARCH_STORAGE_KEY = 'siskelbot-context-use-semantic-search';
+    const RECIPES_STORAGE_KEY = 'siskelbot-recipes';
+    const RECIPE_EXECUTION_STORAGE_KEY = 'siskelbot-allow-recipe-execution';
+    const AGENT_MODE_STORAGE_KEY = 'siskelbot-agent-mode';
+    const CONVERSATIONS_STORAGE_KEY = 'siskelbot-conversations';
+    const INSTALL_DISMISSED_KEY = 'siskelbot-install-dismissed';
+    const NOTIFICATIONS_STORAGE_KEY = 'siskelbot-notifications';
+    const MAX_CONVERSATIONS = 50;
+    const MAX_NOTIFICATIONS = 100;
     const chatContainer = document.getElementById('chat-container');
     const promptInput = document.getElementById('prompt');
     const sendBtn = document.getElementById('send');
@@ -528,21 +1633,62 @@
     const modelInput = document.getElementById('model');
     const backendBadge = document.getElementById('backend-badge');
     const modelPresetsDatalist = document.getElementById('model-presets');
-    const systemPresetSelect = document.getElementById('system-preset');
+    const profileSelect = document.getElementById('profile-select');
+    const templateSelect = document.getElementById('template-select');
     const systemPromptTextarea = document.getElementById('system-prompt');
+    const historySearch = document.getElementById('history-search');
+    const searchMatchCount = document.getElementById('search-match-count');
+    const pinBtn = document.getElementById('pin-btn');
+    const tagsInput = document.getElementById('tags-input');
     const stopBtn = document.getElementById('stop');
+    const temperatureInput = document.getElementById('temperature');
+    const topPInput = document.getElementById('top-p');
+    const maxTokensInput = document.getElementById('max-tokens');
+    const clientApiKeyInput = document.getElementById('client-api-key');
+    const userApiKeyInput = document.getElementById('user-api-key');
+    const workspaceSelect = document.getElementById('workspace-select');
+    const noticeBanner = document.getElementById('notice-banner');
+    const noticeText = document.getElementById('notice-text');
+    const retryLastBtn = document.getElementById('retry-last');
+    const dismissNoticeBtn = document.getElementById('dismiss-notice');
+    const liveRegion = document.getElementById('live-region');
+    const connectionStatus = document.getElementById('connection-status');
 
     const MAX_RETRIES = 2;
     const RETRY_DELAY_MS = 800;
 
     let config = { backend: 'vllm', modelPresets: [], modelPlaceholder: 'meta-llama/Llama-3-8B-Instruct' };
     let activeAbortController = null;
+    let lastSubmittedPrompt = '';
+    let lastErrorMessage = '';
+
+    let conversationMeta = { pinned: false, tags: [] };
+    let attachedImages = [];
+    let currentConversationId = null;
 
     function persistMessages() {
-      if (messages.length > 0) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
-      } else {
-        localStorage.removeItem(STORAGE_KEY);
+      try {
+        const payload = {
+          _version: STORAGE_VERSION,
+          messages: messages,
+          pinned: conversationMeta.pinned,
+          tags: Array.isArray(conversationMeta.tags) ? conversationMeta.tags : [],
+        };
+        if (messages.length > 0 || conversationMeta.pinned || (conversationMeta.tags && conversationMeta.tags.length > 0)) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+        } else {
+          localStorage.removeItem(STORAGE_KEY);
+        }
+        if (navigator.serviceWorker?.controller) {
+          const convosPayload = { messages, pinned: conversationMeta.pinned, tags: conversationMeta.tags };
+          try {
+            const raw = localStorage.getItem(CONVERSATIONS_STORAGE_KEY);
+            const convos = raw ? JSON.parse(raw) : {};
+            navigator.serviceWorker.controller.postMessage({ type: 'CACHE_CONVOS', payload: { current: convosPayload, list: convos } });
+          } catch (_) {}
+        }
+      } catch (e) {
+        console.warn('SiskelBot: failed to persist messages', e);
       }
     }
 
@@ -551,15 +1697,139 @@
       if (!raw) return null;
       try {
         const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed)) return null;
-        return parsed;
+        if (Array.isArray(parsed)) {
+          return { messages: parsed, pinned: false, tags: [] };
+        }
+        if (parsed && typeof parsed === 'object' && Array.isArray(parsed.messages)) {
+          const mig = migrateMessagesPayload(parsed);
+          return { messages: mig.messages, pinned: !!mig.pinned, tags: Array.isArray(mig.tags) ? mig.tags : [] };
+        }
+        return null;
       } catch (_) {
         return null;
       }
     }
 
+    function migrateMessagesPayload(payload) {
+      if (!payload || typeof payload !== 'object') return { messages: [], pinned: false, tags: [] };
+      const v = payload._version;
+      if (v !== STORAGE_VERSION) {
+        payload._version = STORAGE_VERSION;
+        payload.pinned = payload.pinned || false;
+        payload.tags = Array.isArray(payload.tags) ? payload.tags : [];
+      }
+      return {
+        messages: Array.isArray(payload.messages) ? payload.messages : [],
+        pinned: !!payload.pinned,
+        tags: Array.isArray(payload.tags) ? payload.tags : [],
+      };
+    }
+
+    function announce(message) {
+      if (liveRegion) {
+        liveRegion.textContent = '';
+        requestAnimationFrame(() => {
+          liveRegion.textContent = message;
+        });
+      }
+    }
+
+    function showNotice(message, variant = 'warning', canRetry = false) {
+      lastErrorMessage = message;
+      noticeText.textContent = message;
+      noticeBanner.className = `notice-banner visible ${variant}`;
+      retryLastBtn.hidden = !canRetry;
+    }
+
+    function clearNotice() {
+      noticeBanner.className = 'notice-banner';
+      retryLastBtn.hidden = true;
+      noticeText.textContent = '';
+    }
+
+    function setConnectionStatus(text) {
+      connectionStatus.textContent = text;
+    }
+
+    function getGenerationConfig() {
+      return {
+        temperature: Number(temperatureInput.value || config.defaultGenerationConfig?.temperature || 0.7),
+        top_p: Number(topPInput.value || config.defaultGenerationConfig?.top_p || 0.95),
+        max_tokens: Number(maxTokensInput.value || config.defaultGenerationConfig?.max_tokens || 512),
+      };
+    }
+
+    let sessionUser = null;
+
+    async function loadAuthMe() {
+      try {
+        const res = await fetch('/auth/me', { credentials: 'include' });
+        if (res.ok) {
+          const data = await res.json();
+          sessionUser = { userId: data.userId, provider: data.provider };
+          return true;
+        }
+      } catch (_) {}
+      sessionUser = null;
+      return false;
+    }
+
+    function updateOAuthUI() {
+      const wrap = document.getElementById('user-api-key-wrap');
+      const oauthSection = document.getElementById('oauth-auth-section');
+      const oauthButtons = document.getElementById('oauth-buttons');
+      const oauthSignedIn = document.getElementById('oauth-signed-in');
+      const oauthUserLabel = document.getElementById('oauth-user-label');
+      const logoutBtn = document.getElementById('oauth-logout-btn');
+      if (!wrap || !config.authRequired) return;
+      wrap.style.display = '';
+      const providers = config.oauthProviders || {};
+      const hasOAuth = providers.github || providers.google;
+      if (hasOAuth && oauthSection) {
+        oauthSection.style.display = '';
+        if (sessionUser) {
+          if (oauthButtons) oauthButtons.style.display = 'none';
+          if (oauthSignedIn) {
+            oauthSignedIn.style.display = '';
+            if (oauthUserLabel) oauthUserLabel.textContent = 'Signed in as ' + (sessionUser.userId || '').slice(0, 24) + (sessionUser.provider ? ' (' + sessionUser.provider + ')' : '');
+          }
+        } else {
+          if (oauthButtons) {
+            oauthButtons.style.display = 'flex';
+            oauthButtons.innerHTML = '';
+            if (providers.github) {
+              const b = document.createElement('a');
+              b.href = '/auth/github';
+              b.className = 'header-button';
+              b.textContent = 'Sign in with GitHub';
+              b.style.textDecoration = 'none';
+              oauthButtons.appendChild(b);
+            }
+            if (providers.google) {
+              const b = document.createElement('a');
+              b.href = '/auth/google';
+              b.className = 'header-button';
+              b.textContent = 'Sign in with Google';
+              b.style.textDecoration = 'none';
+              oauthButtons.appendChild(b);
+            }
+          }
+          if (oauthSignedIn) oauthSignedIn.style.display = 'none';
+        }
+      }
+      if (logoutBtn) logoutBtn.onclick = () => { window.location.href = '/auth/logout'; };
+    }
+
     async function loadConfig() {
       try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('auth_error') === '1') {
+          showNotice('Sign-in was cancelled or failed. Try again or use API key.', 'warning', false);
+          window.history.replaceState({}, '', window.location.pathname);
+        } else if (params.get('auth_error') === 'session') {
+          showNotice('Session not available. Set SESSION_SECRET when using OAuth.', 'error', false);
+          window.history.replaceState({}, '', window.location.pathname);
+        }
         const res = await fetch('/config');
         if (res.ok) {
           config = await res.json();
@@ -567,33 +1837,1162 @@
           modelInput.placeholder = `Model (e.g. ${config.modelPlaceholder})`;
           if (!modelInput.value && config.modelPlaceholder) modelInput.value = config.modelPlaceholder;
           modelPresetsDatalist.innerHTML = (config.modelPresets || []).map(m => `<option value="${m}">`).join('');
+          temperatureInput.value = config.defaultGenerationConfig?.temperature ?? 0.7;
+          topPInput.value = config.defaultGenerationConfig?.top_p ?? 0.95;
+          maxTokensInput.value = config.defaultGenerationConfig?.max_tokens ?? 512;
+          if (config.productionHint) {
+            showNotice(config.productionHint, 'warning', false);
+          }
+          if (config.requiresApiKey) {
+            clientApiKeyInput.placeholder = 'Required for this deployment';
+          }
+          if (config.authRequired) {
+            await loadAuthMe();
+            updateOAuthUI();
+            loadWorkspaces();
+          }
         }
       } catch (_) {}
     }
     loadConfig();
 
-    const SYSTEM_PROMPT_PRESETS = {
-      none: '',
-      default: 'You are a helpful assistant. Be clear and informative.',
-      concise: 'You are a helpful assistant. Be concise. Prefer short answers.',
-      code: 'You are a helpful coding assistant. Provide clear code examples, explain your reasoning, and follow best practices.',
-      custom: '', // User types in textarea
-    };
+    function getStorageHeaders() {
+      const h = { 'Content-Type': 'application/json' };
+      const userKey = userApiKeyInput?.value?.trim();
+      if (userKey) h['x-user-api-key'] = userKey;
+      return h;
+    }
+    function getStorageFetchOptions(extra) {
+      const o = { headers: getStorageHeaders(), credentials: 'include', ...extra };
+      return o;
+    }
+    function getWorkspace() {
+      return sessionStorage.getItem(SESSION_WORKSPACE_KEY) || 'default';
+    }
+    function setWorkspace(id) {
+      sessionStorage.setItem(SESSION_WORKSPACE_KEY, id || 'default');
+    }
+    function getSelectedWorkspace() {
+      return (workspaceSelect?.value || getWorkspace() || 'default');
+    }
+    async function loadWorkspaces() {
+      if (!workspaceSelect || !config.authRequired) return;
+      try {
+        const res = await fetch('/api/workspaces', getStorageFetchOptions());
+        if (res.ok) {
+          const data = await res.json();
+          const items = data.items || [];
+          const cur = getWorkspace();
+          workspaceSelect.innerHTML = items.map(w => `<option value="${w.id}" ${w.id === cur ? 'selected' : ''}>${escapeHtml(w.name || w.id)}</option>`).join('');
+          if (items.length > 0 && !items.find(w => w.id === cur)) setWorkspace('default');
+        }
+      } catch (_) {}
+    }
+
+    // Phase 9: Allow recipe step execution toggle (Settings)
+    const allowRecipeExecutionCheckbox = document.getElementById('allow-recipe-execution');
+    if (allowRecipeExecutionCheckbox) {
+      try {
+        allowRecipeExecutionCheckbox.checked = localStorage.getItem(RECIPE_EXECUTION_STORAGE_KEY) === '1';
+      } catch (_) {}
+      allowRecipeExecutionCheckbox.addEventListener('change', () => {
+        try {
+          localStorage.setItem(RECIPE_EXECUTION_STORAGE_KEY, allowRecipeExecutionCheckbox.checked ? '1' : '0');
+        } catch (_) {}
+      });
+    }
+
+    // Phase 15: Agent mode toggle (Settings)
+    const agentModeCheckbox = document.getElementById('agent-mode');
+    if (agentModeCheckbox) {
+      try {
+        agentModeCheckbox.checked = localStorage.getItem(AGENT_MODE_STORAGE_KEY) === '1';
+      } catch (_) {}
+      agentModeCheckbox.addEventListener('change', () => {
+        try {
+          localStorage.setItem(AGENT_MODE_STORAGE_KEY, agentModeCheckbox.checked ? '1' : '0');
+        } catch (_) {}
+      });
+    }
+
+    // Phase 24: Backup & Restore (Settings)
+    const backupCreateBtn = document.getElementById('backup-create-btn');
+    const backupRefreshBtn = document.getElementById('backup-refresh-btn');
+    const backupListEl = document.getElementById('backup-list');
+    const backupStatusEl = document.getElementById('backup-status');
+    async function setBackupStatus(msg, isError) {
+      if (backupStatusEl) { backupStatusEl.textContent = msg || ''; backupStatusEl.style.color = isError ? '#f87171' : '#94a3b8'; }
+    }
+    async function loadBackupList() {
+      if (!backupListEl) return;
+      setBackupStatus('Loading…');
+      try {
+        const res = await fetch('/api/backup', getStorageFetchOptions());
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          setBackupStatus(err.error || 'Failed to list backups', true);
+          backupListEl.innerHTML = '';
+          return;
+        }
+        const data = await res.json();
+        const items = data.items || [];
+        if (items.length === 0) {
+          backupListEl.innerHTML = '<p style="color:#64748b;margin:0;padding:0.35rem 0;">No backups yet.</p>';
+          setBackupStatus('');
+        } else {
+          backupListEl.innerHTML = items.map(b => {
+            const size = b.sizeBytes != null ? ` (${(b.sizeBytes / 1024).toFixed(1)} KB)` : '';
+            return `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.35rem 0;border-bottom:1px solid #334155;"><span style="flex:1;">${escapeHtml(b.id)}${size}</span><button type="button" class="header-button" data-backup-id="${escapeHtml(b.id)}" style="flex-shrink:0;">Restore</button></div>`;
+          }).join('');
+          backupListEl.querySelectorAll('[data-backup-id]').forEach(btn => {
+            btn.addEventListener('click', () => restoreBackup(btn.getAttribute('data-backup-id')));
+          });
+          setBackupStatus('');
+        }
+      } catch (e) {
+        setBackupStatus('Failed to list backups', true);
+        backupListEl.innerHTML = '';
+      }
+    }
+    async function restoreBackup(id) {
+      if (!id || !confirm('Restore backup "' + id + '"? This will replace all current data.')) return;
+      setBackupStatus('Restoring…');
+      try {
+        const res = await fetch(`/api/backup/restore/${encodeURIComponent(id)}`, { method: 'POST', ...getStorageFetchOptions() });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          setBackupStatus(err.error || 'Restore failed', true);
+          return;
+        }
+        setBackupStatus('Restored. Reload to see changes.');
+        loadBackupList();
+      } catch (e) {
+        setBackupStatus('Restore failed', true);
+      }
+    }
+    if (backupCreateBtn) backupCreateBtn.addEventListener('click', async () => {
+      setBackupStatus('Creating backup…');
+      try {
+        const res = await fetch('/api/backup', { method: 'POST', ...getStorageFetchOptions() });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          setBackupStatus(err.error || 'Create failed', true);
+          return;
+        }
+        setBackupStatus('Backup created');
+        loadBackupList();
+      } catch (e) {
+        setBackupStatus('Create failed', true);
+      }
+    });
+    if (backupRefreshBtn) backupRefreshBtn.addEventListener('click', loadBackupList);
+
+    const HEALTH_REFRESH_MS = 30000;
+
+    async function loadHealth(forceRefresh) {
+      const backendEl = document.getElementById('health-backend');
+      const reachableEl = document.getElementById('health-reachable');
+      const latencyEl = document.getElementById('health-latency');
+      const lastCheckEl = document.getElementById('health-last-check');
+      const backendsEl = document.getElementById('health-backends');
+      if (!backendEl) return;
+      try {
+        const url = forceRefresh ? '/health?refresh=1' : '/health';
+        const res = await fetch(url);
+        const data = await res.json().catch(() => ({}));
+        backendEl.textContent = data.backend ?? '—';
+        reachableEl.textContent = data.reachable === true ? 'Yes' : data.reachable === false ? 'No' : '—';
+        latencyEl.textContent = data.latencyMs != null ? data.latencyMs + ' ms' : '—';
+        lastCheckEl.textContent = data.lastChecked ? new Date(data.lastChecked).toLocaleTimeString() : (data.cached ? '(cached)' : '—');
+        if (data.backends && backendsEl) {
+          backendsEl.innerHTML = Object.entries(data.backends).map(([name, s]) => {
+            const cls = s.reachable ? 'reachable' : 'unreachable';
+            const lat = s.latencyMs != null ? s.latencyMs + ' ms' : '';
+            return `<div class="backend-item ${cls}">${name}: ${s.reachable ? 'OK' : 'down'}${lat ? ' (' + lat + ')' : ''}</div>`;
+          }).join('');
+        }
+      } catch (_) {
+        backendEl.textContent = '—';
+        reachableEl.textContent = 'Error';
+        latencyEl.textContent = '—';
+        lastCheckEl.textContent = new Date().toLocaleTimeString();
+        if (backendsEl) backendsEl.innerHTML = '';
+      }
+    }
+    loadHealth();
+    setInterval(loadHealth, HEALTH_REFRESH_MS);
+
+    const healthRefreshBtn = document.getElementById('health-refresh-btn');
+    if (healthRefreshBtn) healthRefreshBtn.addEventListener('click', () => loadHealth(true));
+
+    // --- Phase 4: Integrations panel ---
+    const integrationsToggle = document.getElementById('integrations-toggle');
+    const githubStatusEl = document.getElementById('github-status');
+    const vercelStatusEl = document.getElementById('vercel-status');
+    const refreshReposBtn = document.getElementById('refresh-repos-btn');
+    const refreshDeploymentsBtn = document.getElementById('refresh-deployments-btn');
+    const integrationsList = document.getElementById('integrations-list');
+
+    async function loadIntegrationsStatus() {
+      if (!githubStatusEl || !vercelStatusEl) return;
+      try {
+        const res = await fetch('/api/integrations/status');
+        if (!res.ok) return;
+        const data = await res.json();
+        githubStatusEl.textContent = 'GitHub: ' + (data.github ? 'connected' : 'missing');
+        githubStatusEl.className = data.github ? 'connected' : 'missing';
+        vercelStatusEl.textContent = 'Vercel: ' + (data.vercel ? 'connected' : 'missing');
+        vercelStatusEl.className = data.vercel ? 'connected' : 'missing';
+        if (refreshReposBtn) refreshReposBtn.disabled = !data.github;
+        if (refreshDeploymentsBtn) refreshDeploymentsBtn.disabled = !data.vercel;
+      } catch (_) {}
+    }
+
+    async function refreshRepos() {
+      if (!integrationsList) return;
+      integrationsList.innerHTML = '<li>Loading...</li>';
+      integrationsList.classList.remove('empty');
+      try {
+        const res = await fetch('/api/github/repos');
+        const data = await res.json();
+        if (!res.ok) {
+          integrationsList.innerHTML = '<li class="integrations-list empty">' + (data.hint || data.error || 'Error') + '</li>';
+          return;
+        }
+        const repos = Array.isArray(data) ? data : [];
+        if (repos.length === 0) {
+          integrationsList.innerHTML = '<li class="integrations-list empty">No repos</li>';
+          return;
+        }
+        integrationsList.innerHTML = repos.slice(0, 50).map(r => {
+          const name = r.full_name || r.name || r.id || '?';
+          const url = r.html_url ? ` target="_blank" rel="noopener" href="${r.html_url}"` : '';
+          return '<li' + (url ? '><a' + url + '>' : '>') + escapeHtml(name) + (url ? '</a></li>' : '</li>');
+        }).join('');
+        integrationsList.classList.remove('empty');
+      } catch (err) {
+        integrationsList.innerHTML = '<li class="integrations-list empty">' + escapeHtml(err.message || 'Failed to fetch') + '</li>';
+      }
+    }
+
+    async function refreshDeployments() {
+      if (!integrationsList) return;
+      integrationsList.innerHTML = '<li>Loading...</li>';
+      integrationsList.classList.remove('empty');
+      try {
+        const res = await fetch('/api/vercel/deployments');
+        const data = await res.json();
+        if (!res.ok) {
+          integrationsList.innerHTML = '<li class="integrations-list empty">' + (data.hint || data.error || 'Error') + '</li>';
+          return;
+        }
+        const deployments = data.deployments || (Array.isArray(data) ? data : []);
+        if (deployments.length === 0) {
+          integrationsList.innerHTML = '<li class="integrations-list empty">No deployments</li>';
+          return;
+        }
+        integrationsList.innerHTML = deployments.slice(0, 50).map(d => {
+          const name = d.name || d.url || d.uid || '?';
+          const state = d.state ? ` (${d.state})` : '';
+          const url = d.url ? ` target="_blank" rel="noopener" href="https://${d.url}"` : '';
+          return '<li' + (url ? '><a' + url + '>' : '>') + escapeHtml(String(name) + state) + (url ? '</a></li>' : '</li>');
+        }).join('');
+        integrationsList.classList.remove('empty');
+      } catch (err) {
+        integrationsList.innerHTML = '<li class="integrations-list empty">' + escapeHtml(err.message || 'Failed to fetch') + '</li>';
+      }
+    }
+
+    loadIntegrationsStatus();
+    if (integrationsToggle) {
+      integrationsToggle.addEventListener('toggle', () => {
+        if (integrationsToggle.open) loadIntegrationsStatus();
+      });
+    }
+    if (refreshReposBtn) refreshReposBtn.onclick = refreshRepos;
+    if (refreshDeploymentsBtn) refreshDeploymentsBtn.onclick = refreshDeployments;
+
+    // --- Phase 13 + 18: Usage panel with analytics ---
+    const usageToggle = document.getElementById('usage-toggle');
+    const usageStatusEl = document.getElementById('usage-status');
+    const usageRefreshBtn = document.getElementById('usage-refresh-btn');
+    const usageDaysSelect = document.getElementById('usage-days');
+    const usageAnalyticsEl = document.getElementById('usage-analytics');
+    const usageCostEl = document.getElementById('usage-cost');
+    const usageByModelList = document.getElementById('usage-by-model-list');
+    const usageModelComparisonEl = document.getElementById('usage-model-comparison');
+    const usageExportCsv = document.getElementById('usage-export-csv');
+    const usageExportJson = document.getElementById('usage-export-json');
+
+    async function loadUsageStatus() {
+      if (!usageStatusEl) return;
+      usageStatusEl.textContent = 'Loading…';
+      if (usageAnalyticsEl) usageAnalyticsEl.style.display = 'none';
+      const days = usageDaysSelect ? Math.min(90, Math.max(1, parseInt(usageDaysSelect.value, 10) || 7)) : 7;
+      const workspace = typeof getSelectedWorkspace === 'function' ? getSelectedWorkspace() : null;
+      const headers = typeof getStorageHeaders === 'function' ? getStorageHeaders() : {};
+      const wsParam = workspace && workspace !== 'default' ? '&workspace=' + encodeURIComponent(workspace) : '';
+      try {
+        const res = await fetch('/api/analytics/dashboard?days=' + days + wsParam, { headers });
+        if (!res.ok) {
+          const summaryUrl = '/api/usage/summary?days=' + days + (workspace && workspace !== 'default' ? '&workspace=' + encodeURIComponent(workspace) : '');
+          const summaryRes = await fetch(summaryUrl);
+          if (!summaryRes.ok) {
+            usageStatusEl.textContent = 'Error loading usage';
+            return;
+          }
+          const data = await summaryRes.json();
+          const req = data.totalRequests ?? 0;
+          const total = (data.totalInputTokens ?? 0) + (data.totalOutputTokens ?? 0) || data.totalTokens ?? 0;
+          let html = '<strong>' + req + '</strong> requests · ~<strong>' + (total).toLocaleString() + '</strong> tokens (last ' + days + ' days)';
+          if (data.quota != null && data.quota.remaining != null) {
+            html += ' · Quota: <strong>' + (data.quota.remaining).toLocaleString() + '</strong> / ' + (data.quota.limit).toLocaleString() + ' remaining';
+          }
+          usageStatusEl.innerHTML = html;
+          return;
+        }
+        const data = await res.json();
+        const req = data.totalRequests ?? 0;
+        const total = data.totalTokens ?? (data.totalInputTokens ?? 0) + (data.totalOutputTokens ?? 0);
+        let html = '<strong>' + req + '</strong> requests · ~<strong>' + (total).toLocaleString() + '</strong> tokens (last ' + days + ' days)';
+        if (data.quota != null && data.quota.remaining != null) {
+          html += ' · Quota: <strong>' + (data.quota.remaining).toLocaleString() + '</strong> / ' + (data.quota.limit).toLocaleString() + ' remaining';
+        }
+        usageStatusEl.innerHTML = html;
+        if (usageCostEl) {
+          const cost = data.totalCost ?? 0;
+          const src = data.costSource || 'local';
+          usageCostEl.textContent = src === 'local' ? 'Cost: local (Ollama/vLLM)' : 'Est. cost: $' + cost.toFixed(4);
+        }
+        if (usageByModelList && data.byModel) {
+          usageByModelList.innerHTML = Object.entries(data.byModel).map(function (e) {
+            const m = e[0];
+            const v = e[1];
+            const tok = (v.inputTokens || 0) + (v.outputTokens || 0);
+            const costStr = v.source === 'local' ? '' : ' · $' + (v.cost || 0).toFixed(4);
+            return '<li><strong>' + escapeHtml(m) + '</strong>: ' + (v.requests || 0) + ' req, ~' + tok.toLocaleString() + ' tokens' + costStr + '</li>';
+          }).join('');
+        }
+        if (usageModelComparisonEl && data.modelComparison && data.modelComparison.length > 1) {
+          usageModelComparisonEl.style.display = 'block';
+          usageModelComparisonEl.innerHTML = '<p class="usage-model-comparison-title">Model comparison</p><ul class="usage-by-model-list">' +
+            data.modelComparison.map(function (m) {
+              return '<li>' + escapeHtml(m.model) + ': ' + m.requests + ' req, ~' + (m.tokens || 0).toLocaleString() + ' tokens' +
+                (m.cost ? ', $' + m.cost.toFixed(4) : '') + '</li>';
+            }).join('') + '</ul>';
+        } else if (usageModelComparisonEl) {
+          usageModelComparisonEl.style.display = 'none';
+        }
+        const exportBase = '/api/analytics/export?days=' + days + wsParam;
+        if (usageExportCsv) {
+          usageExportCsv.href = exportBase + '&format=csv';
+          usageExportCsv.style.display = 'inline-block';
+          usageExportCsv.onclick = async function (e) {
+            if (typeof getStorageHeaders === 'function' && Object.keys(getStorageHeaders()).length > 0) {
+              e.preventDefault();
+              try {
+                const r = await fetch(exportBase + '&format=csv', getStorageFetchOptions());
+                if (!r.ok) throw new Error('Export failed');
+                const blob = await r.blob();
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'analytics-' + days + 'd.csv';
+                a.click();
+                URL.revokeObjectURL(a.href);
+              } catch (err) {
+                usageStatusEl.textContent = 'Export failed: ' + (err.message || 'Error');
+              }
+            }
+          };
+        }
+        if (usageExportJson) {
+          usageExportJson.href = exportBase + '&format=json';
+          usageExportJson.style.display = 'inline-block';
+          usageExportJson.onclick = async function (e) {
+            if (typeof getStorageHeaders === 'function' && Object.keys(getStorageHeaders()).length > 0) {
+              e.preventDefault();
+              try {
+                const r = await fetch(exportBase + '&format=json', getStorageFetchOptions());
+                if (!r.ok) throw new Error('Export failed');
+                const blob = await r.blob();
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'analytics-' + days + 'd.json';
+                a.click();
+                URL.revokeObjectURL(a.href);
+              } catch (err) {
+                usageStatusEl.textContent = 'Export failed: ' + (err.message || 'Error');
+              }
+            }
+          };
+        }
+        if (usageAnalyticsEl) usageAnalyticsEl.style.display = 'block';
+      } catch (err) {
+        usageStatusEl.textContent = 'Failed to load: ' + (err.message || 'Error');
+      }
+    }
+
+    if (usageToggle) {
+      usageToggle.addEventListener('toggle', () => {
+        if (usageToggle.open) loadUsageStatus();
+      });
+    }
+    if (usageRefreshBtn) usageRefreshBtn.addEventListener('click', () => loadUsageStatus());
+    if (usageDaysSelect) usageDaysSelect.addEventListener('change', () => loadUsageStatus());
+
+    // --- Phase 7: Full status report ---
+    const fullReportBtn = document.getElementById('full-report-btn');
+    const statusReportModal = document.getElementById('status-report-modal');
+    const statusReportBody = document.getElementById('status-report-body');
+    const statusReportClose = document.getElementById('status-report-close');
+    if (fullReportBtn && statusReportModal) {
+      fullReportBtn.addEventListener('click', async () => {
+        fullReportBtn.disabled = true;
+        try {
+          const res = await fetch('/api/status/report');
+          const data = await res.json();
+          const txt = typeof data === 'object' ? JSON.stringify(data, null, 2) : String(data);
+          if (statusReportBody) statusReportBody.textContent = txt;
+          statusReportModal.classList.add('visible');
+        } catch (err) {
+          if (statusReportBody) statusReportBody.textContent = 'Error: ' + (err.message || 'Failed to fetch');
+          statusReportModal.classList.add('visible');
+        } finally {
+          fullReportBtn.disabled = false;
+        }
+      });
+    }
+    if (statusReportClose && statusReportModal) {
+      statusReportClose.addEventListener('click', () => statusReportModal.classList.remove('visible'));
+    }
+
+    // --- Phase 5: Context panel ---
+    const contextList = document.getElementById('context-list');
+    const contextAddBtn = document.getElementById('context-add-btn');
+    const contextUploadBtn = document.getElementById('context-upload-btn');
+    const contextFileInput = document.getElementById('context-file');
+    const contextAddModal = document.getElementById('context-add-modal');
+    const contextAddTitleInput = document.getElementById('context-add-title-input');
+    const contextAddContentInput = document.getElementById('context-add-content-input');
+    const contextAddSave = document.getElementById('context-add-save');
+    const contextAddCancel = document.getElementById('context-add-cancel');
+    const contextUseRagCheckbox = document.getElementById('context-use-rag');
+
+    async function indexContextDoc(doc) {
+      if (!doc || !doc.content || !String(doc.content).trim()) return;
+      const storeEmbeddings = document.getElementById('knowledge-store-embeddings')?.checked === true;
+      try {
+        await fetch('/api/knowledge/index', getStorageFetchOptions({
+          method: 'POST',
+          body: JSON.stringify({
+            text: doc.content,
+            title: doc.title || 'Untitled',
+            workspace: getSelectedWorkspace(),
+            computeEmbedding: storeEmbeddings,
+          }),
+        }));
+      } catch (e) {
+        console.warn('SiskelBot: failed to index context doc', e);
+      }
+    }
+
+    function renderContextList() {
+      if (!contextList) return;
+      const docs = loadContextDocuments();
+      contextList.innerHTML = docs.length === 0
+        ? '<li class="empty" style="color:#64748b;list-style:none;padding:0.5rem;">No context documents</li>'
+        : docs.map(d => {
+            const title = escapeHtml((d.title || 'Untitled').slice(0, 60));
+            const id = escapeHtml(String(d.id || ''));
+            return `<li class="context-doc-item" data-id="${id}"><div><span class="doc-title">${title}</span><span class="doc-meta">${(d.content || '').length} chars</span></div><div class="context-actions"><button type="button" class="btn-delete context-delete-btn" aria-label="Delete ${title}">Delete</button></div></li>`;
+          }).join('');
+      contextList.querySelectorAll('.context-delete-btn').forEach(btn => {
+        btn.onclick = () => {
+          const li = btn.closest('[data-id]');
+          const id = li?.getAttribute('data-id');
+          if (!id) return;
+          const docs = loadContextDocuments().filter(x => String(x.id || '') !== id);
+          saveContextDocuments(docs);
+          renderContextList();
+        };
+      });
+    }
+
+    if (contextAddBtn && contextAddModal) {
+      contextAddBtn.addEventListener('click', () => {
+        if (contextAddTitleInput) contextAddTitleInput.value = '';
+        if (contextAddContentInput) contextAddContentInput.value = '';
+        contextAddModal._a11yReturnFocus = document.activeElement;
+        contextAddModal.style.display = 'flex';
+        contextAddTitleInput?.focus();
+      });
+    }
+    if (contextAddSave && contextAddModal) {
+      contextAddSave.addEventListener('click', () => {
+        const title = (contextAddTitleInput?.value || '').trim() || 'Untitled';
+        const content = contextAddContentInput?.value || '';
+        const docs = loadContextDocuments();
+        docs.push({ id: crypto.randomUUID(), title, content, createdAt: new Date().toISOString() });
+        saveContextDocuments(docs);
+        renderContextList();
+        contextAddModal.style.display = 'none';
+        announce('Context document added');
+        indexContextDoc({ title, content });
+      });
+    }
+    if (contextAddCancel && contextAddModal) {
+      contextAddCancel.addEventListener('click', () => { contextAddModal.style.display = 'none'; });
+    }
+    if (contextUploadBtn && contextFileInput) {
+      contextUploadBtn.addEventListener('click', () => contextFileInput.click());
+    }
+
+    const contextSyncBtn = document.getElementById('context-sync-btn');
+    const contextLoadBtn = document.getElementById('context-load-btn');
+    async function contextSyncWithServer() {
+      if (!contextSyncBtn) return;
+      contextSyncBtn.disabled = true;
+      try {
+        const items = loadContextDocuments();
+        const workspace = getSelectedWorkspace();
+        const headers = getStorageHeaders();
+        const clientApiKey = clientApiKeyInput?.value?.trim();
+        if (clientApiKey) headers.Authorization = `Bearer ${clientApiKey}`;
+        const res = await fetch('/api/context/sync', {
+          method: 'POST',
+          headers,
+          credentials: 'include',
+          body: JSON.stringify({ items, workspace }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          showNotice(err.error || err.hint || 'Sync failed', 'error', false);
+          return;
+        }
+        const data = await res.json();
+        const merged = Array.isArray(data?.items) ? data.items : [];
+        saveContextDocuments(merged);
+        renderContextList();
+        announce('Context synced with server');
+      } catch (err) {
+        showNotice(err.message || 'Sync failed', 'error', false);
+      } finally {
+        if (contextSyncBtn) contextSyncBtn.disabled = false;
+      }
+    }
+    async function contextLoadFromServer() {
+      if (!contextLoadBtn) return;
+      contextLoadBtn.disabled = true;
+      try {
+        const workspace = getSelectedWorkspace();
+        const headers = getStorageHeaders();
+        const clientApiKey = clientApiKeyInput?.value?.trim();
+        if (clientApiKey) headers.Authorization = `Bearer ${clientApiKey}`;
+        const res = await fetch(`/api/context?workspace=${encodeURIComponent(workspace)}`, { headers, credentials: 'include' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          showNotice(err.error || err.hint || 'Load failed', 'error', false);
+          return;
+        }
+        const data = await res.json();
+        const items = Array.isArray(data?.items) ? data.items : [];
+        saveContextDocuments(items);
+        renderContextList();
+        announce('Context loaded from server');
+      } catch (err) {
+        showNotice(err.message || 'Load failed', 'error', false);
+      } finally {
+        if (contextLoadBtn) contextLoadBtn.disabled = false;
+      }
+    }
+    if (contextSyncBtn) contextSyncBtn.addEventListener('click', contextSyncWithServer);
+    if (contextLoadBtn) contextLoadBtn.addEventListener('click', contextLoadFromServer);
+
+    if (contextFileInput) {
+      contextFileInput.addEventListener('change', async (e) => {
+        const file = e.target?.files?.[0];
+        if (!file) return;
+        const title = (file.name || 'Uploaded').replace(/\.[^.]+$/, '') || 'Uploaded';
+        const isPdf = (file.name || '').toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
+        let content = '';
+        if (isPdf) {
+          try {
+            const fd = new FormData();
+            fd.append('file', file);
+            const res = await fetch('/api/documents/extract', { method: 'POST', body: fd });
+            const data = await res.json();
+            if (!res.ok) {
+              showNotice(data.hint || data.error || 'PDF extraction failed', 'error', false);
+              e.target.value = '';
+              return;
+            }
+            content = (data.text || '').trim();
+          } catch (err) {
+            showNotice(err.message || 'PDF extraction failed', 'error', false);
+            e.target.value = '';
+            return;
+          }
+        } else {
+          content = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(new Error('Failed to read file'));
+            reader.readAsText(file);
+          });
+        }
+        const docs = loadContextDocuments();
+        docs.push({ id: crypto.randomUUID(), title, content, createdAt: new Date().toISOString() });
+        saveContextDocuments(docs);
+        renderContextList();
+        announce('Context added from file');
+        indexContextDoc({ title, content });
+        e.target.value = '';
+      });
+    }
+    if (contextUseRagCheckbox) {
+      try {
+        contextUseRagCheckbox.checked = localStorage.getItem(CONTEXT_RAG_STORAGE_KEY) === '1';
+      } catch (_) {}
+      contextUseRagCheckbox.addEventListener('change', () => {
+        try {
+          if (contextUseRagCheckbox.checked) localStorage.setItem(CONTEXT_RAG_STORAGE_KEY, '1');
+          else localStorage.removeItem(CONTEXT_RAG_STORAGE_KEY);
+        } catch (_) {}
+      });
+    }
+    const contextUseSemanticCheckbox = document.getElementById('context-use-semantic');
+    if (contextUseSemanticCheckbox) {
+      try {
+        contextUseSemanticCheckbox.checked = localStorage.getItem(CONTEXT_SEMANTIC_SEARCH_STORAGE_KEY) === '1';
+      } catch (_) {}
+      contextUseSemanticCheckbox.addEventListener('change', () => {
+        try {
+          if (contextUseSemanticCheckbox.checked) localStorage.setItem(CONTEXT_SEMANTIC_SEARCH_STORAGE_KEY, '1');
+          else localStorage.removeItem(CONTEXT_SEMANTIC_SEARCH_STORAGE_KEY);
+        } catch (_) {}
+      });
+    }
+    renderContextList();
+
+    // --- Phase 11: Image upload for chat (vision) ---
+    const imageUploadInput = document.getElementById('image-upload');
+    const imageUploadBtn = document.getElementById('image-upload-btn');
+    const attachedImagesWrap = document.getElementById('attached-images-wrap');
+    const attachedImagesEl = document.getElementById('attached-images');
+    const clearAttachmentsBtn = document.getElementById('clear-attachments');
+    const IMAGE_MAX_SIZE = 5 * 1024 * 1024; // 5MB
+
+    function supportsVision(modelName, backend) {
+      if (backend === 'openai') return true;
+      if (backend === 'ollama' || backend === 'vllm') return /llava|vision|llava2|llava3/i.test(String(modelName || ''));
+      return false;
+    }
+
+    function renderAttachedImages() {
+      if (!attachedImagesEl || !attachedImagesWrap) return;
+      attachedImagesWrap.style.display = attachedImages.length ? 'block' : 'none';
+      attachedImagesEl.innerHTML = attachedImages.map((dataUrl, i) => `
+        <div class="attached-image-preview"><img src="${dataUrl}" alt="Attached"/><button type="button" class="remove-img" aria-label="Remove image">×</button></div>
+      `).join('');
+      attachedImagesEl.querySelectorAll('.remove-img').forEach((btn, i) => {
+        btn.onclick = () => {
+          attachedImages.splice(i, 1);
+          renderAttachedImages();
+        };
+      });
+    }
+
+    if (imageUploadBtn && imageUploadInput) {
+      imageUploadBtn.addEventListener('click', () => imageUploadInput.click());
+    }
+    if (imageUploadInput) {
+      imageUploadInput.addEventListener('change', (e) => {
+        const files = e.target?.files;
+        if (!files?.length) return;
+        for (const file of files) {
+          if (file.size > IMAGE_MAX_SIZE) {
+            showNotice(`Image ${file.name} exceeds 5MB`, 'warning', false);
+            continue;
+          }
+          const mime = file.type || (file.name?.endsWith('.png') ? 'image/png' : file.name?.endsWith('.webp') ? 'image/webp' : 'image/jpeg');
+          const reader = new FileReader();
+          reader.onload = () => {
+            const dataUrl = reader.result;
+            if (dataUrl && typeof dataUrl === 'string') attachedImages.push(dataUrl);
+            renderAttachedImages();
+          };
+          reader.readAsDataURL(file);
+        }
+        e.target.value = '';
+      });
+    }
+    if (clearAttachmentsBtn) {
+      clearAttachmentsBtn.addEventListener('click', () => {
+        attachedImages = [];
+        renderAttachedImages();
+      });
+    }
+
+    // --- Phase 6: Recipes panel ---
+    const recipesList = document.getElementById('recipes-list');
+    const recipeCreateBtn = document.getElementById('recipe-create-btn');
+    const recipesSyncBtn = document.getElementById('recipes-sync-btn');
+    const recipesLoadBtn = document.getElementById('recipes-load-btn');
+    const recipeCreateModal = document.getElementById('recipe-create-modal');
+    const recipeCreateNameInput = document.getElementById('recipe-create-name-input');
+    const recipeCreateDescInput = document.getElementById('recipe-create-desc-input');
+    const recipeCreateStepsInput = document.getElementById('recipe-create-steps-input');
+    const recipeCreateSave = document.getElementById('recipe-create-save');
+    const recipeCreateCancel = document.getElementById('recipe-create-cancel');
+
+    function renderRecipesList() {
+      if (!recipesList) return;
+      const recipes = loadRecipes();
+      recipesList.innerHTML = recipes.length === 0
+        ? '<li class="empty" style="color:#64748b;list-style:none;padding:0.5rem;">No recipes</li>'
+        : recipes.map(r => {
+            const name = escapeHtml((r.name || 'Untitled').slice(0, 50));
+            const id = escapeHtml(String(r.id || ''));
+            const stepCount = Array.isArray(r.steps) ? r.steps.length : 0;
+            return `<li class="recipe-item" data-id="${id}"><div><span class="recipe-name">${name}</span><span class="recipe-meta">${stepCount} steps</span></div><div class="recipe-actions"><button type="button" class="recipe-run-btn" aria-label="Run ${name}">Run</button><button type="button" class="recipe-schedule-btn" aria-label="Schedule ${name}">Schedule</button><button type="button" class="btn-delete recipe-delete-btn" aria-label="Delete ${name}">Delete</button></div></li>`;
+          }).join('');
+      recipesList.querySelectorAll('.recipe-run-btn').forEach(btn => {
+        btn.onclick = () => {
+          const li = btn.closest('[data-id]');
+          const id = li?.getAttribute('data-id');
+          const recipe = loadRecipes().find(x => String(x.id || '') === id);
+          if (!recipe || !Array.isArray(recipe.steps) || recipe.steps.length === 0) return;
+          const plan = { type: 'task', id: recipe.id, name: recipe.name || 'Recipe', steps: recipe.steps, requiresApproval: false };
+          if (typeof renderTaskPlanCard === 'function') renderTaskPlanCard(plan);
+          announce('Recipe loaded into task planner');
+        };
+      });
+      recipesList.querySelectorAll('.recipe-delete-btn').forEach(btn => {
+        btn.onclick = () => {
+          const li = btn.closest('[data-id]');
+          const id = li?.getAttribute('data-id');
+          if (!id) return;
+          const recipes = loadRecipes().filter(x => String(x.id || '') !== id);
+          saveRecipes(recipes);
+          renderRecipesList();
+        };
+      });
+      recipesList.querySelectorAll('.recipe-schedule-btn').forEach(btn => {
+        btn.onclick = () => {
+          const li = btn.closest('[data-id]');
+          const id = li?.getAttribute('data-id');
+          const recipe = loadRecipes().find(x => String(x.id || '') === id);
+          if (!recipe) return;
+          openScheduleModal(recipe);
+        };
+      });
+    }
+
+    const scheduleModal = document.getElementById('recipe-schedule-modal');
+    const scheduleCronInput = document.getElementById('schedule-cron-input');
+    const schedulePreset = document.getElementById('schedule-preset');
+    const scheduleTimezoneInput = document.getElementById('schedule-timezone-input');
+    const scheduleEnabled = document.getElementById('schedule-enabled');
+    const scheduleNextRun = document.getElementById('schedule-next-run');
+    const scheduleSave = document.getElementById('schedule-save');
+    const scheduleRemove = document.getElementById('schedule-remove');
+    const scheduleCancel = document.getElementById('schedule-cancel');
+    const scheduledRecipesList = document.getElementById('scheduled-recipes-list');
+    let _scheduleModalRecipeId = null;
+
+    function getApiHeaders() {
+      const h = typeof getStorageHeaders === 'function' ? getStorageHeaders() : { 'Content-Type': 'application/json' };
+      const key = clientApiKeyInput?.value?.trim();
+      if (key) h.Authorization = 'Bearer ' + key;
+      return h;
+    }
+
+    async function openScheduleModal(recipe) {
+      const returnTo = document.activeElement;
+      _scheduleModalRecipeId = recipe.id;
+      const nameEl = document.getElementById('recipe-schedule-name');
+      if (nameEl) nameEl.textContent = recipe.name || 'Recipe';
+      if (scheduleCronInput) scheduleCronInput.value = '0 9 * * 1-5';
+      if (schedulePreset) schedulePreset.value = '';
+      if (scheduleTimezoneInput) scheduleTimezoneInput.value = '';
+      if (scheduleEnabled) scheduleEnabled.checked = true;
+      if (scheduleNextRun) scheduleNextRun.textContent = '';
+      const workspace = typeof getSelectedWorkspace === 'function' ? getSelectedWorkspace() : 'default';
+      try {
+        const res = await fetch(`/api/schedules?workspace=${encodeURIComponent(workspace)}`, { headers: getApiHeaders() });
+        if (res.ok) {
+          const data = await res.json();
+          const existing = (data.items || []).find(s => String(s.recipeId) === String(recipe.id));
+          if (existing) {
+            if (scheduleCronInput) scheduleCronInput.value = existing.cron || '';
+            if (scheduleTimezoneInput) scheduleTimezoneInput.value = existing.timezone || '';
+            if (scheduleEnabled) scheduleEnabled.checked = !!existing.enabled;
+            updateScheduleNextRun(existing.cron, existing.timezone);
+          }
+        }
+      } catch (_) {}
+      if (scheduleModal) {
+        scheduleModal.style.display = 'flex';
+        const first = scheduleModal.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+        if (first) first.focus();
+      }
+    }
+
+    async function updateScheduleNextRun(cron, tz) {
+      if (!scheduleNextRun || !cron) return;
+      try {
+        const mod = await import('https://esm.sh/cron-parser@4.9.0');
+        const parse = mod.parseExpression || mod.default?.parseExpression;
+        if (parse) {
+          const opts = { currentDate: new Date() };
+          if (tz) opts.tz = tz;
+          const interval = parse(cron, opts);
+          const next = interval.next();
+          scheduleNextRun.textContent = 'Next run: ' + next.toDate().toLocaleString();
+        } else scheduleNextRun.textContent = '';
+      } catch (_) {
+        scheduleNextRun.textContent = 'Enter valid cron to see next run';
+      }
+    }
+
+    async function renderScheduledRecipesList() {
+      if (!scheduledRecipesList) return;
+      const workspace = typeof getSelectedWorkspace === 'function' ? getSelectedWorkspace() : 'default';
+      try {
+        const res = await fetch(`/api/schedules?workspace=${encodeURIComponent(workspace)}`, { headers: getApiHeaders() });
+        if (!res.ok) {
+          scheduledRecipesList.innerHTML = '<li class="empty" style="color:#64748b;list-style:none;padding:0.5rem;">No scheduled recipes</li>';
+          return;
+        }
+        const data = await res.json();
+        const items = (data.items || []).filter(s => s.enabled && s.cron);
+        scheduledRecipesList.innerHTML = items.length === 0
+          ? '<li class="empty" style="color:#64748b;list-style:none;padding:0.5rem;">None scheduled</li>'
+          : items.map(s => {
+              const name = escapeHtml((s.recipeName || s.recipeId || 'Recipe').slice(0, 40));
+              return `<li class="recipe-item"><span class="recipe-name">${name}</span> <span class="recipe-meta">${escapeHtml(s.cron || '')}</span></li>`;
+            }).join('');
+      } catch (_) {
+        scheduledRecipesList.innerHTML = '<li class="empty" style="color:#64748b;list-style:none;padding:0.5rem;">—</li>';
+      }
+    }
+
+    if (schedulePreset) schedulePreset.addEventListener('change', () => {
+      if (schedulePreset.value && scheduleCronInput) scheduleCronInput.value = schedulePreset.value;
+    });
+    if (scheduleCronInput) scheduleCronInput.addEventListener('blur', () => {
+      updateScheduleNextRun(scheduleCronInput.value, scheduleTimezoneInput?.value);
+    });
+    if (scheduleSave) scheduleSave.addEventListener('click', async () => {
+      if (!_scheduleModalRecipeId) return;
+      const cron = (scheduleCronInput?.value || '').trim();
+      if (!cron) { showNotice('Cron required', 'warning', false); return; }
+      const workspace = typeof getSelectedWorkspace === 'function' ? getSelectedWorkspace() : 'default';
+      try {
+        const res = await fetch('/api/schedules', {
+          method: 'POST',
+          headers: getApiHeaders(),
+          body: JSON.stringify({ recipeId: _scheduleModalRecipeId, cron, timezone: (scheduleTimezoneInput?.value || '').trim() || undefined, enabled: scheduleEnabled?.checked !== false, workspace }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          showNotice(err.error || err.hint || 'Failed to save schedule', 'error', false);
+          return;
+        }
+        scheduleModal.style.display = 'none';
+        renderScheduledRecipesList();
+        announce('Schedule saved');
+      } catch (e) {
+        showNotice(e.message || 'Failed', 'error', false);
+      }
+    });
+    if (scheduleRemove) scheduleRemove.addEventListener('click', async () => {
+      if (!_scheduleModalRecipeId) return;
+      const workspace = typeof getSelectedWorkspace === 'function' ? getSelectedWorkspace() : 'default';
+      try {
+        const res = await fetch(`/api/schedules/${encodeURIComponent(_scheduleModalRecipeId)}?workspace=${encodeURIComponent(workspace)}`, { method: 'DELETE', headers: getApiHeaders() });
+        if (res.ok) {
+          scheduleModal.style.display = 'none';
+          renderScheduledRecipesList();
+          announce('Schedule removed');
+        } else {
+          const err = await res.json().catch(() => ({}));
+          showNotice(err.error || 'Failed to remove', 'error', false);
+        }
+      } catch (e) {
+        showNotice(e.message || 'Failed', 'error', false);
+      }
+    });
+    if (scheduleCancel) scheduleCancel.addEventListener('click', () => { scheduleModal.style.display = 'none'; });
+
+    if (recipesToggle) recipesToggle.addEventListener('toggle', () => { if (recipesToggle.open) renderScheduledRecipesList(); });
+
+    // Phase 17: Fetch available actions for recipe steps dropdown
+    async function loadRecipeActions() {
+      const hintEl = document.getElementById('recipe-actions-hint');
+      const selectEl = document.getElementById('recipe-add-step-select');
+      const defaultActions = ['build', 'deploy', 'copy', 'webhook'];
+      try {
+        const headers = typeof getStorageHeaders === 'function' ? getStorageHeaders() : {};
+        const res = await fetch('/api/plugins/actions', { headers });
+        const actions = res.ok ? (await res.json()).actions || defaultActions : defaultActions;
+        if (hintEl) hintEl.textContent = 'Available actions: ' + (Array.isArray(actions) ? actions.join(', ') : defaultActions.join(', '));
+        if (selectEl) {
+          const opts = Array.isArray(actions) ? actions : defaultActions;
+          selectEl.innerHTML = '<option value="">— Add step —</option>' + opts.map(a => `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`).join('');
+        }
+      } catch (_) {
+        if (hintEl) hintEl.textContent = 'Available actions: ' + defaultActions.join(', ');
+        if (selectEl) {
+          selectEl.innerHTML = '<option value="">— Add step —</option>' + defaultActions.map(a => `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`).join('');
+        }
+      }
+    }
+    const recipeAddStepSelect = document.getElementById('recipe-add-step-select');
+    const recipeAddStepBtn = document.getElementById('recipe-add-step-btn');
+    if (recipeAddStepSelect && recipeAddStepBtn && recipeCreateStepsInput) {
+      recipeAddStepBtn.addEventListener('click', () => {
+        const action = recipeAddStepSelect?.value?.trim();
+        if (!action) return;
+        const step = JSON.stringify({ action, payload: {} });
+        const cur = recipeCreateStepsInput.value.trim();
+        let steps = [];
+        try {
+          if (cur) steps = JSON.parse(cur);
+          if (!Array.isArray(steps)) steps = [];
+        } catch (_) {}
+        steps.push({ action, payload: {} });
+        recipeCreateStepsInput.value = JSON.stringify(steps, null, 2);
+        recipeAddStepSelect.value = '';
+      });
+    }
+    if (recipeCreateBtn && recipeCreateModal) {
+      recipeCreateBtn.addEventListener('click', () => {
+        if (recipeCreateNameInput) recipeCreateNameInput.value = '';
+        if (recipeCreateDescInput) recipeCreateDescInput.value = '';
+        if (recipeCreateStepsInput) recipeCreateStepsInput.value = '';
+        recipeCreateModal._a11yReturnFocus = document.activeElement;
+        recipeCreateModal.style.display = 'flex';
+        loadRecipeActions();
+        recipeCreateNameInput?.focus();
+      });
+    }
+    if (recipeCreateSave && recipeCreateModal) {
+      recipeCreateSave.addEventListener('click', () => {
+        const name = (recipeCreateNameInput?.value || '').trim() || 'Untitled';
+        const description = (recipeCreateDescInput?.value || '').trim();
+        let steps = [];
+        try {
+          const raw = (recipeCreateStepsInput?.value || '').trim();
+          if (raw) steps = JSON.parse(raw);
+          if (!Array.isArray(steps)) steps = [];
+        } catch (_) { showNotice('Invalid steps JSON', 'warning', false); return; }
+        const recipes = loadRecipes();
+        recipes.push({ id: crypto.randomUUID(), name, description, steps, createdAt: new Date().toISOString() });
+        saveRecipes(recipes);
+        renderRecipesList();
+        recipeCreateModal.style.display = 'none';
+        announce('Recipe saved');
+      });
+    }
+    if (recipeCreateCancel && recipeCreateModal) {
+      recipeCreateCancel.addEventListener('click', () => { recipeCreateModal.style.display = 'none'; });
+    }
+    renderRecipesList();
+
+    async function initTemplatesAndProfiles() {
+      const T = globalThis.SiskelBotTemplates;
+      if (!T) return;
+      try {
+        const defaults = await T.loadDefaults();
+        const storedT = T.loadTemplatesFromStorage();
+        const storedP = T.loadProfilesFromStorage();
+        const templates = T.mergeTemplates(defaults, storedT);
+        const profiles = T.mergeProfiles(defaults, storedP);
+        window._mergedTemplates = templates;
+        window._mergedProfiles = profiles;
+        if (templateSelect) {
+          const opt = templateSelect.querySelector('option[value=""]');
+          templateSelect.innerHTML = opt ? opt.outerHTML : '<option value="">— Template —</option>';
+          templates.forEach(t => {
+            const o = document.createElement('option');
+            o.value = t.id;
+            o.textContent = t.name || t.id;
+            templateSelect.appendChild(o);
+          });
+        }
+        if (profileSelect) {
+          const opt = profileSelect.querySelector('option[value=""]');
+          profileSelect.innerHTML = opt ? opt.outerHTML : '<option value="">— Profile —</option>';
+          profiles.forEach(p => {
+            const o = document.createElement('option');
+            o.value = p.id;
+            o.textContent = p.name || p.id;
+            profileSelect.appendChild(o);
+          });
+          const activeId = storedP?.activeProfileId || null;
+          if (activeId && profiles.some(pr => pr.id === activeId)) {
+            profileSelect.value = activeId;
+            applyProfile(profiles.find(pr => pr.id === activeId));
+          }
+        }
+      } catch (e) {
+        console.warn('SiskelBot: failed to init templates/profiles', e);
+      }
+    }
+
+    function applyProfile(profile) {
+      if (!profile) return;
+      if (profile.systemPrompt && systemPromptTextarea) systemPromptTextarea.value = profile.systemPrompt;
+      if (profile.model != null && profile.model !== '' && modelInput) modelInput.value = profile.model;
+      if (profile.templateId && templateSelect) templateSelect.value = profile.templateId;
+    }
+
+    initTemplatesAndProfiles();
+
+    if (profileSelect) {
+      profileSelect.addEventListener('change', () => {
+        const id = profileSelect.value;
+        if (!id) return;
+        const profiles = (window._mergedProfiles || []);
+        const p = profiles.find(x => x.id === id);
+        if (p) applyProfile(p);
+        const T = globalThis.SiskelBotTemplates;
+        if (T) T.saveProfiles(profiles, id);
+      });
+    }
 
     let messages = [];
     let streamStartTime = 0;
     let ttfb = null;
 
+    clientApiKeyInput.value = sessionStorage.getItem(SESSION_API_KEY) || '';
+    clientApiKeyInput.addEventListener('input', () => {
+      const value = clientApiKeyInput.value.trim();
+      if (value) sessionStorage.setItem(SESSION_API_KEY, value);
+      else sessionStorage.removeItem(SESSION_API_KEY);
+    });
+    if (userApiKeyInput) {
+      userApiKeyInput.value = sessionStorage.getItem(SESSION_USER_API_KEY) || '';
+      userApiKeyInput.addEventListener('input', () => {
+        const value = userApiKeyInput.value.trim();
+        if (value) sessionStorage.setItem(SESSION_USER_API_KEY, value);
+        else sessionStorage.removeItem(SESSION_USER_API_KEY);
+      });
+    }
+    dismissNoticeBtn.onclick = clearNotice;
+
     function getSystemPromptContent() {
-      const preset = systemPresetSelect.value;
-      if (preset === 'none') return '';
-      if (preset === 'custom') return systemPromptTextarea.value.trim();
-      const presetText = SYSTEM_PROMPT_PRESETS[preset] || '';
-      return systemPromptTextarea.value.trim() || presetText;
+      const custom = systemPromptTextarea.value.trim();
+      if (custom) return custom;
+      const templateId = templateSelect?.value;
+      if (!templateId || !globalThis.SiskelBotTemplates) return '';
+      const templates = (window._mergedTemplates || []);
+      const t = templates.find(x => x.id === templateId);
+      return t?.systemPrompt || '';
     }
 
-    function buildApiMessages() {
-      const systemContent = getSystemPromptContent();
+    function loadContextDocuments() {
+      try {
+        const raw = localStorage.getItem(CONTEXT_STORAGE_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (_) { return []; }
+    }
+
+    function saveContextDocuments(docs) {
+      try {
+        const arr = Array.isArray(docs) ? docs : [];
+        if (arr.length) localStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify(arr));
+        else localStorage.removeItem(CONTEXT_STORAGE_KEY);
+      } catch (_) {}
+    }
+
+    async function indexContextDoc(opts) {
+      const { title, content } = opts || {};
+      if (!content || !String(content).trim()) return;
+      try {
+        const res = await fetch('/api/knowledge/index', getStorageFetchOptions({
+          method: 'POST',
+          body: JSON.stringify({
+            text: String(content).trim(),
+            title: title || 'Context',
+            workspace: getSelectedWorkspace(),
+          }),
+        }));
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          console.warn('Knowledge index failed:', data.error || res.statusText);
+        }
+      } catch (e) {
+        console.warn('Knowledge index failed:', e.message);
+      }
+    }
+
+    function loadRecipes() {
+      try {
+        const raw = localStorage.getItem(RECIPES_STORAGE_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (_) { return []; }
+    }
+
+    function saveRecipes(recipes) {
+      try {
+        const arr = Array.isArray(recipes) ? recipes : [];
+        if (arr.length) localStorage.setItem(RECIPES_STORAGE_KEY, JSON.stringify(arr));
+        else localStorage.removeItem(RECIPES_STORAGE_KEY);
+      } catch (_) {}
+    }
+
+    function getContextForApi() {
+      const docs = loadContextDocuments();
+      if (!docs.length) return '';
+      return docs.map((d) => `--- ${(d.title || 'Context').trim()} ---\n${String(d.content || '').trim()}`).filter(Boolean).join('\n\n');
+    }
+
+    async function indexContextDoc(doc) {
+      if (!doc || !doc.content || !String(doc.content).trim()) return;
+      const storeEmbeddings = document.getElementById('knowledge-store-embeddings')?.checked === true;
+      try {
+        await fetch('/api/knowledge/index', getStorageFetchOptions({
+          method: 'POST',
+          body: JSON.stringify({
+            text: doc.content,
+            title: doc.title || 'Untitled',
+            workspace: getSelectedWorkspace(),
+            computeEmbedding: storeEmbeddings,
+          }),
+        }));
+      } catch (_) {}
+    }
+
+    async function buildApiMessages(userPrompt) {
+      let systemContent = getSystemPromptContent();
+      const useRag = document.getElementById('context-use-rag')?.checked === true;
+      const docs = loadContextDocuments();
+      if (docs.length > 0) {
+        let contextBlock = '';
+        if (useRag && userPrompt && String(userPrompt).trim()) {
+          try {
+            const useSemantic = document.getElementById('context-use-semantic')?.checked === true;
+            const q = encodeURIComponent(String(userPrompt).trim());
+            const params = new URLSearchParams({ q, workspace: getSelectedWorkspace() });
+            if (useSemantic) params.set('semantic', '1');
+            const res = await fetch(`/api/knowledge/search?${params}`, getStorageFetchOptions());
+            const data = res.ok ? await res.json() : null;
+            const snippets = data?.snippets || [];
+            if (snippets.length > 0) {
+              const topK = 5;
+              contextBlock = 'Relevant context:\n\n' + snippets.slice(0, topK).map(s => (s.title ? `[${s.title}] ` : '') + (s.snippet || '')).join('\n\n');
+            }
+          } catch (_) {}
+        }
+        if (!contextBlock) contextBlock = getContextForApi();
+        if (contextBlock) systemContent = (systemContent ? systemContent + '\n\n' : '') + '--- Context documents ---\n' + contextBlock;
+      }
       const apiMessages = [];
       if (systemContent) apiMessages.push({ role: 'system', content: systemContent });
       return apiMessages.concat(messages);
@@ -601,18 +3000,278 @@
 
     function clearHistory() {
       messages = [];
+      conversationMeta.pinned = false;
+      conversationMeta.tags = [];
+      currentConversationId = null;
       while (chatContainer.firstChild) chatContainer.removeChild(chatContainer.firstChild);
+      updatePinTagUI();
       persistMessages();
+      announce('Chat cleared');
+      setConnectionStatus('Ready');
+      if (typeof updatePlanTaskButtonState === 'function') updatePlanTaskButtonState();
     }
 
-    systemPresetSelect.addEventListener('change', () => {
-      const preset = systemPresetSelect.value;
-      if (preset && preset !== 'none' && preset !== 'custom' && SYSTEM_PROMPT_PRESETS[preset]) {
-        systemPromptTextarea.value = SYSTEM_PROMPT_PRESETS[preset];
-      }
-    });
+    // --- Phase 12: Conversation Workspaces & History ---
+    function getConversationTitle(msgs) {
+      if (!Array.isArray(msgs)) return 'Untitled';
+      const first = msgs.find(m => m && m.role === 'user' && typeof m.content === 'string');
+      const text = (first?.content || '').trim();
+      return text ? text.slice(0, 60) + (text.length > 60 ? '...' : '') : 'Untitled';
+    }
 
-    if (clearBtn) clearBtn.onclick = clearHistory;
+    function loadConversations() {
+      try {
+        const raw = localStorage.getItem(CONVERSATIONS_STORAGE_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function saveConversations(list) {
+      try {
+        const arr = Array.isArray(list) ? list : [];
+        if (arr.length) localStorage.setItem(CONVERSATIONS_STORAGE_KEY, JSON.stringify(arr));
+        else localStorage.removeItem(CONVERSATIONS_STORAGE_KEY);
+      } catch (_) {}
+    }
+
+    function saveCurrentToConversations() {
+      if (messages.length === 0) return;
+      const list = loadConversations();
+      const title = getConversationTitle(messages);
+      const tags = Array.isArray(conversationMeta.tags) ? conversationMeta.tags : [];
+      const pinned = !!conversationMeta.pinned;
+      const now = new Date().toISOString();
+      let conv = { id: currentConversationId, title, messages: [...messages], pinned, tags, createdAt: now, updatedAt: now };
+      if (currentConversationId) {
+        const idx = list.findIndex(c => c && String(c.id) === String(currentConversationId));
+        if (idx >= 0) {
+          conv = { ...list[idx], ...conv, messages: [...messages], title, pinned, tags, updatedAt: now };
+          list[idx] = conv;
+        } else {
+          conv.id = conv.id || crypto.randomUUID();
+          currentConversationId = conv.id;
+          list.unshift(conv);
+        }
+      } else {
+        conv.id = crypto.randomUUID();
+        currentConversationId = conv.id;
+        list.unshift(conv);
+      }
+      const deduped = list.reduce((acc, c) => {
+        const id = c?.id;
+        if (!id) return acc;
+        const existing = acc.findIndex(x => String(x.id) === String(id));
+        if (existing >= 0) acc[existing] = c;
+        else acc.push(c);
+        return acc;
+      }, []);
+      const trimmed = deduped.slice(0, MAX_CONVERSATIONS);
+      saveConversations(trimmed);
+    }
+
+    function switchToConversation(id) {
+      saveCurrentToConversations();
+      const list = loadConversations();
+      const conv = list.find(c => c && String(c.id) === String(id));
+      if (!conv || !Array.isArray(conv.messages)) return;
+      messages = conv.messages.filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string');
+      conversationMeta.pinned = !!conv.pinned;
+      conversationMeta.tags = Array.isArray(conv.tags) ? [...conv.tags] : [];
+      currentConversationId = conv.id;
+      while (chatContainer.firstChild) chatContainer.removeChild(chatContainer.firstChild);
+      messages.forEach(m => addMessage(m.role, m.content, null));
+      updatePinTagUI();
+      persistMessages();
+      applySearchFilter();
+      if (typeof updatePlanTaskButtonState === 'function') updatePlanTaskButtonState();
+      renderConversationsList();
+      announce('Switched conversation');
+    }
+
+    function renderConversationsList() {
+      const listEl = document.getElementById('conversations-list');
+      const searchEl = document.getElementById('conversations-search');
+      const matchEl = document.getElementById('conversations-match-count');
+      if (!listEl) return;
+      const q = (searchEl?.value || '').trim().toLowerCase();
+      let all = loadConversations();
+      let filtered = all;
+      if (q) {
+        filtered = all.filter(c => {
+          const title = (c?.title || '').toLowerCase();
+          const tags = (c?.tags || []).join(' ').toLowerCase();
+          return title.includes(q) || tags.includes(q);
+        });
+      }
+      const slice = filtered.slice(0, MAX_CONVERSATIONS);
+      if (slice.length === 0) {
+        listEl.innerHTML = '<li class="empty">No conversations</li>';
+        listEl.classList.add('empty');
+      } else {
+        listEl.classList.remove('empty');
+        listEl.innerHTML = slice.map(c => {
+          const title = escapeHtml((c.title || 'Untitled').slice(0, 50));
+          const date = c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '';
+          const tags = (c.tags || []).slice(0, 5);
+          const tagsHtml = tags.length ? `<div class="conversation-item-tags">${tags.map(t => `<span class="conversation-tag">${escapeHtml(t)}</span>`).join('')}</div>` : '';
+          const active = currentConversationId && String(c.id) === String(currentConversationId) ? ' active' : '';
+          return `<li class="conversation-item${active}" data-id="${escapeHtml(String(c.id))}" role="button" tabindex="0">` +
+            `<span class="conversation-item-title">${title}</span>` +
+            `<span class="conversation-item-meta">${escapeHtml(date)}</span>${tagsHtml}</li>`;
+        }).join('');
+        listEl.querySelectorAll('.conversation-item').forEach(li => {
+          li.onclick = () => switchToConversation(li.getAttribute('data-id'));
+          li.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); switchToConversation(li.getAttribute('data-id')); } };
+        });
+      }
+      if (matchEl) matchEl.textContent = q ? `${slice.length} / ${filtered.length}` : '';
+    }
+
+    const conversationsToggle = document.getElementById('conversations-toggle');
+    const conversationsSearch = document.getElementById('conversations-search');
+    const conversationsServerActions = document.getElementById('conversations-server-actions');
+    const conversationsSyncBtn = document.getElementById('conversations-sync-btn');
+    const conversationsLoadBtn = document.getElementById('conversations-load-btn');
+
+    async function checkConversationsApi() {
+      try {
+        const res = await fetch('/api/conversations', { method: 'HEAD' });
+        if (res.ok && conversationsServerActions) {
+          conversationsServerActions.style.display = 'flex';
+          if (conversationsSyncBtn && !conversationsSyncBtn.dataset.wired) {
+            conversationsSyncBtn.dataset.wired = '1';
+            conversationsSyncBtn.onclick = async () => {
+              try {
+                const list = loadConversations();
+                saveCurrentToConversations();
+                const list2 = loadConversations();
+                const res2 = await fetch('/api/conversations', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ conversations: list2 }),
+                });
+                if (res2.ok) {
+                  showNotice('Synced with server', 'warning', false);
+                  setTimeout(clearNotice, 2000);
+                } else showNotice('Sync failed', 'error', false);
+              } catch (e) { showNotice('Sync failed: ' + (e.message || 'network error'), 'error', false); }
+            };
+          }
+          if (conversationsLoadBtn && !conversationsLoadBtn.dataset.wired) {
+            conversationsLoadBtn.dataset.wired = '1';
+            conversationsLoadBtn.onclick = async () => {
+              try {
+                const res2 = await fetch('/api/conversations');
+                if (!res2.ok) { showNotice('Load failed', 'error', false); return; }
+                const data = await res2.json();
+                const list = Array.isArray(data.conversations) ? data.conversations : (Array.isArray(data) ? data : []);
+                if (list.length === 0) { showNotice('No conversations on server', 'warning', false); return; }
+                saveConversations(list);
+                renderConversationsList();
+                showNotice('Loaded from server', 'warning', false);
+                setTimeout(clearNotice, 2000);
+              } catch (e) { showNotice('Load failed: ' + (e.message || 'network error'), 'error', false); }
+            };
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (conversationsToggle) {
+      conversationsToggle.addEventListener('toggle', () => {
+        if (conversationsToggle.open) {
+          renderConversationsList();
+          checkConversationsApi();
+        }
+      });
+    }
+    if (conversationsSearch) {
+      conversationsSearch.addEventListener('input', () => renderConversationsList());
+      conversationsSearch.addEventListener('search', () => renderConversationsList());
+    }
+
+    if (clearBtn) {
+      const origClear = clearBtn.onclick;
+      clearBtn.onclick = () => {
+        saveCurrentToConversations();
+        clearHistory();
+      };
+    }
+
+    function updatePinTagUI() {
+      if (pinBtn) {
+        pinBtn.classList.toggle('pinned', conversationMeta.pinned);
+        pinBtn.textContent = conversationMeta.pinned ? '\u{1F4CC} Pinned' : '\u{1F4CC} Pin';
+      }
+      if (tagsInput) tagsInput.value = (conversationMeta.tags || []).join(', ');
+    }
+
+    function applySearchFilter() {
+      const q = (historySearch?.value || '').trim().toLowerCase();
+      try {
+        if (q) sessionStorage.setItem(SESSION_SEARCH_KEY, q);
+        else sessionStorage.removeItem(SESSION_SEARCH_KEY);
+      } catch (_) {}
+      const items = chatContainer?.querySelectorAll('.message') || [];
+      let matchCount = 0;
+      items.forEach((el) => {
+        const contentEl = el.querySelector('.message-content');
+        const text = (contentEl?.textContent || '').toLowerCase();
+        const matches = !q || text.includes(q);
+        el.style.display = matches ? '' : 'none';
+        if (matches) matchCount++;
+      });
+      if (searchMatchCount) {
+        searchMatchCount.textContent = q ? `${matchCount} / ${items.length}` : '';
+      }
+    }
+
+    if (historySearch) {
+      const saved = sessionStorage.getItem(SESSION_SEARCH_KEY);
+      if (saved) historySearch.value = saved;
+      historySearch.addEventListener('input', applySearchFilter);
+      historySearch.addEventListener('search', applySearchFilter);
+    }
+
+    if (pinBtn) {
+      pinBtn.addEventListener('click', () => {
+        conversationMeta.pinned = !conversationMeta.pinned;
+        updatePinTagUI();
+        persistMessages();
+      });
+    }
+
+    if (tagsInput) {
+      tagsInput.addEventListener('change', () => {
+        const raw = (tagsInput.value || '').trim();
+        conversationMeta.tags = raw ? raw.split(',').map((t) => t.trim()).filter(Boolean) : [];
+        persistMessages();
+      });
+      tagsInput.addEventListener('blur', () => {
+        const raw = (tagsInput.value || '').trim();
+        conversationMeta.tags = raw ? raw.split(',').map((t) => t.trim()).filter(Boolean) : [];
+        persistMessages();
+      });
+    }
+
+    if (templateSelect) {
+      templateSelect.addEventListener('change', () => {
+        const templateId = templateSelect.value;
+        if (!templateId) return;
+        const templates = (window._mergedTemplates || []);
+        const t = templates.find(x => x.id === templateId);
+        if (t) {
+          systemPromptTextarea.value = t.systemPrompt || '';
+          if (t.model && modelInput) modelInput.value = t.model;
+        }
+      });
+    }
+
+    if (clearBtn) clearBtn.onclick = () => { saveCurrentToConversations(); clearHistory(); };
 
     function scrollToBottom() {
       chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -621,6 +3280,7 @@
     function addMessage(role, content, meta = null) {
       const el = document.createElement('div');
       el.className = `message ${role}`;
+      el.setAttribute('tabindex', '0');
       const label = role === 'user' ? 'User' : 'Assistant';
       const contentHtml = role === 'assistant' ? renderAssistantMarkdown(content) : escapeHtml(content);
       const contentClass = role === 'assistant' ? ' message-content markdown-rendered' : ' message-content';
@@ -635,6 +3295,7 @@
       chatContainer.appendChild(el);
       if (role === 'assistant') attachSpeakerButton(el);
       scrollToBottom();
+      announce(`${label} message added`);
       return el;
     }
 
@@ -642,6 +3303,7 @@
       const el = document.createElement('div');
       el.className = 'message assistant';
       el.id = 'typing-indicator';
+      el.setAttribute('aria-hidden', 'true');
       el.innerHTML = `
         <div class="message-label">Assistant</div>
         <div class="message-content typing-indicator">
@@ -786,6 +3448,7 @@
         }
       }
       scrollToBottom();
+      announce('Assistant message updated');
     }
 
     function createAssistantBubble(content, meta) {
@@ -808,59 +3471,296 @@
       }
     };
 
+    retryLastBtn.onclick = () => {
+      if (!lastSubmittedPrompt) return;
+      promptInput.value = lastSubmittedPrompt;
+      clearNotice();
+      sendBtn.click();
+    };
+
+    // --- Task planning (Phase 3: Action-Oriented Agent) ---
+    const TASKS_PLAN_API = '/v1/tasks/plan';
+    const planTaskBtn = document.getElementById('plan-task-btn');
+    const approvalModal = document.getElementById('approval-modal');
+    const approvalConfirm = document.getElementById('approval-confirm');
+    const approvalCancel = document.getElementById('approval-cancel');
+
+    function isTaskOriented(text) {
+      if (!text || typeof text !== 'string') return false;
+      const lower = text.toLowerCase();
+      const keywords = ['deploy', 'execute', 'run', 'build', 'install', 'setup', 'create', 'delete', 'restart', 'push', 'publish'];
+      return keywords.some(k => lower.includes(k));
+    }
+
+    function updatePlanTaskButtonState() {
+      if (!planTaskBtn) return;
+      const hasMessages = messages.length > 0;
+      planTaskBtn.disabled = !hasMessages;
+      planTaskBtn.title = hasMessages ? 'Get a structured task plan from the LLM' : 'Send a message first to plan a task';
+    }
+
+    function formatPlanForClipboard(plan) {
+      const lines = ['Run these steps:', '', plan.name || 'Task', ''];
+      (plan.steps || []).forEach((s, i) => {
+        lines.push(`${i + 1}. ${s.action}`);
+        if (s.payload && Object.keys(s.payload).length) {
+          lines.push(`   ${JSON.stringify(s.payload)}`);
+        }
+      });
+      return lines.join('\n');
+    }
+
+    function renderTaskPlanCard(plan, raw) {
+      const card = document.createElement('div');
+      card.className = 'task-plan-card';
+      const stepsHtml = (plan.steps || []).map((s, i) => {
+        const payload = s.payload && Object.keys(s.payload).length ? `<div class="step-payload">${escapeHtml(JSON.stringify(s.payload))}</div>` : '';
+        return `<li class="task-plan-step"><span class="step-action">${i + 1}. ${escapeHtml(s.action)}</span>${payload}</li>`;
+      }).join('');
+      const approvalHtml = plan.requiresApproval ? '<div class="task-plan-approval">Requires approval before execution</div>' : '';
+      card.innerHTML = `
+        <div class="task-plan-title">${escapeHtml(plan.name || 'Task plan')}</div>
+        ${approvalHtml}
+        <ol class="task-plan-steps">${stepsHtml}</ol>
+        <div class="task-plan-actions">
+          <button type="button" class="btn-copy-plan">Copy plan</button>
+          <button type="button" class="btn-execute">Execute</button>
+        </div>
+      `;
+      const copyBtn = card.querySelector('.btn-copy-plan');
+      const executeBtn = card.querySelector('.btn-execute');
+      copyBtn.onclick = () => {
+        const text = formatPlanForClipboard(plan);
+        navigator.clipboard.writeText(text).then(() => {
+          showNotice('Plan copied to clipboard', 'warning', false);
+          setTimeout(clearNotice, 2000);
+        }).catch(() => showNotice('Failed to copy', 'error', false));
+      };
+      function getAllowRecipeExecution() {
+        try {
+          return localStorage.getItem(RECIPE_EXECUTION_STORAGE_KEY) === '1';
+        } catch (_) { return false; }
+      }
+
+      const doExecute = async () => {
+        const allowExecution = getAllowRecipeExecution();
+        const text = formatPlanForClipboard(plan);
+
+        if (!allowExecution || !config.allowRecipeStepExecution) {
+          navigator.clipboard.writeText(text).then(() => {
+            showNotice(allowExecution
+              ? 'Server does not allow step execution. Set ALLOW_RECIPE_STEP_EXECUTION=1. Plan copied to clipboard.'
+              : 'Plan copied to clipboard. Enable "Allow recipe step execution" in Settings to run steps on server.',
+              'warning', false);
+            setTimeout(clearNotice, 4000);
+          }).catch(() => showNotice('Failed to copy', 'error', false));
+          return;
+        }
+
+        const headers = { 'Content-Type': 'application/json' };
+        const clientApiKey = clientApiKeyInput?.value?.trim();
+        if (clientApiKey) headers.Authorization = `Bearer ${clientApiKey}`;
+
+        executeBtn.disabled = true;
+        setConnectionStatus('Executing...');
+        let failed = false;
+        for (let i = 0; i < (plan.steps || []).length; i++) {
+          const s = plan.steps[i];
+          const action = String(s?.action || '').trim().toLowerCase();
+          if (action === 'copy') {
+            try {
+              await navigator.clipboard.writeText(text);
+            } catch (_) { showNotice('Copy step failed', 'error', false); failed = true; }
+            continue;
+          }
+          try {
+            const res = await fetch('/api/execute-step', {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({ step: s, allowExecution: true }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.ok) {
+              showNotice(data.error || data.hint || `Step ${i + 1} failed`, 'error', false);
+              failed = true;
+              break;
+            }
+          } catch (err) {
+            showNotice(err.message || `Step ${i + 1} request failed`, 'error', false);
+            failed = true;
+            break;
+          }
+        }
+        executeBtn.disabled = false;
+        setConnectionStatus('Ready');
+        if (!failed) {
+          showNotice('Steps executed successfully', 'warning', false);
+          setTimeout(clearNotice, 3000);
+          if (typeof addLocalNotification === 'function') addLocalNotification('recipe_completed', 'Recipe completed', plan?.name || 'Steps executed successfully');
+        }
+      };
+      executeBtn.onclick = () => {
+        if (plan.requiresApproval) {
+          let resolve;
+          const promise = new Promise(r => { resolve = r; });
+          approvalModal.classList.add('visible');
+          const cleanup = () => {
+            approvalModal.classList.remove('visible');
+            approvalConfirm.onclick = null;
+            approvalCancel.onclick = null;
+          };
+          approvalConfirm.onclick = () => { cleanup(); resolve(true); };
+          approvalCancel.onclick = () => { cleanup(); resolve(false); };
+          promise.then(ok => { if (ok) doExecute(); });
+        } else {
+          doExecute();
+        }
+      };
+      chatContainer.appendChild(card);
+      scrollToBottom();
+      announce('Task plan displayed');
+    }
+
+    async function fetchTaskPlan() {
+      if (messages.length === 0) {
+        showNotice('Send a message first to plan a task', 'warning', false);
+        return;
+      }
+      const model = modelInput.value.trim() || config.modelPlaceholder || 'model';
+      const headers = { 'Content-Type': 'application/json' };
+      const clientApiKey = clientApiKeyInput.value.trim();
+      if (clientApiKey) headers.Authorization = `Bearer ${clientApiKey}`;
+      planTaskBtn.disabled = true;
+      setConnectionStatus('Planning...');
+      clearNotice();
+      try {
+        const res = await fetch(TASKS_PLAN_API, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ messages, model }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          const msg = data.message || data.error || res.statusText;
+          showNotice(msg || 'Task plan failed', 'error', false);
+          return;
+        }
+        if (data.plan) {
+          renderTaskPlanCard(data.plan, data.raw);
+          if (typeof addLocalNotification === 'function') addLocalNotification('plan_created', 'Plan created', data.plan?.name || 'Task plan created');
+        } else showNotice('No plan in response', 'warning', false);
+      } catch (err) {
+        showNotice(err.message || 'Task plan request failed', 'error', false);
+      } finally {
+        planTaskBtn.disabled = false;
+        setConnectionStatus('Ready');
+      }
+    }
+
+    if (planTaskBtn) {
+      planTaskBtn.onclick = fetchTaskPlan;
+      updatePlanTaskButtonState();
+    }
+
     sendBtn.onclick = async () => {
       const model = modelInput.value.trim() || config.modelPlaceholder || 'model';
       const prompt = promptInput.value.trim();
 
-      if (!prompt) return;
+      if (!prompt && !attachedImages.length) return;
+      if (typeof haptic === 'function') haptic('send');
 
       if (activeAbortController) activeAbortController.abort();
       activeAbortController = new AbortController();
       const signal = activeAbortController.signal;
+      lastSubmittedPrompt = prompt;
 
       sendBtn.disabled = true;
       stopBtn.style.display = 'inline-block';
+      clearNotice();
+      setConnectionStatus('Connecting...');
 
-      addMessage('user', prompt);
+      const displayPrompt = prompt + (attachedImages.length ? ' 📷' : '');
+      addMessage('user', displayPrompt);
       promptInput.value = '';
 
-      addTypingIndicator();
-      streamStartTime = performance.now();
-      ttfb = null;
-
-      const userMsg = { role: 'user', content: prompt };
+      const visionSupported = attachedImages.length > 0 && typeof supportsVision === 'function' && supportsVision(model, config.backend);
+      const userContent = visionSupported && attachedImages.length
+        ? [{ type: 'text', text: prompt }, ...attachedImages.map((url) => ({ type: 'image_url', image_url: { url } }))]
+        : prompt;
+      const userMsg = { role: 'user', content: userContent };
       messages.push(userMsg);
+      if (typeof updatePlanTaskButtonState === 'function') updatePlanTaskButtonState();
 
-      const payload = JSON.stringify({
+      let apiMessages = await buildApiMessages(prompt);
+      const lastIdx = apiMessages.length - 1;
+      if (visionSupported && lastIdx >= 0 && apiMessages[lastIdx]?.role === 'user') {
+        apiMessages = [...apiMessages];
+        apiMessages[lastIdx] = { ...apiMessages[lastIdx], content: userContent };
+      }
+
+      attachedImages = [];
+      if (typeof renderAttachedImages === 'function') renderAttachedImages();
+
+      const isAgentMode = agentModeCheckbox?.checked === true;
+      const workspace = getWorkspace ? getWorkspace() : 'default';
+      const payloadObj = {
         model: model,
-        messages: buildApiMessages(),
+        messages: apiMessages,
         stream: true,
-      });
+        ...getGenerationConfig(),
+      };
+      if (isAgentMode) {
+        payloadObj.agentMode = true;
+        payloadObj.agentOptions = {
+          allowExecution: getAllowRecipeExecution(),
+          workspace: workspace,
+        };
+      } else {
+        payloadObj.agentOptions = { workspace: workspace };
+      }
+      const payload = JSON.stringify(payloadObj);
 
       let lastError = null;
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         try {
+          const headers = { 'Content-Type': 'application/json' };
+          const clientApiKey = clientApiKeyInput.value.trim();
+          if (clientApiKey) {
+            headers.Authorization = `Bearer ${clientApiKey}`;
+          }
+          if (config.authRequired && typeof getStorageHeaders === 'function') {
+            const sh = getStorageHeaders();
+            if (sh['x-user-api-key']) headers['x-user-api-key'] = sh['x-user-api-key'];
+          }
           const res = await fetch(API, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers,
             body: payload,
             signal,
           });
 
           if (!res.ok) {
-            const isRetryable = res.status >= 500 || res.status === 429;
-            if (isRetryable && attempt < MAX_RETRIES) {
+            let errData = {};
+            try {
+              errData = await res.json();
+            } catch (_) {}
+            const msg = errData.hint || errData.message || errData.error || res.statusText;
+            const isQuotaExceeded = res.status === 429 && errData.code === 'QUOTA_EXCEEDED';
+            const isRetryable = (res.status >= 500 || (res.status === 429 && !isQuotaExceeded)) && attempt < MAX_RETRIES;
+            if (isRetryable) {
               await new Promise(r => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
               continue;
             }
-            let msg = res.statusText;
-            try {
-              const err = await res.json();
-              msg = err.body || err.hint || err.message || err.error || msg;
-            } catch (_) {}
+            if (res.status === 401) {
+              showNotice('This deployment requires an API key. Enter it in Settings and try again.', 'warning', true);
+            }
+            if (isQuotaExceeded) {
+              showNotice('Workspace token quota exceeded', 'error', true);
+            }
             throw new Error(msg);
           }
 
+          setConnectionStatus('Streaming...');
           const reader = res.body.getReader();
           const decoder = new TextDecoder();
           let buffer = '';
@@ -904,6 +3804,8 @@
 
           messages.push({ role: 'assistant', content: content });
           persistMessages();
+          setConnectionStatus('Ready');
+          if (typeof haptic === 'function') haptic('success');
           if (autoSpeakCheckbox?.checked && content?.trim() && content !== '(No response)' && content !== '(Cancelled)') {
             const btn = assistantEl?.querySelector('.btn-speaker');
             if (btn) btn.classList.add('speaking');
@@ -916,11 +3818,13 @@
             messages.pop(); // undo user message so they can retry
             const cancelledEl = createAssistantBubble('(Cancelled)', null);
             cancelledEl.querySelector('.message-content').style.fontStyle = 'italic';
+            setConnectionStatus('Cancelled');
             break;
           }
           lastError = err;
           const isRetryable = err.message?.includes('fetch') || err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError');
           if (isRetryable && attempt < MAX_RETRIES) {
+            setConnectionStatus(`Retrying (${attempt + 1}/${MAX_RETRIES})...`);
             await new Promise(r => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
             continue;
           }
@@ -928,6 +3832,9 @@
           const backendHint = config.backend === 'vllm' ? 'vLLM (vllm serve <model> --max-model-len 4096)' : config.backend === 'ollama' ? 'Ollama (ollama serve)' : config.backend === 'openai' ? 'OpenAI (OPENAI_API_KEY)' : config.backend;
           const errMsg = 'Error: ' + (lastError?.message || err.message) + '\n\nBackend: ' + backendHint + ' — visit /health to verify.';
           addMessage('assistant', errMsg, null).classList.add('error-message');
+          showNotice(lastError?.message || err.message, 'error', true);
+          setConnectionStatus('Error');
+          if (typeof haptic === 'function') haptic('error');
         }
       }
 
@@ -944,32 +3851,87 @@
     const exportBtn = document.getElementById('export-btn');
     const importBtn = document.getElementById('import-btn');
     const importFileInput = document.getElementById('import-file');
+    let previousFocusedElement = null;
+
+    function closeContinueModal() {
+      continueModal.style.display = 'none';
+      previousFocusedElement?.focus?.();
+    }
+
+    function handleContinueModalKeydown(event) {
+      if (continueModal.style.display !== 'flex') return;
+      if (event.key === 'Escape') {
+        localStorage.removeItem(STORAGE_KEY);
+        closeContinueModal();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = [continueYes, continueNo];
+      const currentIndex = focusable.indexOf(document.activeElement);
+      if (event.shiftKey) {
+        if (currentIndex <= 0) {
+          event.preventDefault();
+          focusable[focusable.length - 1].focus();
+        }
+      } else if (currentIndex === focusable.length - 1) {
+        event.preventDefault();
+        focusable[0].focus();
+      }
+    }
+
+    continueModal.addEventListener('keydown', handleContinueModalKeydown);
 
     const stored = loadFromStorage();
-    if (stored && stored.length > 0) {
+    if (stored && stored.messages && stored.messages.length > 0) {
+      previousFocusedElement = document.activeElement;
       continueModal.style.display = 'flex';
+      continueYes.focus();
       continueYes.onclick = () => {
-        messages = stored.filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string');
-        continueModal.style.display = 'none';
+        messages = stored.messages.filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string');
+        conversationMeta.pinned = !!stored.pinned;
+        conversationMeta.tags = Array.isArray(stored.tags) ? [...stored.tags] : [];
+        closeContinueModal();
         messages.forEach(m => addMessage(m.role, m.content, null));
+        updatePinTagUI();
         persistMessages();
       };
       continueNo.onclick = () => {
         localStorage.removeItem(STORAGE_KEY);
-        continueModal.style.display = 'none';
+        closeContinueModal();
+      };
+    }
+
+    function getExportPayload() {
+      return {
+        messages,
+        pinned: conversationMeta.pinned,
+        tags: Array.isArray(conversationMeta.tags) ? conversationMeta.tags : [],
+        exportedAt: new Date().toISOString(),
       };
     }
 
     exportBtn.onclick = () => {
       const d = new Date();
       const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      const blob = new Blob([JSON.stringify(messages, null, 2)], { type: 'application/json' });
+      const blob = new Blob([JSON.stringify(getExportPayload(), null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = `chat-${dateStr}.json`;
       a.click();
       URL.revokeObjectURL(a.href);
     };
+
+    const copyLinkBtn = document.getElementById('copy-link-btn');
+    if (copyLinkBtn) {
+      copyLinkBtn.addEventListener('click', () => {
+        const payload = getExportPayload();
+        const json = JSON.stringify(payload, null, 2);
+        navigator.clipboard.writeText(json).then(() => {
+          showNotice('Conversation JSON copied to clipboard', 'warning', false);
+          setTimeout(clearNotice, 2000);
+        }).catch(() => showNotice('Failed to copy', 'error', false));
+      });
+    }
 
     importBtn.onclick = () => importFileInput.click();
     importFileInput.onchange = (e) => {
@@ -979,12 +3941,25 @@
       reader.onload = () => {
         try {
           const data = JSON.parse(reader.result);
-          if (!Array.isArray(data)) throw new Error('Expected array');
-          const valid = data.filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string');
+          let valid = [];
+          let pinned = false;
+          let tags = [];
+          if (Array.isArray(data)) {
+            valid = data.filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string');
+          } else if (data && typeof data === 'object' && Array.isArray(data.messages)) {
+            valid = data.messages.filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string');
+            pinned = !!data.pinned;
+            tags = Array.isArray(data.tags) ? data.tags : [];
+          } else {
+            throw new Error('Expected array of messages or object with messages array');
+          }
           if (valid.length === 0) throw new Error('No valid messages');
           messages = valid;
+          conversationMeta.pinned = pinned;
+          conversationMeta.tags = tags;
           while (chatContainer.firstChild) chatContainer.removeChild(chatContainer.firstChild);
           messages.forEach(m => addMessage(m.role, m.content, null));
+          updatePinTagUI();
           persistMessages();
           alert('Chat imported successfully.');
         } catch (err) {
@@ -994,6 +3969,299 @@
       };
       reader.readAsText(file);
     };
-  </script>
+
+    promptInput.addEventListener('keydown', (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+        event.preventDefault();
+        sendBtn.click();
+      }
+    });
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', async () => {
+        try {
+          await navigator.serviceWorker.register('/sw.js');
+        } catch (_) {}
+      });
+    }
+
+    // --- Phase 20: PWA install prompt ---
+    let deferredInstallPrompt = null;
+    const installBanner = document.getElementById('install-banner');
+    const installAppBtn = document.getElementById('install-app-btn');
+    const installDismissBtn = document.getElementById('install-dismiss-btn');
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      if (localStorage.getItem(INSTALL_DISMISSED_KEY) !== '1') {
+        if (installBanner) installBanner.style.display = 'flex';
+      }
+    });
+    installAppBtn?.addEventListener('click', async () => {
+      if (!deferredInstallPrompt) return;
+      deferredInstallPrompt.prompt();
+      const { outcome } = await deferredInstallPrompt.userChoice;
+      deferredInstallPrompt = null;
+      if (installBanner) installBanner.style.display = 'none';
+    });
+    installDismissBtn?.addEventListener('click', () => {
+      localStorage.setItem(INSTALL_DISMISSED_KEY, '1');
+      if (installBanner) installBanner.style.display = 'none';
+    });
+
+    // --- Phase 27: In-App Notification Center ---
+    const NOTIFICATIONS_STORAGE_KEY = 'siskelbot-notifications';
+    const NOTIFICATIONS_MAX = 100;
+    const NOTIFICATIONS_POLL_MS = 30000;
+    const notificationsList = document.getElementById('notifications-list');
+    const notificationsBadge = document.getElementById('notifications-badge');
+    const notificationsEmpty = document.getElementById('notifications-empty');
+    const notificationsMarkReadBtn = document.getElementById('notifications-mark-read-btn');
+    const notificationsMarkAllReadBtn = document.getElementById('notifications-mark-all-read-btn');
+
+    function loadLocalNotifications() {
+      try {
+        const raw = localStorage.getItem(NOTIFICATIONS_STORAGE_KEY);
+        if (!raw) return [];
+        const arr = JSON.parse(raw);
+        return Array.isArray(arr) ? arr : [];
+      } catch (_) { return []; }
+    }
+    function saveLocalNotifications(items) {
+      const trimmed = items.slice(-NOTIFICATIONS_MAX);
+      localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(trimmed));
+    }
+    function addLocalNotification(type, title, body) {
+      const items = loadLocalNotifications();
+      items.push({
+        id: 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2, 9),
+        type,
+        title,
+        body,
+        createdAt: new Date().toISOString(),
+        read: false,
+        _local: true,
+      });
+      saveLocalNotifications(items);
+      renderNotifications();
+    }
+
+    async function fetchServerNotifications() {
+      const ws = typeof getSelectedWorkspace === 'function' ? getSelectedWorkspace() : 'default';
+      const headers = getApiHeaders ? getApiHeaders() : { credentials: 'include' };
+      try {
+        const res = await fetch(`/api/notifications?workspace=${encodeURIComponent(ws)}`, { headers, credentials: 'include' });
+        if (!res.ok) return [];
+        const data = await res.json();
+        return Array.isArray(data?.items) ? data.items : [];
+      } catch (_) { return []; }
+    }
+
+    function mergeNotifications(serverItems, localItems) {
+      const byId = new Map();
+      [...localItems, ...serverItems].forEach((n) => {
+        if (!byId.has(n.id)) byId.set(n.id, { ...n });
+      });
+      return Array.from(byId.values()).sort((a, b) =>
+        (new Date(b.createdAt) || 0) - (new Date(a.createdAt) || 0)
+      ).slice(0, NOTIFICATIONS_MAX);
+    }
+
+    function renderNotifications(merged) {
+      if (!notificationsList || !notificationsBadge) return;
+      const items = Array.isArray(merged) ? merged : mergeNotifications([], loadLocalNotifications());
+      const unread = items.filter((n) => !n.read).length;
+      notificationsBadge.textContent = String(unread);
+      notificationsBadge.classList.toggle('empty', unread === 0);
+      notificationsList.innerHTML = '';
+      if (notificationsEmpty) notificationsEmpty.style.display = items.length ? 'none' : 'block';
+      items.forEach((n) => {
+        const li = document.createElement('li');
+        li.className = 'notification-item' + (n.read ? ' read' : ' unread');
+        li.setAttribute('role', 'button');
+        li.tabIndex = 0;
+        li.innerHTML = `<span class="notification-title">${escapeHtml(n.title || '')}</span>` +
+          (n.body ? `<span class="notification-body">${escapeHtml(n.body)}</span>` : '') +
+          `<span class="notification-meta">${escapeHtml(formatRelativeTime(n.createdAt))}</span>`;
+        li.dataset.id = n.id;
+        li.dataset.local = n._local ? '1' : '0';
+        li.addEventListener('click', () => markOneRead(n.id, !!n._local));
+        li.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); markOneRead(n.id, !!n._local); } });
+        notificationsList.appendChild(li);
+      });
+    }
+    function formatRelativeTime(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      const sec = (Date.now() - d) / 1000;
+      if (sec < 60) return 'just now';
+      if (sec < 3600) return Math.floor(sec / 60) + 'm ago';
+      if (sec < 86400) return Math.floor(sec / 3600) + 'h ago';
+      if (sec < 604800) return Math.floor(sec / 86400) + 'd ago';
+      return d.toLocaleDateString();
+    }
+
+    async function markOneRead(id, isLocal) {
+      if (isLocal) {
+        const items = loadLocalNotifications().map((n) =>
+          n.id === id ? { ...n, read: true } : n
+        );
+        saveLocalNotifications(items);
+      } else {
+        const ws = typeof getSelectedWorkspace === 'function' ? getSelectedWorkspace() : 'default';
+        const headers = getApiHeaders ? getApiHeaders() : { 'Content-Type': 'application/json', credentials: 'include' };
+        try {
+          await fetch(`/api/notifications/${encodeURIComponent(id)}?workspace=${encodeURIComponent(ws)}`, {
+            method: 'PATCH',
+            headers,
+            credentials: 'include',
+          });
+        } catch (_) {}
+      }
+      const server = await fetchServerNotifications();
+      renderNotifications(mergeNotifications(server, loadLocalNotifications()));
+    }
+
+    async function refreshNotifications() {
+      const server = await fetchServerNotifications();
+      const local = loadLocalNotifications();
+      renderNotifications(mergeNotifications(server, local));
+    }
+
+    if (notificationsMarkAllReadBtn) {
+      notificationsMarkAllReadBtn.addEventListener('click', async () => {
+        const ws = typeof getSelectedWorkspace === 'function' ? getSelectedWorkspace() : 'default';
+        const headers = getApiHeaders ? getApiHeaders() : { 'Content-Type': 'application/json', credentials: 'include' };
+        try {
+          await fetch(`/api/notifications/mark-all-read?workspace=${encodeURIComponent(ws)}`, {
+            method: 'PATCH',
+            headers,
+            credentials: 'include',
+          });
+        } catch (_) {}
+        const items = loadLocalNotifications().map((n) => ({ ...n, read: true }));
+        saveLocalNotifications(items);
+        refreshNotifications();
+      });
+    }
+    if (notificationsMarkReadBtn) {
+      notificationsMarkReadBtn.addEventListener('click', () => {
+        const firstUnread = document.querySelector('.notification-item.unread');
+        if (firstUnread) markOneRead(firstUnread.dataset.id, firstUnread.dataset.local === '1');
+      });
+    }
+
+    let notificationsPollTimer = null;
+    function startNotificationsPoll() {
+      if (notificationsPollTimer) return;
+      refreshNotifications();
+      function tick() {
+        if (document.visibilityState === 'visible') refreshNotifications();
+        notificationsPollTimer = setTimeout(tick, NOTIFICATIONS_POLL_MS);
+      }
+      notificationsPollTimer = setTimeout(tick, NOTIFICATIONS_POLL_MS);
+    }
+    if (document.visibilityState === 'visible') startNotificationsPoll();
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') startNotificationsPoll();
+      else if (notificationsPollTimer) { clearTimeout(notificationsPollTimer); notificationsPollTimer = null; }
+    });
+
+    refreshNotifications();
+
+    // --- Phase 20: Offline indicator ---
+    const offlineIndicator = document.getElementById('offline-indicator');
+    function updateOfflineUI() {
+      const offline = !navigator.onLine;
+      if (offlineIndicator) offlineIndicator.style.display = offline ? 'inline-block' : 'none';
+      if (sendBtn) sendBtn.disabled = offline || (stopBtn && stopBtn.style.display === 'inline-block');
+      setConnectionStatus(offline ? 'Offline' : 'Ready');
+    }
+    updateOfflineUI();
+    window.addEventListener('online', updateOfflineUI);
+    window.addEventListener('offline', updateOfflineUI);
+
+    // --- Phase 20: Tap-outside-to-close for modals ---
+    document.querySelectorAll('[data-modal-overlay]').forEach((overlay) => {
+      overlay.addEventListener('click', (e) => {
+        if (e.target !== overlay) return;
+        const returnTo = overlay._a11yReturnFocus;
+        if (overlay.id === 'status-report-modal') overlay.classList.remove('visible');
+        else if (overlay.id === 'approval-modal') overlay.classList.remove('visible');
+        else if (overlay.id === 'continue-modal') closeContinueModal?.();
+        else overlay.style.display = 'none';
+        if (returnTo && typeof returnTo.focus === 'function') returnTo.focus();
+      });
+    });
+
+    // --- Phase 26: Modal accessibility (focus trap, Escape, return focus) ---
+    function isModalVisible(overlay) {
+      if (!overlay) return false;
+      if (overlay.id === 'status-report-modal' || overlay.id === 'approval-modal')
+        return overlay.classList.contains('visible');
+      return overlay.style.display === 'flex';
+    }
+    function closeModalAndRestore(overlay) {
+      if (!overlay) return;
+      const returnTo = overlay._a11yReturnFocus;
+      if (overlay.id === 'status-report-modal') overlay.classList.remove('visible');
+      else if (overlay.id === 'approval-modal') overlay.classList.remove('visible');
+      else if (overlay.id === 'continue-modal') { /* handled by closeContinueModal */ return; }
+      else overlay.style.display = 'none';
+      if (returnTo && typeof returnTo.focus === 'function') returnTo.focus();
+    }
+    document.querySelectorAll('[data-modal-overlay]').forEach((overlay) => {
+      if (overlay.id === 'continue-modal') return; // uses its own handler
+      overlay.addEventListener('focusin', (e) => {
+        if (!isModalVisible(overlay)) return;
+        if (e.relatedTarget && !overlay.contains(e.relatedTarget))
+          overlay._a11yReturnFocus = e.relatedTarget;
+      });
+      overlay.addEventListener('keydown', (e) => {
+        if (!isModalVisible(overlay)) return;
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          closeModalAndRestore(overlay);
+          return;
+        }
+        if (e.key !== 'Tab') return;
+        const sel = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+        const focusable = Array.from(overlay.querySelectorAll(sel)).filter(el => !el.hidden && el.offsetParent !== null && !el.disabled);
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+        } else {
+          if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
+      });
+    });
+    // Focus first focusable when modals using .visible open
+    [document.getElementById('status-report-modal'), document.getElementById('approval-modal')].forEach((modal) => {
+      if (!modal) return;
+      const obs = new MutationObserver(() => {
+        if (modal.classList.contains('visible')) {
+          modal._a11yReturnFocus = document.activeElement;
+          const first = modal.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+          if (first) first.focus();
+        }
+      });
+      obs.observe(modal, { attributes: true, attributeFilter: ['class'] });
+    });
+
+    // --- Phase 20: scrollIntoView on input focus (mobile keyboard) ---
+    promptInput?.addEventListener('focus', () => {
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      setTimeout(() => promptInput?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' }), 100);
+    });
+
+    // --- Phase 20: Haptics ---
+    function haptic(type) {
+      if (typeof navigator.vibrate !== 'function') return;
+      if (type === 'send') navigator.vibrate(10);
+      else if (type === 'success') navigator.vibrate([10, 50, 10]);
+      else if (type === 'error') navigator.vibrate([20, 50, 20]);
+    }
 </body>
 </html>

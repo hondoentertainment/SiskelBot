@@ -1,0 +1,68 @@
+{
+  "_version": 1,
+  "automations": [
+    {
+      "id": "ship-repo",
+      "name": "Ship this repo",
+      "trigger": "manual",
+      "steps": [
+        { "action": "Review code changes and tests", "requiresApproval": false, "payload": {} },
+        { "action": "Run task planner for deployment steps", "requiresApproval": false, "payload": { "context": "prepare for deploy" } },
+        { "action": "Create PR or push to main", "requiresApproval": true, "payload": {} },
+        { "action": "Trigger deploy (Vercel/Render)", "requiresApproval": true, "payload": {} }
+      ],
+      "inputs": { "repo": "", "branch": "" },
+      "outputs": { "prUrl": "", "deployUrl": "" }
+    },
+    {
+      "id": "review-pr-patch",
+      "name": "Review PR and patch",
+      "trigger": "manual",
+      "steps": [
+        { "action": "Fetch PR diff and summarize", "requiresApproval": false, "payload": {} },
+        { "action": "Run task planner for review checklist", "requiresApproval": false, "payload": { "context": "code review" } },
+        { "action": "Suggest or apply patches (via chat)", "requiresApproval": true, "payload": {} },
+        { "action": "Approve or request changes", "requiresApproval": true, "payload": {} }
+      ],
+      "inputs": { "owner": "", "repo": "", "prNumber": "" },
+      "outputs": { "summary": "", "reviewComment": "" }
+    },
+    {
+      "id": "prepare-deployment",
+      "name": "Prepare deployment",
+      "trigger": "manual",
+      "steps": [
+        { "action": "Verify build passes locally", "requiresApproval": false, "payload": {} },
+        { "action": "Check env vars and secrets", "requiresApproval": false, "payload": {} },
+        { "action": "Run task planner for deployment checklist", "requiresApproval": false, "payload": { "context": "pre-deploy" } },
+        { "action": "Trigger deploy", "requiresApproval": true, "payload": {} }
+      ],
+      "inputs": { "project": "", "env": "production" },
+      "outputs": { "deployUrl": "", "status": "" }
+    },
+    {
+      "id": "notes-to-plan",
+      "name": "Notes to implementation plan",
+      "trigger": "manual",
+      "steps": [
+        { "action": "Load user notes (from chat or clipboard)", "requiresApproval": false, "payload": {} },
+        { "action": "Run task planner to convert notes into steps", "requiresApproval": false, "payload": { "context": "notes to implementation" } },
+        { "action": "Review and refine plan with chat", "requiresApproval": false, "payload": {} }
+      ],
+      "inputs": { "notes": "" },
+      "outputs": { "plan": "" }
+    },
+    {
+      "id": "repo-summary-roadmap",
+      "name": "Repo summary and roadmap",
+      "trigger": "manual",
+      "steps": [
+        { "action": "Fetch repo structure and README", "requiresApproval": false, "payload": {} },
+        { "action": "Run task planner for summary and roadmap", "requiresApproval": false, "payload": { "context": "repo overview" } },
+        { "action": "Add summary to chat", "requiresApproval": false, "payload": {} }
+      ],
+      "inputs": { "owner": "", "repo": "" },
+      "outputs": { "summary": "", "roadmap": "" }
+    }
+  ]
+}

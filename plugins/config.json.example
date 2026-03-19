@@ -1,0 +1,17 @@
+{
+  "actions": [
+    {
+      "name": "notify-slack",
+      "type": "webhook",
+      "config": {
+        "url": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL",
+        "body": { "text": "Recipe completed" }
+      }
+    },
+    {
+      "name": "ship",
+      "type": "builtin",
+      "config": { "target": "deploy" }
+    }
+  ]
+}

@@ -18,6 +18,33 @@ See [Vercel environment variables](https://vercel.com/docs/projects/environment-
 
 ---
 
+## Persistent Backend Storage (Phase 10)
+
+Context documents, recipes, and conversations can be stored in JSON files on the server. Set `STORAGE_PATH` (absolute or relative path) to the directory that will hold `context.json`, `recipes.json`, and `conversations.json`. If unset, the default is `data/` in the project root.
+
+| Variable     | Default  | Description                                      |
+|--------------|----------|--------------------------------------------------|
+| `STORAGE_PATH` | `./data` | Directory for context, recipes, conversations JSON files |
+
+> **Note:** On Vercel serverless, the filesystem is ephemeral. For production persistence, use a database or external storage. The JSON file backend is suitable for local or single-instance deployments (e.g. Render, Railway).
+
+---
+
+## Phase 16: Scheduled Recipes & Vercel Cron
+
+`vercel.json` includes a cron job that hits `GET /api/cron` every minute to run due scheduled recipes. For this to work:
+
+1. Set `ALLOW_RECIPE_STEP_EXECUTION=1` (scheduled runs execute steps).
+2. Set `CRON_SECRET` in Vercel env vars. Vercel Cron sends requests with `Authorization: Bearer <CRON_SECRET>`. If unset, the route returns 401.
+3. Add schedules via the client (Recipes → Schedule) or `POST /api/schedules`.
+
+**Local vs Vercel:**
+
+- **Local:** Set `ENABLE_SCHEDULED_RECIPES=1` to use in-process `node-cron`. No separate worker.
+- **Vercel:** Use `vercel.json` crons; no in-process scheduler. `GET /api/cron` runs due jobs when invoked by Vercel Cron.
+
+---
+
 ## Custom Domain Setup
 
 Custom domains are configured in the Vercel dashboard, not in `vercel.json`. Use the steps below to add a custom domain to your SiskelBot deployment.

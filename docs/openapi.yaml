@@ -1,0 +1,310 @@
+openapi: 3.0.3
+info:
+  title: SiskelBot API
+  version: 1.0.0
+  description: |
+    SiskelBot streaming assistant API. Stable endpoints are under `/api/v1/`.
+    Chat completions follow the OpenAI spec at `/v1/chat/completions`.
+servers:
+  - url: /
+    description: Relative to deployment origin
+paths:
+  /api/v1/context:
+    get:
+      summary: List context items
+      description: List knowledge context entries for the workspace.
+      operationId: getContext
+      tags: [context]
+      parameters:
+        - name: workspace
+          in: query
+          schema: { type: string, default: default }
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: List of context items
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContextList' }
+    post:
+      summary: Add context item
+      operationId: addContext
+      tags: [context]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContextItemInput' }
+      security: [{ bearerAuth: [] }]
+      responses:
+        '201':
+          description: Created context item
+        '400':
+          description: Invalid input
+
+  /api/v1/recipes:
+    get:
+      summary: List recipes
+      operationId: listRecipes
+      tags: [recipes]
+      parameters:
+        - name: workspace
+          in: query
+          schema: { type: string }
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: List of recipes
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecipeList' }
+    post:
+      summary: Create recipe
+      operationId: createRecipe
+      tags: [recipes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecipeInput' }
+      security: [{ bearerAuth: [] }]
+      responses:
+        '201':
+          description: Created recipe
+
+  /api/v1/conversations:
+    get:
+      summary: List conversations
+      operationId: listConversations
+      tags: [conversations]
+      parameters:
+        - name: workspace
+          in: query
+          schema: { type: string }
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: List of conversations
+    post:
+      summary: Create conversation
+      operationId: createConversation
+      tags: [conversations]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                messages: { type: array }
+                workspace: { type: string }
+      security: [{ bearerAuth: [] }]
+      responses:
+        '201':
+          description: Created conversation
+
+  /api/v1/workspaces:
+    get:
+      summary: List workspaces
+      operationId: listWorkspaces
+      tags: [workspaces]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: List of workspaces for the authenticated user
+    post:
+      summary: Create workspace
+      operationId: createWorkspace
+      tags: [workspaces]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+      security: [{ bearerAuth: [] }]
+      responses:
+        '201':
+          description: Created workspace
+
+  /api/v1/usage/summary:
+    get:
+      summary: Usage summary
+      operationId: getUsageSummary
+      tags: [usage]
+      parameters:
+        - name: days
+          in: query
+          schema: { type: integer, default: 7 }
+        - name: workspace
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Usage summary (requests, tokens, by model)
+
+  /api/v1/analytics/dashboard:
+    get:
+      summary: Analytics dashboard
+      operationId: getAnalyticsDashboard
+      tags: [analytics]
+      parameters:
+        - name: days
+          in: query
+          schema: { type: integer, default: 7 }
+        - name: workspace
+          in: query
+          schema: { type: string }
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Analytics dashboard with cost, by model, by day
+
+  /api/v1/webhooks:
+    get:
+      summary: List webhooks
+      operationId: listWebhooks
+      tags: [webhooks]
+      parameters:
+        - name: workspace
+          in: query
+          schema: { type: string }
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: List of registered webhooks
+    post:
+      summary: Add webhook
+      operationId: addWebhook
+      tags: [webhooks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, events]
+              properties:
+                url: { type: string, format: uri }
+                events: { type: array, items: { type: string } }
+                secret: { type: string }
+                workspace: { type: string }
+      security: [{ bearerAuth: [] }]
+      responses:
+        '201':
+          description: Created webhook
+
+  /api/v1/schedules:
+    get:
+      summary: List schedules
+      operationId: listSchedules
+      tags: [schedules]
+      parameters:
+        - name: workspace
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: List of scheduled recipes
+    post:
+      summary: Add or update schedule
+      operationId: upsertSchedule
+      tags: [schedules]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [recipeId, cron]
+              properties:
+                recipeId: { type: string }
+                cron: { type: string }
+                timezone: { type: string }
+                enabled: { type: boolean }
+                workspace: { type: string }
+      responses:
+        '201':
+          description: Created or updated schedule
+
+  /api/v1/plugins/actions:
+    get:
+      summary: List plugin actions
+      operationId: getPluginActions
+      tags: [plugins]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Array of registered action names
+
+  /api/v1/execute-step:
+    post:
+      summary: Execute recipe step
+      operationId: executeStep
+      tags: [recipes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [step, allowExecution]
+              properties:
+                step: { type: object }
+                allowExecution: { type: boolean }
+                workspace: { type: string }
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Execution result
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API Key
+      description: User API key (USER_API_KEYS) or deployment API key (API_KEY). Use `Authorization: Bearer <key>` or `x-user-api-key` header.
+  schemas:
+    ContextList:
+      type: object
+      properties:
+        _version: { type: integer }
+        items: { type: array, items: { $ref: '#/components/schemas/ContextItem' } }
+    ContextItem:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        content: { type: string }
+        createdAt: { type: string, format: date-time }
+    ContextItemInput:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+        content: { type: string }
+        workspace: { type: string }
+        id: { type: string }
+    RecipeList:
+      type: object
+      properties:
+        _version: { type: integer }
+        items: { type: array, items: { $ref: '#/components/schemas/Recipe' } }
+    Recipe:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        steps: { type: array }
+        createdAt: { type: string }
+    RecipeInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        steps: { type: array }
+        workspace: { type: string }

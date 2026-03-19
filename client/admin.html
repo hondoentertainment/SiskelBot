@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>SiskelBot Admin</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    .skip-link {
+      position: absolute;
+      left: 1rem;
+      top: -3rem;
+      background: #e2e8f0;
+      color: #0f172a;
+      padding: 0.5rem 0.75rem;
+      border-radius: 6px;
+      z-index: 1001;
+    }
+    .skip-link:focus { top: 1rem; }
+    a:focus-visible, button:focus-visible, input:focus-visible {
+      outline: 2px solid #60a5fa;
+      outline-offset: 2px;
+    }
+    header {
+      padding: 0.75rem 1rem;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    header h1 { margin: 0; font-size: 1.125rem; font-weight: 600; }
+    header a { color: #60a5fa; text-decoration: none; }
+    header a:hover { text-decoration: underline; }
+    main { padding: 1rem; max-width: 1200px; margin: 0 auto; }
+    .section {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .section h2 {
+      margin: 0 0 0.75rem 0;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #94a3b8;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+    th, td {
+      padding: 0.5rem 0.75rem;
+      text-align: left;
+      border-bottom: 1px solid #334155;
+    }
+    th { color: #94a3b8; font-weight: 500; }
+    tr:last-child td { border-bottom: none; }
+    .ok { color: #34d399; }
+    .warn { color: #fbbf24; }
+    .err { color: #f87171; }
+    .login-form {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+    .login-form input {
+      padding: 0.5rem 0.75rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.875rem;
+      min-width: 200px;
+    }
+    .login-form button {
+      padding: 0.5rem 1rem;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .login-form button:hover { background: #1d4ed8; }
+    .override-form {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .override-form input {
+      padding: 0.375rem 0.5rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 4px;
+      color: #e2e8f0;
+      font-size: 0.8125rem;
+      width: 100px;
+    }
+    .override-form button {
+      padding: 0.375rem 0.75rem;
+      background: #334155;
+      color: #e2e8f0;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.8125rem;
+    }
+    .override-form button:hover { background: #475569; }
+    .override-form button.danger { background: #7f1d1d; color: #fecaca; }
+    .override-form button.danger:hover { background: #991b1b; }
+    .badge { font-size: 0.75rem; padding: 0.125rem 0.375rem; border-radius: 4px; background: #334155; }
+    .error-msg { color: #f87171; margin-top: 0.5rem; }
+    .loading { opacity: 0.7; }
+  </style>
+</head>
+<body>
+  <a href="#main" class="skip-link">Skip to main content</a>
+  <header>
+    <h1>SiskelBot Admin</h1>
+    <a href="/">← Back to app</a>
+    <span id="auth-status"></span>
+  </header>
+  <main id="main">
+    <div id="login-section" class="section" style="display:none">
+      <h2>Admin access required</h2>
+      <p>Sign in via OAuth as a user in QUOTA_ADMIN_USER_IDS, or enter your ADMIN_API_KEY:</p>
+      <div class="login-form">
+        <input type="password" id="admin-key" placeholder="ADMIN_API_KEY" autocomplete="off">
+        <button id="unlock-btn">Unlock</button>
+      </div>
+      <p id="login-error" class="error-msg" style="display:none"></p>
+    </div>
+
+    <div id="dashboard" style="display:none">
+      <div class="section">
+        <h2>Users</h2>
+        <table id="users-table">
+          <thead><tr><th>User ID</th><th>Source</th><th>Provider</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="section">
+        <h2>Workspaces</h2>
+        <table id="workspaces-table">
+          <thead><tr><th>User</th><th>Workspace</th><th>Tokens used</th><th>Quota</th><th>Override</th><th>Actions</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="section">
+        <h2>Usage summary (7 days)</h2>
+        <table id="usage-table">
+          <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="section">
+        <h2>Quota status</h2>
+        <div id="quota-status"></div>
+      </div>
+
+      <div class="section">
+        <h2>System health</h2>
+        <div id="system-health"></div>
+      </div>
+
+      <div class="section">
+        <h2>Recent audit log</h2>
+        <table id="audit-table">
+          <thead><tr><th>Time</th><th>Action</th><th>OK</th><th>Error</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="loading" class="section">
+      <p>Loading...</p>
+    </div>
+  </main>
+  <script>
+    const ADMIN_KEY_STORAGE = 'siskelbot_admin_key';
+    let adminKey = sessionStorage.getItem(ADMIN_KEY_STORAGE);
+
+    function headers() {
+      const h = { 'Content-Type': 'application/json' };
+      if (adminKey) h['Authorization'] = 'Bearer ' + adminKey;
+      return h;
+    }
+
+    async function fetchSummary() {
+      const opts = { credentials: 'include', headers: headers() };
+      const r = await fetch('/api/admin/summary', opts);
+      if (!r.ok) {
+        if (r.status === 401) return null;
+        throw new Error(await r.text());
+      }
+      return r.json();
+    }
+
+    function showLogin(err) {
+      document.getElementById('login-section').style.display = 'block';
+      document.getElementById('dashboard').style.display = 'none';
+      document.getElementById('loading').style.display = 'none';
+      const errEl = document.getElementById('login-error');
+      errEl.style.display = err ? 'block' : 'none';
+      errEl.textContent = err || '';
+    }
+
+    function showDashboard(data) {
+      document.getElementById('login-section').style.display = 'none';
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('dashboard').style.display = 'block';
+      document.getElementById('auth-status').textContent = '✓ Authenticated';
+
+      // Users
+      const usersTbody = document.querySelector('#users-table tbody');
+      usersTbody.innerHTML = '';
+      (data.users || []).forEach(u => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${escapeHtml(u.userId)}</td><td><span class="badge">${escapeHtml(u.source)}</span></td><td>${escapeHtml(u.provider || '-')}</td>`;
+        usersTbody.appendChild(tr);
+      });
+
+      // Workspaces
+      const wsTbody = document.querySelector('#workspaces-table tbody');
+      wsTbody.innerHTML = '';
+      (data.workspaces || []).forEach(({ userId, workspaceId, workspaceName, quota, tokensUsed, override }) => {
+        const tr = document.createElement('tr');
+        const quotaStr = quota ? `${quota.used.toLocaleString()} / ${quota.limit.toLocaleString}` : '-';
+        const overrideStr = override != null ? override.toLocaleString() : '-';
+        tr.innerHTML = `
+          <td>${escapeHtml(userId)}</td>
+          <td>${escapeHtml(workspaceName || workspaceId)}</td>
+          <td>${(tokensUsed || 0).toLocaleString()}</td>
+          <td>${quotaStr}</td>
+          <td>${overrideStr}</td>
+          <td>
+            <div class="override-form">
+              <input type="number" placeholder="Limit" data-ws="${escapeAttr(workspaceId)}" min="1">
+              <button data-ws="${escapeAttr(workspaceId)}" data-action="set">Set</button>
+              <button class="danger" data-ws="${escapeAttr(workspaceId)}" data-action="clear">Clear</button>
+            </div>
+          </td>
+        `;
+        wsTbody.appendChild(tr);
+      });
+
+      // Usage
+      const usage = data.usage || {};
+      const usageTbody = document.querySelector('#usage-table tbody');
+      usageTbody.innerHTML = `
+        <tr><td>Total requests</td><td>${(usage.totalRequests || 0).toLocaleString()}</td></tr>
+        <tr><td>Total input tokens</td><td>${(usage.totalInputTokens || 0).toLocaleString()}</td></tr>
+        <tr><td>Total output tokens</td><td>${(usage.totalOutputTokens || 0).toLocaleString()}</td></tr>
+        <tr><td>Total tokens</td><td>${(usage.totalTokens || 0).toLocaleString()}</td></tr>
+      `;
+
+      // Quota status
+      const quotaStatusEl = document.getElementById('quota-status');
+      quotaStatusEl.innerHTML = data.system?.quotaConfigured
+        ? `<span class="ok">Quota configured</span>`
+        : `<span class="warn">Quota not configured</span>`;
+
+      // System health
+      const health = data.system?.health || {};
+      const integrations = data.system?.integrations || {};
+      const sysEl = document.getElementById('system-health');
+      sysEl.innerHTML = `
+        <p>Backend: <strong>${escapeHtml(health.backend || '-')}</strong> ${health.reachable ? '<span class="ok">reachable</span>' : '<span class="err">unreachable</span>'}</p>
+        <p>Latency: ${health.latencyMs != null ? health.latencyMs + ' ms' : '-'}</p>
+        <p>Integrations: GitHub ${integrations.github ? '✓' : '-'}, Vercel ${integrations.vercel ? '✓' : '-'}</p>
+        <p>Scheduler: ${data.system?.scheduleEnabled ? '<span class="ok">enabled</span>' : 'disabled'}</p>
+      `;
+
+      // Audit
+      const auditTbody = document.querySelector('#audit-table tbody');
+      auditTbody.innerHTML = '';
+      (data.auditLog || []).slice(0, 20).forEach(e => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${escapeHtml((e.timestamp || '').slice(0, 19))}</td>
+          <td>${escapeHtml(e.action || '-')}</td>
+          <td>${e.ok ? '<span class="ok">✓</span>' : '<span class="err">✗</span>'}</td>
+          <td>${escapeHtml(e.error || '-')}</td>
+        `;
+        auditTbody.appendChild(tr);
+      });
+
+      // Override button handlers
+      document.querySelectorAll('.override-form button[data-action="set"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const ws = btn.dataset.ws;
+          const input = btn.parentElement.querySelector('input[type="number"]');
+          const limit = parseInt(input.value, 10);
+          if (!limit || limit <= 0) return;
+          await setOverride(ws, limit);
+          load();
+        });
+      });
+      document.querySelectorAll('.override-form button[data-action="clear"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          await setOverride(btn.dataset.ws, null);
+          load();
+        });
+      });
+    }
+
+    async function setOverride(workspace, limit) {
+      const opts = {
+        method: 'POST',
+        credentials: 'include',
+        headers: { ...headers(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace, limit })
+      };
+      const r = await fetch('/api/admin/quotas/override', opts);
+      if (!r.ok) throw new Error(await r.text());
+      return r.json();
+    }
+
+    function escapeHtml(s) {
+      if (s == null) return '';
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+    function escapeAttr(s) {
+      return escapeHtml(s).replace(/"/g, '&quot;');
+    }
+
+    async function load() {
+      document.getElementById('loading').style.display = 'block';
+      try {
+        const data = await fetchSummary();
+        if (!data) {
+          adminKey = null;
+          sessionStorage.removeItem(ADMIN_KEY_STORAGE);
+          showLogin('Authentication required. Sign in or enter ADMIN_API_KEY.');
+          return;
+        }
+        showDashboard(data);
+      } catch (e) {
+        showLogin(e.message || 'Failed to load');
+      } finally {
+        document.getElementById('loading').style.display = 'none';
+      }
+    }
+
+    document.getElementById('unlock-btn').addEventListener('click', () => {
+      adminKey = document.getElementById('admin-key').value.trim();
+      if (!adminKey) return;
+      sessionStorage.setItem(ADMIN_KEY_STORAGE, adminKey);
+      load();
+    });
+
+    load();
+  </script>
+</body>
+</html>
