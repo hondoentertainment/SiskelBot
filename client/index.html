@@ -953,8 +953,15 @@
     [data-modal-overlay] .modal-content, [data-modal-overlay] .approval-dialog { cursor: default; }
     #status-report-modal .modal-content { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1.25rem; max-width: 480px; max-height: 80vh; overflow-y: auto; }
     #status-report-modal pre { font-size: 0.8rem; white-space: pre-wrap; word-break: break-word; color: #94a3b8; }
-    #context-add-modal, #recipe-create-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 1001; }
-    #context-add-modal .modal-content, #recipe-create-modal .modal-content { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1.25rem; max-width: 400px; width: 90%; }
+    .use-cases-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    .use-cases-chips .use-case-chip { padding: 0.25rem 0.5rem; font-size: 0.8125rem; cursor: pointer; border-radius: 6px; background: #334155; color: #e2e8f0; border: 1px solid #475569; }
+    .use-cases-chips .use-case-chip:hover { background: #475569; }
+    .use-cases-chips .use-case-chip.active { background: #2563eb; border-color: #3b82f6; }
+    .use-case-chip { padding: 0.3rem 0.6rem; font-size: 0.8rem; border-radius: 6px; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; cursor: pointer; transition: background 0.15s; }
+    .use-case-chip:hover { background: #334155; }
+    .use-case-chip.active { border-color: #3b82f6; background: rgba(59,130,246,0.2); }
+    #context-add-modal, #recipe-create-modal, #use-case-edit-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 1001; }
+    #context-add-modal .modal-content, #recipe-create-modal .modal-content, #use-case-edit-modal .modal-content { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1.25rem; max-width: 400px; width: 90%; }
     #context-add-modal .modal-buttons, #recipe-create-modal .modal-buttons { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.75rem; }
     .install-banner {
       display: flex;
@@ -1153,22 +1160,24 @@
     #approval-modal .btn-confirm { background: #2563eb; color: white; }
     #approval-modal .btn-cancel { background: #334155; color: #e2e8f0; }
   </style>
+  <script src="/i18n.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="/templates.js"></script>
+  <script src="/use-cases.js"></script>
 </head>
 <body>
-  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <a class="skip-link" href="#main-content" data-i18n="app.skipToContent">Skip to main content</a>
   <div id="install-banner" class="install-banner" role="region" aria-label="Install app" style="display:none;">
-  <span>Install SiskelBot for quick access</span>
+  <span data-i18n="install.banner">Install SiskelBot for quick access</span>
   <div class="install-banner-actions">
-    <button id="install-app-btn" type="button" class="header-button">Install</button>
-    <button id="install-dismiss-btn" type="button" class="header-button" aria-label="Dismiss">✕</button>
+    <button id="install-app-btn" type="button" class="header-button" data-i18n="install.install">Install</button>
+    <button id="install-dismiss-btn" type="button" class="header-button" data-i18n-aria-label="install.dismiss" aria-label="Dismiss">✕</button>
   </div>
 </div>
 <header>
-    <h1>Streaming Assistant</h1>
-    <span id="offline-indicator" class="offline-indicator" aria-live="polite" style="display:none;">Offline</span>
+    <h1 data-i18n="app.title">Streaming Assistant</h1>
+    <span id="offline-indicator" class="offline-indicator" aria-live="polite" style="display:none;" data-i18n="header.offline">Offline</span>
     <span id="backend-badge" class="backend-badge" title="Backend (from server config)">—</span>
     <label class="sr-only" for="profile-select">Profile</label>
     <select id="profile-select" aria-label="Switch profile">
@@ -1176,12 +1185,41 @@
     </select>
     <label class="sr-only" for="model">Model</label>
     <input type="text" id="model" list="model-presets" placeholder="Model" value="">
-    <div id="workspace-switcher-wrap" class="workspace-switcher-wrap" style="display:none;">
-      <label class="sr-only" for="workspace-select">Workspace</label>
-      <select id="workspace-select" aria-label="Switch workspace" title="Workspace">
-        <option value="default">Default</option>
-      </select>
-    </div>
+    <details id="use-cases-toggle" class="use-cases-switcher">
+      <summary class="header-button" data-i18n="usecases.summary">Use cases</summary>
+      <div id="use-cases-panel" class="panel-content" style="min-width:14rem;">
+        <p class="panel-hint" style="margin:0 0 0.5rem 0;">One-click presets for profile, model, agent/swarm, RAG, and generation settings.</p>
+        <div id="use-cases-chips" class="use-cases-chips" aria-label="Use case presets"></div>
+        <button id="use-cases-manage-btn" type="button" class="header-button" style="margin-top:0.5rem;" data-i18n="usecases.manage">Manage use cases</button>
+      </div>
+    </details>
+    <details id="workspace-details" class="workspace-switcher-wrap" style="display:none;">
+      <summary class="header-button" style="min-width:8rem;">Workspace</summary>
+      <div id="workspace-panel" class="panel-content" style="min-width:18rem;">
+        <div class="workspace-select-row" style="margin-bottom:0.5rem;">
+          <label class="sr-only" for="workspace-select">Current workspace</label>
+          <select id="workspace-select" aria-label="Switch workspace" style="width:100%;padding:0.35rem;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;">
+            <option value="default">Default</option>
+          </select>
+        </div>
+        <div class="workspace-actions" style="display:flex;gap:0.35rem;flex-wrap:wrap;margin-bottom:0.5rem;">
+          <button id="workspace-create-btn" type="button" class="header-button">Create</button>
+          <button id="workspace-join-btn" type="button" class="header-button">Join</button>
+        </div>
+        <div id="workspace-team-panel" style="display:none;margin-top:0.5rem;padding-top:0.5rem;border-top:1px solid #334155;">
+          <p class="panel-hint" style="margin:0 0 0.35rem 0;font-weight:600;">Team workspace</p>
+          <button id="workspace-invite-btn" type="button" class="header-button" style="margin-bottom:0.5rem;">Generate invite</button>
+          <details id="workspace-members-toggle" style="margin-bottom:0.35rem;">
+            <summary style="cursor:pointer;font-size:0.875rem;">Members</summary>
+            <ul id="workspace-members-list" class="workspace-members-list" aria-label="Workspace members" style="margin:0.35rem 0 0 1rem;font-size:0.8125rem;"></ul>
+          </details>
+          <details id="workspace-activity-toggle">
+            <summary style="cursor:pointer;font-size:0.875rem;">Activity</summary>
+            <ul id="workspace-activity-list" class="workspace-activity-list" aria-label="Workspace activity" style="margin:0.35rem 0 0 1rem;font-size:0.8125rem;max-height:120px;overflow-y:auto;"></ul>
+          </details>
+        </div>
+      </div>
+    </details>
     <div class="header-actions">
       <details id="notifications-toggle">
         <summary class="header-button notifications-bell" aria-label="Notifications">
@@ -1197,11 +1235,11 @@
           <p id="notifications-empty" class="panel-hint" style="display:none;">No notifications</p>
         </div>
       </details>
-      <button id="clear-btn" class="header-button" type="button">New chat</button>
-      <button id="export-btn" class="header-button" type="button">Export chat</button>
-      <button id="import-btn" class="header-button" type="button">Import chat</button>
+      <button id="clear-btn" class="header-button" type="button" data-i18n="header.newChat">New chat</button>
+      <button id="export-btn" class="header-button" type="button" data-i18n="header.exportChat">Export chat</button>
+      <button id="import-btn" class="header-button" type="button" data-i18n="header.importChat">Import chat</button>
       <details id="conversations-toggle">
-        <summary class="header-button">Conversations</summary>
+        <summary class="header-button" data-i18n="header.conversations">Conversations</summary>
         <div id="conversations-panel" class="panel-content">
           <p class="panel-hint">Saved conversations. Click to switch, max 50 shown.</p>
           <div class="conversations-search-row">
@@ -1217,7 +1255,7 @@
         </div>
       </details>
       <details id="health-toggle">
-        <summary class="header-button">Status</summary>
+        <summary class="header-button" data-i18n="header.status">Status</summary>
         <div id="health-panel">
           <dl class="health-row">
             <dt>Backend:</dt><dd id="health-backend">—</dd>
@@ -1233,7 +1271,7 @@
         </div>
       </details>
       <details id="integrations-toggle">
-        <summary class="header-button">Integrations</summary>
+        <summary class="header-button" data-i18n="header.integrations">Integrations</summary>
         <div id="integrations-panel">
           <div class="integrations-status">
             <span id="github-status" class="missing">GitHub: —</span>
@@ -1265,7 +1303,7 @@
         </div>
       </details>
       <details id="usage-toggle">
-        <summary class="header-button">Usage</summary>
+        <summary class="header-button" data-i18n="header.usage">Usage</summary>
         <div id="usage-panel">
           <div class="usage-status" id="usage-status">Loading…</div>
           <p class="usage-hint">Last 7 days (approximate token counts)</p>
@@ -1394,7 +1432,7 @@
         </div>
       </details>
       <details id="recipes-toggle">
-        <summary class="header-button">Recipes</summary>
+        <summary class="header-button" data-i18n="header.recipes">Recipes</summary>
         <div id="recipes-panel" class="panel-content">
           <p class="panel-hint">Saved workflows. Run loads into task planner. Actions: <span id="recipes-actions-hint">build, deploy, copy, webhook</span></p>
           <div class="recipes-actions">
@@ -1410,11 +1448,20 @@
         </div>
       </details>
       <details id="settings-toggle">
-        <summary class="header-button">Settings</summary>
+        <summary class="header-button" data-i18n="header.settings">Settings</summary>
         <div id="settings-panel">
           <div class="settings-grid">
             <div class="settings-field">
-              <label for="temperature">Temperature</label>
+              <label for="locale-select" data-i18n="settings.languageLabel">Language</label>
+              <select id="locale-select" aria-label="Language" title="Language">
+                <option value="en">English</option>
+                <option value="es">Español</option>
+                <option value="fr">Français</option>
+                <option value="de">Deutsch</option>
+              </select>
+            </div>
+            <div class="settings-field">
+              <label for="temperature" data-i18n="header.temperature">Temperature</label>
               <input id="temperature" type="number" min="0" max="2" step="0.1" value="0.7">
             </div>
             <div class="settings-field">
@@ -1451,9 +1498,24 @@
             <div class="settings-field settings-field-full">
               <label class="settings-toggle-row" title="When on, the LLM can call tools (search context, get recipe, execute steps). Default: off.">
                 <input type="checkbox" id="agent-mode" aria-describedby="agent-mode-hint">
-                Agent mode
+                <span data-i18n="header.agentMode">Agent mode</span>
               </label>
               <span id="agent-mode-hint" class="sr-only">When enabled, the assistant can use tools: search context, list context, get recipe, and (if allowed above) execute steps.</span>
+            </div>
+            <div id="swarm-mode-section" class="settings-field settings-field-full" style="display:none;">
+              <label class="settings-toggle-row" title="When on, use multi-agent swarm to solve complex tasks. Works with agent mode.">
+                <input type="checkbox" id="swarm-mode" aria-describedby="swarm-mode-hint">
+                <span data-i18n="header.swarmMode">Swarm mode</span>
+              </label>
+              <span id="swarm-mode-hint" class="sr-only">When enabled, multiple agents collaborate on the task. Requires server ENABLE_AGENT_SWARM=1.</span>
+            </div>
+            <div id="use-cases-settings-section" class="settings-field settings-field-full" style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid #334155;">
+              <p class="panel-hint" style="margin:0 0 0.5rem 0;font-weight:600;">Use cases</p>
+              <p class="settings-help" style="margin:0 0 0.5rem 0;font-size:0.8rem;">Presets that apply profile, model, agent/swarm, RAG, and generation settings in one click. Customize in the header dropdown or add your own.</p>
+              <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.35rem;">
+                <button id="use-cases-add-btn" type="button" class="header-button">Add use case</button>
+              </div>
+              <div id="use-cases-settings-list" aria-label="Use cases list" style="font-size:0.8125rem;max-height:120px;overflow-y:auto;margin-top:0.35rem;"></div>
             </div>
             <div id="backup-restore-section" class="settings-field settings-field-full" style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid #334155;">
               <p class="panel-hint" style="margin:0 0 0.5rem 0;font-weight:600;">Backup &amp; Restore</p>
@@ -1557,6 +1619,53 @@
       </div>
     </div>
   </div>
+  <div id="use-case-edit-modal" data-modal-overlay class="recipe-create-overlay" role="dialog" aria-modal="true" aria-labelledby="use-case-edit-title" style="display:none;">
+    <div class="modal-content" style="max-width:420px;">
+      <p id="use-case-edit-title" style="margin:0 0 0.75rem 0;font-weight:600;">Edit use case</p>
+      <input type="hidden" id="use-case-edit-id">
+      <label style="display:block;margin-bottom:0.35rem;">Name <input id="use-case-edit-name" type="text" placeholder="e.g. My coding preset" style="width:100%;padding:0.5rem;" required></label>
+      <label style="display:block;margin-bottom:0.35rem;">Base <select id="use-case-edit-profile" aria-label="Profile or template" style="width:100%;padding:0.5rem;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;"><option value="">— None (custom) —</option></select></label>
+      <label style="display:block;margin-bottom:0.35rem;">System prompt <textarea id="use-case-edit-system-prompt" rows="2" placeholder="Override system prompt (optional)" style="width:100%;padding:0.5rem;"></textarea></label>
+      <label style="display:block;margin-bottom:0.35rem;">Model <input id="use-case-edit-model" type="text" placeholder="Leave empty to inherit" style="width:100%;padding:0.5rem;"></label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.35rem;">
+        <label style="display:flex;align-items:center;gap:0.35rem;"><input type="checkbox" id="use-case-edit-agent"> Agent mode</label>
+        <label style="display:flex;align-items:center;gap:0.35rem;"><input type="checkbox" id="use-case-edit-swarm"> Swarm mode</label>
+        <label style="display:flex;align-items:center;gap:0.35rem;"><input type="checkbox" id="use-case-edit-rag"> Use RAG</label>
+        <label style="display:flex;align-items:center;gap:0.35rem;"><input type="checkbox" id="use-case-edit-semantic"> Semantic search</label>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.5rem;">
+        <label style="display:block;">Temperature <input id="use-case-edit-temp" type="number" min="0" max="2" step="0.1" value="0.7" style="width:100%;padding:0.35rem;"></label>
+        <label style="display:block;">Max tokens <input id="use-case-edit-max" type="number" min="1" max="8192" value="2048" style="width:100%;padding:0.35rem;"></label>
+      </div>
+      <div class="modal-buttons" style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:0.75rem;">
+        <button id="use-case-edit-save" type="button" class="btn-confirm">Save</button>
+        <button id="use-case-edit-delete" type="button" class="btn-no" style="margin-right:auto;">Delete</button>
+        <button id="use-case-edit-cancel" type="button" class="btn-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+  <div id="workspace-create-modal" data-modal-overlay role="dialog" aria-modal="true" aria-labelledby="workspace-create-title" style="display:none;">
+    <div class="modal-content">
+      <p id="workspace-create-title" style="margin:0 0 0.5rem 0;font-weight:600;">Create workspace</p>
+      <label style="display:block;margin-bottom:0.35rem;">Name <input id="workspace-create-name" type="text" placeholder="Workspace name" style="width:100%;padding:0.5rem;"></label>
+      <label style="display:block;margin-bottom:0.5rem;">Type <select id="workspace-create-type" style="width:100%;padding:0.5rem;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;"><option value="personal">Personal</option><option value="team">Team</option></select></label>
+      <div class="modal-buttons">
+        <button id="workspace-create-submit" type="button" class="btn-confirm">Create</button>
+        <button id="workspace-create-cancel" type="button" class="btn-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+  <div id="workspace-join-modal" data-modal-overlay role="dialog" aria-modal="true" aria-labelledby="workspace-join-title" style="display:none;">
+    <div class="modal-content">
+      <p id="workspace-join-title" style="margin:0 0 0.5rem 0;font-weight:600;">Join workspace</p>
+      <label style="display:block;margin-bottom:0.5rem;">Invite code <input id="workspace-join-code" type="text" placeholder="Enter code" style="width:100%;padding:0.5rem;font-family:monospace;"></label>
+      <p id="workspace-join-status" class="panel-hint" style="margin:0.35rem 0;"></p>
+      <div class="modal-buttons">
+        <button id="workspace-join-submit" type="button" class="btn-confirm">Join</button>
+        <button id="workspace-join-cancel" type="button" class="btn-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
   <main id="main-content" role="main">
   <div class="chat-toolbar">
     <div class="search-row">
@@ -1608,6 +1717,18 @@
   </main>
 
   <script>
+    (function initI18n() {
+      if (window.SiskelI18n) {
+        SiskelI18n.init().then(function() {
+          var sel = document.getElementById('locale-select');
+          if (sel) {
+            sel.addEventListener('change', function() {
+              SiskelI18n.setLocale(sel.value);
+            });
+          }
+        });
+      }
+    })();
     const API = '/v1/chat/completions';
     const STORAGE_KEY = 'siskelbot-messages';
     const STORAGE_VERSION = 1;
@@ -1621,11 +1742,14 @@
     const RECIPES_STORAGE_KEY = 'siskelbot-recipes';
     const RECIPE_EXECUTION_STORAGE_KEY = 'siskelbot-allow-recipe-execution';
     const AGENT_MODE_STORAGE_KEY = 'siskelbot-agent-mode';
+    const SWARM_MODE_STORAGE_KEY = 'siskelbot-swarm-mode';
     const CONVERSATIONS_STORAGE_KEY = 'siskelbot-conversations';
     const INSTALL_DISMISSED_KEY = 'siskelbot-install-dismissed';
     const NOTIFICATIONS_STORAGE_KEY = 'siskelbot-notifications';
     const MAX_CONVERSATIONS = 50;
     const MAX_NOTIFICATIONS = 100;
+    if (window.SiskelI18n) SiskelI18n.init();
+
     const chatContainer = document.getElementById('chat-container');
     const promptInput = document.getElementById('prompt');
     const sendBtn = document.getElementById('send');
@@ -1824,10 +1948,10 @@
       try {
         const params = new URLSearchParams(window.location.search);
         if (params.get('auth_error') === '1') {
-          showNotice('Sign-in was cancelled or failed. Try again or use API key.', 'warning', false);
+          showNotice((window.SiskelI18n && SiskelI18n.t ? SiskelI18n.t('error.authCancelled') : 'Sign-in was cancelled or failed. Try again or use API key.'), 'warning', false);
           window.history.replaceState({}, '', window.location.pathname);
         } else if (params.get('auth_error') === 'session') {
-          showNotice('Session not available. Set SESSION_SECRET when using OAuth.', 'error', false);
+          showNotice((window.SiskelI18n && SiskelI18n.t ? SiskelI18n.t('error.sessionNotAvailable') : 'Session not available. Set SESSION_SECRET when using OAuth.'), 'error', false);
           window.history.replaceState({}, '', window.location.pathname);
         }
         const res = await fetch('/config');
@@ -1850,7 +1974,10 @@
             await loadAuthMe();
             updateOAuthUI();
             loadWorkspaces();
+            const workspaceDetails = document.getElementById('workspace-details');
+            if (workspaceDetails) workspaceDetails.style.display = '';
           }
+          if (typeof updateSwarmSectionVisibility === 'function') updateSwarmSectionVisibility();
         }
       } catch (_) {}
     }
@@ -1883,10 +2010,167 @@
           const data = await res.json();
           const items = data.items || [];
           const cur = getWorkspace();
-          workspaceSelect.innerHTML = items.map(w => `<option value="${w.id}" ${w.id === cur ? 'selected' : ''}>${escapeHtml(w.name || w.id)}</option>`).join('');
+          workspaceSelect.innerHTML = items.map(w => `<option value="${w.id}" data-type="${w.type || 'personal'}" ${w.id === cur ? 'selected' : ''}>${escapeHtml(w.name || w.id)}</option>`).join('');
           if (items.length > 0 && !items.find(w => w.id === cur)) setWorkspace('default');
         }
       } catch (_) {}
+    }
+
+    // Phase 29: Team workspaces - create, join, invite, members, activity
+    (function initPhase29Workspace() {
+      const workspaceDetails = document.getElementById('workspace-details');
+      const wsCreateBtn = document.getElementById('workspace-create-btn');
+      const wsJoinBtn = document.getElementById('workspace-join-btn');
+      const wsInviteBtn = document.getElementById('workspace-invite-btn');
+      const wsCreateModal = document.getElementById('workspace-create-modal');
+      const wsJoinModal = document.getElementById('workspace-join-modal');
+      const wsCreateName = document.getElementById('workspace-create-name');
+      const wsCreateType = document.getElementById('workspace-create-type');
+      const wsCreateSubmit = document.getElementById('workspace-create-submit');
+      const wsCreateCancel = document.getElementById('workspace-create-cancel');
+      const wsJoinCode = document.getElementById('workspace-join-code');
+      const wsJoinSubmit = document.getElementById('workspace-join-submit');
+      const wsJoinCancel = document.getElementById('workspace-join-cancel');
+      const wsJoinStatus = document.getElementById('workspace-join-status');
+      const wsTeamPanel = document.getElementById('workspace-team-panel');
+      const wsMembersList = document.getElementById('workspace-members-list');
+      const wsActivityList = document.getElementById('workspace-activity-list');
+
+      function showModal(el) { if (el) { el.style.display = 'flex'; } }
+      function hideModal(el) { if (el) { el.style.display = 'none'; } }
+
+      function updateTeamPanelVisibility() {
+        if (!wsTeamPanel || !workspaceSelect) return;
+        const wsId = workspaceSelect.value;
+        const opt = workspaceSelect.querySelector('option[value="' + wsId + '"]');
+        const isTeam = opt && opt.dataset?.type === 'team';
+        wsTeamPanel.style.display = isTeam ? '' : 'none';
+        if (isTeam && wsId && wsId !== 'default') {
+          loadWorkspaceMembers(wsId);
+          loadWorkspaceActivity(wsId);
+        }
+      }
+
+      async function loadWorkspaceMembers(wsId) {
+        if (!wsMembersList) return;
+        try {
+          const res = await fetch('/api/workspaces/' + encodeURIComponent(wsId) + '/members', getStorageFetchOptions());
+          if (res.ok) {
+            const data = await res.json();
+            wsMembersList.innerHTML = (data.members || []).map(m => '<li>' + escapeHtml(m.userId) + ' <span style="color:#64748b;">(' + (m.role || 'member') + ')</span></li>').join('') || '<li class="panel-hint">No members</li>';
+          }
+        } catch (_) { wsMembersList.innerHTML = '<li class="panel-hint">Failed to load</li>'; }
+      }
+
+      async function loadWorkspaceActivity(wsId) {
+        if (!wsActivityList) return;
+        try {
+          const res = await fetch('/api/workspaces/' + encodeURIComponent(wsId) + '/activity', getStorageFetchOptions());
+          if (res.ok) {
+            const data = await res.json();
+            wsActivityList.innerHTML = (data.items || []).map(a => '<li>' + escapeHtml(a.userId) + ': ' + escapeHtml(a.action || '') + (a.title ? ' (' + escapeHtml(a.title) + ')' : '') + ' <span style="color:#64748b;font-size:0.75rem;">' + (a.timestamp ? new Date(a.timestamp).toLocaleString() : '') + '</span></li>').join('') || '<li class="panel-hint">No activity</li>';
+          }
+        } catch (_) { wsActivityList.innerHTML = '<li class="panel-hint">Failed to load</li>'; }
+      }
+
+      if (workspaceSelect) {
+        workspaceSelect.addEventListener('change', () => {
+          setWorkspace(workspaceSelect.value);
+          updateTeamPanelVisibility();
+        });
+      }
+
+      if (wsCreateBtn && wsCreateModal) {
+        wsCreateBtn.onclick = () => { wsCreateName.value = ''; wsCreateType.value = 'personal'; showModal(wsCreateModal); };
+      }
+      if (wsCreateSubmit && wsCreateModal && wsCreateName) {
+        wsCreateSubmit.onclick = async () => {
+          const name = wsCreateName.value?.trim() || 'Workspace';
+          const type = wsCreateType.value === 'team' ? 'team' : 'personal';
+          try {
+            const res = await fetch('/api/workspaces', { method: 'POST', ...getStorageFetchOptions(), body: JSON.stringify({ name, type }) });
+            if (res.ok) {
+              const ws = await res.json();
+              hideModal(wsCreateModal);
+              loadWorkspaces();
+              setWorkspace(ws.id);
+              if (workspaceSelect) workspaceSelect.value = ws.id;
+              updateTeamPanelVisibility();
+            } else {
+              const err = await res.json().catch(() => ({}));
+              alert(err.error || 'Failed to create');
+            }
+          } catch (e) { alert('Failed to create workspace'); }
+        };
+      }
+      if (wsCreateCancel && wsCreateModal) wsCreateCancel.onclick = () => hideModal(wsCreateModal);
+
+      if (wsJoinBtn && wsJoinModal) {
+        wsJoinBtn.onclick = () => {
+          const join = new URLSearchParams(window.location.search).get('join');
+          if (join) wsJoinCode.value = join;
+          if (wsJoinStatus) wsJoinStatus.textContent = '';
+          showModal(wsJoinModal);
+        };
+      }
+      if (wsJoinSubmit && wsJoinModal && wsJoinCode) {
+        wsJoinSubmit.onclick = async () => {
+          const code = wsJoinCode.value?.trim();
+          if (!code) { if (wsJoinStatus) wsJoinStatus.textContent = 'Enter invite code'; return; }
+          if (wsJoinStatus) wsJoinStatus.textContent = 'Joining…';
+          try {
+            const res = await fetch('/api/workspaces/join', { method: 'POST', ...getStorageFetchOptions(), body: JSON.stringify({ code }) });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.ok) {
+              hideModal(wsJoinModal);
+              wsJoinCode.value = '';
+              if (wsJoinStatus) wsJoinStatus.textContent = '';
+              loadWorkspaces();
+              if (data.workspace?.id) { setWorkspace(data.workspace.id); if (workspaceSelect) workspaceSelect.value = data.workspace.id; }
+              updateTeamPanelVisibility();
+              window.history.replaceState({}, '', window.location.pathname);
+            } else {
+              if (wsJoinStatus) wsJoinStatus.textContent = data.error || 'Join failed';
+            }
+          } catch (e) { if (wsJoinStatus) wsJoinStatus.textContent = 'Join failed'; }
+        };
+      }
+      if (wsJoinCancel && wsJoinModal) wsJoinCancel.onclick = () => hideModal(wsJoinModal);
+
+      if (wsInviteBtn && workspaceSelect) {
+        wsInviteBtn.onclick = async () => {
+          const wsId = workspaceSelect.value;
+          if (!wsId || wsId === 'default') { alert('Select a team workspace first'); return; }
+          try {
+            const res = await fetch('/api/workspaces/' + encodeURIComponent(wsId) + '/invite', { method: 'POST', ...getStorageFetchOptions(), body: JSON.stringify({}) });
+            if (res.ok) {
+              const data = await res.json();
+              const link = data.inviteLink || (window.location.origin + '/?join=' + data.code);
+              await navigator.clipboard.writeText(link).catch(() => {});
+              alert('Invite link copied to clipboard: ' + (data.code || ''));
+            } else {
+              const err = await res.json().catch(() => ({}));
+              alert(err.error || 'Failed to generate invite');
+            }
+          } catch (e) { alert('Failed to generate invite'); }
+        };
+      }
+
+      const joinParam = new URLSearchParams(window.location.search).get('join');
+      if (joinParam && config.authRequired && wsJoinModal && wsJoinCode) {
+        wsJoinCode.value = joinParam;
+        showModal(wsJoinModal);
+      }
+      updateTeamPanelVisibility();
+    })();
+
+    // Phase 31: Locale switcher (Settings)
+    const localeSelect = document.getElementById('locale-select');
+    if (localeSelect && window.SiskelI18n) {
+      localeSelect.addEventListener('change', () => {
+        const lang = localeSelect.value;
+        if (lang) SiskelI18n.setLocale(lang);
+      });
     }
 
     // Phase 9: Allow recipe step execution toggle (Settings)
@@ -1913,6 +2197,23 @@
           localStorage.setItem(AGENT_MODE_STORAGE_KEY, agentModeCheckbox.checked ? '1' : '0');
         } catch (_) {}
       });
+    }
+
+    // Swarm mode toggle (Settings) - shown when config.swarmEnabled
+    const swarmModeCheckbox = document.getElementById('swarm-mode');
+    const swarmModeSection = document.getElementById('swarm-mode-section');
+    if (swarmModeCheckbox) {
+      try {
+        swarmModeCheckbox.checked = localStorage.getItem(SWARM_MODE_STORAGE_KEY) === '1';
+      } catch (_) {}
+      swarmModeCheckbox.addEventListener('change', () => {
+        try {
+          localStorage.setItem(SWARM_MODE_STORAGE_KEY, swarmModeCheckbox.checked ? '1' : '0');
+        } catch (_) {}
+      });
+    }
+    function updateSwarmSectionVisibility() {
+      if (swarmModeSection) swarmModeSection.style.display = config.swarmEnabled ? '' : 'none';
     }
 
     // Phase 24: Backup & Restore (Settings)
@@ -2862,6 +3163,236 @@
       });
     }
 
+    const useCasesChips = document.getElementById('use-cases-chips');
+    const useCasesManageBtn = document.getElementById('use-cases-manage-btn');
+    const useCasesAddBtn = document.getElementById('use-cases-add-btn');
+    const useCasesSettingsList = document.getElementById('use-cases-settings-list');
+    const useCaseEditModal = document.getElementById('use-case-edit-modal');
+    const useCaseEditId = document.getElementById('use-case-edit-id');
+    const useCaseEditName = document.getElementById('use-case-edit-name');
+    const useCaseEditProfile = document.getElementById('use-case-edit-profile');
+    const useCaseEditSystemPrompt = document.getElementById('use-case-edit-system-prompt');
+    const useCaseEditModel = document.getElementById('use-case-edit-model');
+    const useCaseEditAgent = document.getElementById('use-case-edit-agent');
+    const useCaseEditSwarm = document.getElementById('use-case-edit-swarm');
+    const useCaseEditRag = document.getElementById('use-case-edit-rag');
+    const useCaseEditSemantic = document.getElementById('use-case-edit-semantic');
+    const useCaseEditTemp = document.getElementById('use-case-edit-temp');
+    const useCaseEditMax = document.getElementById('use-case-edit-max');
+    const useCaseEditSave = document.getElementById('use-case-edit-save');
+    const useCaseEditDelete = document.getElementById('use-case-edit-delete');
+    const useCaseEditCancel = document.getElementById('use-case-edit-cancel');
+
+    function resolveUseCase(uc) {
+      if (!uc) return uc;
+      const profiles = window._mergedProfiles || [];
+      const templates = window._mergedTemplates || [];
+      let base = {};
+      if (uc.profileId) {
+        const p = profiles.find(x => x.id === uc.profileId);
+        if (p) base = { systemPrompt: p.systemPrompt, model: p.model, templateId: p.templateId };
+      }
+      if (uc.templateId) {
+        const t = templates.find(x => x.id === uc.templateId);
+        if (t) base = { ...base, systemPrompt: base.systemPrompt || t.systemPrompt, templateId: uc.templateId };
+      }
+      return {
+        name: uc.name,
+        systemPrompt: uc.systemPrompt ?? base.systemPrompt ?? '',
+        model: uc.model != null && uc.model !== '' ? uc.model : (base.model ?? ''),
+        templateId: uc.templateId ?? base.templateId ?? '',
+        agentMode: uc.agentMode ?? false,
+        swarmMode: uc.swarmMode ?? false,
+        useRag: uc.useRag ?? false,
+        useSemantic: uc.useSemantic ?? false,
+        temperature: uc.temperature ?? 0.7,
+        maxTokens: uc.maxTokens ?? 2048
+      };
+    }
+
+    function applyUseCase(uc) {
+      const r = resolveUseCase(uc);
+      if (!r) return;
+      if (r.systemPrompt && systemPromptTextarea) systemPromptTextarea.value = r.systemPrompt;
+      if (modelInput) modelInput.value = r.model || '';
+      if (r.templateId && templateSelect) templateSelect.value = r.templateId;
+      if (agentModeCheckbox) agentModeCheckbox.checked = r.agentMode;
+      if (typeof localStorage !== 'undefined') localStorage.setItem(AGENT_MODE_STORAGE_KEY, r.agentMode ? '1' : '0');
+      const swarmCheckbox = document.getElementById('swarm-mode');
+      if (swarmCheckbox) swarmCheckbox.checked = r.swarmMode;
+      if (typeof localStorage !== 'undefined') localStorage.setItem('siskelbot-swarm-mode', r.swarmMode ? '1' : '0');
+      const contextRag = document.getElementById('context-use-rag');
+      if (contextRag) contextRag.checked = r.useRag;
+      if (typeof localStorage !== 'undefined') localStorage.setItem(CONTEXT_RAG_STORAGE_KEY, r.useRag ? '1' : '0');
+      const contextSemantic = document.getElementById('context-use-semantic');
+      if (contextSemantic) contextSemantic.checked = r.useSemantic;
+      if (typeof localStorage !== 'undefined') localStorage.setItem(CONTEXT_SEMANTIC_SEARCH_STORAGE_KEY, r.useSemantic ? '1' : '0');
+      const tempInput = document.getElementById('temperature');
+      if (tempInput) tempInput.value = r.temperature;
+      const maxInput = document.getElementById('max-tokens');
+      if (maxInput) maxInput.value = r.maxTokens;
+      if (profileSelect && uc.profileId) profileSelect.value = uc.profileId;
+    }
+
+    async function initUseCases() {
+      const U = globalThis.SiskelBotUseCases;
+      if (!U) return;
+      try {
+        const defaults = await U.loadDefaults();
+        const stored = U.loadFromStorage();
+        const useCases = U.mergeUseCases(defaults, stored);
+        window._mergedUseCases = useCases;
+        if (useCasesChips) {
+          useCasesChips.innerHTML = '';
+          useCases.forEach(uc => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'use-case-chip';
+            btn.textContent = uc.name || uc.id;
+            btn.setAttribute('data-use-case-id', uc.id);
+            btn.addEventListener('click', () => {
+              const u = useCases.find(x => x.id === uc.id);
+              if (u) {
+                applyUseCase(u);
+                U.saveUseCases(useCases, uc.id);
+                useCasesChips.querySelectorAll('.use-case-chip').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+              }
+            });
+            useCasesChips.appendChild(btn);
+          });
+          const activeId = stored?.activeUseCaseId || null;
+          if (activeId) {
+            const activeBtn = useCasesChips.querySelector(`[data-use-case-id="${activeId}"]`);
+            if (activeBtn) {
+              activeBtn.classList.add('active');
+              const u = useCases.find(x => x.id === activeId);
+              if (u) applyUseCase(u);
+            }
+          }
+        }
+        if (useCasesSettingsList) {
+          useCasesSettingsList.innerHTML = '';
+          useCases.forEach(uc => {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:0.5rem;margin-bottom:0.35rem;';
+            row.innerHTML = `<span style="flex:1;">${escapeHtml(uc.name || uc.id)}</span><button type="button" class="header-button use-case-edit-btn" data-id="${escapeHtml(uc.id)}" style="padding:0.2rem 0.4rem;font-size:0.75rem;">Edit</button>`;
+            useCasesSettingsList.appendChild(row);
+          });
+        }
+        if (useCaseEditProfile) {
+          const profiles = window._mergedProfiles || [];
+          const curOpt = useCaseEditProfile.querySelector('option[value=""]');
+          useCaseEditProfile.innerHTML = curOpt ? curOpt.outerHTML : '<option value="">— Profile —</option>';
+          profiles.forEach(p => {
+            const o = document.createElement('option');
+            o.value = p.id;
+            o.textContent = p.name || p.id;
+            useCaseEditProfile.appendChild(o);
+          });
+        }
+      } catch (e) {
+        console.warn('SiskelBot: failed to init use cases', e);
+      }
+    }
+
+    if (useCasesManageBtn) {
+      useCasesManageBtn.addEventListener('click', () => {
+        const settingsToggle = document.getElementById('settings-toggle');
+        if (settingsToggle) {
+          settingsToggle.open = true;
+        }
+      });
+    }
+
+    function openUseCaseEditModal(uc) {
+      if (!useCaseEditModal) return;
+      const isNew = !uc || !uc.id;
+      if (useCaseEditId) useCaseEditId.value = isNew ? '' : uc.id;
+      if (useCaseEditName) useCaseEditName.value = uc?.name || '';
+      if (useCaseEditProfile) useCaseEditProfile.value = uc?.profileId || '';
+      if (useCaseEditSystemPrompt) useCaseEditSystemPrompt.value = uc?.systemPrompt || '';
+      if (useCaseEditModel) useCaseEditModel.value = uc?.model || '';
+      if (useCaseEditAgent) useCaseEditAgent.checked = uc?.agentMode ?? false;
+      if (useCaseEditSwarm) useCaseEditSwarm.checked = uc?.swarmMode ?? false;
+      if (useCaseEditRag) useCaseEditRag.checked = uc?.useRag ?? false;
+      if (useCaseEditSemantic) useCaseEditSemantic.checked = uc?.useSemantic ?? false;
+      if (useCaseEditTemp) useCaseEditTemp.value = uc?.temperature ?? 0.7;
+      if (useCaseEditMax) useCaseEditMax.value = uc?.maxTokens ?? 2048;
+      if (useCaseEditDelete) useCaseEditDelete.style.display = uc?.id?.startsWith('user-') ? '' : 'none';
+      useCaseEditModal.style.display = 'flex';
+    }
+
+    if (useCasesAddBtn) {
+      useCasesAddBtn.addEventListener('click', () => openUseCaseEditModal(null));
+    }
+
+    document.addEventListener('click', (e) => {
+      const editBtn = e.target.closest('.use-case-edit-btn');
+      if (editBtn) {
+        const id = editBtn.getAttribute('data-id');
+        const useCases = window._mergedUseCases || [];
+        const uc = useCases.find(x => x.id === id);
+        if (uc) openUseCaseEditModal(uc);
+      }
+    });
+
+    if (useCaseEditSave) {
+      useCaseEditSave.addEventListener('click', () => {
+        const useCases = window._mergedUseCases || [];
+        const id = useCaseEditId?.value?.trim();
+        const name = (useCaseEditName?.value || '').trim();
+        if (!name) { showNotice('Name is required', 'warning', false); return; }
+        const payload = {
+          id: id || 'user-' + crypto.randomUUID(),
+          name,
+          profileId: useCaseEditProfile?.value || null,
+          systemPrompt: (useCaseEditSystemPrompt?.value || '').trim() || null,
+          model: (useCaseEditModel?.value || '').trim() || null,
+          agentMode: useCaseEditAgent?.checked ?? false,
+          swarmMode: useCaseEditSwarm?.checked ?? false,
+          useRag: useCaseEditRag?.checked ?? false,
+          useSemantic: useCaseEditSemantic?.checked ?? false,
+          temperature: Number(useCaseEditTemp?.value) || 0.7,
+          maxTokens: Number(useCaseEditMax?.value) || 2048
+        };
+        if (!payload.profileId) delete payload.profileId;
+        let next = useCases;
+        if (id) {
+          const idx = next.findIndex(x => x.id === id);
+          if (idx >= 0) next = [...next]; next[idx] = { ...next[idx], ...payload };
+        } else {
+          next = [...next, payload];
+        }
+        window._mergedUseCases = next;
+        const U = globalThis.SiskelBotUseCases;
+        if (U) U.saveUseCases(next, payload.id);
+        initUseCases();
+        useCaseEditModal.style.display = 'none';
+        announce('Use case saved');
+      });
+    }
+
+    if (useCaseEditDelete) {
+      useCaseEditDelete.addEventListener('click', () => {
+        const id = useCaseEditId?.value?.trim();
+        if (!id || !id.startsWith('user-')) return;
+        const useCases = (window._mergedUseCases || []).filter(x => x.id !== id);
+        window._mergedUseCases = useCases;
+        const U = globalThis.SiskelBotUseCases;
+        if (U) U.saveUseCases(useCases, null);
+        initUseCases();
+        useCaseEditModal.style.display = 'none';
+        announce('Use case deleted');
+      });
+    }
+
+    if (useCaseEditCancel) {
+      useCaseEditCancel.addEventListener('click', () => { useCaseEditModal.style.display = 'none'; });
+    }
+
+    initTemplatesAndProfiles().then(() => initUseCases());
+
     let messages = [];
     let streamStartTime = 0;
     let ttfb = null;
@@ -3007,7 +3538,7 @@
       updatePinTagUI();
       persistMessages();
       announce('Chat cleared');
-      setConnectionStatus('Ready');
+      setConnectionStatus(window.SiskelI18n && SiskelI18n.t ? SiskelI18n.t('status.ready') : 'Ready');
       if (typeof updatePlanTaskButtonState === 'function') updatePlanTaskButtonState();
     }
 
@@ -3592,7 +4123,7 @@
           }
         }
         executeBtn.disabled = false;
-        setConnectionStatus('Ready');
+        setConnectionStatus(window.SiskelI18n && SiskelI18n.t ? SiskelI18n.t('status.ready') : 'Ready');
         if (!failed) {
           showNotice('Steps executed successfully', 'warning', false);
           setTimeout(clearNotice, 3000);
@@ -3653,7 +4184,7 @@
         showNotice(err.message || 'Task plan request failed', 'error', false);
       } finally {
         planTaskBtn.disabled = false;
-        setConnectionStatus('Ready');
+        setConnectionStatus(window.SiskelI18n && SiskelI18n.t ? SiskelI18n.t('status.ready') : 'Ready');
       }
     }
 
@@ -3702,6 +4233,7 @@
       if (typeof renderAttachedImages === 'function') renderAttachedImages();
 
       const isAgentMode = agentModeCheckbox?.checked === true;
+      const isSwarmMode = swarmModeCheckbox?.checked === true;
       const workspace = getWorkspace ? getWorkspace() : 'default';
       const payloadObj = {
         model: model,
@@ -3717,6 +4249,9 @@
         };
       } else {
         payloadObj.agentOptions = { workspace: workspace };
+      }
+      if (isSwarmMode) {
+        payloadObj.swarmMode = true;
       }
       const payload = JSON.stringify(payloadObj);
 
@@ -3797,14 +4332,26 @@
             }
           }
 
+          let meta = ttfb !== null ? `First token: ${ttfb}ms` : null;
+          const swarmAgents = res.headers.get('X-Swarm-Agents');
+          const swarmDuration = res.headers.get('X-Swarm-Duration-Ms');
+          if (swarmAgents || swarmDuration) {
+            const parts = [];
+            if (swarmAgents) parts.push(`${swarmAgents} agents`);
+            if (swarmDuration) parts.push(`${Number(swarmDuration) / 1000}s`);
+            const swarmMeta = parts.join(' · ');
+            meta = meta ? `${meta} · ${swarmMeta}` : swarmMeta;
+          }
+          if (assistantEl && meta) updateAssistantContent(assistantEl, content, meta);
+
           if (!content) {
             removeTypingIndicator();
-            assistantEl = createAssistantBubble('(No response)', null);
+            assistantEl = createAssistantBubble('(No response)', meta);
           }
 
           messages.push({ role: 'assistant', content: content });
           persistMessages();
-          setConnectionStatus('Ready');
+          setConnectionStatus(window.SiskelI18n && SiskelI18n.t ? SiskelI18n.t('status.ready') : 'Ready');
           if (typeof haptic === 'function') haptic('success');
           if (autoSpeakCheckbox?.checked && content?.trim() && content !== '(No response)' && content !== '(Cancelled)') {
             const btn = assistantEl?.querySelector('.btn-speaker');
@@ -4152,6 +4699,11 @@
     }
 
     let notificationsPollTimer = null;
+    let notificationsWs = null;
+    let notificationsWsReconnectDelay = 1000;
+    const NOTIFICATIONS_WS_MAX_BACKOFF = 30000;
+    let notificationsWsConnected = false;
+
     function startNotificationsPoll() {
       if (notificationsPollTimer) return;
       refreshNotifications();
@@ -4161,11 +4713,74 @@
       }
       notificationsPollTimer = setTimeout(tick, NOTIFICATIONS_POLL_MS);
     }
-    if (document.visibilityState === 'visible') startNotificationsPoll();
+    function stopNotificationsPoll() {
+      if (notificationsPollTimer) {
+        clearTimeout(notificationsPollTimer);
+        notificationsPollTimer = null;
+      }
+    }
+
+    function connectNotificationsWs() {
+      if (notificationsWs && notificationsWs.readyState === 1) return;
+      const ws = typeof getSelectedWorkspace === 'function' ? getSelectedWorkspace() : 'default';
+      const headers = getApiHeaders ? getApiHeaders() : { credentials: 'include' };
+      fetch(`/api/ws-token?workspace=${encodeURIComponent(ws)}`, { headers, credentials: 'include' })
+        .then((r) => r.ok ? r.json() : Promise.reject(new Error('ws-token failed')))
+        .then((data) => {
+          const token = data?.token;
+          if (!token) return;
+          const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const url = `${proto}//${location.host}/ws?token=${encodeURIComponent(token)}&workspace=${encodeURIComponent(ws)}`;
+          const sock = new WebSocket(url);
+          sock.onopen = () => {
+            notificationsWsConnected = true;
+            notificationsWsReconnectDelay = 1000;
+            stopNotificationsPoll();
+          };
+          sock.onmessage = (e) => {
+            try {
+              const msg = JSON.parse(e.data);
+              if (msg?.type === 'notification') refreshNotifications();
+            } catch (_) {}
+          };
+          sock.onclose = () => {
+            notificationsWs = null;
+            notificationsWsConnected = false;
+            startNotificationsPoll();
+            const delay = notificationsWsReconnectDelay;
+            notificationsWsReconnectDelay = Math.min(NOTIFICATIONS_WS_MAX_BACKOFF, notificationsWsReconnectDelay * 2);
+            setTimeout(connectNotificationsWs, delay);
+          };
+          sock.onerror = () => { sock.close(); };
+          notificationsWs = sock;
+        })
+        .catch(() => {
+          startNotificationsPoll();
+          const delay = notificationsWsReconnectDelay;
+          notificationsWsReconnectDelay = Math.min(NOTIFICATIONS_WS_MAX_BACKOFF, notificationsWsReconnectDelay * 2);
+          setTimeout(connectNotificationsWs, delay);
+        });
+    }
+
+    if (document.visibilityState === 'visible') {
+      connectNotificationsWs();
+      startNotificationsPoll();
+    }
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') startNotificationsPoll();
-      else if (notificationsPollTimer) { clearTimeout(notificationsPollTimer); notificationsPollTimer = null; }
+      if (document.visibilityState === 'visible') {
+        connectNotificationsWs();
+        if (!notificationsWsConnected) startNotificationsPoll();
+      } else {
+        if (notificationsWs) { notificationsWs.close(); notificationsWs = null; }
+        stopNotificationsPoll();
+      }
     });
+    if (typeof getSelectedWorkspace === 'function' && workspaceSelect) {
+      workspaceSelect.addEventListener('change', () => {
+        if (notificationsWs) { notificationsWs.close(); notificationsWs = null; }
+        connectNotificationsWs();
+      });
+    }
 
     refreshNotifications();
 
@@ -4175,7 +4790,7 @@
       const offline = !navigator.onLine;
       if (offlineIndicator) offlineIndicator.style.display = offline ? 'inline-block' : 'none';
       if (sendBtn) sendBtn.disabled = offline || (stopBtn && stopBtn.style.display === 'inline-block');
-      setConnectionStatus(offline ? 'Offline' : 'Ready');
+      setConnectionStatus(offline ? (window.SiskelI18n && SiskelI18n.t ? SiskelI18n.t('header.offline') : 'Offline') : (window.SiskelI18n && SiskelI18n.t ? SiskelI18n.t('status.ready') : 'Ready'));
     }
     updateOfflineUI();
     window.addEventListener('online', updateOfflineUI);

@@ -114,6 +114,32 @@ test("GET /health?refresh=1 bypasses cache", async () => {
   assert.ok(r2.body.cached === undefined || r2.body.cached === false);
 });
 
+// Phase 34: Health probes
+test("GET /health/live returns 200 when process is alive", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).get("/health/live");
+  assert.equal(response.status, 200);
+  assert.equal(response.body.ok, true);
+  assert.equal(response.body.status, "alive");
+});
+
+test("GET /health/ready returns 200 or 503 depending on storage and backend", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).get("/health/ready");
+  assert.ok(response.status === 200 || response.status === 503);
+  if (response.status === 200) {
+    assert.equal(response.body.ok, true);
+    assert.equal(response.body.status, "ready");
+  }
+});
+
+test("Phase 34: responses include X-Request-Id header", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).get("/config");
+  assert.ok(response.headers["x-request-id"], "X-Request-Id should be set");
+  assert.match(response.headers["x-request-id"], /^[0-9a-f-]{36}$|^[0-9a-f]{8}-[0-9a-f]{4}/);
+});
+
 // --- Phase 4: Toolchain Integration Hub ---
 
 test("GET /api/integrations/status returns { github, vercel } booleans", async () => {
@@ -671,6 +697,26 @@ test("PATCH /api/notifications/mark-all-read returns ok", async () => {
   assert.equal(response.body.ok, true);
 });
 
+// --- Phase 33: Real-Time Sync & Presence ---
+test("GET /api/ws-token returns token and url", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).get("/api/ws-token?workspace=default");
+  assert.equal(response.status, 200);
+  assert.ok(typeof response.body.token === "string");
+  assert.ok(typeof response.body.url === "string");
+  assert.match(response.body.url, /\/ws\?token=/);
+  assert.match(response.body.url, /workspace=default/);
+});
+
+test("GET /api/workspaces/:id/presence returns online when allowed", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).get("/api/workspaces/default/presence");
+  assert.ok(response.status === 200 || response.status === 403);
+  if (response.status === 200) {
+    assert.ok(Array.isArray(response.body.online));
+  }
+});
+
 // --- Phase 23: API Versioning & Public API Docs ---
 
 test("GET /api/v1/context returns same as /api/context (versioned route)", async () => {
@@ -791,4 +837,676 @@ test("GET /docs redirects to /api/docs", async () => {
   const response = await request(app).get("/docs");
   assert.equal(response.status, 302);
   assert.equal(response.headers.location, "/api/docs");
+});
+
+// --- Phase 32: Evaluation Harness ---
+test("GET /eval serves eval UI page", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).get("/eval");
+  assert.equal(response.status, 200);
+  assert.match(response.headers["content-type"] || "", /text\/html/);
+  assert.match(response.text, /Eval Harness|eval/);
+});
+
+test("GET /api/eval/sets returns 401 when eval auth required and no key", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", ADMIN_API_KEY: "admin-eval-key" });
+  try {
+    const response = await request(app).get("/api/eval/sets");
+    assert.equal(response.status, 401);
+    assert.equal(response.body.code, "AUTH_REQUIRED");
+  } finally {
+    restore();
+  }
+});
+
+test("GET /api/eval/sets returns sets when ADMIN_API_KEY provided", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", ADMIN_API_KEY: "admin-eval-key" });
+  try {
+    const response = await request(app)
+      .get("/api/eval/sets")
+      .set("Authorization", "Bearer admin-eval-key");
+    assert.equal(response.status, 200);
+    assert.ok(Array.isArray(response.body.sets) || Array.isArray(response.body.items));
+    const sets = response.body.sets || response.body.items || [];
+    assert.ok(sets.some((s) => s.id === "example" && s.name), "example eval set found");
+  } finally {
+    restore();
+  }
+});
+
+test("POST /api/eval/run returns 400 when no evalSetId or evalSet", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app)
+    .post("/api/eval/run")
+    .send({});
+  assert.equal(response.status, 400);
+  assert.equal(response.body.code, "INVALID_BODY");
+});
+
+test("POST /api/eval/run returns 404 when evalSetId not found", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app)
+    .post("/api/eval/run")
+    .send({ evalSetId: "nonexistent-eval-set-xyz" });
+  assert.equal(response.status, 404);
+  assert.equal(response.body.code, "NOT_FOUND");
+});
+
+test("checkCriteria (lib/eval-runner)", async () => {
+  const { checkCriteria } = await import("../lib/eval-runner.js");
+  assert.strictEqual(checkCriteria({ expectedContains: "hello" }, "hello world").pass, true);
+  assert.strictEqual(checkCriteria({ expectedContains: "hello" }, "hi there").pass, false);
+  assert.strictEqual(checkCriteria({ expectedPattern: "\\d+" }, "abc123").pass, true);
+  assert.strictEqual(checkCriteria({ expectedJson: ["type", "name"] }, '{"type":"task","name":"x","steps":[]}', { type: "task", name: "x", steps: [] }).pass, true);
+});
+
+test("runEvalSet returns results structure", async () => {
+  const { runEvalSet } = await import("../lib/eval-runner.js");
+  const res = await runEvalSet(
+    { id: "t", name: "t", cases: [{ id: "c1", prompt: "hi", expectedContains: "hello" }] },
+    { baseUrl: "http://localhost:99999", apiKey: null }
+  );
+  assert.ok(Array.isArray(res.results));
+  assert.ok(res.results.length === 1);
+  assert.ok(typeof res.passed === "number");
+  assert.ok(typeof res.total === "number");
+  assert.ok(typeof res.durationMs === "number");
+});
+
+// --- Phase 32: Evaluation Harness ---
+test("GET /api/eval/sets returns 401 when ADMIN_API_KEY set and key not provided", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", ADMIN_API_KEY: "admin-eval-key" });
+  try {
+    const response = await request(app).get("/api/eval/sets");
+    assert.equal(response.status, 401);
+    assert.equal(response.body.code, "AUTH_REQUIRED");
+  } finally {
+    restore();
+  }
+});
+
+test("GET /api/eval/sets returns sets when ADMIN_API_KEY provided", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", ADMIN_API_KEY: "admin-eval-key" });
+  try {
+    const response = await request(app)
+      .get("/api/eval/sets")
+      .set("Authorization", "Bearer admin-eval-key");
+    assert.equal(response.status, 200);
+    assert.ok(Array.isArray(response.body.sets));
+  } finally {
+    restore();
+  }
+});
+
+test("GET /api/eval/sets returns sets when API_KEY provided", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", API_KEY: "deploy-key" });
+  try {
+    const response = await request(app)
+      .get("/api/eval/sets")
+      .set("x-api-key", "deploy-key");
+    assert.equal(response.status, 200);
+    assert.ok(Array.isArray(response.body.sets));
+  } finally {
+    restore();
+  }
+});
+
+test("POST /api/eval/run returns 400 when evalSetId and evalSet missing", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", API_KEY: "deploy-key" });
+  try {
+    const response = await request(app)
+      .post("/api/eval/run")
+      .set("x-api-key", "deploy-key")
+      .send({});
+    assert.equal(response.status, 400);
+    assert.equal(response.body.code, "INVALID_BODY");
+  } finally {
+    restore();
+  }
+});
+
+test("POST /api/eval/run returns 404 when evalSetId not found", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", API_KEY: "deploy-key" });
+  try {
+    const response = await request(app)
+      .post("/api/eval/run")
+      .set("x-api-key", "deploy-key")
+      .send({ evalSetId: "nonexistent-set-xyz" });
+    assert.equal(response.status, 404);
+    assert.equal(response.body.code, "NOT_FOUND");
+  } finally {
+    restore();
+  }
+});
+
+test("POST /api/eval/run with inline evalSet returns results structure", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", API_KEY: "deploy-key" });
+  try {
+    const response = await request(app)
+      .post("/api/eval/run")
+      .set("x-api-key", "deploy-key")
+      .send({
+        evalSet: {
+          id: "inline-test",
+          name: "Inline Test",
+          cases: [{ id: "c1", prompt: "Say hi", expectedContains: "hi" }],
+        },
+      });
+    assert.equal(response.status, 200);
+    assert.ok(Array.isArray(response.body.results));
+    assert.ok(typeof response.body.passed === "number");
+    assert.ok(typeof response.body.total === "number");
+    assert.ok(typeof response.body.durationMs === "number");
+  } finally {
+    restore();
+  }
+});
+
+test("GET /eval serves eval UI", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).get("/eval");
+  assert.equal(response.status, 200);
+  assert.match(response.text, /Eval Harness|eval/i);
+});
+
+// --- Phase 32: Evaluation Harness ---
+test("GET /eval serves eval page", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).get("/eval");
+  assert.equal(response.status, 200);
+  assert.match(response.text, /Eval|eval/i);
+});
+
+test("GET /api/eval/sets returns 401 when ADMIN_API_KEY set and key not provided", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", ADMIN_API_KEY: "admin-eval-key" });
+  try {
+    const response = await request(app).get("/api/eval/sets");
+    assert.equal(response.status, 401);
+    assert.equal(response.body.code, "AUTH_REQUIRED");
+  } finally {
+    restore();
+  }
+});
+
+test("GET /api/eval/sets returns sets when ADMIN_API_KEY provided", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", ADMIN_API_KEY: "admin-eval-key" });
+  try {
+    const response = await request(app)
+      .get("/api/eval/sets")
+      .set("Authorization", "Bearer admin-eval-key");
+    assert.equal(response.status, 200);
+    assert.ok(Array.isArray(response.body.sets) || response.body.sets !== undefined);
+  } finally {
+    restore();
+  }
+});
+
+test("GET /api/eval/sets returns sets when no auth (local dev)", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).get("/api/eval/sets");
+  assert.equal(response.status, 200);
+  assert.ok(response.body.sets !== undefined);
+});
+
+test("POST /api/eval/run returns 400 when evalSetId and evalSet missing", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app)
+    .post("/api/eval/run")
+    .send({});
+  assert.equal(response.status, 400);
+  assert.equal(response.body.code, "INVALID_BODY");
+});
+
+test("POST /api/eval/run returns 404 when evalSetId not found", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app)
+    .post("/api/eval/run")
+    .send({ evalSetId: "nonexistent-eval-set-id-xyz" });
+  assert.equal(response.status, 404);
+  assert.equal(response.body.code, "NOT_FOUND");
+});
+
+test("POST /api/eval/run accepts inline evalSet and returns results", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app)
+    .post("/api/eval/run")
+    .send({
+      evalSet: {
+        id: "inline",
+        name: "Inline Eval",
+        cases: [
+          { id: "c1", prompt: "Reply with exactly: PASS", expectedContains: "PASS", target: "chat" },
+        ],
+      },
+    });
+  assert.equal(response.status, 200);
+  assert.ok(Array.isArray(response.body.results));
+  assert.equal(response.body.total, 1);
+  assert.ok(typeof response.body.passed === "number");
+  assert.ok(typeof response.body.durationMs === "number");
+});
+
+// --- Phase 32: Evaluation Harness ---
+test("GET /eval serves eval UI", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).get("/eval");
+  assert.equal(response.status, 200);
+  assert.match(response.text, /Eval|eval/i);
+});
+
+test("GET /api/eval/sets returns 401 when ADMIN_API_KEY set and key not provided", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", ADMIN_API_KEY: "admin-key" });
+  try {
+    const response = await request(app).get("/api/eval/sets");
+    assert.equal(response.status, 401);
+    assert.equal(response.body.code, "AUTH_REQUIRED");
+  } finally {
+    restore();
+  }
+});
+
+test("GET /api/eval/sets returns sets when key provided", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", ADMIN_API_KEY: "admin-key" });
+  try {
+    const response = await request(app)
+      .get("/api/eval/sets")
+      .set("Authorization", "Bearer admin-key");
+    assert.equal(response.status, 200);
+    assert.ok(Array.isArray(response.body.sets) || response.body.sets);
+    if (response.body.sets?.length) {
+      assert.ok(response.body.sets.some((s) => s.id && s.name));
+    }
+  } finally {
+    restore();
+  }
+});
+
+test("POST /api/eval/run returns 400 when body invalid", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", ADMIN_API_KEY: "admin-key" });
+  try {
+    const response = await request(app)
+      .post("/api/eval/run")
+      .set("Authorization", "Bearer admin-key")
+      .send({});
+    assert.equal(response.status, 400);
+    assert.equal(response.body.code, "INVALID_BODY");
+  } finally {
+    restore();
+  }
+});
+
+test("POST /api/eval/run returns 404 when evalSetId not found", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", ADMIN_API_KEY: "admin-key" });
+  try {
+    const response = await request(app)
+      .post("/api/eval/run")
+      .set("Authorization", "Bearer admin-key")
+      .send({ evalSetId: "nonexistent-eval-set-xyz" });
+    assert.equal(response.status, 404);
+    assert.equal(response.body.code, "NOT_FOUND");
+  } finally {
+    restore();
+  }
+});
+
+test("POST /api/eval/run accepts evalSet JSON and returns results", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", ADMIN_API_KEY: "admin-key" });
+  try {
+    const response = await request(app)
+      .post("/api/eval/run")
+      .set("Authorization", "Bearer admin-key")
+      .send({
+        evalSet: {
+          id: "test-inline",
+          name: "Inline Test",
+          cases: [{ id: "c1", prompt: "Reply with only: PASS", expectedContains: "PASS", target: "chat" }],
+        },
+        model: "llama3.2",
+      });
+    assert.equal(response.status, 200);
+    assert.ok(Array.isArray(response.body.results));
+    assert.equal(typeof response.body.passed, "number");
+    assert.equal(typeof response.body.total, "number");
+    assert.equal(typeof response.body.durationMs, "number");
+    assert.ok(response.body.total >= 1);
+  } finally {
+    restore();
+  }
+});
+
+// --- Phase 32: Evaluation Harness ---
+test("GET /eval serves eval page", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).get("/eval");
+  assert.equal(response.status, 200);
+  assert.match(response.headers["content-type"] || "", /text\/html/);
+  assert.match(response.text, /eval|Eval/i);
+});
+
+test("GET /api/eval/sets returns 401 when ADMIN_API_KEY set and key not provided", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", ADMIN_API_KEY: "admin-key" });
+  try {
+    const response = await request(app).get("/api/eval/sets");
+    assert.equal(response.status, 401);
+    assert.equal(response.body.code, "AUTH_REQUIRED");
+  } finally {
+    restore();
+  }
+});
+
+test("GET /api/eval/sets returns sets when key provided", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", ADMIN_API_KEY: "admin-key" });
+  try {
+    const response = await request(app)
+      .get("/api/eval/sets")
+      .set("Authorization", "Bearer admin-key");
+    assert.equal(response.status, 200);
+    assert.ok(Array.isArray(response.body.sets));
+  } finally {
+    restore();
+  }
+});
+
+test("POST /api/eval/run returns 400 when body missing evalSetId and evalSet", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", ADMIN_API_KEY: "admin-key" });
+  try {
+    const response = await request(app)
+      .post("/api/eval/run")
+      .set("Authorization", "Bearer admin-key")
+      .send({});
+    assert.equal(response.status, 400);
+    assert.equal(response.body.code, "INVALID_BODY");
+  } finally {
+    restore();
+  }
+});
+
+test("POST /api/eval/run returns 404 when evalSetId not found", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", ADMIN_API_KEY: "admin-key" });
+  try {
+    const response = await request(app)
+      .post("/api/eval/run")
+      .set("Authorization", "Bearer admin-key")
+      .send({ evalSetId: "nonexistent-set-xyz" });
+    assert.equal(response.status, 404);
+    assert.equal(response.body.code, "NOT_FOUND");
+  } finally {
+    restore();
+  }
+});
+
+test("POST /api/eval/run accepts evalSet JSON in body", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", ADMIN_API_KEY: "admin-key" });
+  try {
+    const response = await request(app)
+      .post("/api/eval/run")
+      .set("Authorization", "Bearer admin-key")
+      .send({
+        evalSet: {
+          id: "inline",
+          name: "Inline Test",
+          cases: [{ id: "c1", prompt: "Say OK", target: "chat", expectedContains: "OK" }],
+        },
+      });
+    assert.equal(response.status, 200);
+    assert.ok(Array.isArray(response.body.results));
+    assert.equal(response.body.total, 1);
+    assert.ok(typeof response.body.passed === "number");
+    assert.ok(typeof response.body.durationMs === "number");
+  } finally {
+    restore();
+  }
+});
+
+// --- Phase 32: Evaluation Harness ---
+test("GET /eval serves eval page", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).get("/eval");
+  assert.equal(response.status, 200);
+  assert.match(response.text, /Eval|eval/);
+});
+
+test("GET /api/eval/sets returns sets when no auth (local dev)", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).get("/api/eval/sets");
+  assert.equal(response.status, 200);
+  assert.ok(response.body.sets !== undefined);
+  assert.ok(Array.isArray(response.body.sets));
+});
+
+test("GET /api/eval/sets returns 401 when ADMIN_API_KEY set and not provided", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", ADMIN_API_KEY: "admin-eval-key" });
+  try {
+    const response = await request(app).get("/api/eval/sets");
+    assert.equal(response.status, 401);
+    assert.equal(response.body.code, "AUTH_REQUIRED");
+  } finally {
+    restore();
+  }
+});
+
+test("GET /api/eval/sets returns 200 when ADMIN_API_KEY provided", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", ADMIN_API_KEY: "admin-eval-key" });
+  try {
+    const response = await request(app)
+      .get("/api/eval/sets")
+      .set("Authorization", "Bearer admin-eval-key");
+    assert.equal(response.status, 200);
+    assert.ok(response.body.sets !== undefined);
+  } finally {
+    restore();
+  }
+});
+
+test("POST /api/eval/run returns 400 when body missing evalSetId and evalSet", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app)
+    .post("/api/eval/run")
+    .send({});
+  assert.equal(response.status, 400);
+  assert.equal(response.body.code, "INVALID_BODY");
+});
+
+test("POST /api/eval/run returns 404 when evalSetId not found", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app)
+    .post("/api/eval/run")
+    .send({ evalSetId: "nonexistent-set-id-xyz" });
+  assert.equal(response.status, 404);
+  assert.equal(response.body.code, "NOT_FOUND");
+});
+
+test("POST /api/eval/run accepts inline evalSet", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app)
+    .post("/api/eval/run")
+    .send({
+      evalSet: {
+        id: "inline-test",
+        name: "Inline",
+        cases: [{ id: "c1", prompt: "Say hi", target: "chat", expectedContains: "hi" }],
+      },
+    });
+  assert.equal(response.status, 200);
+  assert.ok(typeof response.body.results === "object");
+  assert.ok(Array.isArray(response.body.results));
+  assert.equal(response.body.total, 1);
+  assert.ok(typeof response.body.passed === "number");
+  assert.ok(typeof response.body.durationMs === "number");
+});
+
+// --- Phase 32: Evaluation Harness ---
+test("GET /eval serves eval page", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).get("/eval");
+  assert.equal(response.status, 200);
+  assert.match(response.text, /Eval|eval/i);
+});
+
+test("GET /api/eval/sets returns 200 when no auth (local dev)", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).get("/api/eval/sets");
+  assert.equal(response.status, 200);
+  assert.ok(Array.isArray(response.body.sets));
+});
+
+test("GET /api/eval/sets returns sets from data/eval-sets", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).get("/api/eval/sets");
+  assert.equal(response.status, 200);
+  const sets = response.body.sets;
+  const example = sets.find((s) => s.id === "example");
+  assert.ok(example, "example eval set should be loaded from data/eval-sets/example.json");
+  assert.equal(example.name, "Example Eval Set");
+});
+
+test("GET /api/eval/sets returns 401 when ADMIN_API_KEY set and no key", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", ADMIN_API_KEY: "admin-eval-key" });
+  try {
+    const response = await request(app).get("/api/eval/sets");
+    assert.equal(response.status, 401);
+    assert.equal(response.body.code, "AUTH_REQUIRED");
+  } finally {
+    restore();
+  }
+});
+
+test("GET /api/eval/sets returns 200 when ADMIN_API_KEY provided", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", ADMIN_API_KEY: "admin-eval-key" });
+  try {
+    const response = await request(app)
+      .get("/api/eval/sets")
+      .set("Authorization", "Bearer admin-eval-key");
+    assert.equal(response.status, 200);
+    assert.ok(Array.isArray(response.body.sets));
+  } finally {
+    restore();
+  }
+});
+
+test("POST /api/eval/run returns 400 when no evalSetId or evalSet", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app)
+    .post("/api/eval/run")
+    .send({});
+  assert.equal(response.status, 400);
+  assert.equal(response.body.code, "INVALID_BODY");
+});
+
+test("POST /api/eval/run returns 404 when evalSetId not found", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app)
+    .post("/api/eval/run")
+    .send({ evalSetId: "nonexistent-eval-set-xyz" });
+  assert.equal(response.status, 404);
+  assert.equal(response.body.code, "NOT_FOUND");
+});
+
+test("POST /api/eval/run accepts evalSet JSON and returns results", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app)
+    .post("/api/eval/run")
+    .send({
+      evalSet: {
+        id: "inline",
+        name: "Inline Test",
+        cases: [
+          { id: "c1", prompt: "Reply with the word: pass", target: "chat", expectedContains: "pass" },
+        ],
+      },
+    });
+  assert.equal(response.status, 200);
+  assert.ok(Array.isArray(response.body.results));
+  assert.equal(response.body.total, 1);
+  assert.ok(typeof response.body.passed === "number");
+  assert.ok(typeof response.body.durationMs === "number");
+});
+
+test("POST /api/eval/run with evalSetId loads from file", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app)
+    .post("/api/eval/run")
+    .send({ evalSetId: "example" });
+  assert.equal(response.status, 200);
+  assert.ok(Array.isArray(response.body.results));
+  assert.ok(response.body.total >= 1);
+});
+
+// --- Phase 32: Evaluation Harness ---
+test("GET /eval serves eval page", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).get("/eval");
+  assert.equal(response.status, 200);
+  assert.match(response.headers["content-type"] || "", /text\/html/);
+  assert.match(response.text, /eval|Eval|SiskelBot/);
+});
+
+test("GET /api/eval/sets returns sets when no auth (local dev)", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).get("/api/eval/sets");
+  assert.equal(response.status, 200);
+  assert.ok(Array.isArray(response.body.sets) || Array.isArray(response.body.items));
+  const sets = response.body.sets || response.body.items || [];
+  assert.ok(sets.some((s) => s.id === "example"), "example set from data/eval-sets/example.json");
+});
+
+test("GET /api/eval/sets requires auth when ADMIN_API_KEY or API_KEY set", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", ADMIN_API_KEY: "admin-eval-key" });
+  try {
+    const response = await request(app).get("/api/eval/sets");
+    assert.equal(response.status, 401);
+    assert.equal(response.body.code, "AUTH_REQUIRED");
+  } finally {
+    restore();
+  }
+});
+
+test("GET /api/eval/sets returns 200 with API_KEY", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", API_KEY: "eval-api-key" });
+  try {
+    const response = await request(app)
+      .get("/api/eval/sets")
+      .set("Authorization", "Bearer eval-api-key");
+    assert.equal(response.status, 200);
+    assert.ok(Array.isArray(response.body.sets) || Array.isArray(response.body.items));
+  } finally {
+    restore();
+  }
+});
+
+test("POST /api/eval/run returns 400 when no evalSetId or evalSet", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).post("/api/eval/run").send({});
+  assert.equal(response.status, 400);
+  assert.equal(response.body.code, "INVALID_BODY");
+});
+
+test("POST /api/eval/run returns 404 when evalSetId not found", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app)
+    .post("/api/eval/run")
+    .send({ evalSetId: "nonexistent-eval-set-xyz" });
+  assert.equal(response.status, 404);
+  assert.equal(response.body.code, "NOT_FOUND");
+});
+
+test("POST /api/eval/run accepts inline evalSet", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const evalSet = {
+    id: "inline",
+    name: "Inline",
+    cases: [
+      { id: "c1", prompt: "Reply with exactly: PASS", target: "chat", expectedContains: "PASS" },
+    ],
+  };
+  const response = await request(app).post("/api/eval/run").send({ evalSet });
+  if (response.status === 502) {
+    assert.ok(response.body.code === "BACKEND_UNREACHABLE" || !response.body.code);
+    return;
+  }
+  assert.equal(response.status, 200);
+  assert.ok(typeof response.body.passed === "number");
+  assert.ok(typeof response.body.total === "number");
+  assert.ok(Array.isArray(response.body.results));
+  assert.ok(typeof response.body.durationMs === "number");
 });

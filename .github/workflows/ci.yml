@@ -23,3 +23,20 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+  # Phase 39: Smoke tests (server must respond to health/config)
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: Start server
+        run: |
+          BACKEND=ollama npm start &
+          sleep 5
+      - name: Smoke test
+        run: npm run smoke-test:ci

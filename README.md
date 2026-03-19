@@ -101,6 +101,18 @@ When `USER_API_KEYS` (or `data/users.json`) is configured, the app supports per-
 
 See [docs/RUNBOOK.md](docs/RUNBOOK.md) for full Phase 14 details.
 
+## Phase 29: Multi-Tenant Teams & Collaboration
+
+When auth is configured, workspaces can be **personal** or **team**. Team workspaces support invite codes, roles (admin, member, viewer), shared context/recipes/conversations, and an activity feed.
+
+- **Create team:** Workspace panel → Create → Type: Team. Creates workspace and registers you as admin.
+- **Invite:** Select team workspace → Generate invite → Share link (`?join=CODE`) or code.
+- **Join:** Workspace panel → Join → Enter code. Or visit `/?join=CODE` to auto-open join flow.
+- **Members & activity:** For team workspaces, expand Members and Activity in the workspace panel.
+- **Backward compat:** Existing workspaces default to personal; no breaking changes.
+
+See [docs/RUNBOOK.md](docs/RUNBOOK.md) for Phase 29 API and troubleshooting.
+
 ## Phase 19: OAuth & SSO
 
 When OAuth credentials are configured (GitHub and/or Google), users can sign in with "Sign in with GitHub" or "Sign in with Google" in Settings. Session cookie auth takes precedence over API key when both are present. API key auth still works for programmatic access.
@@ -113,6 +125,15 @@ When OAuth credentials are configured (GitHub and/or Google), users can sign in 
 
 When auth is configured, chat is rate-limited per user (RATE_LIMIT_MAX_PER_USER) instead of per IP. Set `QUOTA_TOKENS_PER_WORKSPACE` to cap tokens per workspace per period (default 30 days). When exceeded, chat returns 429 with `QUOTA_EXCEEDED`. Admin override: `QUOTA_ADMIN_USER_IDS=user1,user2`. Response headers: `X-Quota-Limit`, `X-Quota-Remaining`, `X-Quota-Reset`. Usage panel shows quota when endpoint returns it.
 
+## Phase 33: Real-Time Sync & Presence
+
+WebSocket-based live notifications. When recipes complete, schedules run, or plans are created, notifications are pushed instantly to connected clients instead of 30s polling. Fallback to polling when WebSocket is unavailable. Optional presence shows who's online per workspace. Requires Node.js server (not available on Vercel serverless; client falls back to polling).
+
+- **API:** `GET /api/ws-token?workspace=X` (returns token for WebSocket), `GET /api/workspaces/:id/presence` (online users)
+- **Client:** Connects to WebSocket on load; reconnect with exponential backoff; workspace change triggers reconnect
+
+See [docs/RUNBOOK.md](docs/RUNBOOK.md) for Phase 33 details.
+
 ## Phase 25: Admin Dashboard
 
 The admin dashboard at `/admin` provides a server-side UI for users, workspaces, quotas, usage, system health, and recent audit log.
@@ -121,6 +142,24 @@ The admin dashboard at `/admin` provides a server-side UI for users, workspaces,
 - **Sections:** Users (from data/users, oauth-users), Workspaces (with quota), Usage summary, Quota status, System health (backend, integrations), Recent audit log.
 - **Actions:** Override quota for a workspace (set custom token limit or clear override).
 - **Client:** `client/admin.html` — dark theme consistent with main app.
+
+## Phases 35–39: Production Hardening
+
+Five additional phases to productionize the app:
+
+| Phase | Feature | Env vars |
+|-------|----------|----------|
+| **35** | Content Security Policy (CSP) | `ENABLE_CSP=1`, `CSP_ENFORCE=1` (optional) |
+| **36** | Log sanitization | Automatic — API keys/tokens never logged |
+| **37** | Backend circuit breaker | `CIRCUIT_BREAKER_FAILURES`, `CIRCUIT_BREAKER_COOLDOWN_MS` |
+| **38** | Error reporting webhook | `ERROR_REPORT_WEBHOOK_URL` (uncaught errors POSTed) |
+| **39** | Deployment smoke tests | `npm run smoke-test`, `npm run smoke-test:ci --live-only` |
+
+- **CSP:** Report-only by default; set `CSP_ENFORCE=1` after validating.
+- **Circuit breaker:** After 5 consecutive backend failures, returns 503 immediately until cooldown.
+- **Smoke test:** Run `node scripts/smoke-test.js [BASE_URL]` after deploy. CI runs it against a started server.
+
+See [docs/RUNBOOK.md](docs/RUNBOOK.md) for Phase 35–39 details.
 
 ## Production (Vercel)
 
@@ -274,6 +313,17 @@ When **Agent mode** is enabled (Settings → Agent mode), the assistant can use 
 ### API
 
 - Reuses `POST /v1/chat/completions`. When `agentMode: true` is in the body, the server injects tools and runs the agent loop. The response streams the final text after tool execution.
+
+### Agent Swarm (production-grade multi-agent)
+
+When `ENABLE_AGENT_SWARM=1`, enable **Swarm mode** in Settings for multi-specialist orchestration:
+
+- **Specialists:** researcher (search, list context), executor (recipes, execute_step), synthesizer (combines outputs).
+- **Intent detection:** routes the query to eligible specialists automatically.
+- **Parallel execution:** specialists run in parallel; tool calls within agent loop also run in parallel.
+- **Observability:** webhook events `swarm_started`, `swarm_specialist_completed`, `swarm_completed`; response headers `X-Swarm-Agents`, `X-Swarm-Duration-Ms`.
+
+**API:** `POST /v1/chat/completions` with `agentMode: true`, `swarmMode: true`; or `POST /v1/agent/swarm`; or `POST /v1/swarm` (direct tool execution, no LLM synthesis).
 
 See [docs/AGENT_MODE.md](docs/AGENT_MODE.md) for details.
 

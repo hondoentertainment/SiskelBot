@@ -83,3 +83,48 @@ test("userAuth allows when valid x-user-api-key header", async () => {
     restore();
   }
 });
+
+// Phase 30: API key scopes
+test("USER_API_KEYS with scopes format - key:userId:scopes", async () => {
+  _resetForTesting();
+  const { app, restore } = await loadApp({ USER_API_KEYS: "scopedkey:alice:read,embed", BACKEND: "ollama" });
+  try {
+    const res = await request(app)
+      .get("/api/workspaces")
+      .set("Authorization", "Bearer scopedkey");
+    assert.equal(res.status, 200);
+    assert.ok(Array.isArray(res.body.items));
+  } finally {
+    restore();
+  }
+});
+
+test("Keys without scopes default to read,write (backward compat)", async () => {
+  _resetForTesting();
+  const { app, restore } = await loadApp({ USER_API_KEYS: "plainkey: Bob", BACKEND: "ollama" });
+  try {
+    const res = await request(app)
+      .get("/api/workspaces")
+      .set("Authorization", "Bearer plainkey");
+    assert.equal(res.status, 200);
+    assert.ok(Array.isArray(res.body.items));
+  } finally {
+    restore();
+  }
+});
+
+test("resolveKeyInfo returns userId and scopes", async () => {
+  _resetForTesting();
+  const { resolveKeyInfo } = await import("../lib/auth.js");
+  process.env.USER_API_KEYS = "k:u:read";
+  const { _resetForTesting: reset } = await import("../lib/auth.js");
+  reset();
+  try {
+    const info = resolveKeyInfo("k");
+    assert.ok(info);
+    assert.equal(info.userId, "u");
+    assert.deepEqual(info.scopes, ["read"]);
+  } finally {
+    reset();
+  }
+});

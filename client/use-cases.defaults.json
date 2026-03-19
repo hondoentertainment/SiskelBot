@@ -1,0 +1,78 @@
+{
+  "useCases": [
+    {
+      "id": "uc-coding",
+      "name": "Coding",
+      "profileId": "profile-coding",
+      "agentMode": true,
+      "swarmMode": false,
+      "useRag": true,
+      "useSemantic": false,
+      "temperature": 0.7,
+      "maxTokens": 2048,
+      "description": "Code, debug, and refactor with agent tools. RAG for context."
+    },
+    {
+      "id": "uc-deploy",
+      "name": "Deploy & CI/CD",
+      "profileId": "profile-coding",
+      "agentMode": true,
+      "swarmMode": false,
+      "useRag": false,
+      "useSemantic": false,
+      "temperature": 0.5,
+      "maxTokens": 1024,
+      "description": "DevOps, CI/CD, and deployment workflows. Agent mode for automation."
+    },
+    {
+      "id": "uc-research",
+      "name": "Research",
+      "profileId": "profile-detailed-research",
+      "agentMode": false,
+      "swarmMode": false,
+      "useRag": true,
+      "useSemantic": true,
+      "temperature": 0.6,
+      "maxTokens": 4096,
+      "description": "Deep research with semantic search over context. No agent."
+    },
+    {
+      "id": "uc-content",
+      "name": "Content & Copy",
+      "templateId": "content",
+      "model": "",
+      "systemPrompt": "You are a content and copywriting assistant. Help with drafting, editing, and tone adjustment.",
+      "agentMode": false,
+      "swarmMode": false,
+      "useRag": false,
+      "useSemantic": false,
+      "temperature": 0.8,
+      "maxTokens": 2048,
+      "description": "Writing, editing, and tone tuning."
+    },
+    {
+      "id": "uc-ops",
+      "name": "Quick ops",
+      "profileId": "profile-quick-ops",
+      "agentMode": true,
+      "swarmMode": false,
+      "useRag": false,
+      "useSemantic": false,
+      "temperature": 0.4,
+      "maxTokens": 1024,
+      "description": "Troubleshooting and runbooks. Agent for execute. Low temp."
+    },
+    {
+      "id": "uc-swarm",
+      "name": "Swarm (complex)",
+      "profileId": "profile-swarm",
+      "agentMode": true,
+      "swarmMode": true,
+      "useRag": true,
+      "useSemantic": true,
+      "temperature": 0.6,
+      "maxTokens": 4096,
+      "description": "Multi-agent swarm for complex tasks. RAG + semantic."
+    }
+  ]
+}

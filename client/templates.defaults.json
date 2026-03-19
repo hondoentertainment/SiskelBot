@@ -29,6 +29,12 @@
       "name": "Ops",
       "systemPrompt": "You are an ops assistant. Help with troubleshooting, monitoring, runbooks, and quick operational tasks.",
       "model": null
+    },
+    {
+      "id": "swarm",
+      "name": "Swarm",
+      "systemPrompt": "You are a multi-agent coordinator. Break complex tasks into subtasks, delegate to specialists when useful, and synthesize results. Best used with Swarm mode enabled in Settings.",
+      "model": null
     }
   ],
   "profiles": [
@@ -52,6 +58,13 @@
       "templateId": "research",
       "model": "",
       "systemPrompt": "You are a research assistant. Be thorough, cite sources when relevant, and provide structured analysis."
+    },
+    {
+      "id": "profile-swarm",
+      "name": "Swarm",
+      "templateId": "swarm",
+      "model": "",
+      "systemPrompt": "You coordinate multi-agent collaboration. Break complex tasks into subtasks, delegate to specialists, and synthesize results. Best used with Swarm mode enabled."
     }
   ]
 }

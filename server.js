@@ -1,8 +1,10 @@
 import "dotenv/config";
+import { createServer } from "http";
 import express from "express";
 import session from "express-session";
 import rateLimit from "express-rate-limit";
 import cors from "cors";
+import helmet from "helmet";
 import { randomUUID } from "crypto";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -16,7 +18,7 @@ import { loadPlugins } from "./lib/plugins-loader.js";
 import { getToolsSchema, runTool } from "./lib/agent-tools.js";
 import * as storage from "./lib/storage.js";
 import * as scheduleStore from "./lib/schedules.js";
-import { start as schedulerStart, refresh as schedulerRefresh, runRecipeNow, runDueJobsVercel } from "./lib/scheduler.js";
+import { start as schedulerStart, stop as schedulerStop, refresh as schedulerRefresh, runRecipeNow, runDueJobsVercel } from "./lib/scheduler.js";
 import { userAuth, isAuthConfigured } from "./lib/auth.js";
 import { recordUsage, getSummary, getTotalTokensInWindow, getRecordsForPeriod, estimate } from "./lib/usage-tracker.js";
 import { getDashboard, exportToCsv, exportToJson } from "./lib/analytics.js";
@@ -26,9 +28,35 @@ import { isQuotaConfigured, checkQuota, getWorkspaceQuota, getWorkspaceTokensUse
 import { createBackup, listBackups, restoreBackup } from "./lib/backup.js";
 import { adminAuth } from "./lib/admin-auth.js";
 import { listAllUsers, listAllWorkspaces, getRecentAuditLog } from "./lib/admin-data.js";
+import { requireScope } from "./lib/scope-middleware.js";
+import { logKeyUsage } from "./lib/api-key-audit.js";
+import { listKeysForAdmin, addKey, revokeKey } from "./lib/api-keys.js";
+import {
+  canAccessWorkspace,
+  resolveStorageUserId,
+  createInviteCode,
+  joinByInviteCode,
+  getWorkspaceMembers,
+  getWorkspaceActivity,
+  logActivity,
+  getWorkspaceOwner,
+} from "./lib/teams.js";
 import openApiSpec from "./lib/openapi-spec.js";
+import { runEvalSet } from "./lib/eval-runner.js";
+import { listEvalSets, loadEvalSet } from "./lib/eval-sets.js";
+import { createToken, attachToServer, getOnlineUsers, closeServer } from "./lib/realtime.js";
+import { sanitizeForLog } from "./lib/log-sanitizer.js";
+import { execute as circuitExecute } from "./lib/circuit-breaker.js";
+import { initErrorReporting, reportError } from "./lib/error-reporting.js";
+import { runSwarm, runSwarmLegacy, getSpecialists } from "./lib/swarm.js";
+import { recordRequest, recordSwarm, renderPrometheus, isEnabled as metricsEnabled } from "./lib/metrics.js";
+import { fetchWithTimeoutAndRetry } from "./lib/backend-fetch.js";
+import compression from "compression";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Phase 38: Error reporting webhook (production)
+initErrorReporting();
 
 // Phase 17: Load plugins at startup (plugins/config.json or PLUGINS_PATH)
 loadPlugins();
@@ -39,9 +67,11 @@ const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.API_KEY; // optional; protects /v1/chat/completions when set
+const API_KEY_SCOPES = (process.env.API_KEY_SCOPES || "read,write").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
 const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS) || 60_000;
 const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX) || 60;
 const RATE_LIMIT_MAX_PER_USER = Number(process.env.RATE_LIMIT_MAX_PER_USER) || RATE_LIMIT_MAX;
+const RATE_LIMIT_PER_KEY = process.env.RATE_LIMIT_PER_KEY ? Number(process.env.RATE_LIMIT_PER_KEY) : null;
 
 // Determine backend: explicit BACKEND env, or infer (default: ollama for local dev)
 function getBackend() {
@@ -67,12 +97,37 @@ if (IS_PRODUCTION && !API_KEY) {
   );
 }
 
+// Phase 34: Startup config validation
+function validateStartupConfig() {
+  const requiredMissing = [];
+  if (BACKEND === "openai" && !OPENAI_API_KEY) {
+    requiredMissing.push("OPENAI_API_KEY (required when BACKEND=openai)");
+  }
+  if (IS_PRODUCTION && requiredMissing.length > 0) {
+    console.error("[startup] Required env vars missing:", requiredMissing.join("; "));
+    process.exit(1);
+  }
+  // Optional vars - log warnings
+  if (isOAuthConfigured() && !process.env.SESSION_SECRET) {
+    console.warn("[startup] OAuth configured but SESSION_SECRET not set.");
+  }
+  if (IS_PRODUCTION && process.env.ALLOW_RECIPE_STEP_EXECUTION === "1" && !process.env.VERCEL_TOKEN) {
+    console.warn("[startup] Recipe execution enabled; VERCEL_TOKEN recommended for deploy steps.");
+  }
+}
+validateStartupConfig();
+
 // Model presets per backend (for /config)
 const MODEL_PRESETS = {
   ollama: ["llama3.2", "mistral", "llama2", "codellama"],
   vllm: ["meta-llama/Llama-3-8B-Instruct", "mistralai/Mistral-7B-Instruct-v0.2"],
   openai: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
 };
+
+// Phase 37: Backend fetch with circuit breaker; Phase 41: timeout and retry
+async function backendFetch(url, options, backend = BACKEND) {
+  return circuitExecute(backend, () => fetchWithTimeoutAndRetry(url, options, backend));
+}
 
 function buildProxyConfig(backend) {
   switch (backend) {
@@ -109,8 +164,57 @@ function buildProxyConfig(backend) {
 }
 
 const app = express();
-app.use(cors({ credentials: true, origin: true }));
+// Phase 42: Granular CORS - use CORS_ORIGINS when set (comma-separated)
+const CORS_ORIGINS = process.env.CORS_ORIGINS?.trim();
+const corsOpts = CORS_ORIGINS
+  ? {
+      origin: CORS_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean),
+      credentials: process.env.CORS_ALLOW_CREDENTIALS !== "0",
+    }
+  : { credentials: true, origin: true };
+app.use(cors(corsOpts));
+// Phase 44: Response compression (JSON APIs; exclude streaming)
+const ENABLE_COMPRESSION = process.env.ENABLE_COMPRESSION !== "0" && (IS_PRODUCTION || process.env.ENABLE_COMPRESSION === "1");
+if (ENABLE_COMPRESSION) {
+  app.use(
+    compression({ filter: (req, res) => !req.path?.startsWith("/v1/chat/completions") && !req.path?.startsWith("/v1/agent/swarm") })
+  );
+}
 app.use(express.json());
+
+// Phase 34: Request ID for all responses (k8s/tracing)
+app.use((req, res, next) => {
+  req.requestId = req.headers["x-request-id"] || randomUUID();
+  res.setHeader("X-Request-Id", req.requestId);
+  next();
+});
+
+// Phase 34: Security headers (configurable; disabled for dev if DISABLE_SECURITY_HEADERS=1)
+// Phase 35: CSP in production when ENABLE_CSP=1; report-only by default to avoid breaking SPA
+const DISABLE_SECURITY_HEADERS = process.env.DISABLE_SECURITY_HEADERS === "1";
+const ENABLE_CSP = process.env.ENABLE_CSP === "1" && IS_PRODUCTION;
+if (!DISABLE_SECURITY_HEADERS) {
+  const helmetOpts = {
+    contentSecurityPolicy: false,
+    strictTransportSecurity: IS_PRODUCTION ? { maxAge: 31536000, includeSubDomains: true } : false,
+  };
+  if (ENABLE_CSP) {
+    helmetOpts.contentSecurityPolicy = {
+      reportOnly: process.env.CSP_ENFORCE !== "1",
+      directives: {
+        "default-src": ["'self'"],
+        "script-src": ["'self'", "https://cdn.jsdelivr.net", "'unsafe-inline'"],
+        "style-src": ["'self'", "https://cdn.jsdelivr.net", "'unsafe-inline'"],
+        "img-src": ["'self'", "data:", "https:"],
+        "connect-src": ["'self'", "https://api.openai.com", "wss:", "ws:"],
+        "font-src": ["'self'", "https://cdn.jsdelivr.net", "https:"],
+        "frame-ancestors": ["'self'"],
+        "base-uri": ["'self'"],
+      },
+    };
+  }
+  app.use(helmet(helmetOpts));
+}
 
 // Phase 19: Session middleware (must run before auth; required when OAuth configured)
 const SESSION_SECRET =
@@ -145,6 +249,22 @@ if (isOAuthConfigured()) {
 
 // Rate limit for /v1/chat/completions
 // Phase 21: When auth configured, rate limit by userId; else by IP
+// Phase 30: When RATE_LIMIT_PER_KEY set, additional per-key limit for API key requests
+const perKeyChatRateLimiter =
+  RATE_LIMIT_PER_KEY != null
+    ? rateLimit({
+        windowMs: RATE_LIMIT_WINDOW_MS,
+        max: RATE_LIMIT_PER_KEY,
+        standardHeaders: true,
+        legacyHeaders: false,
+        skip: (req) => !req.apiKeyId,
+        keyGenerator: (req) => `key:${req.apiKeyId || "unknown"}`,
+        handler: (req, res) => {
+          apiError(res, 429, "RATE_LIMITED", "Too many requests per API key", "Reduce request rate or increase RATE_LIMIT_PER_KEY.");
+        },
+      })
+    : (req, res, next) => next();
+
 const chatRateLimiter = rateLimit({
   windowMs: RATE_LIMIT_WINDOW_MS,
   max: isAuthConfigured() ? RATE_LIMIT_MAX_PER_USER : RATE_LIMIT_MAX,
@@ -222,17 +342,52 @@ function setQuotaHeaders(res, workspace, userId) {
   }
 }
 
-// Optional API key auth for /v1/chat/completions
+// Optional API key auth for routes that accept deployment key only (schedules, tasks/plan).
+// Phase 30: When API_KEY matches, sets req.apiKeyScopes (from API_KEY_SCOPES), req.apiKeyId="deployment"
 function apiKeyAuth(req, res, next) {
   if (!API_KEY) return next();
   const auth = req.headers.authorization;
-  const bearer = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
+  const bearer = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : null;
   const xKey = req.headers["x-api-key"];
   const key = bearer || xKey;
   if (!key || key !== API_KEY) {
     return apiError(res, 401, "AUTH_REQUIRED", "Unauthorized", "Use Authorization: Bearer <key> or x-api-key header.");
   }
+  req.authenticatedViaDeploymentKey = true;
+  req.apiKeyScopes = API_KEY_SCOPES.length ? API_KEY_SCOPES : ["read", "write"];
+  req.apiKeyId = "deployment";
   next();
+}
+
+// Phase 30: Combined auth for chat - accepts API_KEY (deployment) or user key. Pass to userAuth for user key validation.
+function chatAuth(req, res, next) {
+  if (!API_KEY) return userAuth(req, res, next);
+  const bearer = req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7).trim() : null;
+  const xApiKey = req.headers["x-api-key"];
+  const xUserKey = req.headers["x-user-api-key"];
+  const key = xApiKey || xUserKey || bearer;
+  if (!key) return apiError(res, 401, "AUTH_REQUIRED", "Unauthorized", "Use Authorization: Bearer <key>, x-api-key, or x-user-api-key header.");
+  if (key === API_KEY) {
+    req.authenticatedViaDeploymentKey = true;
+    req.apiKeyScopes = API_KEY_SCOPES.length ? API_KEY_SCOPES : ["read", "write"];
+    req.apiKeyId = "deployment";
+    req.userId = "anonymous";
+    return next();
+  }
+  return userAuth(req, res, next);
+}
+
+// Phase 32: Eval auth - ADMIN_API_KEY or API_KEY
+function evalAuth(req, res, next) {
+  const adminKey = process.env.ADMIN_API_KEY;
+  const apiKey = API_KEY;
+  if (!adminKey && !apiKey) return next(); // local dev: no keys = allow
+  const bearer = req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7).trim() : null;
+  const xKey = req.headers["x-api-key"] || req.headers["x-admin-api-key"];
+  const key = bearer || xKey;
+  if (!key) return apiError(res, 401, "AUTH_REQUIRED", "Eval endpoints require ADMIN_API_KEY or API_KEY", "Use Authorization: Bearer <key> or x-api-key header.");
+  if ((adminKey && key === adminKey) || (apiKey && key === apiKey)) return next();
+  return apiError(res, 401, "AUTH_REQUIRED", "Invalid key", "Use ADMIN_API_KEY or API_KEY.");
 }
 
 // Phase 24: Backup admin auth - ADMIN_API_KEY, BACKUP_ADMIN_KEY, or userId in QUOTA_ADMIN_USER_IDS
@@ -251,21 +406,25 @@ function backupAdminAuth(req, res, next) {
   });
 }
 
-// Structured request logging
+// Phase 34: Structured request logging (X-Request-Id from middleware; JSON in production)
+// Phase 36: Log sanitization - never log secrets; path/headers sanitized
 function logRequest(req, res, next) {
-  const requestId = randomUUID();
-  req.requestId = requestId;
+  const requestId = req.requestId || randomUUID();
   const start = Date.now();
   res.on("finish", () => {
-    const entry = {
+    const durationMs = Date.now() - start;
+    const entry = sanitizeForLog({
       timestamp: new Date().toISOString(),
       requestId,
       method: req.method,
       path: req.path,
       status: res.statusCode,
-      durationMs: Date.now() - start,
-    };
-    console.log(JSON.stringify(entry));
+      durationMs,
+    });
+    const msg = IS_PRODUCTION ? JSON.stringify(entry) : `${entry.method} ${entry.path} ${entry.status} ${entry.durationMs}ms`;
+    console.log(msg);
+    if (req.apiKeyId) logKeyUsage({ keyId: req.apiKeyId, path: req.path, method: req.method });
+    if (metricsEnabled()) recordRequest(req.method, req.path, res.statusCode, durationMs);
   });
   next();
 }
@@ -297,6 +456,7 @@ app.get("/config", (req, res) => {
     monitoringEnabled: isMonitoringEnabled(),
     allowRecipeStepExecution: process.env.ALLOW_RECIPE_STEP_EXECUTION === "1",
     scheduleEnabled: process.env.ENABLE_SCHEDULED_RECIPES === "1",
+    swarmEnabled: process.env.ENABLE_AGENT_SWARM === "1",
     authRequired: isAuthConfigured(),
     oauthProviders,
   };
@@ -338,6 +498,7 @@ const USAGE_ALERT_TOKENS = process.env.USAGE_ALERT_TOKENS ? Number(process.env.U
 // Phase 15: Agent mode
 const MAX_AGENT_ITERATIONS = Number(process.env.MAX_AGENT_ITERATIONS) || 5;
 const ALLOW_RECIPE_STEP_EXECUTION = process.env.ALLOW_RECIPE_STEP_EXECUTION === "1";
+const ENABLE_AGENT_SWARM = process.env.ENABLE_AGENT_SWARM === "1";
 
 async function runAgentLoop(req, res, config, model) {
   const url = `${config.baseUrl}${config.path}`;
@@ -370,7 +531,7 @@ async function runAgentLoop(req, res, config, model) {
     iteration++;
     res.setHeader("X-Agent-Iteration", String(iteration));
 
-    const response = await fetch(url, {
+    const response = await backendFetch(url, {
       method: "POST",
       headers: config.headers,
       body: JSON.stringify({ ...bodyBase, messages }),
@@ -399,20 +560,32 @@ async function runAgentLoop(req, res, config, model) {
     }
 
     messages.push(msg);
-    for (const tc of toolCalls) {
-      const name = tc.function?.name;
-      const argsStr = tc.function?.arguments || "{}";
-      let args = {};
-      try {
-        args = JSON.parse(argsStr);
-      } catch (_) {
-        args = {};
-      }
-      const result = await runTool(name, args, toolCtx);
+    const results = await Promise.all(
+      toolCalls.map(async (tc) => {
+        const name = tc.function?.name;
+        const argsStr = tc.function?.arguments || "{}";
+        let args = {};
+        try {
+          args = JSON.parse(argsStr);
+        } catch (_) {
+          args = {};
+        }
+        try {
+          const result = await runTool(name, args, toolCtx);
+          return { tool_call_id: tc.id, content: result.content };
+        } catch (err) {
+          return {
+            tool_call_id: tc.id,
+            content: JSON.stringify({ ok: false, error: String(err?.message || err) }),
+          };
+        }
+      })
+    );
+    for (const r of results) {
       messages.push({
         role: "tool",
-        tool_call_id: tc.id,
-        content: result.content,
+        tool_call_id: r.tool_call_id,
+        content: r.content,
       });
     }
   }
@@ -424,7 +597,7 @@ async function runAgentLoop(req, res, config, model) {
   return { content: lastContent, iteration };
 }
 
-app.post("/v1/chat/completions", apiKeyAuth, userAuth, chatRateLimiter, logRequest, async (req, res) => {
+app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRateLimiter, chatRateLimiter, logRequest, async (req, res) => {
   try {
     const workspace = req.body?.agentOptions?.workspace || "default";
     const userId = req.userId || null;
@@ -449,14 +622,24 @@ app.post("/v1/chat/completions", apiKeyAuth, userAuth, chatRateLimiter, logReque
     const url = `${config.baseUrl}${config.path}`;
     const model = req.body?.model || MODEL_PRESETS[BACKEND]?.[0] || "unknown";
     const agentMode = req.body?.agentMode === true;
+    const swarmMode = req.body?.swarmMode === true;
     const hasTools = Array.isArray(req.body?.tools) && req.body.tools.length > 0;
 
-    if (agentMode || hasTools) {
+    if (agentMode || swarmMode || hasTools) {
       const tools = hasTools ? req.body.tools : getToolsSchema();
       const bodyWithTools = { ...req.body, tools, tool_choice: req.body?.tool_choice ?? "auto" };
       if (!hasTools) req.body = bodyWithTools;
 
-      const { content, iteration } = await runAgentLoop(req, res, config, model);
+      let content, iteration;
+      if (agentMode && swarmMode && ENABLE_AGENT_SWARM) {
+        ({ content, iteration } = await runSwarm(req, res, config, model, {
+          backendFetch,
+          maxIterations: MAX_AGENT_ITERATIONS,
+          allowRecipeExecution: ALLOW_RECIPE_STEP_EXECUTION,
+        }));
+      } else {
+        ({ content, iteration } = await runAgentLoop(req, res, config, model));
+      }
 
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
@@ -482,11 +665,23 @@ app.post("/v1/chat/completions", apiKeyAuth, userAuth, chatRateLimiter, logReque
 
     const inputTokens = estimate.inputFromMessages(req.body?.messages || []);
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: config.headers,
-      body: JSON.stringify({ ...req.body, stream: true }),
-    });
+    let response;
+    try {
+      response = await backendFetch(url, {
+        method: "POST",
+        headers: config.headers,
+        body: JSON.stringify({ ...req.body, stream: true }),
+      });
+    } catch (fetchErr) {
+      if (fetchErr.code === "CIRCUIT_OPEN") {
+        return res.status(503).json({
+          error: "Backend temporarily unavailable",
+          code: "CIRCUIT_OPEN",
+          hint: "Retry after a few seconds.",
+        });
+      }
+      throw fetchErr;
+    }
 
     if (!response.ok) {
       const err = await response.text();
@@ -564,6 +759,13 @@ app.post("/v1/chat/completions", apiKeyAuth, userAuth, chatRateLimiter, logReque
 
     res.end();
   } catch (err) {
+    if (err.code === "CIRCUIT_OPEN") {
+      return res.status(503).json({
+        error: "Backend temporarily unavailable",
+        code: "CIRCUIT_OPEN",
+        hint: "Retry after a few seconds.",
+      });
+    }
     console.error("Proxy error:", err.message);
     const hint =
       BACKEND === "vllm"
@@ -639,6 +841,114 @@ const taskPlanRateLimiter = rateLimit({
   max: RATE_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
+});
+
+// POST /v1/agent/swarm: same as chat completions with agentMode+swarmMode (forces swarm path)
+app.post("/v1/agent/swarm", chatAuth, requireScope("write"), perKeyChatRateLimiter, chatRateLimiter, logRequest, async (req, res) => {
+  try {
+    if (!ENABLE_AGENT_SWARM) {
+      return res.status(400).json({
+        error: "Swarm mode is disabled",
+        code: "SWARM_DISABLED",
+        hint: "Set ENABLE_AGENT_SWARM=1 to enable.",
+      });
+    }
+    req.body = req.body || {};
+    req.body.agentMode = true;
+    req.body.swarmMode = true;
+    if (!req.body.agentOptions) req.body.agentOptions = {};
+    const workspace = req.body.agentOptions.workspace || "default";
+    const userId = req.userId || null;
+
+    if (isQuotaConfigured()) {
+      const inputTokens = estimate.inputFromMessages(req.body?.messages || []);
+      const { allowed, quota } = checkQuota(workspace, userId, inputTokens + 512);
+      if (!allowed && quota) {
+        res.setHeader("X-Quota-Limit", String(quota.limit));
+        res.setHeader("X-Quota-Remaining", "0");
+        res.setHeader("X-Quota-Reset", String(quota.resetAt));
+        return res.status(429).json({
+          error: "Workspace token quota exceeded",
+          code: "QUOTA_EXCEEDED",
+        });
+      }
+    }
+
+    const config = buildProxyConfig(BACKEND);
+    const model = req.body?.model || MODEL_PRESETS[BACKEND]?.[0] || "unknown";
+    const { content, iteration } = await runSwarm(req, res, config, model, {
+      backendFetch,
+      maxIterations: MAX_AGENT_ITERATIONS,
+      allowRecipeExecution: ALLOW_RECIPE_STEP_EXECUTION,
+    });
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Agent-Iteration", String(iteration));
+    setQuotaHeaders(res, workspace, userId);
+    res.flushHeaders();
+
+    const inputTokens = estimate.inputFromMessages(req.body?.messages || []);
+    const outputTokens = estimate.outputFromChars(content?.length || 0);
+    await recordUsage({
+      timestamp: new Date().toISOString(),
+      model,
+      inputTokens,
+      outputTokens,
+      backend: BACKEND,
+      workspace,
+      userId,
+    }).catch(() => {});
+
+    const chunk = JSON.stringify({
+      choices: [{ delta: { content }, index: 0, finish_reason: "stop" }],
+    });
+    res.write(`data: ${chunk}\n\n`);
+    res.write("data: [DONE]\n\n");
+    res.end();
+    emitEvent("message_sent", { content: content?.slice(0, 500), model, iteration }, { workspaceId: workspace, userId });
+  } catch (err) {
+    reportError(err);
+    res.status(500).json({
+      error: "Swarm execution failed",
+      code: "SWARM_ERROR",
+      hint: err?.message || "Internal error",
+    });
+  }
+});
+
+app.post("/v1/swarm", chatAuth, requireScope("write"), perKeyChatRateLimiter, chatRateLimiter, logRequest, async (req, res) => {
+  try {
+    const query = typeof req.body?.query === "string" ? req.body.query.trim() : "";
+    const specialists = Array.isArray(req.body?.specialists)
+      ? req.body.specialists.filter((s) => typeof s === "string" && s.trim()).map((s) => s.trim())
+      : getSpecialists().map((s) => s.name).filter((n) => n !== "synthesizer");
+    const workspace = req.body?.workspace || "default";
+    const allowExecution = req.body?.allowExecution === true;
+
+    if (!specialists.length) {
+      return res.status(400).json({ error: "No valid specialists specified", code: "INVALID_SPECIALISTS" });
+    }
+
+    const { aggregation, metrics } = await runSwarmLegacy(specialists, query, {
+      workspace,
+      allowExecution,
+      projectDir: process.env.PROJECT_DIR || process.cwd(),
+      vercelToken: process.env.VERCEL_TOKEN,
+    });
+
+    res.setHeader("X-Swarm-Agents", String(metrics.agentCount));
+    res.setHeader("X-Swarm-Duration-Ms", String(metrics.durationMs));
+    res.json({ aggregation, query, specialists });
+  } catch (err) {
+    reportError(err);
+    res.status(500).json({
+      error: "Swarm execution failed",
+      code: "SWARM_ERROR",
+      hint: err?.message || "Internal error",
+    });
+  }
 });
 
 app.post("/v1/tasks/plan", taskPlanRateLimiter, apiKeyAuth, logRequest, async (req, res) => {
@@ -807,6 +1117,37 @@ async function runHealthChecks() {
     backends,
   };
 }
+
+// Phase 40: Prometheus metrics (when ENABLE_METRICS=1)
+if (metricsEnabled()) {
+  app.get("/metrics", (req, res) => {
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.send(renderPrometheus());
+  });
+}
+
+// Phase 34: Liveness probe - process is alive (no external deps). For k8s/container orchestration.
+app.get("/health/live", (req, res) => {
+  res.status(200).json({ ok: true, status: "alive" });
+});
+
+// Phase 34: Readiness probe - app can accept traffic (storage + backend reachable). For k8s/container orchestration.
+app.get("/health/ready", async (req, res) => {
+  try {
+    storage.listWorkspaces("anonymous");
+  } catch (e) {
+    return res.status(503).json({ ok: false, status: "not_ready", reason: "storage_unavailable", error: e.message });
+  }
+  try {
+    const data = await runHealthChecks();
+    if (!data.reachable) {
+      return res.status(503).json({ ok: false, status: "not_ready", reason: "backend_unreachable", backend: BACKEND });
+    }
+    res.status(200).json({ ok: true, status: "ready", backend: BACKEND });
+  } catch (e) {
+    res.status(503).json({ ok: false, status: "not_ready", reason: "health_check_failed", error: e.message });
+  }
+});
 
 app.get("/health", async (req, res) => {
   const now = Date.now();
@@ -1276,7 +1617,7 @@ const KNOWLEDGE_MAX_DOC_BYTES = Number(process.env.KNOWLEDGE_MAX_DOC_BYTES) || 1
 const sanitizeWorkspace = storage.sanitizeWorkspace;
 
 // Phase 28: POST /api/embeddings - embed text(s) via OpenAI text-embedding-3-small
-apiRoute("post", "/embeddings", embeddingsRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/embeddings", embeddingsRateLimiter, chatAuth, requireScope("embed"), logRequest, async (req, res) => {
   try {
     if (!embeddingsAvailable()) {
       return apiError(res, 503, "EMBEDDINGS_UNAVAILABLE", "Embeddings API unavailable", "Set OPENAI_API_KEY to enable embeddings.");
@@ -1393,10 +1734,79 @@ apiRoute("get", "/workspaces", storageRateLimiter, userAuth, logRequest, async (
 apiRoute("post", "/workspaces", storageRateLimiter, userAuth, logRequest, async (req, res) => {
   try {
     const name = typeof req.body?.name === "string" ? req.body.name.trim().slice(0, 100) : "Workspace";
-    const ws = await storage.createWorkspace(req.userId, name);
+    const type = req.body?.type === "team" ? "team" : "personal";
+    const ws = await storage.createWorkspace(req.userId, name, type);
     res.status(201).json(ws);
   } catch (err) {
     console.error("Workspace create error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+// --- Phase 29: Team workspaces - invite, join, members, activity ---
+apiRoute("post", "/workspaces/join", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+  try {
+    const code = req.body?.code?.trim?.();
+    if (!code) return apiError(res, 400, "INVALID_INPUT", "code required", "Send { code: string }.");
+    const result = joinByInviteCode(code, req.userId);
+    if (!result.ok) {
+      const status = result.error?.includes("Invalid") || result.error?.includes("expired") ? 400 : 409;
+      return res.status(status).json({ error: result.error, code: "JOIN_FAILED" });
+    }
+    const members = getWorkspaceMembers(result.workspaceId);
+    const ownerId = members?.ownerId || req.userId;
+    const ws = storage.getWorkspaceById(ownerId, result.workspaceId) || { id: result.workspaceId, name: result.workspaceName || "Team Workspace" };
+    res.status(200).json({ ok: true, workspace: { id: result.workspaceId, name: ws.name || result.workspaceName } });
+  } catch (err) {
+    console.error("Workspace join error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("post", "/workspaces/:id/invite", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+  try {
+    const workspaceId = req.params.id;
+    const access = canAccessWorkspace(workspaceId, req.userId);
+    if (!access.allowed || (access.role !== "admin" && access.role !== "member")) {
+      return apiError(res, 403, "FORBIDDEN", "Admin or member role required to create invites", null);
+    }
+    const ownerId = access.ownerId || req.userId;
+    const opts = {};
+    if (req.body?.expiresInHours != null) opts.expiresInHours = Number(req.body.expiresInHours);
+    if (req.body?.maxUses != null) opts.maxUses = Number(req.body.maxUses);
+    const inv = createInviteCode(workspaceId, req.userId, opts);
+    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get("host") || "localhost"}`;
+    res.status(201).json({ code: inv.code, inviteLink: `${baseUrl}?join=${inv.code}`, expiresAt: inv.expiresAt, maxUses: inv.maxUses });
+  } catch (err) {
+    console.error("Invite create error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("get", "/workspaces/:id/members", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+  try {
+    const workspaceId = req.params.id;
+    const access = canAccessWorkspace(workspaceId, req.userId);
+    if (!access.allowed) return apiError(res, 403, "FORBIDDEN", "Access denied", null);
+    const entry = getWorkspaceMembers(workspaceId);
+    if (!entry) return res.json({ ownerId: null, members: [] });
+    res.json({ ownerId: entry.ownerId, members: entry.members || [] });
+  } catch (err) {
+    console.error("Members list error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("get", "/workspaces/:id/activity", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+  try {
+    const workspaceId = req.params.id;
+    const access = canAccessWorkspace(workspaceId, req.userId);
+    if (!access.allowed) return apiError(res, 403, "FORBIDDEN", "Access denied", null);
+    const limit = Math.min(100, Math.max(1, Number(req.query?.limit) || 50));
+    const items = getWorkspaceActivity(workspaceId, limit);
+    res.json({ items });
+  } catch (err) {
+    console.error("Activity list error:", err.message);
     return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
   }
 });
@@ -1430,6 +1840,7 @@ apiRoute("post", "/context", storageRateLimiter, logRequest, async (req, res) =>
     };
     const merged = await storage.mergeItems("context", workspace, [doc]);
     const item = merged.find((x) => x.id === id) || doc;
+    logActivity(workspace, "context_added", req.userId || "anonymous", { title: doc.title, id: doc.id });
     res.status(201).json(item);
   } catch (err) {
     console.error("Storage context add error:", err.message);
@@ -1522,6 +1933,7 @@ apiRoute("post", "/recipes", storageRateLimiter, logRequest, async (req, res) =>
     };
     const merged = await storage.mergeItems("recipes", workspace, [item]);
     const out = merged.find((x) => x.id === id) || item;
+    logActivity(workspace, "recipe_added", req.userId || "anonymous", { recipeName: item.name, id: out.id });
     res.status(201).json(out);
   } catch (err) {
     console.error("Storage recipes add error:", err.message);
@@ -1747,6 +2159,7 @@ apiRoute("post", "/conversations", storageRateLimiter, logRequest, async (req, r
     };
     const merged = await storage.mergeItems("conversations", workspace, [item]);
     const out = merged.find((x) => x.id === convId) || item;
+    logActivity(workspace, "conversation_created", req.userId || "anonymous", { title: item.title, id: out.id });
     res.status(201).json(out);
   } catch (err) {
     console.error("Storage conversations add error:", err.message);
@@ -1960,6 +2373,31 @@ apiRoute("delete", "/webhooks/:id", ...webhooksHandlers, async (req, res) => {
     res.status(204).send();
   } catch (err) {
     return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/WEBHOOKS.md.");
+  }
+});
+
+// --- Phase 33: Real-Time Sync - WebSocket token & presence ---
+apiRoute("get", "/ws-token", ...webhooksHandlers, (req, res) => {
+  try {
+    const workspace = sanitizeWorkspace(req.query?.workspace);
+    const userId = req.userId ?? "anonymous";
+    const { token, url } = createToken(userId, workspace);
+    res.json({ token, url });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("get", "/workspaces/:id/presence", storageRateLimiter, userAuth, logRequest, (req, res) => {
+  try {
+    const workspaceId = req.params.id;
+    const access = canAccessWorkspace(workspaceId, req.userId);
+    const isTeamWorkspace = !!getWorkspaceMembers(workspaceId);
+    if (!access.allowed && isTeamWorkspace) return apiError(res, 403, "FORBIDDEN", "Access denied", null);
+    const online = getOnlineUsers(workspaceId);
+    res.json({ online });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
   }
 });
 
@@ -2288,6 +2726,57 @@ app.get("/api/docs", (req, res) => {
 </html>`);
 });
 
+// --- Phase 32: Evaluation Harness ---
+const evalRateLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    apiError(res, 429, "RATE_LIMITED", "Too many eval runs", "Limit: 5 runs per minute. Wait before retrying.");
+  },
+});
+
+apiRoute("get", "/eval/sets", evalRateLimiter, evalAuth, logRequest, (req, res) => {
+  try {
+    const sets = listEvalSets();
+    res.json({ sets });
+  } catch (err) {
+    console.error("Eval sets list error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("post", "/eval/run", evalRateLimiter, evalAuth, logRequest, async (req, res) => {
+  try {
+    const { evalSetId, evalSet, model } = req.body || {};
+    let set = evalSet;
+    if (!set && evalSetId) {
+      set = loadEvalSet(String(evalSetId).trim());
+      if (!set) return apiError(res, 404, "NOT_FOUND", "Eval set not found", `No eval set with id: ${evalSetId}`);
+    }
+    if (!set || !Array.isArray(set.cases)) {
+      return apiError(res, 400, "INVALID_BODY", "evalSetId, evalSet, or valid evalSet JSON required", "Send { evalSetId: string } or { evalSet: { id, name, cases } }.");
+    }
+    const baseUrl = `${req.protocol}://${req.get("host") || "localhost"}`;
+    const bearer = req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7).trim() : null;
+    const apiKey = bearer || req.headers["x-api-key"] || req.headers["x-admin-api-key"];
+    const result = await runEvalSet(set, {
+      model: model || undefined,
+      baseUrl,
+      apiKey: apiKey || undefined,
+    });
+    res.json(result);
+  } catch (err) {
+    console.error("Eval run error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+app.get("/eval", (req, res) => {
+  res.sendFile(join(__dirname, "client", "eval.html"));
+});
+
 // --- Phase 25: Admin Dashboard ---
 app.get("/admin", (req, res) => {
   res.sendFile(join(__dirname, "client", "admin.html"));
@@ -2338,12 +2827,15 @@ app.get("/api/admin/summary", adminRateLimiter, adminAuthOrQuery, logRequest, as
       vercel: Boolean(process.env.VERCEL_TOKEN),
     };
 
+    const apiKeys = listKeysForAdmin();
+
     res.json({
       users,
       workspaces: workspacesWithQuota,
       usage: usageSummary,
       auditLog,
       quotaOverrides,
+      apiKeys,
       system: {
         health,
         integrations,
@@ -2372,16 +2864,84 @@ app.post("/api/admin/quotas/override", adminRateLimiter, adminAuth, logRequest, 
   }
 });
 
+// Phase 30: Admin API key management
+app.get("/api/admin/keys", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const keys = listKeysForAdmin();
+    res.json({ keys });
+  } catch (err) {
+    console.error("Admin keys list error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+app.post("/api/admin/keys", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const { userId, scopes } = req.body || {};
+    const result = addKey({ userId, scopes: Array.isArray(scopes) ? scopes : undefined });
+    if (!result.ok) {
+      return res.status(400).json({ error: result.error, code: "INVALID_INPUT" });
+    }
+    res.status(201).json(result);
+  } catch (err) {
+    console.error("Admin keys add error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+app.delete("/api/admin/keys/:id", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const result = revokeKey(req.params.id);
+    if (!result.ok) {
+      return res.status(404).json({ error: result.error || "Key not found", code: "NOT_FOUND" });
+    }
+    res.status(204).send();
+  } catch (err) {
+    console.error("Admin keys revoke error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
 app.use(express.static(join(__dirname, "client")));
 
+// Phase 34: Graceful shutdown (SIGTERM, SIGINT). Vercel: not applicable.
+const SHUTDOWN_TIMEOUT_MS = Number(process.env.SHUTDOWN_TIMEOUT_MS) || 10_000;
+
 if (process.env.VERCEL !== "1") {
-  app.listen(PORT, () => {
+  const httpServer = createServer(app);
+  attachToServer(httpServer);
+
+  function gracefulShutdown(signal) {
+    console.log(`[shutdown] Received ${signal}, shutting down gracefully...`);
+    httpServer.close(async () => {
+      try {
+        if (process.env.ENABLE_SCHEDULED_RECIPES === "1") schedulerStop();
+        await closeServer();
+        console.log("[shutdown] Graceful shutdown complete");
+        process.exit(0);
+      } catch (e) {
+        console.error("[shutdown] Error during shutdown:", e.message);
+        process.exit(1);
+      }
+    });
+    setTimeout(() => {
+      console.error("[shutdown] Forced exit after timeout");
+      process.exit(1);
+    }, SHUTDOWN_TIMEOUT_MS).unref();
+  }
+
+  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+  process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
+  httpServer.listen(PORT, () => {
     console.log(`Proxy: http://localhost:${PORT}`);
     console.log(`Backend: ${BACKEND}`);
     if (BACKEND === "vllm") console.log(`vLLM:  ${VLLM_URL}`);
     if (BACKEND === "ollama") console.log(`Ollama: ${OLLAMA_URL}`);
     if (BACKEND === "openai") console.log(`OpenAI: api.openai.com (key set)`);
     if (process.env.ENABLE_SCHEDULED_RECIPES === "1") schedulerStart();
+    console.log("Phase 33: WebSocket real-time sync enabled at /ws");
+    console.log("Phase 34: Health probes at /health/live, /health/ready");
   });
 }
 export default app;

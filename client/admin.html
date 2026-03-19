@@ -131,6 +131,7 @@
   <header>
     <h1>SiskelBot Admin</h1>
     <a href="/">← Back to app</a>
+    <a href="/eval">Eval</a>
     <span id="auth-status"></span>
   </header>
   <main id="main">
@@ -183,6 +184,21 @@
         <h2>Recent audit log</h2>
         <table id="audit-table">
           <thead><tr><th>Time</th><th>Action</th><th>OK</th><th>Error</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="section">
+        <h2>API Keys (Phase 30)</h2>
+        <p style="font-size:0.875rem;color:#94a3b8;margin:0 0 0.75rem 0">Keys stored in data/api-keys.json. Scopes: read, write, admin, embed.</p>
+        <div class="override-form" style="margin-bottom:0.75rem">
+          <input type="text" id="key-user-id" placeholder="User ID" style="width:120px">
+          <input type="text" id="key-scopes" placeholder="Scopes: read,write" style="width:140px" title="Comma-separated: read, write, admin, embed">
+          <button id="add-key-btn">Add key</button>
+        </div>
+        <p id="key-add-msg" class="error-msg" style="display:none"></p>
+        <table id="keys-table">
+          <thead><tr><th>Masked</th><th>User</th><th>Scopes</th><th>Created</th><th>Actions</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -301,6 +317,29 @@
         auditTbody.appendChild(tr);
       });
 
+      // API Keys (Phase 30)
+      const keysTbody = document.querySelector('#keys-table tbody');
+      keysTbody.innerHTML = '';
+      (data.apiKeys || []).forEach(k => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><code>${escapeHtml(k.masked || '****')}</code></td>
+          <td>${escapeHtml(k.userId)}</td>
+          <td>${(k.scopes || []).join(', ') || '-'}</td>
+          <td>${escapeHtml((k.createdAt || '').slice(0, 10))}</td>
+          <td><button class="danger revoke-key-btn" data-id="${escapeAttr(k.id)}">Revoke</button></td>
+        `;
+        keysTbody.appendChild(tr);
+      });
+      document.querySelectorAll('.revoke-key-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Revoke this key? It will stop working immediately.')) return;
+          const r = await fetch('/api/admin/keys/' + encodeURIComponent(btn.dataset.id), { method: 'DELETE', credentials: 'include', headers: headers() });
+          if (!r.ok) alert('Failed to revoke: ' + (await r.text()));
+          else load();
+        });
+      });
+
       // Override button handlers
       document.querySelectorAll('.override-form button[data-action="set"]').forEach(btn => {
         btn.addEventListener('click', async () => {
@@ -365,6 +404,42 @@
       if (!adminKey) return;
       sessionStorage.setItem(ADMIN_KEY_STORAGE, adminKey);
       load();
+    });
+
+    document.getElementById('add-key-btn').addEventListener('click', async () => {
+      const userIdEl = document.getElementById('key-user-id');
+      const scopesEl = document.getElementById('key-scopes');
+      const msgEl = document.getElementById('key-add-msg');
+      const userId = (userIdEl?.value || '').trim();
+      if (!userId) {
+        msgEl.style.display = 'block';
+        msgEl.textContent = 'User ID required';
+        return;
+      }
+      msgEl.style.display = 'none';
+      const scopesRaw = (scopesEl?.value || 'read,write').trim();
+      const scopes = scopesRaw ? scopesRaw.split(',').map(s => s.trim()).filter(Boolean) : ['read', 'write'];
+      try {
+        const r = await fetch('/api/admin/keys', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { ...headers(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, scopes })
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          msgEl.style.display = 'block';
+          msgEl.textContent = data.error || 'Failed to add key';
+          return;
+        }
+        msgEl.style.display = 'block';
+        msgEl.textContent = 'Key created. Save it now - it won\'t be shown again: ' + (data.key || '');
+        msgEl.style.color = '#34d399';
+        load();
+      } catch (e) {
+        msgEl.style.display = 'block';
+        msgEl.textContent = e.message || 'Failed';
+      }
     });
 
     load();

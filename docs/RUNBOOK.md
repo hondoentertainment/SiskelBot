@@ -2,6 +2,527 @@
 
 Operations guide for the SiskelBot streaming assistant: common failures, environment checklist, backend verification, and troubleshooting.
 
+## Phase 34: Production Hardening
+
+Production readiness: graceful shutdown, security headers, health probes, startup validation, structured logging.
+
+### Graceful shutdown (self-hosted only; not on Vercel)
+
+On `SIGTERM` or `SIGINT`:
+
+1. Stop accepting new connections (`httpServer.close()`)
+2. Stop scheduler/cron if `ENABLE_SCHEDULED_RECIPES=1`
+3. Close WebSocket server (`/ws`)
+4. Wait for in-flight requests (default 10s via `SHUTDOWN_TIMEOUT_MS`)
+5. Exit process
+
+### Security headers
+
+Helmet middleware adds: `X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`; `Strict-Transport-Security` in production. CSP disabled by default (SPA may use inline scripts).
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `DISABLE_SECURITY_HEADERS` | — | Set to `1` to disable security headers (e.g. dev). |
+
+### Health probes (k8s/container orchestration)
+
+| Endpoint | Response | Description |
+|----------|----------|-------------|
+| `GET /health/live` | 200 `{ ok: true, status: "alive" }` | Liveness: process is alive. No external deps. |
+| `GET /health/ready` | 200 `{ ok: true, status: "ready", backend }` | Readiness: storage accessible, backend reachable. Returns 503 when not ready. |
+| `GET /health` | 200 (existing) | Full backend health with backends object, latency. |
+
+On Vercel: probes work; graceful shutdown and WebSocket do not apply.
+
+### Startup config validation
+
+- **Required (production only):** `OPENAI_API_KEY` when `BACKEND=openai`. Exits with clear error if missing.
+- **Optional warnings:** `SESSION_SECRET` when OAuth configured; `VERCEL_TOKEN` when recipe execution enabled.
+
+### Structured logging
+
+- **X-Request-Id:** All responses include `X-Request-Id` (from header or generated).
+- **Log format:** JSON when `NODE_ENV=production`; human-readable in dev.
+
+### Env vars
+
+| Variable | Notes |
+|----------|-------|
+| `DISABLE_SECURITY_HEADERS` | Set to `1` to disable helmet (dev). |
+| `SHUTDOWN_TIMEOUT_MS` | Graceful shutdown wait (default 10000ms). |
+
+## Phase 35: Content Security Policy (CSP)
+
+CSP header in production when `ENABLE_CSP=1`. Report-only by default to avoid breaking SPA; set `CSP_ENFORCE=1` to enforce after validation.
+
+| Variable | Notes |
+|----------|-------|
+| `ENABLE_CSP` | Set to `1` in production to add CSP. Requires `NODE_ENV=production`. |
+| `CSP_ENFORCE` | Set to `1` to enforce (block violations). Default: report-only. |
+
+Directives allow: `'self'`, `cdn.jsdelivr.net`, `api.openai.com`, `ws:`, `wss:`, `'unsafe-inline'` for scripts/styles (SPA).
+
+## Phase 36: Log Sanitization
+
+All structured log entries are sanitized to redact sensitive values. Keys matching `api_key`, `authorization`, `token`, `password`, `secret`, `cookie`, and similar are replaced with `[REDACTED]` before logging.
+
+No env vars. Applied automatically to request logs and error context.
+
+## Phase 37: Backend Circuit Breaker
+
+After N consecutive backend failures, the proxy returns 503 immediately instead of waiting on the backend. Resets after cooldown.
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `CIRCUIT_BREAKER_FAILURES` | 5 | Consecutive failures before circuit opens |
+| `CIRCUIT_BREAKER_COOLDOWN_MS` | 30000 | Cooldown before retry (ms) |
+
+Error code: `CIRCUIT_OPEN` with `503 Service Unavailable`. Retry after cooldown.
+
+## Phase 38: Error Reporting Webhook
+
+When unhandled errors occur (`uncaughtException`, `unhandledRejection`) in production, the server POSTs to `ERROR_REPORT_WEBHOOK_URL`. Payload: `{ message, name, stack, timestamp, source }`.
+
+| Variable | Notes |
+|----------|-------|
+| `ERROR_REPORT_WEBHOOK_URL` | URL for error webhook (Slack, PagerDuty, etc.). Only active when `NODE_ENV=production`. |
+
+## Phase 39: Deployment Smoke Tests
+
+Post-deploy script verifies health probes and critical endpoints.
+
+- **Run:** `npm run smoke-test` or `node scripts/smoke-test.js [BASE_URL]`
+- **CI:** `npm run smoke-test:ci` (uses `--live-only`; skips readiness and chat when backend unavailable)
+- **Checks:** `/health/live`, `/health/ready`, `/config`, `/`, optionally `POST /v1/chat/completions`
+
+Set `BASE_URL` for deployed app; defaults to `http://localhost:3000`. Exits 1 on failure.
+
+## Phase 33: Real-Time Sync & Presence
+
+WebSocket-based live notifications. When a notification is created (recipe_executed, schedule_completed, plan_created, etc.), it is pushed to connected clients. Falls back to 30s polling when WebSocket is unavailable. Presence tracks online users per workspace (in-memory, TTL-based).
+
+### API
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `GET /api/ws-token` | GET | Get one-time token for WebSocket. Query: `?workspace=default`. Returns `{ token, url }`. Auth: userAuth (anonymous allowed). |
+| `GET /api/workspaces/:id/presence` | GET | List online users in workspace. Returns `{ online: [{ userId, displayName }] }`. Auth: userAuth. Personal workspaces allowed; team requires membership. |
+
+### WebSocket
+
+- **Path:** `/ws`
+- **Query:** `token` (from ws-token), `workspace`
+- **Auth:** One-time token from `GET /api/ws-token`
+- **Messages (server → client):** `{ type: "notification", notification: { id, type, title, body, createdAt, read } }`
+- **Messages (client → server):** `{ type: "heartbeat", displayName? }` to refresh presence
+- **Typing (optional):** `{ type: "typing", typing: boolean }` broadcasts to other users in workspace
+
+### Client
+
+- Connects to WebSocket on load when visible; uses ws-token for auth.
+- On notification message: refreshes list and badge; prepends new items.
+- Fallback: 30s polling when WS disconnected or fails.
+- Reconnect: exponential backoff (1s → 30s max) on disconnect.
+- Workspace change: reconnects with new workspace.
+
+### Env vars
+
+| Variable | Notes |
+|----------|-------|
+| `BASE_URL` | When set, ws-token URL uses it (wss for https). |
+| `WS_HOST` | Fallback host for ws-token URL when BASE_URL not set. |
+| `VERCEL` | When `1`, WebSocket server not attached (serverless). Client falls back to polling. |
+
+### Data
+
+- **Presence:** In-memory only. TTL 90s per user. No persistence.
+- **Token store:** In-memory. TTL 60s. Cleaned every 30s.
+
+### Troubleshooting
+
+- **WebSocket not connecting:** On Vercel, WS is disabled; use polling.
+- **401 on ws-token:** Ensure credentials (cookie or API key) are sent.
+- **Notifications not live:** Check WS connection in DevTools; if disconnected, polling runs.
+
+## Phase 29: Multi-Tenant Teams & Collaboration
+
+Team workspaces, invite codes, roles, activity feed. Requires auth (Phase 14).
+
+### Workspace types
+
+| Type | Description |
+|------|--------------|
+| `personal` | Single user (default; backward compatible) |
+| `team` | Shared; members with admin/member/viewer roles |
+
+Existing workspaces without `type` default to `personal`.
+
+### API
+
+| Endpoint | Method | Description |
+|----------|--------|--------------|
+| `POST /api/workspaces` | POST | Create workspace. Body: `{ name, type?: "personal" \| "team" }`. |
+| `POST /api/workspaces/:id/invite` | POST | Generate invite code for team workspace. Body: `{ expiresInHours?, maxUses? }`. Returns `{ code, inviteLink, expiresAt?, maxUses? }`. |
+| `POST /api/workspaces/join` | POST | Join team by code. Body: `{ code }`. Returns `{ ok, workspace: { id, name } }`. |
+| `GET /api/workspaces/:id/members` | GET | List members (ownerId, members with userId, role). |
+| `GET /api/workspaces/:id/activity` | GET | Activity feed. Query: `?limit=50`. Returns `{ items }`. |
+
+### Data
+
+| File | Purpose |
+|------|---------|
+| `data/workspace-members.json` | workspaceId → { ownerId, members: [{ userId, role }] } |
+| `data/team-invites.json` | Invite codes (code, workspaceId, createdBy, usedCount, expiresAt?, maxUses?) |
+| `data/workspace-activity.json` | byWorkspace[workspaceId]: [{ timestamp, action, userId, ... }] |
+
+### Roles
+
+- **admin:** Full access; can create invites, manage members.
+- **member:** Can add context, run recipes, create invites.
+- **viewer:** Read-only (context, recipes, conversations).
+
+### Client
+
+- **Workspace panel:** Create (personal/team), Join (by code), Invite, Members, Activity.
+- **Join flow:** `?join=CODE` in URL opens join modal with code prefilled.
+- **Team panel:** Shown when team workspace selected; Generate invite, Members list, Activity feed.
+
+### Troubleshooting
+
+- **403 FORBIDDEN on invite:** Admin or member role required.
+- **400 JOIN_FAILED:** Invalid or expired code; check team-invites.json.
+- **Existing workspaces:** No changes; default to personal.
+
+## Phase 32: Evaluation Harness
+
+Evaluation harness for automated testing of chat and task-planning APIs against defined eval sets.
+
+### Eval set schema
+
+```json
+{
+  "id": "string",
+  "name": "string",
+  "description": "optional",
+  "cases": [
+    {
+      "id": "string",
+      "prompt": "string",
+      "systemPrompt": "optional",
+      "target": "chat | task (default: chat)",
+      "expectedContains": "substring to find",
+      "expectedPattern": "regex string",
+      "expectedJson": ["key1", "key2"] | "key"
+    }
+  ]
+}
+```
+
+### API
+
+| Endpoint | Method | Description |
+|----------|--------|--------------|
+| `GET /api/eval/sets` | GET | List available eval sets (from `data/eval-sets/*.json` or `data/eval-sets.json`). Returns `{ sets: [{ id, name }] }`. |
+| `POST /api/eval/run` | POST | Run eval set. Body: `{ evalSetId?: string, evalSet?: object, model?: string }`. Returns `{ results, passed, total, durationMs }`. |
+
+### Criteria
+
+- **expectedContains:** Substring must be present in output (case-sensitive).
+- **expectedPattern:** Output must match regex.
+- **expectedJson:** Parsed JSON (from task API or code block) must have all listed keys.
+
+### Auth
+
+Eval endpoints accept `ADMIN_API_KEY` or `API_KEY` via `Authorization: Bearer <key>` or `x-api-key` / `x-admin-api-key`. When neither key is set (local dev), eval is allowed without auth.
+
+### Rate limit
+
+5 runs per minute per IP for eval endpoints. 429 with `RATE_LIMITED` when exceeded.
+
+### Env vars
+
+| Variable | Notes |
+|----------|-------|
+| `ADMIN_API_KEY` | Protects eval when set; also accepts `API_KEY` |
+| `API_KEY` | Alternative to ADMIN_API_KEY for eval |
+
+### Data
+
+- **Path:** `data/eval-sets/*.json` (per-file) or `data/eval-sets.json` (single file with array/sets)
+- **Example:** `data/eval-sets/example.json`
+
+### Client
+
+- **URL:** `GET /eval` — dedicated eval page: select set, run, view results.
+- **Admin:** Link from Admin dashboard to `/eval` when available.
+
+### Troubleshooting
+
+- **401 AUTH_REQUIRED:** Set `ADMIN_API_KEY` or `API_KEY` and pass via Bearer or header.
+- **429 RATE_LIMITED:** Wait 1 minute before retrying eval run.
+- **502 BACKEND_UNREACHABLE:** Ensure Ollama/vLLM/OpenAI backend is running for eval cases that call chat/task API.
+
+## Phase 31: Internationalization (i18n)
+
+UI strings can be shown in multiple languages. Locale files live in `client/locales/`.
+
+### Supported locales
+
+| Code | Language  |
+|------|-----------|
+| `en` | English   |
+| `es` | Spanish   |
+| `fr` | French    |
+| `de` | German    |
+
+### How it works
+
+- **Locale files:** `client/locales/{lang}.json` — nested key-value structure (e.g. `header.newChat`, `modal.continueChat`).
+- **Translation function:** `SiskelI18n.t(key)` returns translated string or key as fallback.
+- **Fallback chain:** requested locale → `en` → key.
+- **Language detection:** `navigator.language`, then `localStorage` key `siskelbot-locale` override.
+- **Locale switcher:** Settings panel → Language dropdown.
+
+### RTL support
+
+For RTL locales (e.g. `ar`), `dir="rtl"` is set on `<html>`. Layout is ready; no RTL locale included in MVP.
+
+### Adding a new locale
+
+1. Copy `client/locales/en.json` to `client/locales/{code}.json`.
+2. Translate values (keep keys).
+3. Add `{code}` to `SUPPORTED_LOCALES` in `client/i18n.js`.
+4. Add option to `#locale-select` in Settings.
+
+### Static UI
+
+Elements with `data-i18n="key"` get their text replaced on init and when locale changes. Use `data-i18n-placeholder`, `data-i18n-title`, `data-i18n-aria-label` for attributes.
+
+### Dynamic strings
+
+## Phase 32: Evaluation Harness
+
+Evaluation harness for SiskelBot: run eval sets against chat/task APIs and check output criteria.
+
+### Eval set schema
+
+Eval sets live in `data/eval-sets/*.json` or a single `data/eval-sets.json`. Schema:
+
+```json
+{
+  "id": "example",
+  "name": "Example Eval Set",
+  "description": "Optional",
+  "cases": [
+    {
+      "id": "case-1",
+      "prompt": "User prompt text",
+      "systemPrompt": "Optional system prompt",
+      "target": "chat | task",
+      "expectedContains": "substring",
+      "expectedPattern": "regex",
+      "expectedJson": ["key1", "key2"]
+    }
+  ]
+}
+```
+
+- **expectedContains:** Substring must appear in output.
+- **expectedPattern:** Regex must match output.
+- **expectedJson:** JSON (from task API or parsed from output) must have these keys.
+
+### API
+
+| Endpoint | Method | Description |
+|----------|--------|--------------|
+| `GET /api/eval/sets` | GET | List available eval sets. Returns `{ sets: [{ id, name }, ...] }`. |
+| `POST /api/eval/run` | POST | Run eval. Body: `{ evalSetId?: string, evalSet?: object, model?: string }`. Returns `{ results, passed, total, durationMs }`. |
+
+### Auth
+
+Eval endpoints accept `ADMIN_API_KEY` or `API_KEY` via `Authorization: Bearer <key>` or `x-api-key` / `x-admin-api-key`. When neither is set (local dev), no auth required.
+
+### Rate limit
+
+5 runs per minute per IP for eval. `POST /api/eval/run` is rate limited.
+
+### Client UI
+
+`GET /eval` serves the eval UI: select set, run, view results. Styled like Admin dashboard.
+
+### Env vars
+
+| Variable | Notes |
+|----------|-------|
+| `ADMIN_API_KEY` | Optional; protects eval when set |
+| `API_KEY` | Optional; also accepted for eval |
+
+Use `SiskelI18n.t('key')` or `SiskelI18n.tInterp('key', { name: value })` in JS for strings set at runtime.
+
+## Phase 32: Evaluation Harness
+
+Evaluation harness for running eval sets against chat and task APIs. Used to validate model behavior via criteria (substring, regex, JSON key existence).
+
+### Eval set schema
+
+Eval sets are JSON files in `data/eval-sets/*.json` or a single `data/eval-sets.json`:
+
+```json
+{
+  "id": "example",
+  "name": "Example Eval Set",
+  "cases": [
+    {
+      "id": "greeting",
+      "prompt": "Say hello in one word.",
+      "systemPrompt": "optional system message",
+      "target": "chat",
+      "expectedContains": "hello"
+    },
+    {
+      "id": "task-plan",
+      "prompt": "Create a plan to water plants.",
+      "target": "task",
+      "expectedJson": ["type", "name", "steps"]
+    }
+  ]
+}
+```
+
+- **target:** `"chat"` (default) or `"task"` — calls `/v1/chat/completions` or `/v1/tasks/plan`.
+- **expectedContains:** Substring must appear in output.
+- **expectedPattern:** Regex must match output.
+- **expectedJson:** Array of keys (or single key) that must exist in parsed JSON.
+
+### API
+
+| Endpoint | Method | Description |
+|----------|--------|--------------|
+| `GET /api/eval/sets` | GET | List available eval sets (`data/eval-sets/*.json` or `data/eval-sets.json`). Returns `{ sets: [{ id, name }] }`. |
+| `POST /api/eval/run` | POST | Run eval. Body: `{ evalSetId?: string, evalSet?: object, model?: string }`. Returns `{ results, passed, total, durationMs }`. |
+
+### Auth
+
+Eval endpoints accept `ADMIN_API_KEY` or `API_KEY` via `Authorization: Bearer <key>` or `x-api-key` / `x-admin-api-key`. When neither key is set (local dev), requests are allowed without auth.
+
+### Rate limit
+
+5 runs per minute per IP for eval endpoints. Returns 429 `RATE_LIMITED` when exceeded.
+
+### Client
+
+`GET /eval` — Dedicated eval UI: select set, run, view results. Requires API key when `ADMIN_API_KEY` or `API_KEY` is set.
+
+### Env vars
+
+Uses existing `ADMIN_API_KEY` and `API_KEY`. No new vars.
+
+### Troubleshooting
+
+- **401 AUTH_REQUIRED:** Provide `ADMIN_API_KEY` or `API_KEY` via Bearer or `x-api-key` header.
+- **429 RATE_LIMITED:** Wait before running eval again (5/min).
+- **502 BACKEND_UNREACHABLE:** Ensure Ollama/vLLM/OpenAI backend is running for eval runs.
+
+## Phase 29: Multi-Tenant Teams & Collaboration
+
+Team workspaces with invite codes, roles (admin, member, viewer), shared context/recipes/conversations, and activity feed.
+
+### Workspace types
+
+- **personal** (default): Owned by one user; existing workspaces default to personal.
+- **team**: Shared workspace; creator is admin; members invited via code.
+
+### API
+
+| Endpoint | Method | Description |
+|----------|--------|--------------|
+| `POST /api/workspaces` | POST | Create workspace. Body: `{ name, type?: "personal" \| "team" }`. |
+| `POST /api/workspaces/:id/invite` | POST | Generate invite code. Body: `{ expiresInHours?, maxUses? }`. Returns `{ code, inviteLink, expiresAt?, maxUses? }`. Requires admin or member role. |
+| `POST /api/workspaces/join` | POST | Join by code. Body: `{ code }`. Requires auth. |
+| `GET /api/workspaces/:id/members` | GET | List members. Returns `{ ownerId, members: [{ userId, role }] }`. |
+| `GET /api/workspaces/:id/activity` | GET | Activity feed. Query: `?limit=50`. Returns `{ items }`. |
+
+### Data
+
+- **workspace-members.json:** `{ items: { [workspaceId]: { ownerId, members: [{ userId, role }] } } }`
+- **team-invites.json:** `{ invites: [{ code, workspaceId, createdBy, createdAt, usedCount, expiresAt?, maxUses? }] }`
+- **workspace-activity.json:** `{ byWorkspace: { [workspaceId]: [{ timestamp, action, userId, ...meta }] } }`
+
+### Roles
+
+- **admin**: Full access; can create invites, manage members.
+- **member**: Can create invites; add/edit context, recipes, conversations.
+- **viewer**: Read-only access.
+
+### Activity actions
+
+Logged via `logActivity`: `context_added`, `recipe_added`, `recipe_ran`, `conversation_created`, etc.
+
+### Client
+
+- **Workspace panel:** Create (personal/team), Join (invite code), Generate invite, Members list, Activity feed.
+- **Join flow:** URL `?join=CODE` opens join modal with code prefilled.
+- **Backward compat:** Existing workspaces remain personal; no breaking changes.
+
+### Troubleshooting
+
+- **403 FORBIDDEN on invite:** User must be admin or member of the team workspace.
+- **400 JOIN_FAILED:** Invalid or expired invite code; user may already be a member.
+
+## Phase 29: Multi-Tenant Teams & Collaboration
+
+Team workspaces with invite codes, roles, members, and activity feed.
+
+### Workspace types
+
+| Type | Description |
+|------|-------------|
+| `personal` | Single-user workspace (default). Existing workspaces default to personal. |
+| `team` | Shared workspace with members. Context, recipes, conversations are shared. |
+
+### Roles
+
+- **admin** — Full access; can create invites, manage members.
+- **member** — Can add/edit context, run recipes, create invites.
+- **viewer** — Read-only access to context, recipes, conversations.
+
+### API
+
+| Endpoint | Method | Description |
+|----------|--------|--------------|
+| `POST /api/workspaces` | POST | Create workspace. Body: `{ name, type?: "personal" \| "team" }`. Default type: personal. |
+| `POST /api/workspaces/:id/invite` | POST | Generate invite code for team workspace. Body: `{ expiresInHours?, maxUses? }`. Returns `{ code, inviteLink, expiresAt?, maxUses? }`. |
+| `POST /api/workspaces/join` | POST | Join by invite code. Body: `{ code }`. Returns `{ ok, workspace?: { id, name } }`. |
+| `GET /api/workspaces/:id/members` | GET | List workspace members. Returns `{ ownerId, members: [{ userId, role }] }`. |
+| `GET /api/workspaces/:id/activity` | GET | Activity feed. Query: `?limit=50`. Returns `{ items }`. |
+
+### Data files
+
+- **workspace-members.json** — `{ items: { [workspaceId]: { ownerId, members } } }`
+- **team-invites.json** — `{ invites: [{ code, workspaceId, createdBy, createdAt, usedCount, expiresAt?, maxUses? }] }`
+- **workspace-activity.json** — `{ byWorkspace: { [workspaceId]: [{ timestamp, action, userId, ...meta }] } }`
+
+### Activity actions
+
+Logged automatically: `context_added`, `recipe_added`, `conversation_created`, `recipe_ran`.
+
+### Client
+
+- **Workspace panel** (auth required): Create (personal/team), Join by code, Invite, Members, Activity.
+- **Join flow:** `?join=CODE` in URL opens join modal with code prefilled.
+
+### Backward compatibility
+
+- Existing workspaces without `type` default to `personal`.
+- Personal workspaces behave identically to pre-Phase 29.
+- Storage paths unchanged; team workspace data lives in owner's path.
+
+### Troubleshooting
+
+- **403 FORBIDDEN on invite:** Ensure user has admin or member role.
+- **Invalid or expired invite:** Code may have reached max uses or expired. Generate a new invite.
+- **Team panel not showing:** Ensure workspace has `type: "team"` and user has access.
+
 ## Phase 28: Embeddings API & Semantic Search
 
 Embedding-based retrieval for RAG. Uses OpenAI `text-embedding-3-small` (1536 dims) when `OPENAI_API_KEY` is set.
@@ -160,6 +681,51 @@ Returns 401 when not admin.
 ### Client
 
 Open `/admin` in browser. Enter `ADMIN_API_KEY` if not logged in as admin user. Override quota per workspace via Set/Clear.
+
+## Phase 30: API Key Scopes & Granular Permissions
+
+API keys can have scopes: `read`, `write`, `admin`, `embed`. Routes enforce scope checks when the request is authenticated via API key. Session/OAuth users have full access (no scope restriction).
+
+### Key formats
+
+| Source | Format | Example |
+|--------|--------|---------|
+| `USER_API_KEYS` env | `key:userId` or `key:userId:scopes` | `k1:u1:read,write`, `k2:u2:admin` |
+| `API_KEY_SCOPES` env | Deployment key scopes (default: `read,write`) | `read,write` |
+| `data/api-keys.json` | Admin-managed keys via Admin dashboard | Created with userId and scopes |
+
+Keys without scopes default to `read,write` (backward compatible).
+
+### Scope → routes
+
+| Scope | Routes |
+|-------|--------|
+| `read` | GET /context, GET /recipes, GET /workspaces, GET /knowledge/search, GET /knowledge/list |
+| `write` | POST /v1/chat/completions, POST /context, POST /recipes, PUT/DELETE context/recipes, schedules/run-now |
+| `admin` | /api/admin/* |
+| `embed` | POST /api/embeddings |
+
+### Admin key management
+
+- **API:** `GET /api/admin/keys`, `POST /api/admin/keys` (body: `{ userId, scopes }`), `DELETE /api/admin/keys/:id`
+- **Storage:** `data/api-keys.json` (keys hashed; raw key shown only on creation)
+- **Dashboard:** Admin → API Keys section: list (masked), add with userId and scopes, revoke
+
+### Audit
+
+- API key usage logged to `data/api-key-audit.json` (keyId, timestamp, path, method)
+
+### Env vars
+
+| Variable | Notes |
+|----------|-------|
+| `API_KEY_SCOPES` | Scopes for deployment `API_KEY`. Default: `read,write` |
+| `RATE_LIMIT_PER_KEY` | Optional. When set (e.g. 60), per-key rate limit for chat (req/min). |
+
+### Troubleshooting
+
+- **403 SCOPE_REQUIRED:** Key lacks required scope. Check key scopes in USER_API_KEYS or Admin → API Keys.
+- **429 RATE_LIMITED (per key):** Set `RATE_LIMIT_PER_KEY` higher or wait for window reset.
 
 ## Phase 28: Embeddings API & Semantic Search
 

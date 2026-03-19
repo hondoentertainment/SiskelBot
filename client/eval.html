@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>SiskelBot Eval Harness</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 2px solid #60a5fa;
+      outline-offset: 2px;
+    }
+    header {
+      padding: 0.75rem 1rem;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    header h1 { margin: 0; font-size: 1.125rem; font-weight: 600; }
+    header a { color: #60a5fa; text-decoration: none; }
+    header a:hover { text-decoration: underline; }
+    main { padding: 1rem; max-width: 900px; margin: 0 auto; }
+    .section {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .section h2 {
+      margin: 0 0 0.75rem 0;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #94a3b8;
+    }
+    .form-row {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+    .form-row label { min-width: 100px; }
+    .form-row input, .form-row select {
+      padding: 0.5rem 0.75rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.875rem;
+    }
+    .form-row input[type="password"] { min-width: 220px; }
+    .form-row select { min-width: 180px; }
+    button.run {
+      padding: 0.5rem 1.25rem;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    button.run:hover { background: #1d4ed8; }
+    button.run:disabled { opacity: 0.6; cursor: not-allowed; }
+    .pass { color: #34d399; }
+    .fail { color: #f87171; }
+    .results-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+    .results-table th, .results-table td {
+      padding: 0.5rem 0.75rem;
+      text-align: left;
+      border-bottom: 1px solid #334155;
+      vertical-align: top;
+    }
+    .results-table th { color: #94a3b8; font-weight: 500; }
+    .results-summary {
+      margin-bottom: 1rem;
+      padding: 0.75rem;
+      background: #0f172a;
+      border-radius: 6px;
+      font-size: 0.875rem;
+    }
+    .output-cell { max-width: 300px; word-break: break-all; font-family: monospace; font-size: 0.8125rem; }
+    .error-msg { color: #f87171; font-size: 0.8125rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SiskelBot Eval Harness</h1>
+    <a href="/">Chat</a>
+    <a href="/admin">Admin</a>
+  </header>
+  <main>
+    <div class="section">
+      <h2>Run evaluation</h2>
+      <div class="form-row">
+        <label for="evalSet">Eval set</label>
+        <select id="evalSet">
+          <option value="">Loading…</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label for="apiKey">API key (ADMIN_API_KEY or API_KEY)</label>
+        <input type="password" id="apiKey" placeholder="Required when keys are set" autocomplete="off">
+      </div>
+      <div class="form-row">
+        <button type="button" class="run" id="runBtn">Run eval</button>
+      </div>
+    </div>
+    <div class="section" id="resultsSection" style="display: none;">
+      <h2>Results</h2>
+      <div class="results-summary" id="resultsSummary"></div>
+      <table class="results-table" id="resultsTable">
+        <thead>
+          <tr>
+            <th>Case</th>
+            <th>Pass</th>
+            <th>Output</th>
+            <th>Error / Reason</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+    </div>
+  </main>
+  <script>
+    const runBtn = document.getElementById("runBtn");
+    const evalSetSelect = document.getElementById("evalSet");
+    const apiKeyInput = document.getElementById("apiKey");
+    const resultsSection = document.getElementById("resultsSection");
+    const resultsSummary = document.getElementById("resultsSummary");
+    const resultsBody = document.getElementById("resultsBody");
+
+    async function loadSets() {
+      try {
+        const key = apiKeyInput.value.trim();
+        const headers = key ? { "x-api-key": key } : {};
+        const r = await fetch("/api/eval/sets", { headers });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          evalSetSelect.innerHTML = `<option value="">${err.error || "Failed to load"}</option>`;
+          return;
+        }
+        const { sets } = await r.json();
+        evalSetSelect.innerHTML = sets.length
+          ? sets.map((s) => `<option value="${s.id}">${s.name || s.id}</option>`).join("")
+          : '<option value="">No eval sets found</option>';
+      } catch (e) {
+        evalSetSelect.innerHTML = `<option value="">Error: ${e.message}</option>`;
+      }
+    }
+
+    document.getElementById("apiKey").addEventListener("blur", loadSets);
+    loadSets();
+
+    runBtn.addEventListener("click", async () => {
+      const setId = evalSetSelect.value;
+      if (!setId) {
+        alert("Select an eval set first.");
+        return;
+      }
+      const key = apiKeyInput.value.trim();
+      if (!key) {
+        const r = await fetch("/api/eval/sets");
+        if (r.status === 401) {
+          alert("API key required. Set ADMIN_API_KEY or API_KEY and enter it above.");
+          return;
+        }
+      }
+      runBtn.disabled = true;
+      try {
+        const headers = {
+          "Content-Type": "application/json",
+          ...(key && { "x-api-key": key }),
+        };
+        const r = await fetch("/api/eval/run", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ evalSetId: setId }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          resultsSection.style.display = "block";
+          resultsSummary.textContent = `Error: ${data.error || r.statusText}`;
+          resultsBody.innerHTML = "";
+          return;
+        }
+        const { results, passed, total, durationMs } = data;
+        resultsSummary.innerHTML = `<strong>${passed}/${total}</strong> passed in ${durationMs}ms`;
+        resultsBody.innerHTML = results
+          .map(
+            (res) =>
+              `<tr>
+                <td>${res.caseId}</td>
+                <td class="${res.pass ? "pass" : "fail"}">${res.pass ? "✓" : "✗"}</td>
+                <td class="output-cell">${escapeHtml((res.output || "").slice(0, 200))}</td>
+                <td class="error-msg">${escapeHtml(res.error || res.reason || "")}</td>
+              </tr>`
+          )
+          .join("");
+        resultsSection.style.display = "block";
+      } catch (e) {
+        resultsSection.style.display = "block";
+        resultsSummary.textContent = `Error: ${e.message}`;
+        resultsBody.innerHTML = "";
+      } finally {
+        runBtn.disabled = false;
+      }
+    });
+
+    function escapeHtml(s) {
+      const div = document.createElement("div");
+      div.textContent = s;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>
