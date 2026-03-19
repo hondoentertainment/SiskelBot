@@ -160,13 +160,23 @@ Enable developers and teams to build AI-powered workflows with:
 | 44 | Response compression |
 | — | Agent swarm |
 
+### Implemented (Phases 50–54)
+
+| Phase | Name |
+|-------|------|
+| 50 | Storage abstraction — optional SQLite KV (`STORAGE_BACKEND=sqlite`, `better-sqlite3`) |
+| 51 | Agent final response chunked SSE (`STREAM_AGENT_FINAL=1`, `AGENT_STREAM_CHUNK_SIZE`) |
+| 52 | Audit log retention (`AUDIT_MAX_ENTRIES`, `AUDIT_RETENTION_DAYS`) |
+| 53 | Backend fallback (`FALLBACK_BACKEND`) on 5xx/429 or connection failure |
+| 54 | OpenTelemetry optional (`OTEL_ENABLED=1`, OTLP HTTP exporter) |
+
 ### Future Phases (Planned)
 
 | Phase | Name | Priority |
 |-------|------|----------|
-| 45 | Audit log retention & archival | Medium |
-| 46 | Storage abstraction (Postgres) | High |
-| 47 | Distributed tracing (OpenTelemetry) | Medium |
+| 45 | Audit log archival to object storage | Medium |
+| 46 | Postgres storage (full migration) | High |
+| 47 | Advanced distributed tracing (auto-instrumentation) | Medium |
 | 48 | Multi-region deployment | Low |
 | 49 | Plugin marketplace | Low |
 

@@ -49,6 +49,7 @@ import { sanitizeForLog } from "./lib/log-sanitizer.js";
 import { execute as circuitExecute } from "./lib/circuit-breaker.js";
 import { initErrorReporting, reportError } from "./lib/error-reporting.js";
 import { runSwarm, runSwarmLegacy, getSpecialists } from "./lib/swarm.js";
+import { initTracing } from "./lib/tracing.js";
 import { recordRequest, recordSwarm, renderPrometheus, isEnabled as metricsEnabled } from "./lib/metrics.js";
 import { fetchWithTimeoutAndRetry } from "./lib/backend-fetch.js";
 import compression from "compression";
@@ -87,6 +88,9 @@ function getBackend() {
 
 const BACKEND = getBackend();
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
+// Phase 51: Chunk final agent SSE for smoother client rendering (optional)
+const STREAM_AGENT_FINAL = process.env.STREAM_AGENT_FINAL === "1";
+const AGENT_STREAM_CHUNK_SIZE = Math.max(64, Number(process.env.AGENT_STREAM_CHUNK_SIZE) || 320);
 
 // Production security: warn if API_KEY not set (backend may be exposed)
 if (IS_PRODUCTION && !API_KEY) {
@@ -124,9 +128,39 @@ const MODEL_PRESETS = {
   openai: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
 };
 
-// Phase 37: Backend fetch with circuit breaker; Phase 41: timeout and retry
+// Phase 37: Backend fetch with circuit breaker; Phase 41: timeout/retry; Phase 53: optional FALLBACK_BACKEND
 async function backendFetch(url, options, backend = BACKEND) {
-  return circuitExecute(backend, () => fetchWithTimeoutAndRetry(url, options, backend));
+  const fb = process.env.FALLBACK_BACKEND?.toLowerCase();
+  const tryFallback = async (firstRes) => {
+    if (!fb || fb === backend) return firstRes;
+    if (firstRes?.ok) return firstRes;
+    if (firstRes && firstRes.status < 500 && firstRes.status !== 429) return firstRes;
+    try {
+      const cfg = buildProxyConfig(fb);
+      const url2 = `${cfg.baseUrl}${cfg.path}`;
+      const hdr = { ...cfg.headers, ...(options.headers || {}) };
+      const opts2 = { ...options, headers: hdr };
+      return await circuitExecute(fb, () => fetchWithTimeoutAndRetry(url2, opts2, fb));
+    } catch {
+      return firstRes;
+    }
+  };
+
+  try {
+    const res = await circuitExecute(backend, () => fetchWithTimeoutAndRetry(url, options, backend));
+    return await tryFallback(res);
+  } catch (e) {
+    if (!fb || fb === backend) throw e;
+    try {
+      const cfg = buildProxyConfig(fb);
+      const url2 = `${cfg.baseUrl}${cfg.path}`;
+      const hdr = { ...cfg.headers, ...(options.headers || {}) };
+      const opts2 = { ...options, headers: hdr };
+      return await circuitExecute(fb, () => fetchWithTimeoutAndRetry(url2, opts2, fb));
+    } catch {
+      throw e;
+    }
+  }
 }
 
 function buildProxyConfig(backend) {
@@ -459,6 +493,10 @@ app.get("/config", (req, res) => {
     swarmEnabled: process.env.ENABLE_AGENT_SWARM === "1",
     authRequired: isAuthConfigured(),
     oauthProviders,
+    storageBackend: process.env.STORAGE_BACKEND === "sqlite" ? "sqlite" : "json",
+    streamAgentFinalEnabled: STREAM_AGENT_FINAL,
+    fallbackBackend: process.env.FALLBACK_BACKEND || null,
+    otelEnabled: process.env.OTEL_ENABLED === "1",
   };
   if (IS_PRODUCTION && !API_KEY) {
     payload.productionHint = "Set API_KEY in Vercel env vars to protect /v1/chat/completions";
@@ -667,10 +705,21 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
       const outputTokens = estimate.outputFromChars(content?.length || 0);
       await recordUsage({ timestamp: new Date().toISOString(), model, inputTokens, outputTokens, backend: BACKEND, workspace, userId }).catch(() => {});
 
-      const chunk = JSON.stringify({
-        choices: [{ delta: { content }, index: 0, finish_reason: "stop" }],
-      });
-      res.write(`data: ${chunk}\n\n`);
+      if (STREAM_AGENT_FINAL && content && typeof content === "string") {
+        for (let i = 0; i < content.length; i += AGENT_STREAM_CHUNK_SIZE) {
+          const part = content.slice(i, i + AGENT_STREAM_CHUNK_SIZE);
+          const isLast = i + AGENT_STREAM_CHUNK_SIZE >= content.length;
+          const chunk = JSON.stringify({
+            choices: [{ delta: { content: part }, index: 0, ...(isLast ? { finish_reason: "stop" } : {}) }],
+          });
+          res.write(`data: ${chunk}\n\n`);
+        }
+      } else {
+        const chunk = JSON.stringify({
+          choices: [{ delta: { content }, index: 0, finish_reason: "stop" }],
+        });
+        res.write(`data: ${chunk}\n\n`);
+      }
       res.write("data: [DONE]\n\n");
       res.end();
       const ws = req.body?.agentOptions?.workspace || "default";
@@ -2948,7 +2997,8 @@ if (process.env.VERCEL !== "1") {
   process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
   process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
-  httpServer.listen(PORT, () => {
+  httpServer.listen(PORT, async () => {
+    await initTracing().catch(() => {});
     console.log(`Proxy: http://localhost:${PORT}`);
     console.log(`Backend: ${BACKEND}`);
     if (BACKEND === "vllm") console.log(`vLLM:  ${VLLM_URL}`);

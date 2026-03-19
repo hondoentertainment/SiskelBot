@@ -32,6 +32,10 @@ test("GET /config returns backend defaults", async () => {
   assert.equal(response.body.defaultGenerationConfig.max_tokens, 512);
   assert.equal(response.body.requiresApiKey, false);
   assert.ok(response.body.oauthProviders && typeof response.body.oauthProviders === "object");
+  assert.equal(response.body.storageBackend, "json");
+  assert.equal(response.body.streamAgentFinalEnabled, false);
+  assert.equal(response.body.fallbackBackend, null);
+  assert.equal(response.body.otelEnabled, false);
 });
 
 test("GET /auth/me returns 401 when not authenticated", async () => {

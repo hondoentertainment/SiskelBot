@@ -1177,3 +1177,15 @@ Set `QUOTA_TOKENS_PER_WORKSPACE` (e.g. `100000`) to cap tokens per workspace per
 - **401 AUTH_INVALID:** Key not in `USER_API_KEYS` or `users.json`. Check key and server config.
 - **Build fails:** Ensure `payload.command` is `npm run <script>` (e.g. `npm run build`). Check `PROJECT_DIR` or `payload.cwd` points to a valid project.
 - **Deploy fails:** For Vercel, set `VERCEL_TOKEN`. Use `payload.deployHookUrl` for Deploy Hooks, or `payload.project` with a Git-linked project.
+
+## Phases 50–54: Storage, streaming, audit, fallback, tracing
+
+| Phase | Env / behavior | Notes |
+|-------|----------------|-------|
+| **50** | `STORAGE_BACKEND=sqlite` | Optional `better-sqlite3`; DB file `storage-kv.db` under data dir. Default: JSON files. |
+| **51** | `STREAM_AGENT_FINAL=1`, `AGENT_STREAM_CHUNK_SIZE` (default 320) | Agent final assistant text split into multiple SSE deltas. |
+| **52** | `AUDIT_MAX_ENTRIES`, `AUDIT_RETENTION_DAYS` | Trims execution audit log after append. |
+| **53** | `FALLBACK_BACKEND` (`ollama` \| `vllm` \| `openai`) | Primary backend 5xx/429 or network error → try fallback. |
+| **54** | `OTEL_ENABLED=1`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME` | OpenTelemetry OTLP HTTP (self-hosted listen path only; not started on Vercel serverless). |
+
+`GET /config` exposes: `storageBackend`, `streamAgentFinalEnabled`, `fallbackBackend`, `otelEnabled`.
