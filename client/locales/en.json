@@ -1,10 +1,10 @@
 {
   "app": {
-    "title": "Bond",
+    "title": "Siskel Bot",
     "skipToContent": "Skip to main content"
   },
   "install": {
-    "banner": "Install Bond for quick access",
+    "banner": "Install Siskel Bot for quick access",
     "install": "Install",
     "dismiss": "Dismiss"
   },

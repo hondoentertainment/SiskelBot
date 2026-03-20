@@ -1,10 +1,10 @@
 {
   "app": {
-    "title": "Bond",
+    "title": "Siskel Bot",
     "skipToContent": "Saltar al contenido principal"
   },
   "install": {
-    "banner": "Instalar Bond para acceso rápido",
+    "banner": "Instalar Siskel Bot para acceso rápido",
     "install": "Instalar",
     "dismiss": "Cerrar"
   },
@@ -37,7 +37,7 @@
     "fullReport": "Informe completo"
   },
   "install": {
-    "prompt": "Instalar Bond para acceso rápido",
+    "prompt": "Instalar Siskel Bot para acceso rápido",
     "install": "Instalar",
     "dismiss": "Cerrar"
   },

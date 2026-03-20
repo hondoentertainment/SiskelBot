@@ -1,7 +1,7 @@
 {
   "name": "experimentagent",
   "version": "0.1.0",
-  "description": "Bond — realtime streaming assistant proxy for Ollama, vLLM, or OpenAI",
+  "description": "Siskel Bot — realtime streaming assistant proxy for Ollama, vLLM, or OpenAI",
   "type": "module",
   "main": "server.js",
   "scripts": {

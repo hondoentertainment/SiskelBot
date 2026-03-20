@@ -1,4 +1,4 @@
-# Bond – Product Requirements Document
+# Siskel Bot – Product Requirements Document
 
 **Version:** 1.0  
 **Last updated:** March 2025
@@ -7,7 +7,7 @@
 
 ## 1. Executive Summary
 
-Bond is a production-grade, realtime streaming assistant proxy that connects clients to LLM backends (Ollama, vLLM, OpenAI). It provides chat completions, agentic autonomy with tools, multi-agent swarms, task planning, knowledge search, scheduled recipes, and team collaboration—all behind a single OpenAI-compatible API.
+Siskel Bot is a production-grade, realtime streaming assistant proxy that connects clients to LLM backends (Ollama, vLLM, OpenAI). It provides chat completions, agentic autonomy with tools, multi-agent swarms, task planning, knowledge search, scheduled recipes, and team collaboration—all behind a single OpenAI-compatible API.
 
 ### Vision
 

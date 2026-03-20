@@ -1,4 +1,4 @@
-# Bond
+# Siskel Bot
 
 *Streaming assistant (OpenAI-compatible API for Ollama, vLLM, or OpenAI). Repository package name: `experimentagent`.*
 
