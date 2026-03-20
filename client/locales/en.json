@@ -1,10 +1,10 @@
 {
   "app": {
-    "title": "Streaming Assistant",
+    "title": "Bond",
     "skipToContent": "Skip to main content"
   },
   "install": {
-    "banner": "Install SiskelBot for quick access",
+    "banner": "Install Bond for quick access",
     "install": "Install",
     "dismiss": "Dismiss"
   },

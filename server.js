@@ -2893,7 +2893,7 @@ app.get("/api/docs", (req, res) => {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>SiskelBot API Docs</title>
+  <title>Bond API Docs</title>
   <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui.css">
 </head>
 <body>

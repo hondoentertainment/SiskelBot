@@ -1,10 +1,10 @@
 {
   "app": {
-    "title": "Streaming-Assistent",
+    "title": "Bond",
     "skipToContent": "Zum Hauptinhalt springen"
   },
   "install": {
-    "banner": "SiskelBot für schnellen Zugriff installieren",
+    "banner": "Bond für schnellen Zugriff installieren",
     "install": "Installieren",
     "dismiss": "Schließen"
   },
@@ -37,7 +37,7 @@
     "fullReport": "Vollständiger Bericht"
   },
   "install": {
-    "prompt": "SiskelBot für schnellen Zugriff installieren",
+    "prompt": "Bond für schnellen Zugriff installieren",
     "install": "Installieren",
     "dismiss": "Schließen"
   },

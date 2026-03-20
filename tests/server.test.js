@@ -836,7 +836,7 @@ test("GET /api/docs/openapi.json returns OpenAPI spec", async () => {
   assert.equal(response.status, 200);
   assert.equal(response.headers["content-type"], "application/json; charset=utf-8");
   assert.equal(response.body.openapi, "3.0.3");
-  assert.ok(response.body.info?.title === "SiskelBot API");
+  assert.ok(response.body.info?.title === "Bond API");
   assert.ok(response.body.paths && response.body.paths["/api/v1/context"]);
 });
 
@@ -1455,7 +1455,7 @@ test("GET /eval serves eval page", async () => {
   const response = await request(app).get("/eval");
   assert.equal(response.status, 200);
   assert.match(response.headers["content-type"] || "", /text\/html/);
-  assert.match(response.text, /eval|Eval|SiskelBot/);
+  assert.match(response.text, /eval|Eval|Bond/);
 });
 
 test("GET /api/eval/sets returns sets when no auth (local dev)", async () => {

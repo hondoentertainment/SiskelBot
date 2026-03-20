@@ -1,10 +1,10 @@
 {
   "app": {
-    "title": "Assistant de streaming",
+    "title": "Bond",
     "skipToContent": "Aller au contenu principal"
   },
   "install": {
-    "banner": "Installer SiskelBot pour accès rapide",
+    "banner": "Installer Bond pour un accès rapide",
     "install": "Installer",
     "dismiss": "Fermer"
   },
@@ -37,7 +37,7 @@
     "fullReport": "Rapport complet"
   },
   "install": {
-    "prompt": "Installer SiskelBot pour accès rapide",
+    "prompt": "Installer Bond pour un accès rapide",
     "install": "Installer",
     "dismiss": "Fermer"
   },

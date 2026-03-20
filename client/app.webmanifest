@@ -1,6 +1,6 @@
 {
-  "name": "SiskelBot",
-  "short_name": "SiskelBot",
+  "name": "Bond",
+  "short_name": "Bond",
   "description": "Streaming assistant for Ollama, vLLM, or OpenAI.",
   "start_url": "/",
   "scope": "/",
