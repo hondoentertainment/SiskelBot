@@ -36,6 +36,19 @@ test("GET /config returns backend defaults", async () => {
   assert.equal(response.body.streamAgentFinalEnabled, false);
   assert.equal(response.body.fallbackBackend, null);
   assert.equal(response.body.otelEnabled, false);
+  assert.equal(response.body.toolValidationEnabled, true);
+  assert.equal(response.body.agentStagnationStop, true);
+  assert.equal(response.body.agentRequireCitations, false);
+  assert.equal(response.body.agentTrajectoryApi, true);
+});
+
+test("GET /api/agent/trajectory/:runId returns 404 when not found", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).get(
+    "/api/agent/trajectory/00000000-0000-4000-8000-000000000001"
+  );
+  assert.equal(response.status, 404);
+  assert.equal(response.body.code, "TRAJECTORY_NOT_FOUND");
 });
 
 test("GET /auth/me returns 401 when not authenticated", async () => {

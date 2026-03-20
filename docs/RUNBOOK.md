@@ -1189,3 +1189,15 @@ Set `QUOTA_TOKENS_PER_WORKSPACE` (e.g. `100000`) to cap tokens per workspace per
 | **54** | `OTEL_ENABLED=1`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME` | OpenTelemetry OTLP HTTP (self-hosted listen path only; not started on Vercel serverless). |
 
 `GET /config` exposes: `storageBackend`, `streamAgentFinalEnabled`, `fallbackBackend`, `otelEnabled`.
+
+## Phases 55–59: Agent quality (validation, eval traces, citations, stagnation, trajectory)
+
+| Phase | Env / behavior | Notes |
+|-------|----------------|-------|
+| **55** | `TOOL_VALIDATION_STRICT=0` disables | Invalid tool JSON/args → tool result with `_tool_validation_error` + `repairHint` (no execution). |
+| **56** | Eval case `target: "trace"` | Supply `trace: [{ name, arguments }]` and `expectedToolSequence`, `expectedToolNames`, or `expectedToolCalls`. |
+| **57** | `AGENT_REQUIRE_CITATIONS=1` | System prompt + `search_context` payload hint; response may set `X-Agent-Citations-Missing: 1`. |
+| **58** | `AGENT_STAGNATION_STOP=0` disables | Repeated identical tool calls across consecutive iterations → stop + `X-Agent-Stopped: stagnation`. |
+| **59** | `AGENT_TRAJECTORY_API=0` disables API | `X-Agent-Run-Id`; SSE `agent_activity` includes trajectory summary; `GET /api/v1/agent/trajectory/:runId` (or `/api/...`). TTL: `AGENT_TRAJECTORY_TTL_MS`. |
+
+`GET /config` also exposes: `toolValidationEnabled`, `agentStagnationStop`, `agentRequireCitations`, `agentTrajectoryApi`.

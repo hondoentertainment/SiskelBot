@@ -170,6 +170,16 @@ Enable developers and teams to build AI-powered workflows with:
 | 53 | Backend fallback (`FALLBACK_BACKEND`) on 5xx/429 or connection failure |
 | 54 | OpenTelemetry optional (`OTEL_ENABLED=1`, OTLP HTTP exporter) |
 
+### Implemented (Phases 55–59) — Agent quality
+
+| Phase | Name |
+|-------|------|
+| 55 | Strict tool validation — invalid JSON/args return repair hints; `TOOL_VALIDATION_STRICT=0` disables |
+| 56 | Golden-trace eval — `target: "trace"` + `expectedToolSequence` / `expectedToolNames` / `expectedToolCalls` (no live LLM) |
+| 57 | Grounding / citations — `AGENT_REQUIRE_CITATIONS=1` injects system guidance; `X-Agent-Citations-Missing` when answer lacks cites |
+| 58 | Stagnation stop — identical tool fingerprints across consecutive iterations; `AGENT_STAGNATION_STOP=0` disables |
+| 59 | Agent trajectory — `X-Agent-Run-Id`, SSE `agent_activity.trajectory`, `GET /api/agent/trajectory/:runId` (in-memory TTL) |
+
 ### Future Phases (Planned)
 
 | Phase | Name | Priority |

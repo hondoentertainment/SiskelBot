@@ -52,6 +52,15 @@ import { runSwarm, runSwarmLegacy, getSpecialists } from "./lib/swarm.js";
 import { initTracing } from "./lib/tracing.js";
 import { recordRequest, recordSwarm, renderPrometheus, isEnabled as metricsEnabled } from "./lib/metrics.js";
 import { fetchWithTimeoutAndRetry } from "./lib/backend-fetch.js";
+import { validateToolCall, toolValidationEnabled } from "./lib/tool-validation.js";
+import { detectStagnation, stagnationDetectionEnabled } from "./lib/agent-stagnation.js";
+import { augmentMessagesForGrounding, checkCitationCoverage } from "./lib/grounding.js";
+import {
+  createTrajectoryCollector,
+  saveTrajectory,
+  loadTrajectory,
+  trajectoryApiEnabled,
+} from "./lib/agent-trajectory.js";
 import compression from "compression";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -497,6 +506,10 @@ app.get("/config", (req, res) => {
     streamAgentFinalEnabled: STREAM_AGENT_FINAL,
     fallbackBackend: process.env.FALLBACK_BACKEND || null,
     otelEnabled: process.env.OTEL_ENABLED === "1",
+    toolValidationEnabled: toolValidationEnabled(),
+    agentStagnationStop: stagnationDetectionEnabled(),
+    agentRequireCitations: process.env.AGENT_REQUIRE_CITATIONS === "1",
+    agentTrajectoryApi: trajectoryApiEnabled(),
   };
   if (IS_PRODUCTION && !API_KEY) {
     payload.productionHint = "Set API_KEY in Vercel env vars to protect /v1/chat/completions";
@@ -540,7 +553,7 @@ const ENABLE_AGENT_SWARM = process.env.ENABLE_AGENT_SWARM === "1";
 
 async function runAgentLoop(req, res, config, model) {
   const url = `${config.baseUrl}${config.path}`;
-  let messages = Array.isArray(req.body?.messages) ? [...req.body.messages] : [];
+  let messages = augmentMessagesForGrounding(Array.isArray(req.body?.messages) ? [...req.body.messages] : []);
   const allowExecution = req.body?.agentOptions?.allowExecution === true;
   const workspace = req.body?.agentOptions?.workspace || "default";
   const toolCtx = {
@@ -549,6 +562,15 @@ async function runAgentLoop(req, res, config, model) {
     vercelToken: process.env.VERCEL_TOKEN,
     workspace,
   };
+
+  const runId = randomUUID();
+  res.setHeader("X-Agent-Run-Id", runId);
+  const trajCollector = createTrajectoryCollector({
+    runId,
+    workspace,
+    userId: req.userId || null,
+  });
+  trajCollector.record({ type: "start", model: req.body?.model || model });
 
   const tools = req.body?.tools?.length ? req.body.tools : getToolsSchema();
   const toolChoice = req.body?.tool_choice ?? "auto";
@@ -565,10 +587,12 @@ async function runAgentLoop(req, res, config, model) {
   let lastContent = "";
   let iteration = 0;
   const toolCallsLog = [];
+  let stopReason = "complete";
 
   while (iteration < MAX_AGENT_ITERATIONS) {
     iteration++;
     res.setHeader("X-Agent-Iteration", String(iteration));
+    trajCollector.record({ type: "iteration", iteration });
 
     const response = await backendFetch(url, {
       method: "POST",
@@ -587,6 +611,7 @@ async function runAgentLoop(req, res, config, model) {
 
     if (!msg) {
       lastContent = "(No response from model)";
+      stopReason = "no_message";
       break;
     }
 
@@ -595,6 +620,7 @@ async function runAgentLoop(req, res, config, model) {
 
     if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
       lastContent = content || "(Empty response)";
+      stopReason = "model_finished";
       break;
     }
 
@@ -604,16 +630,61 @@ async function runAgentLoop(req, res, config, model) {
         const name = tc.function?.name;
         const argsStr = tc.function?.arguments || "{}";
         let args = {};
+        let parseError = null;
         try {
           args = JSON.parse(argsStr);
-        } catch (_) {
+        } catch (e) {
+          parseError = e?.message || "invalid json";
           args = {};
         }
+
+        if (toolValidationEnabled()) {
+          const v = validateToolCall(name, args, { parseError });
+          if (!v.valid) {
+            toolCallsLog.push({ name, args, iteration, validationError: true });
+            trajCollector.record({
+              type: "tool_validation_error",
+              name,
+              iteration,
+              errors: v.errors,
+            });
+            return {
+              tool_call_id: tc.id,
+              content: JSON.stringify({
+                _tool_validation_error: true,
+                errors: v.errors,
+                repairHint: v.repairHint,
+                message: "Correct the tool call; the server did not execute invalid arguments.",
+              }),
+            };
+          }
+        }
+
         toolCallsLog.push({ name, args, iteration });
+        trajCollector.record({
+          type: "tool_call",
+          name,
+          iteration,
+          argsPreview: trajCollector.truncate(JSON.stringify(args), 240),
+        });
+
         try {
           const result = await runTool(name, args, toolCtx);
+          trajCollector.record({
+            type: "tool_result",
+            name,
+            iteration,
+            ok: result.ok !== false,
+            preview: trajCollector.truncate(result.content, 400),
+          });
           return { tool_call_id: tc.id, content: result.content };
         } catch (err) {
+          trajCollector.record({
+            type: "tool_error",
+            name,
+            iteration,
+            message: String(err?.message || err),
+          });
           return {
             tool_call_id: tc.id,
             content: JSON.stringify({ ok: false, error: String(err?.message || err) }),
@@ -628,13 +699,40 @@ async function runAgentLoop(req, res, config, model) {
         content: r.content,
       });
     }
+
+    if (stagnationDetectionEnabled() && detectStagnation(toolCallsLog)) {
+      lastContent = "(Agent stopped: repeated identical tool calls with no progress)";
+      stopReason = "stagnation";
+      res.setHeader("X-Agent-Stopped", "stagnation");
+      break;
+    }
   }
 
   if (iteration >= MAX_AGENT_ITERATIONS && lastContent === "") {
     lastContent = "(Agent reached max iterations without final response)";
+    stopReason = "max_iterations";
   }
 
-  return { content: lastContent, iteration, toolCalls: toolCallsLog };
+  const cite = checkCitationCoverage(lastContent, messages);
+  if (!cite.skipped && !cite.ok) {
+    res.setHeader("X-Agent-Citations-Missing", "1");
+  }
+
+  trajCollector.record({ type: "stop", reason: stopReason, iterations: iteration });
+  const trajectorySnapshot = trajCollector.getSnapshot();
+  if (trajectoryApiEnabled()) {
+    saveTrajectory(runId, trajectorySnapshot);
+  }
+
+  return {
+    content: lastContent,
+    iteration,
+    toolCalls: toolCallsLog,
+    runId,
+    stopReason,
+    citationWarning: !cite.skipped && !cite.ok,
+    trajectory: trajectorySnapshot,
+  };
 }
 
 app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRateLimiter, chatRateLimiter, logRequest, async (req, res) => {
@@ -681,22 +779,44 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
         iteration = swarmResult.iteration;
         swarmSteps = swarmResult.swarmSteps;
       } else {
-        ({ content, iteration, toolCalls } = await runAgentLoop(req, res, config, model));
+        const agentLoopResult = await runAgentLoop(req, res, config, model);
+        content = agentLoopResult.content;
+        iteration = agentLoopResult.iteration;
+        toolCalls = agentLoopResult.toolCalls;
+        req._agentLoopMeta = agentLoopResult;
       }
 
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
       res.setHeader("X-Agent-Iteration", String(iteration));
+      if (req._agentLoopMeta?.runId) {
+        res.setHeader("X-Agent-Run-Id", req._agentLoopMeta.runId);
+      }
       setQuotaHeaders(res, workspace, userId);
       res.flushHeaders();
 
-      if (toolCalls?.length || swarmSteps?.length) {
+      if (toolCalls?.length || swarmSteps?.length || req._agentLoopMeta) {
+        const meta = req._agentLoopMeta || {};
+        const traj = meta.trajectory;
+        const trajectorySummary =
+          traj && Array.isArray(traj.steps)
+            ? {
+                runId: traj.runId,
+                stepCount: traj.stepCount,
+                stopReason: meta.stopReason,
+                steps: traj.steps.slice(0, 40),
+              }
+            : undefined;
         const activityEvent = JSON.stringify({
           type: "agent_activity",
           toolCalls: toolCalls || [],
           swarmSteps: swarmSteps || [],
           iteration,
+          runId: meta.runId,
+          stopReason: meta.stopReason,
+          citationWarning: meta.citationWarning,
+          trajectory: trajectorySummary,
         });
         res.write(`data: ${activityEvent}\n\n`);
       }
@@ -2788,6 +2908,31 @@ app.get("/api/docs", (req, res) => {
   </script>
 </body>
 </html>`);
+});
+
+// Phases 55–59: Agent trajectory JSON (debug / replay)
+apiRoute("get", "/agent/trajectory/:runId", logRequest, userAuth, (req, res) => {
+  if (!trajectoryApiEnabled()) {
+    return apiError(
+      res,
+      503,
+      "FEATURE_DISABLED",
+      "Trajectory API disabled",
+      "Unset AGENT_TRAJECTORY_API=0 to enable GET /api/agent/trajectory/:runId."
+    );
+  }
+  const runId = String(req.params.runId || "").trim();
+  const t = loadTrajectory(runId);
+  if (!t) {
+    return apiError(
+      res,
+      404,
+      "TRAJECTORY_NOT_FOUND",
+      "Trajectory not found or expired",
+      "IDs are short-lived; run agent mode again and use the X-Agent-Run-Id header."
+    );
+  }
+  res.json(t);
 });
 
 // --- Phase 32: Evaluation Harness ---
