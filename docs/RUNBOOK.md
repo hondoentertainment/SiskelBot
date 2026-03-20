@@ -1211,4 +1211,22 @@ Set `QUOTA_TOKENS_PER_WORKSPACE` (e.g. `100000`) to cap tokens per workspace per
 
 `GET /config` includes `agentDefaultSystemSet` (boolean) — does not expose prompt text.
 
+## Phases 61–62: Per-workspace agent settings
+
+Stored at `data/users/{storageUserId}/workspaces/{workspaceId}/agent-settings.json` (`storageUserId` = owner for team workspaces).
+
+| API | Notes |
+|-----|--------|
+| `GET /api/workspaces/:id/agent-settings` | Session or user API key; must have workspace access. Returns `{ workspaceId, defaultSystemPrompt, memorySnippets }`. |
+| `PUT /api/workspaces/:id/agent-settings` | Body: `{ defaultSystemPrompt?, memorySnippets? }`. Requires **write** scope when using scoped keys. Team **viewers** cannot edit. |
+
+Merge order for LLM requests: client messages → **Phase 60** `AGENT_DEFAULT_SYSTEM` → **workspace** prompt + approved memory block → grounding (Phase 57) when enabled.
+
+| Variable | Default | Notes |
+|----------|---------|--------|
+| `WORKSPACE_AGENT_SYSTEM_MAX_CHARS` | 8000 | Max length for `defaultSystemPrompt` (capped at 32000). |
+| `WORKSPACE_AGENT_MEMORY_MAX_ITEMS` | 50 | Max number of snippets. |
+| `WORKSPACE_AGENT_MEMORY_SNIPPET_MAX` | 2000 | Max chars per snippet (capped at 8000). |
+| `WORKSPACE_AGENT_MEMORY_TOTAL_MAX` | 16000 | Total chars across snippets (capped at 64000). |
+
 See `docs/AGENT_NEXT_STEPS.md` for a short backlog of further agent improvements.

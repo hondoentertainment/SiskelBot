@@ -62,6 +62,13 @@ import {
   trajectoryApiEnabled,
 } from "./lib/agent-trajectory.js";
 import { augmentMessagesWithDefaultSystem, defaultAgentSystemConfigured } from "./lib/agent-defaults.js";
+import {
+  augmentMessagesWithWorkspaceAgent,
+  loadWorkspaceAgentSettings,
+  saveWorkspaceAgentSettings,
+  getWorkspaceAgentAccess,
+  canEditWorkspaceAgentSettings,
+} from "./lib/workspace-agent-settings.js";
 import compression from "compression";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -555,11 +562,13 @@ const ENABLE_AGENT_SWARM = process.env.ENABLE_AGENT_SWARM === "1";
 
 async function runAgentLoop(req, res, config, model) {
   const url = `${config.baseUrl}${config.path}`;
+  const workspace = req.body?.agentOptions?.workspace || "default";
   let messages = Array.isArray(req.body?.messages) ? [...req.body.messages] : [];
   messages = augmentMessagesWithDefaultSystem(messages);
+  const storageUserId = resolveStorageUserId(req.userId || "anonymous", workspace);
+  messages = augmentMessagesWithWorkspaceAgent(messages, storageUserId, workspace);
   messages = augmentMessagesForGrounding(messages);
   const allowExecution = req.body?.agentOptions?.allowExecution === true;
-  const workspace = req.body?.agentOptions?.workspace || "default";
   const toolCtx = {
     allowExecution: ALLOW_RECIPE_STEP_EXECUTION && allowExecution,
     projectDir: process.env.PROJECT_DIR || process.cwd(),
@@ -1930,6 +1939,56 @@ apiRoute("post", "/workspaces", storageRateLimiter, userAuth, logRequest, async 
     return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
   }
 });
+
+// Phase 61–62: Per-workspace agent system prompt + approved memory (agent / swarm)
+apiRoute("get", "/workspaces/:id/agent-settings", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+  try {
+    const workspaceId = sanitizeWorkspace(req.params.id);
+    const access = getWorkspaceAgentAccess(req.userId, workspaceId);
+    if (!access.allowed) {
+      return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+    }
+    const storageUserId = resolveStorageUserId(req.userId, workspaceId);
+    const settings = loadWorkspaceAgentSettings(storageUserId, workspaceId);
+    res.json({ workspaceId, defaultSystemPrompt: settings.defaultSystemPrompt, memorySnippets: settings.memorySnippets });
+  } catch (err) {
+    console.error("Agent settings GET error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute(
+  "put",
+  "/workspaces/:id/agent-settings",
+  storageRateLimiter,
+  userAuth,
+  requireScope("write"),
+  logRequest,
+  async (req, res) => {
+    try {
+      const workspaceId = sanitizeWorkspace(req.params.id);
+      const access = getWorkspaceAgentAccess(req.userId, workspaceId);
+      if (!access.allowed) {
+        return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+      }
+      if (!canEditWorkspaceAgentSettings(access.role)) {
+        return apiError(
+          res,
+          403,
+          "FORBIDDEN",
+          "Viewers cannot edit workspace agent settings",
+          "Requires admin or member role on team workspaces."
+        );
+      }
+      const storageUserId = resolveStorageUserId(req.userId, workspaceId);
+      const saved = saveWorkspaceAgentSettings(storageUserId, workspaceId, req.body || {});
+      res.json({ workspaceId, defaultSystemPrompt: saved.defaultSystemPrompt, memorySnippets: saved.memorySnippets });
+    } catch (err) {
+      console.error("Agent settings PUT error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  }
+);
 
 // --- Phase 29: Team workspaces - invite, join, members, activity ---
 apiRoute("post", "/workspaces/join", storageRateLimiter, userAuth, logRequest, async (req, res) => {

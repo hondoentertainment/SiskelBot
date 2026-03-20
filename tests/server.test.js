@@ -404,6 +404,35 @@ test("POST /api/workspaces creates workspace when auth not configured", async ()
   assert.equal(response.body.name, "Test WS");
 });
 
+test("GET /api/workspaces/:id/agent-settings returns empty defaults", async () => {
+  const app = await loadApp({ BACKEND: "ollama", USER_API_KEYS: "" });
+  const created = await request(app).post("/api/workspaces").send({ name: "Agent settings WS" });
+  assert.equal(created.status, 201);
+  const id = created.body.id;
+  const res = await request(app).get(`/api/workspaces/${id}/agent-settings`);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.workspaceId, id);
+  assert.equal(res.body.defaultSystemPrompt, "");
+  assert.deepEqual(res.body.memorySnippets, []);
+});
+
+test("PUT /api/workspaces/:id/agent-settings persists for GET", async () => {
+  const app = await loadApp({ BACKEND: "ollama", USER_API_KEYS: "" });
+  const created = await request(app).post("/api/workspaces").send({ name: "Agent settings WS 2" });
+  assert.equal(created.status, 201);
+  const id = created.body.id;
+  const put = await request(app)
+    .put(`/api/workspaces/${id}/agent-settings`)
+    .send({ defaultSystemPrompt: "Use metric units.", memorySnippets: ["Project: Acme"] });
+  assert.equal(put.status, 200);
+  assert.equal(put.body.defaultSystemPrompt, "Use metric units.");
+  assert.deepEqual(put.body.memorySnippets, ["Project: Acme"]);
+  const get = await request(app).get(`/api/workspaces/${id}/agent-settings`);
+  assert.equal(get.status, 200);
+  assert.equal(get.body.defaultSystemPrompt, "Use metric units.");
+  assert.deepEqual(get.body.memorySnippets, ["Project: Acme"]);
+});
+
 // --- Phase 10: Storage CRUD ---
 test("POST /api/context requires title", async () => {
   const app = await loadApp({ BACKEND: "ollama" });

@@ -3,11 +3,12 @@
 ## Shipped in this iteration
 
 - **Phase 60:** `AGENT_DEFAULT_SYSTEM` — deployment-wide default system text merged into agent and swarm LLM calls (see `.env.example`, `lib/agent-defaults.js`).
+- **Phases 61–62:** Per-workspace `defaultSystemPrompt` + `memorySnippets[]` — stored at `data/users/{storageUserId}/workspaces/{id}/agent-settings.json`, merged after the deployment default in **agent mode** and **swarm** (specialists + synthesizer). API: `GET` / `PUT /api/workspaces/:id/agent-settings` (and `/api/v1/...`). See `lib/workspace-agent-settings.js`, `.env.example` (`WORKSPACE_AGENT_*` caps).
 
 ## Near-term (high leverage)
 
-1. **Per-workspace system overrides** — Store optional `defaultSystemPrompt` in workspace metadata and merge after env default (team-specific tone/rules).
-2. **Structured “memory” snippets** — User-approved bullets in `context.json` or a small `agent-memory.json` per workspace; inject as a system section when `agentMode` is on.
+1. ~~**Per-workspace system overrides**~~ — Done (Phase 61).
+2. ~~**Structured “memory” snippets**~~ — Done (Phase 62; approved bullets as `memorySnippets`).
 3. **Eval expansion** — More `target: "trace"` cases in CI; optional recorded traces from staging runs fed into golden checks.
 4. **Client hint** — When `GET /config` reports `agentDefaultSystemSet`, show a subtle “Server defaults active” in Settings (no prompt text leakage).
 

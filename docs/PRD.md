@@ -180,6 +180,8 @@ Enable developers and teams to build AI-powered workflows with:
 | 58 | Stagnation stop — identical tool fingerprints across consecutive iterations; `AGENT_STAGNATION_STOP=0` disables |
 | 59 | Agent trajectory — `X-Agent-Run-Id`, SSE `agent_activity.trajectory`, `GET /api/agent/trajectory/:runId` (in-memory TTL) |
 | 60 | Default agent system — `AGENT_DEFAULT_SYSTEM` merged into agent + swarm LLM messages; `GET /config` → `agentDefaultSystemSet` |
+| 61 | Per-workspace agent instructions — `defaultSystemPrompt` in `agent-settings.json`; `GET`/`PUT /api/workspaces/:id/agent-settings` |
+| 62 | Approved workspace memory — `memorySnippets[]` merged as a system section after env + workspace prompt; team paths use `resolveStorageUserId` |
 
 ### Future Phases (Planned)
 
