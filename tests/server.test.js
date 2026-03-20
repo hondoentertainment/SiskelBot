@@ -40,6 +40,7 @@ test("GET /config returns backend defaults", async () => {
   assert.equal(response.body.agentStagnationStop, true);
   assert.equal(response.body.agentRequireCitations, false);
   assert.equal(response.body.agentTrajectoryApi, true);
+  assert.equal(response.body.agentDefaultSystemSet, false);
 });
 
 test("GET /api/agent/trajectory/:runId returns 404 when not found", async () => {

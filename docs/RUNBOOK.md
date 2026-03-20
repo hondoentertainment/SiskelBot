@@ -1201,3 +1201,14 @@ Set `QUOTA_TOKENS_PER_WORKSPACE` (e.g. `100000`) to cap tokens per workspace per
 | **59** | `AGENT_TRAJECTORY_API=0` disables API | `X-Agent-Run-Id`; SSE `agent_activity` includes trajectory summary; `GET /api/v1/agent/trajectory/:runId` (or `/api/...`). TTL: `AGENT_TRAJECTORY_TTL_MS`. |
 
 `GET /config` also exposes: `toolValidationEnabled`, `agentStagnationStop`, `agentRequireCitations`, `agentTrajectoryApi`.
+
+## Phase 60: Default agent system (personalization)
+
+| Variable | Default | Notes |
+|----------|---------|--------|
+| `AGENT_DEFAULT_SYSTEM` | — | Non-empty string merged into every **agent mode** and **swarm** LLM request (after copying client messages). Appended to the first `system` message, or a new `system` message is inserted. |
+| `AGENT_DEFAULT_SYSTEM_MAX_CHARS` | 8000 | Hard cap per request (max 32000). |
+
+`GET /config` includes `agentDefaultSystemSet` (boolean) — does not expose prompt text.
+
+See `docs/AGENT_NEXT_STEPS.md` for a short backlog of further agent improvements.

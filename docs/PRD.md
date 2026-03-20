@@ -179,6 +179,7 @@ Enable developers and teams to build AI-powered workflows with:
 | 57 | Grounding / citations — `AGENT_REQUIRE_CITATIONS=1` injects system guidance; `X-Agent-Citations-Missing` when answer lacks cites |
 | 58 | Stagnation stop — identical tool fingerprints across consecutive iterations; `AGENT_STAGNATION_STOP=0` disables |
 | 59 | Agent trajectory — `X-Agent-Run-Id`, SSE `agent_activity.trajectory`, `GET /api/agent/trajectory/:runId` (in-memory TTL) |
+| 60 | Default agent system — `AGENT_DEFAULT_SYSTEM` merged into agent + swarm LLM messages; `GET /config` → `agentDefaultSystemSet` |
 
 ### Future Phases (Planned)
 

@@ -5,6 +5,7 @@
   },
   "install": {
     "banner": "Installer Siskel Bot pour un accès rapide",
+    "prompt": "Installer Siskel Bot pour un accès rapide",
     "install": "Installer",
     "dismiss": "Fermer"
   },
@@ -35,11 +36,6 @@
     "loadFromServer": "Charger depuis serveur",
     "refresh": "Actualiser",
     "fullReport": "Rapport complet"
-  },
-  "install": {
-    "prompt": "Installer Siskel Bot pour un accès rapide",
-    "install": "Installer",
-    "dismiss": "Fermer"
   },
   "health": {
     "backend": "Backend",

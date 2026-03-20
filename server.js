@@ -61,6 +61,7 @@ import {
   loadTrajectory,
   trajectoryApiEnabled,
 } from "./lib/agent-trajectory.js";
+import { augmentMessagesWithDefaultSystem, defaultAgentSystemConfigured } from "./lib/agent-defaults.js";
 import compression from "compression";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -510,6 +511,7 @@ app.get("/config", (req, res) => {
     agentStagnationStop: stagnationDetectionEnabled(),
     agentRequireCitations: process.env.AGENT_REQUIRE_CITATIONS === "1",
     agentTrajectoryApi: trajectoryApiEnabled(),
+    agentDefaultSystemSet: defaultAgentSystemConfigured(),
   };
   if (IS_PRODUCTION && !API_KEY) {
     payload.productionHint = "Set API_KEY in Vercel env vars to protect /v1/chat/completions";
@@ -553,7 +555,9 @@ const ENABLE_AGENT_SWARM = process.env.ENABLE_AGENT_SWARM === "1";
 
 async function runAgentLoop(req, res, config, model) {
   const url = `${config.baseUrl}${config.path}`;
-  let messages = augmentMessagesForGrounding(Array.isArray(req.body?.messages) ? [...req.body.messages] : []);
+  let messages = Array.isArray(req.body?.messages) ? [...req.body.messages] : [];
+  messages = augmentMessagesWithDefaultSystem(messages);
+  messages = augmentMessagesForGrounding(messages);
   const allowExecution = req.body?.agentOptions?.allowExecution === true;
   const workspace = req.body?.agentOptions?.workspace || "default";
   const toolCtx = {
