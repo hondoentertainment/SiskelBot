@@ -152,7 +152,19 @@
     "createBackup": "Crear copia",
     "listBackups": "Listar copias",
     "locale": "Idioma",
-    "shortcutHelp": "Pulsa Ctrl/Cmd + Enter para enviar. Tu clave API se guarda solo en esta sesión."
+    "shortcutHelp": "Pulsa Ctrl/Cmd + Enter para enviar. Tu clave API se guarda solo en esta sesión.",
+    "serverAgentDefaultsHint": "Este servidor tiene instrucciones de agente por defecto (AGENT_DEFAULT_SYSTEM). La configuración del espacio de trabajo se aplica después; el texto exacto no se muestra aquí.",
+    "workspaceAgentTitle": "Instrucciones del agente del espacio de trabajo",
+    "workspaceAgentHelp": "Texto de sistema y memoria aprobada opcionales para el espacio de trabajo actual. Modo agente y enjambre. Inicia sesión o usa clave API si el servidor lo exige.",
+    "workspaceSystemPrompt": "Prompt de sistema del espacio de trabajo",
+    "workspaceMemoryLines": "Memoria aprobada (un hecho por línea)",
+    "workspaceAgentReload": "Recargar",
+    "workspaceAgentSave": "Guardar",
+    "workspaceAgentLoaded": "Cargado.",
+    "workspaceAgentSaved": "Guardado.",
+    "workspaceAgentLoadError": "No se pudieron cargar los ajustes del agente.",
+    "workspaceAgentSaveError": "No se pudo guardar (permisos o clave API).",
+    "workspaceAgentViewerError": "Los lectores no pueden editar estos ajustes."
   },
   "notice": {
     "retryLast": "Reintentar última",

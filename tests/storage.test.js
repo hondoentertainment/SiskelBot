@@ -28,8 +28,8 @@ test("sanitizeWorkspace returns default for empty/invalid", () => {
   assert.equal(storage.sanitizeWorkspace("valid-ws"), "valid-ws");
 });
 
-test("listWorkspaces returns default workspace for new user", () => {
-  const items = storage.listWorkspaces("anonymous");
+test("listWorkspaces returns default workspace for new user", async () => {
+  const items = await storage.listWorkspaces("anonymous");
   assert.ok(Array.isArray(items));
   assert.ok(items.length >= 1);
   const defaultWs = items.find((w) => w.id === "default");
@@ -47,7 +47,7 @@ test("mergeItems creates and updates context items", async () => {
   assert.ok(merged.find((i) => i.id === "ctx-1" && i.title === "Doc 1"));
   assert.ok(merged.find((i) => i.id === "ctx-2" && i.title === "Doc 2"));
 
-  const list = storage.list("context", "default", "anonymous");
+  const list = await storage.list("context", "default", "anonymous");
   assert.equal(list.length, 2);
 });
 
@@ -55,7 +55,7 @@ test("get returns item by id", async () => {
   await storage.mergeItems("context", "default", [
     { id: "get-test", title: "Get Test", content: "x" },
   ]);
-  const item = storage.get("context", "get-test", "default", "anonymous");
+  const item = await storage.get("context", "get-test", "default", "anonymous");
   assert.ok(item);
   assert.equal(item.title, "Get Test");
 });
@@ -84,7 +84,7 @@ test("deleteItem removes item", async () => {
   ]);
   const deleted = await storage.deleteItem("context", "del-test", "default", "anonymous");
   assert.equal(deleted, true);
-  const item = storage.get("context", "del-test", "default", "anonymous");
+  const item = await storage.get("context", "del-test", "default", "anonymous");
   assert.equal(item, null);
 });
 
@@ -94,6 +94,6 @@ test("createWorkspace adds workspace for user", async () => {
   assert.equal(ws.name, "My Workspace");
   assert.equal(ws.userId, "user1");
 
-  const list = storage.listWorkspaces("user1");
+  const list = await storage.listWorkspaces("user1");
   assert.ok(list.some((w) => w.id === ws.id && w.name === "My Workspace"));
 });

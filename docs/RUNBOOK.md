@@ -1183,12 +1183,17 @@ Set `QUOTA_TOKENS_PER_WORKSPACE` (e.g. `100000`) to cap tokens per workspace per
 | Phase | Env / behavior | Notes |
 |-------|----------------|-------|
 | **50** | `STORAGE_BACKEND=sqlite` | Optional `better-sqlite3`; DB file `storage-kv.db` under data dir. Default: JSON files. |
+| **46** | `STORAGE_BACKEND=postgres` + `DATABASE_URL` | `storage_kv` table (`path` TEXT key, `data` JSONB). **Phase 68:** same backend applies to teams, schedules, webhooks, notifications, and workspace `agent-settings.json` via `lib/json-path-store.js` (identical path strings as on-disk JSON). Requires `pg`. Core storage + those modules use **async** I/O when backend is postgres/sqlite. |
+| **68** | (no new env vars) | `lib/json-path-store.js` mirrors `storage.js` routing: **postgres → sqlite → files** for `workspace-members.json`, `team-invites.json`, `workspace-activity.json`, `schedules.json`, `webhooks.json`, per-user `notifications.json`, and `agent-settings.json`. Team/webhook/schedule helpers are **async**. |
 | **51** | `STREAM_AGENT_FINAL=1`, `AGENT_STREAM_CHUNK_SIZE` (default 320) | Agent final assistant text split into multiple SSE deltas. |
 | **52** | `AUDIT_MAX_ENTRIES`, `AUDIT_RETENTION_DAYS` | Trims execution audit log after append. |
 | **53** | `FALLBACK_BACKEND` (`ollama` \| `vllm` \| `openai`) | Primary backend 5xx/429 or network error → try fallback. |
 | **54** | `OTEL_ENABLED=1`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME` | OpenTelemetry OTLP HTTP (self-hosted listen path only; not started on Vercel serverless). |
+| **47** | `OTEL_AUTO_INSTRUMENT=0` disables | When OTEL is on (default): **HTTP** instrumentation (incoming Express + outgoing `http`/`https`) and **Undici** (`global fetch`). Server calls `initTracing()` before `createServer` so inbound spans attach. Ignores `/health/live` and `/metrics` incoming. |
 
-`GET /config` exposes: `storageBackend`, `streamAgentFinalEnabled`, `fallbackBackend`, `otelEnabled`.
+`GET /config` exposes: `storageBackend` (`json` \| `sqlite` \| `postgres`), `streamAgentFinalEnabled`, `fallbackBackend`, `otelEnabled`, `otelAutoInstrument`.
+
+SQL reference: `docs/migrations/postgres-storage-kv.sql`.
 
 ## Phases 55–59: Agent quality (validation, eval traces, citations, stagnation, trajectory)
 
@@ -1228,5 +1233,13 @@ Merge order for LLM requests: client messages → **Phase 60** `AGENT_DEFAULT_SY
 | `WORKSPACE_AGENT_MEMORY_MAX_ITEMS` | 50 | Max number of snippets. |
 | `WORKSPACE_AGENT_MEMORY_SNIPPET_MAX` | 2000 | Max chars per snippet (capped at 8000). |
 | `WORKSPACE_AGENT_MEMORY_TOTAL_MAX` | 16000 | Total chars across snippets (capped at 64000). |
+
+## Phases 63–65: Client + eval
+
+| Phase | What |
+|-------|------|
+| **63** | Chat UI Settings: informational banner when `agentDefaultSystemSet` is true (`AGENT_DEFAULT_SYSTEM` configured). |
+| **64** | Same panel: **Workspace agent instructions** — edit workspace system prompt and memory lines; **Reload** / **Save** → `/api/workspaces/:id/agent-settings`. |
+| **65** | `data/eval-sets/example.json` includes golden-trace cases; CI exercises them via `tests/eval-trace.test.js` (no live LLM). |
 
 See `docs/AGENT_NEXT_STEPS.md` for a short backlog of further agent improvements.

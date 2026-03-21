@@ -148,7 +148,19 @@
     "createBackup": "Backup erstellen",
     "listBackups": "Backups auflisten",
     "locale": "Sprache",
-    "shortcutHelp": "Strg/Cmd + Enter zum Senden. API-Schlüssel nur in dieser Sitzung."
+    "shortcutHelp": "Strg/Cmd + Enter zum Senden. API-Schlüssel nur in dieser Sitzung.",
+    "serverAgentDefaultsHint": "Dieser Host hat deployment-weite Standard-Agentenanweisungen (AGENT_DEFAULT_SYSTEM). Workspace-Einstellungen folgen danach; der genaue Text wird hier nicht angezeigt.",
+    "workspaceAgentTitle": "Workspace-Agent-Anweisungen",
+    "workspaceAgentHelp": "Optionaler Systemtext und genehmigte Merkfakten für den aktuellen Workspace. Agent- und Schwarmmodus. Anmeldung oder Benutzer-API-Schlüssel falls nötig.",
+    "workspaceSystemPrompt": "Workspace-Systemprompt",
+    "workspaceMemoryLines": "Genehmigte Merkfakten (eine Zeile pro Fakt)",
+    "workspaceAgentReload": "Neu laden",
+    "workspaceAgentSave": "Speichern",
+    "workspaceAgentLoaded": "Geladen.",
+    "workspaceAgentSaved": "Gespeichert.",
+    "workspaceAgentLoadError": "Agent-Einstellungen konnten nicht geladen werden.",
+    "workspaceAgentSaveError": "Speichern fehlgeschlagen (Berechtigungen oder API-Schlüssel).",
+    "workspaceAgentViewerError": "Zuschauer können diese Einstellungen nicht bearbeiten."
   },
   "notice": {
     "retryLast": "Letzte wiederholen",

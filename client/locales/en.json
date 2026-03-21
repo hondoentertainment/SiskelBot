@@ -203,7 +203,19 @@
   },
   "settings": {
     "language": "Language",
-    "languageLabel": "Language"
+    "languageLabel": "Language",
+    "serverAgentDefaultsHint": "This host has deployment-wide default agent instructions (AGENT_DEFAULT_SYSTEM). Workspace settings below are merged after those; the exact default text is not shown here.",
+    "workspaceAgentTitle": "Workspace agent instructions",
+    "workspaceAgentHelp": "Optional system text and approved memory for the current workspace. Used in agent mode and swarm. Sign in or set a user API key if the server requires auth.",
+    "workspaceSystemPrompt": "Workspace system prompt",
+    "workspaceMemoryLines": "Approved memory (one fact per line)",
+    "workspaceAgentReload": "Reload",
+    "workspaceAgentSave": "Save",
+    "workspaceAgentLoaded": "Loaded.",
+    "workspaceAgentSaved": "Saved.",
+    "workspaceAgentLoadError": "Could not load workspace agent settings.",
+    "workspaceAgentSaveError": "Could not save (check permissions or user API key).",
+    "workspaceAgentViewerError": "Viewers cannot edit workspace agent settings."
   },
   "usecases": {
     "summary": "Use cases",

@@ -39,7 +39,6 @@ import {
   getWorkspaceMembers,
   getWorkspaceActivity,
   logActivity,
-  getWorkspaceOwner,
 } from "./lib/teams.js";
 import openApiSpec from "./lib/openapi-spec.js";
 import { runEvalSet } from "./lib/eval-runner.js";
@@ -510,10 +509,16 @@ app.get("/config", (req, res) => {
     swarmEnabled: process.env.ENABLE_AGENT_SWARM === "1",
     authRequired: isAuthConfigured(),
     oauthProviders,
-    storageBackend: process.env.STORAGE_BACKEND === "sqlite" ? "sqlite" : "json",
+    storageBackend:
+      process.env.STORAGE_BACKEND === "postgres"
+        ? "postgres"
+        : process.env.STORAGE_BACKEND === "sqlite"
+          ? "sqlite"
+          : "json",
     streamAgentFinalEnabled: STREAM_AGENT_FINAL,
     fallbackBackend: process.env.FALLBACK_BACKEND || null,
     otelEnabled: process.env.OTEL_ENABLED === "1",
+    otelAutoInstrument: process.env.OTEL_AUTO_INSTRUMENT !== "0",
     toolValidationEnabled: toolValidationEnabled(),
     agentStagnationStop: stagnationDetectionEnabled(),
     agentRequireCitations: process.env.AGENT_REQUIRE_CITATIONS === "1",
@@ -565,8 +570,8 @@ async function runAgentLoop(req, res, config, model) {
   const workspace = req.body?.agentOptions?.workspace || "default";
   let messages = Array.isArray(req.body?.messages) ? [...req.body.messages] : [];
   messages = augmentMessagesWithDefaultSystem(messages);
-  const storageUserId = resolveStorageUserId(req.userId || "anonymous", workspace);
-  messages = augmentMessagesWithWorkspaceAgent(messages, storageUserId, workspace);
+  const storageUserId = await resolveStorageUserId(req.userId || "anonymous", workspace);
+  messages = await augmentMessagesWithWorkspaceAgent(messages, storageUserId, workspace);
   messages = augmentMessagesForGrounding(messages);
   const allowExecution = req.body?.agentOptions?.allowExecution === true;
   const toolCtx = {
@@ -856,7 +861,7 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
       res.write("data: [DONE]\n\n");
       res.end();
       const ws = req.body?.agentOptions?.workspace || "default";
-      emitEvent("message_sent", { content: content?.slice(0, 500), model, iteration }, { workspaceId: ws, userId: req.userId });
+      await emitEvent("message_sent", { content: content?.slice(0, 500), model, iteration }, { workspaceId: ws, userId: req.userId });
       return;
     }
 
@@ -928,7 +933,7 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
       if (res.flush) res.flush();
     }
 
-    emitEvent(
+    await emitEvent(
       "message_sent",
       { content: outputContent?.slice(0, 500), model },
       { workspaceId: workspace, userId }
@@ -1104,7 +1109,7 @@ app.post("/v1/agent/swarm", chatAuth, requireScope("write"), perKeyChatRateLimit
     res.write(`data: ${chunk}\n\n`);
     res.write("data: [DONE]\n\n");
     res.end();
-    emitEvent("message_sent", { content: content?.slice(0, 500), model, iteration }, { workspaceId: workspace, userId });
+    await emitEvent("message_sent", { content: content?.slice(0, 500), model, iteration }, { workspaceId: workspace, userId });
   } catch (err) {
     reportError(err);
     res.status(500).json({
@@ -1213,7 +1218,7 @@ app.post("/v1/tasks/plan", taskPlanRateLimiter, apiKeyAuth, logRequest, async (r
     }
 
     const planWorkspace = sanitizeWorkspace(req.body?.workspace || req.query?.workspace);
-    emitEvent("plan_created", { plan: parsed, raw: rawContent?.slice(0, 500) }, { workspaceId: planWorkspace, userId: req.userId });
+    await emitEvent("plan_created", { plan: parsed, raw: rawContent?.slice(0, 500) }, { workspaceId: planWorkspace, userId: req.userId });
     res.json({ plan: parsed, raw: rawContent });
   } catch (err) {
     console.error("Task plan error:", err.message);
@@ -1331,7 +1336,7 @@ app.get("/health/live", (req, res) => {
 // Phase 34: Readiness probe - app can accept traffic (storage + backend reachable). For k8s/container orchestration.
 app.get("/health/ready", async (req, res) => {
   try {
-    storage.listWorkspaces("anonymous");
+    await storage.listWorkspaces("anonymous");
   } catch (e) {
     return res.status(503).json({ ok: false, status: "not_ready", reason: "storage_unavailable", error: e.message });
   }
@@ -1920,7 +1925,7 @@ const storageRateLimiter = rateLimit({
 // --- Phase 14: Workspaces API ---
 apiRoute("get", "/workspaces", storageRateLimiter, userAuth, logRequest, async (req, res) => {
   try {
-    const workspaces = storage.listWorkspaces(req.userId);
+    const workspaces = await storage.listWorkspaces(req.userId);
     res.json({ _version: 1, items: workspaces });
   } catch (err) {
     console.error("Workspaces list error:", err.message);
@@ -1944,12 +1949,12 @@ apiRoute("post", "/workspaces", storageRateLimiter, userAuth, logRequest, async 
 apiRoute("get", "/workspaces/:id/agent-settings", storageRateLimiter, userAuth, logRequest, async (req, res) => {
   try {
     const workspaceId = sanitizeWorkspace(req.params.id);
-    const access = getWorkspaceAgentAccess(req.userId, workspaceId);
+    const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
     if (!access.allowed) {
       return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
     }
-    const storageUserId = resolveStorageUserId(req.userId, workspaceId);
-    const settings = loadWorkspaceAgentSettings(storageUserId, workspaceId);
+    const storageUserId = await resolveStorageUserId(req.userId, workspaceId);
+    const settings = await loadWorkspaceAgentSettings(storageUserId, workspaceId);
     res.json({ workspaceId, defaultSystemPrompt: settings.defaultSystemPrompt, memorySnippets: settings.memorySnippets });
   } catch (err) {
     console.error("Agent settings GET error:", err.message);
@@ -1967,7 +1972,7 @@ apiRoute(
   async (req, res) => {
     try {
       const workspaceId = sanitizeWorkspace(req.params.id);
-      const access = getWorkspaceAgentAccess(req.userId, workspaceId);
+      const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
       if (!access.allowed) {
         return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
       }
@@ -1980,8 +1985,8 @@ apiRoute(
           "Requires admin or member role on team workspaces."
         );
       }
-      const storageUserId = resolveStorageUserId(req.userId, workspaceId);
-      const saved = saveWorkspaceAgentSettings(storageUserId, workspaceId, req.body || {});
+      const storageUserId = await resolveStorageUserId(req.userId, workspaceId);
+      const saved = await saveWorkspaceAgentSettings(storageUserId, workspaceId, req.body || {});
       res.json({ workspaceId, defaultSystemPrompt: saved.defaultSystemPrompt, memorySnippets: saved.memorySnippets });
     } catch (err) {
       console.error("Agent settings PUT error:", err.message);
@@ -1995,14 +2000,17 @@ apiRoute("post", "/workspaces/join", storageRateLimiter, userAuth, logRequest, a
   try {
     const code = req.body?.code?.trim?.();
     if (!code) return apiError(res, 400, "INVALID_INPUT", "code required", "Send { code: string }.");
-    const result = joinByInviteCode(code, req.userId);
+    const result = await joinByInviteCode(code, req.userId);
     if (!result.ok) {
       const status = result.error?.includes("Invalid") || result.error?.includes("expired") ? 400 : 409;
       return res.status(status).json({ error: result.error, code: "JOIN_FAILED" });
     }
-    const members = getWorkspaceMembers(result.workspaceId);
+    const members = await getWorkspaceMembers(result.workspaceId);
     const ownerId = members?.ownerId || req.userId;
-    const ws = storage.getWorkspaceById(ownerId, result.workspaceId) || { id: result.workspaceId, name: result.workspaceName || "Team Workspace" };
+    const ws = (await storage.getWorkspaceById(ownerId, result.workspaceId)) || {
+      id: result.workspaceId,
+      name: result.workspaceName || "Team Workspace",
+    };
     res.status(200).json({ ok: true, workspace: { id: result.workspaceId, name: ws.name || result.workspaceName } });
   } catch (err) {
     console.error("Workspace join error:", err.message);
@@ -2013,7 +2021,7 @@ apiRoute("post", "/workspaces/join", storageRateLimiter, userAuth, logRequest, a
 apiRoute("post", "/workspaces/:id/invite", storageRateLimiter, userAuth, logRequest, async (req, res) => {
   try {
     const workspaceId = req.params.id;
-    const access = canAccessWorkspace(workspaceId, req.userId);
+    const access = await canAccessWorkspace(workspaceId, req.userId);
     if (!access.allowed || (access.role !== "admin" && access.role !== "member")) {
       return apiError(res, 403, "FORBIDDEN", "Admin or member role required to create invites", null);
     }
@@ -2021,7 +2029,7 @@ apiRoute("post", "/workspaces/:id/invite", storageRateLimiter, userAuth, logRequ
     const opts = {};
     if (req.body?.expiresInHours != null) opts.expiresInHours = Number(req.body.expiresInHours);
     if (req.body?.maxUses != null) opts.maxUses = Number(req.body.maxUses);
-    const inv = createInviteCode(workspaceId, req.userId, opts);
+    const inv = await createInviteCode(workspaceId, req.userId, opts);
     const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get("host") || "localhost"}`;
     res.status(201).json({ code: inv.code, inviteLink: `${baseUrl}?join=${inv.code}`, expiresAt: inv.expiresAt, maxUses: inv.maxUses });
   } catch (err) {
@@ -2033,9 +2041,9 @@ apiRoute("post", "/workspaces/:id/invite", storageRateLimiter, userAuth, logRequ
 apiRoute("get", "/workspaces/:id/members", storageRateLimiter, userAuth, logRequest, async (req, res) => {
   try {
     const workspaceId = req.params.id;
-    const access = canAccessWorkspace(workspaceId, req.userId);
+    const access = await canAccessWorkspace(workspaceId, req.userId);
     if (!access.allowed) return apiError(res, 403, "FORBIDDEN", "Access denied", null);
-    const entry = getWorkspaceMembers(workspaceId);
+    const entry = await getWorkspaceMembers(workspaceId);
     if (!entry) return res.json({ ownerId: null, members: [] });
     res.json({ ownerId: entry.ownerId, members: entry.members || [] });
   } catch (err) {
@@ -2047,10 +2055,10 @@ apiRoute("get", "/workspaces/:id/members", storageRateLimiter, userAuth, logRequ
 apiRoute("get", "/workspaces/:id/activity", storageRateLimiter, userAuth, logRequest, async (req, res) => {
   try {
     const workspaceId = req.params.id;
-    const access = canAccessWorkspace(workspaceId, req.userId);
+    const access = await canAccessWorkspace(workspaceId, req.userId);
     if (!access.allowed) return apiError(res, 403, "FORBIDDEN", "Access denied", null);
     const limit = Math.min(100, Math.max(1, Number(req.query?.limit) || 50));
-    const items = getWorkspaceActivity(workspaceId, limit);
+    const items = await getWorkspaceActivity(workspaceId, limit);
     res.json({ items });
   } catch (err) {
     console.error("Activity list error:", err.message);
@@ -2087,7 +2095,7 @@ apiRoute("post", "/context", storageRateLimiter, logRequest, async (req, res) =>
     };
     const merged = await storage.mergeItems("context", workspace, [doc]);
     const item = merged.find((x) => x.id === id) || doc;
-    logActivity(workspace, "context_added", req.userId || "anonymous", { title: doc.title, id: doc.id });
+    await logActivity(workspace, "context_added", req.userId || "anonymous", { title: doc.title, id: doc.id });
     res.status(201).json(item);
   } catch (err) {
     console.error("Storage context add error:", err.message);
@@ -2180,7 +2188,7 @@ apiRoute("post", "/recipes", storageRateLimiter, logRequest, async (req, res) =>
     };
     const merged = await storage.mergeItems("recipes", workspace, [item]);
     const out = merged.find((x) => x.id === id) || item;
-    logActivity(workspace, "recipe_added", req.userId || "anonymous", { recipeName: item.name, id: out.id });
+    await logActivity(workspace, "recipe_added", req.userId || "anonymous", { recipeName: item.name, id: out.id });
     res.status(201).json(out);
   } catch (err) {
     console.error("Storage recipes add error:", err.message);
@@ -2250,11 +2258,13 @@ apiRoute("post", "/recipes/sync", storageRateLimiter, logRequest, async (req, re
 apiRoute("get", "/schedules", storageRateLimiter, logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
-    const items = scheduleStore.list(workspace);
-    const withRecipe = items.map((s) => {
-      const recipe = storage.get("recipes", s.recipeId, s.workspace || workspace);
-      return { ...s, recipeName: recipe?.name || null };
-    });
+    const items = await scheduleStore.list(workspace);
+    const withRecipe = await Promise.all(
+      items.map(async (s) => {
+        const recipe = await storage.get("recipes", s.recipeId, s.workspace || workspace);
+        return { ...s, recipeName: recipe?.name || null };
+      })
+    );
     res.json({ items: withRecipe });
   } catch (err) {
     console.error("Schedules list error:", err.message);
@@ -2273,12 +2283,12 @@ apiRoute("post", "/schedules", storageRateLimiter, logRequest, async (req, res) 
     if (!cron || typeof cron !== "string" || !cron.trim()) {
       return apiError(res, 400, "INVALID_INPUT", "cron required", "Cron format: minute hour day month weekday (e.g. 0 9 * * 1-5).");
     }
-    const recipe = storage.get("recipes", recipeId.trim(), workspace);
+    const recipe = await storage.get("recipes", recipeId.trim(), workspace);
     if (!recipe) {
       return apiError(res, 404, "NOT_FOUND", "Recipe not found", "Create the recipe first.");
     }
-    const sched = scheduleStore.upsert(recipeId.trim(), { cron: cron.trim(), timezone, enabled: enabled !== false }, workspace);
-    if (process.env.ENABLE_SCHEDULED_RECIPES === "1") schedulerRefresh();
+    const sched = await scheduleStore.upsert(recipeId.trim(), { cron: cron.trim(), timezone, enabled: enabled !== false }, workspace);
+    if (process.env.ENABLE_SCHEDULED_RECIPES === "1") await schedulerRefresh();
     res.status(201).json(sched);
   } catch (err) {
     console.error("Schedule upsert error:", err.message);
@@ -2290,9 +2300,9 @@ apiRoute("post", "/schedules", storageRateLimiter, logRequest, async (req, res) 
 apiRoute("delete", "/schedules/:recipeId", storageRateLimiter, logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
-    const removed = scheduleStore.remove(req.params.recipeId, workspace);
+    const removed = await scheduleStore.remove(req.params.recipeId, workspace);
     if (!removed) return res.status(404).json({ error: "Schedule not found", code: "NOT_FOUND" });
-    if (process.env.ENABLE_SCHEDULED_RECIPES === "1") schedulerRefresh();
+    if (process.env.ENABLE_SCHEDULED_RECIPES === "1") await schedulerRefresh();
     res.status(204).send();
   } catch (err) {
     console.error("Schedule delete error:", err.message);
@@ -2406,7 +2416,7 @@ apiRoute("post", "/conversations", storageRateLimiter, logRequest, async (req, r
     };
     const merged = await storage.mergeItems("conversations", workspace, [item]);
     const out = merged.find((x) => x.id === convId) || item;
-    logActivity(workspace, "conversation_created", req.userId || "anonymous", { title: item.title, id: out.id });
+    await logActivity(workspace, "conversation_created", req.userId || "anonymous", { title: item.title, id: out.id });
     res.status(201).json(out);
   } catch (err) {
     console.error("Storage conversations add error:", err.message);
@@ -2577,10 +2587,10 @@ const webhooksRateLimiter = rateLimit({
 });
 const webhooksHandlers = [webhooksRateLimiter, storageRateLimiter, userAuth, logRequest];
 
-apiRoute("get", "/webhooks", ...webhooksHandlers, (req, res) => {
+apiRoute("get", "/webhooks", ...webhooksHandlers, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
-    const items = listWebhooks(workspace);
+    const items = await listWebhooks(workspace);
     res.json({ _version: 1, items });
   } catch (err) {
     return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/WEBHOOKS.md.");
@@ -2635,11 +2645,11 @@ apiRoute("get", "/ws-token", ...webhooksHandlers, (req, res) => {
   }
 });
 
-apiRoute("get", "/workspaces/:id/presence", storageRateLimiter, userAuth, logRequest, (req, res) => {
+apiRoute("get", "/workspaces/:id/presence", storageRateLimiter, userAuth, logRequest, async (req, res) => {
   try {
     const workspaceId = req.params.id;
-    const access = canAccessWorkspace(workspaceId, req.userId);
-    const isTeamWorkspace = !!getWorkspaceMembers(workspaceId);
+    const access = await canAccessWorkspace(workspaceId, req.userId);
+    const isTeamWorkspace = !!(await getWorkspaceMembers(workspaceId));
     if (!access.allowed && isTeamWorkspace) return apiError(res, 403, "FORBIDDEN", "Access denied", null);
     const online = getOnlineUsers(workspaceId);
     res.json({ online });
@@ -2649,11 +2659,11 @@ apiRoute("get", "/workspaces/:id/presence", storageRateLimiter, userAuth, logReq
 });
 
 // --- Phase 27: In-App Notification Center ---
-apiRoute("get", "/notifications", ...webhooksHandlers, (req, res) => {
+apiRoute("get", "/notifications", ...webhooksHandlers, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const userId = req.userId ?? "anonymous";
-    const items = listNotifications(workspace, userId);
+    const items = await listNotifications(workspace, userId);
     res.json({ _version: 1, items });
   } catch (err) {
     return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
@@ -2740,7 +2750,7 @@ apiRoute("post", "/execute-step",
         error: result.error,
       });
 
-      emitEvent(
+      await emitEvent(
         "recipe_executed",
         { step: { action: step.action, payload: step.payload }, ok: result.ok, error: result.error },
         { workspaceId: execWorkspace, userId: req.userId }
@@ -3073,7 +3083,7 @@ function adminAuthOrQuery(req, res, next) {
 app.get("/api/admin/summary", adminRateLimiter, adminAuthOrQuery, logRequest, async (req, res) => {
   try {
     const users = listAllUsers();
-    const workspaces = listAllWorkspaces();
+    const workspaces = await listAllWorkspaces();
     const usageSummary = getSummary(7);
     const auditLog = getRecentAuditLog(50);
     const quotaOverrides = getQuotaOverrides();
@@ -3180,41 +3190,47 @@ app.use(express.static(join(__dirname, "client")));
 const SHUTDOWN_TIMEOUT_MS = Number(process.env.SHUTDOWN_TIMEOUT_MS) || 10_000;
 
 if (process.env.VERCEL !== "1") {
-  const httpServer = createServer(app);
-  attachToServer(httpServer);
+  // Phase 47: Start OTEL before createServer so HTTP instrumentation wraps the server.
+  initTracing()
+    .catch(() => {})
+    .then(() => {
+      const httpServer = createServer(app);
+      attachToServer(httpServer);
 
-  function gracefulShutdown(signal) {
-    console.log(`[shutdown] Received ${signal}, shutting down gracefully...`);
-    httpServer.close(async () => {
-      try {
-        if (process.env.ENABLE_SCHEDULED_RECIPES === "1") schedulerStop();
-        await closeServer();
-        console.log("[shutdown] Graceful shutdown complete");
-        process.exit(0);
-      } catch (e) {
-        console.error("[shutdown] Error during shutdown:", e.message);
-        process.exit(1);
+      function gracefulShutdown(signal) {
+        console.log(`[shutdown] Received ${signal}, shutting down gracefully...`);
+        httpServer.close(async () => {
+          try {
+            if (process.env.ENABLE_SCHEDULED_RECIPES === "1") schedulerStop();
+            await closeServer();
+            console.log("[shutdown] Graceful shutdown complete");
+            process.exit(0);
+          } catch (e) {
+            console.error("[shutdown] Error during shutdown:", e.message);
+            process.exit(1);
+          }
+        });
+        setTimeout(() => {
+          console.error("[shutdown] Forced exit after timeout");
+          process.exit(1);
+        }, SHUTDOWN_TIMEOUT_MS).unref();
       }
+
+      process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+      process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
+      httpServer.listen(PORT, () => {
+        console.log(`Proxy: http://localhost:${PORT}`);
+        console.log(`Backend: ${BACKEND}`);
+        if (BACKEND === "vllm") console.log(`vLLM:  ${VLLM_URL}`);
+        if (BACKEND === "ollama") console.log(`Ollama: ${OLLAMA_URL}`);
+        if (BACKEND === "openai") console.log(`OpenAI: api.openai.com (key set)`);
+        if (process.env.ENABLE_SCHEDULED_RECIPES === "1") {
+          schedulerStart().catch((e) => console.warn("[scheduler] Start failed:", e.message));
+        }
+        console.log("Phase 33: WebSocket real-time sync enabled at /ws");
+        console.log("Phase 34: Health probes at /health/live, /health/ready");
+      });
     });
-    setTimeout(() => {
-      console.error("[shutdown] Forced exit after timeout");
-      process.exit(1);
-    }, SHUTDOWN_TIMEOUT_MS).unref();
-  }
-
-  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-  process.on("SIGINT", () => gracefulShutdown("SIGINT"));
-
-  httpServer.listen(PORT, async () => {
-    await initTracing().catch(() => {});
-    console.log(`Proxy: http://localhost:${PORT}`);
-    console.log(`Backend: ${BACKEND}`);
-    if (BACKEND === "vllm") console.log(`vLLM:  ${VLLM_URL}`);
-    if (BACKEND === "ollama") console.log(`Ollama: ${OLLAMA_URL}`);
-    if (BACKEND === "openai") console.log(`OpenAI: api.openai.com (key set)`);
-    if (process.env.ENABLE_SCHEDULED_RECIPES === "1") schedulerStart();
-    console.log("Phase 33: WebSocket real-time sync enabled at /ws");
-    console.log("Phase 34: Health probes at /health/live, /health/ready");
-  });
 }
 export default app;

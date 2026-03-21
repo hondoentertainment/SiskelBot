@@ -36,11 +36,23 @@ test("GET /config returns backend defaults", async () => {
   assert.equal(response.body.streamAgentFinalEnabled, false);
   assert.equal(response.body.fallbackBackend, null);
   assert.equal(response.body.otelEnabled, false);
+  assert.equal(response.body.otelAutoInstrument, true);
   assert.equal(response.body.toolValidationEnabled, true);
   assert.equal(response.body.agentStagnationStop, true);
   assert.equal(response.body.agentRequireCitations, false);
   assert.equal(response.body.agentTrajectoryApi, true);
   assert.equal(response.body.agentDefaultSystemSet, false);
+});
+
+test("GET /config sets agentDefaultSystemSet when AGENT_DEFAULT_SYSTEM is set", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", AGENT_DEFAULT_SYSTEM: "Be concise." });
+  try {
+    const response = await request(app).get("/config");
+    assert.equal(response.status, 200);
+    assert.equal(response.body.agentDefaultSystemSet, true);
+  } finally {
+    restore();
+  }
 });
 
 test("GET /api/agent/trajectory/:runId returns 404 when not found", async () => {

@@ -1,6 +1,7 @@
 /**
  * Phase 16: Scheduler and schedules module tests.
  * Uses temp STORAGE_PATH; runDueJobs/runRecipeNow tested with ALLOW_EXECUTION=0.
+ * Phase 68: Async schedules API.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -8,7 +9,6 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 
-// Create temp dir and set STORAGE_PATH before any imports
 const tempDir = mkdtempSync(join(tmpdir(), "siskelbot-sched-"));
 process.env.STORAGE_PATH = tempDir;
 
@@ -20,14 +20,13 @@ test.after(() => {
 
 test("schedules list returns empty when no schedules", async () => {
   const { list } = await import("../lib/schedules.js");
-  const items = list("default");
+  const items = await list("default");
   assert.ok(Array.isArray(items));
   assert.equal(items.length, 0);
 });
 
 test("schedules upsert adds schedule", async () => {
   const schedules = await import("../lib/schedules.js");
-  const storage = await import("../lib/storage.js");
 
   const recipeId = "recipe-test-1";
   const ws = "default";
@@ -40,12 +39,12 @@ test("schedules upsert adds schedule", async () => {
     "utf8"
   );
 
-  const sched = schedules.upsert(recipeId, { cron: "0 9 * * 1-5", enabled: true }, ws);
+  const sched = await schedules.upsert(recipeId, { cron: "0 9 * * 1-5", enabled: true }, ws);
   assert.ok(sched);
   assert.equal(sched.recipeId, recipeId);
   assert.equal(sched.cron, "0 9 * * 1-5");
 
-  const items = schedules.list(ws);
+  const items = await schedules.list(ws);
   assert.equal(items.length, 1);
 });
 
@@ -63,11 +62,11 @@ test("schedules remove deletes schedule", async () => {
     "utf8"
   );
 
-  schedules.upsert(recipeId, { cron: "0 0 * * *", enabled: true }, ws);
-  assert.equal(schedules.list(ws).length, 1, "schedule should exist before remove");
-  const removed = schedules.remove(recipeId, ws);
+  await schedules.upsert(recipeId, { cron: "0 0 * * *", enabled: true }, ws);
+  assert.equal((await schedules.list(ws)).length, 1, "schedule should exist before remove");
+  const removed = await schedules.remove(recipeId, ws);
   assert.equal(removed, true);
-  assert.equal(schedules.list(ws).length, 0);
+  assert.equal((await schedules.list(ws)).length, 0);
 });
 
 test("runDueJobs returns skipped when ALLOW_RECIPE_STEP_EXECUTION not 1", async () => {

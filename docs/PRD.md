@@ -182,14 +182,19 @@ Enable developers and teams to build AI-powered workflows with:
 | 60 | Default agent system — `AGENT_DEFAULT_SYSTEM` merged into agent + swarm LLM messages; `GET /config` → `agentDefaultSystemSet` |
 | 61 | Per-workspace agent instructions — `defaultSystemPrompt` in `agent-settings.json`; `GET`/`PUT /api/workspaces/:id/agent-settings` |
 | 62 | Approved workspace memory — `memorySnippets[]` merged as a system section after env + workspace prompt; team paths use `resolveStorageUserId` |
+| 63 | Client Settings hint — when `agentDefaultSystemSet`, show non-leaking notice that deployment default agent text is active |
+| 64 | Workspace agent UI — Settings panel loads/saves `GET`/`PUT .../agent-settings` (i18n: en/es/fr/de) |
+| 65 | Eval expansion — `data/eval-sets/example.json` golden-trace cases (`expectedToolSequence`, `expectedToolNames`, `expectedToolCalls`) |
+| 66 | Postgres KV storage — `STORAGE_BACKEND=postgres` + `DATABASE_URL`; `storage_kv` path keys for `lib/storage.js` (async API) |
+| 67 | OTEL auto-instrumentation — `@opentelemetry/instrumentation-http` + `instrumentation-undici` (global `fetch`); `OTEL_AUTO_INSTRUMENT=0` disables |
 
 ### Future Phases (Planned)
 
 | Phase | Name | Priority |
 |-------|------|----------|
 | 45 | Audit log archival to object storage | Medium |
-| 46 | Postgres storage (full migration) | High |
-| 47 | Advanced distributed tracing (auto-instrumentation) | Medium |
+| 68 | Extend durable storage to schedules, teams, webhooks, workspace agent-settings, and other `data/*.json` modules | High |
+| 69 | Deeper tracing — DB client spans, custom attributes, sampling policies | Medium |
 | 48 | Multi-region deployment | Low |
 | 49 | Plugin marketplace | Low |
 
@@ -203,7 +208,7 @@ Enable developers and teams to build AI-powered workflows with:
 - **Framework:** Express
 - **Auth:** Passport (GitHub, Google), API keys
 - **Real-time:** WebSocket (ws)
-- **Storage:** JSON files (data/)
+- **Storage:** JSON files (`data/`), optional SQLite KV, optional PostgreSQL KV for `lib/storage.js`
 - **Deployment:** Vercel, Render, self-hosted
 
 ### Key Components

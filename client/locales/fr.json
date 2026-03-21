@@ -148,7 +148,19 @@
     "createBackup": "Créer sauvegarde",
     "listBackups": "Lister sauvegardes",
     "locale": "Langue",
-    "shortcutHelp": "Ctrl/Cmd + Entrée pour envoyer. Clé API stockée en session uniquement."
+    "shortcutHelp": "Ctrl/Cmd + Entrée pour envoyer. Clé API stockée en session uniquement.",
+    "serverAgentDefaultsHint": "L'hôte a des instructions agent par défaut (AGENT_DEFAULT_SYSTEM). Les réglages d'espace de travail s'appliquent après ; le texte exact n'est pas affiché ici.",
+    "workspaceAgentTitle": "Instructions agent de l'espace de travail",
+    "workspaceAgentHelp": "Texte système et mémoire approuvée optionnels pour l'espace courant. Mode agent et essaim. Connectez-vous ou utilisez une clé API si requis.",
+    "workspaceSystemPrompt": "Prompt système de l'espace de travail",
+    "workspaceMemoryLines": "Mémoire approuvée (un fait par ligne)",
+    "workspaceAgentReload": "Recharger",
+    "workspaceAgentSave": "Enregistrer",
+    "workspaceAgentLoaded": "Chargé.",
+    "workspaceAgentSaved": "Enregistré.",
+    "workspaceAgentLoadError": "Impossible de charger les réglages agent.",
+    "workspaceAgentSaveError": "Enregistrement impossible (permissions ou clé API).",
+    "workspaceAgentViewerError": "Les observateurs ne peuvent pas modifier ces réglages."
   },
   "notice": {
     "retryLast": "Réessayer dernière",

@@ -37,16 +37,16 @@ test("canEditWorkspaceAgentSettings allows admin and member only", () => {
   assert.equal(canEditWorkspaceAgentSettings("viewer"), false);
 });
 
-test("augmentMessagesWithWorkspaceAgent merges into first system message", () => {
+test("augmentMessagesWithWorkspaceAgent merges into first system message", async () => {
   const dir = mkdtempSync(join(tmpdir(), "wa-agent-"));
   const prev = process.env.STORAGE_PATH;
   process.env.STORAGE_PATH = dir;
   try {
-    saveWorkspaceAgentSettings("anonymous", "ws-augment", {
+    await saveWorkspaceAgentSettings("anonymous", "ws-augment", {
       defaultSystemPrompt: "Extra",
       memorySnippets: ["mem"],
     });
-    const out = augmentMessagesWithWorkspaceAgent(
+    const out = await augmentMessagesWithWorkspaceAgent(
       [{ role: "system", content: "Core" }],
       "anonymous",
       "ws-augment"

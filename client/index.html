@@ -1516,6 +1516,24 @@
               </label>
               <span id="swarm-mode-hint" class="sr-only">When enabled, multiple agents collaborate on the task. Requires server ENABLE_AGENT_SWARM=1.</span>
             </div>
+            <div id="agent-server-defaults-hint" class="settings-field settings-field-full" style="display:none;margin-top:0.5rem;padding:0.5rem 0.65rem;background:rgba(59,130,246,0.08);border-radius:6px;border:1px solid #334155;" role="status">
+              <p class="panel-hint" style="margin:0;font-size:0.8125rem;color:#94a3b8;" data-i18n="settings.serverAgentDefaultsHint">The host has deployment-wide default agent instructions enabled (AGENT_DEFAULT_SYSTEM). Your workspace settings are applied after those.</p>
+            </div>
+            <div id="workspace-agent-settings-section" class="settings-field settings-field-full" style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid #334155;">
+              <p class="panel-hint" style="margin:0 0 0.5rem 0;font-weight:600;" data-i18n="settings.workspaceAgentTitle">Workspace agent instructions</p>
+              <p class="settings-help" style="margin:0 0 0.5rem 0;font-size:0.8rem;color:#94a3b8;" data-i18n="settings.workspaceAgentHelp">Optional system text and approved memory for the current workspace. Used in agent mode and swarm. Sign in or set a user API key if the server requires auth.</p>
+              <label style="display:block;margin-bottom:0.35rem;"><span data-i18n="settings.workspaceSystemPrompt">Workspace system prompt</span>
+                <textarea id="workspace-agent-system-prompt" rows="3" placeholder="Tone, tools policy, domain rules…" style="width:100%;padding:0.5rem;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;"></textarea>
+              </label>
+              <label style="display:block;margin-bottom:0.5rem;"><span data-i18n="settings.workspaceMemoryLines">Approved memory (one fact per line)</span>
+                <textarea id="workspace-agent-memory-lines" rows="4" placeholder="Product name is…&#10;Default region is…" style="width:100%;padding:0.5rem;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;"></textarea>
+              </label>
+              <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.35rem;">
+                <button type="button" id="workspace-agent-settings-load" class="header-button" data-i18n="settings.workspaceAgentReload">Reload</button>
+                <button type="button" id="workspace-agent-settings-save" class="header-button" data-i18n="settings.workspaceAgentSave">Save</button>
+              </div>
+              <p id="workspace-agent-settings-status" class="panel-hint" style="margin:0;font-size:0.75rem;color:#64748b;"></p>
+            </div>
             <div id="use-cases-settings-section" class="settings-field settings-field-full" style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid #334155;">
               <p class="panel-hint" style="margin:0 0 0.5rem 0;font-weight:600;">Use cases</p>
               <p class="settings-help" style="margin:0 0 0.5rem 0;font-size:0.8rem;">Presets that apply profile, model, agent/swarm, RAG, and generation settings in one click. Customize in the header dropdown or add your own.</p>
@@ -1997,6 +2015,7 @@
             if (workspaceDetails) workspaceDetails.style.display = '';
           }
           if (typeof updateSwarmSectionVisibility === 'function') updateSwarmSectionVisibility();
+          if (typeof window.refreshAgentServerDefaultsHint === 'function') window.refreshAgentServerDefaultsHint(config);
         }
       } catch (_) {}
     }
@@ -2031,9 +2050,94 @@
           const cur = getWorkspace();
           workspaceSelect.innerHTML = items.map(w => `<option value="${w.id}" data-type="${w.type || 'personal'}" ${w.id === cur ? 'selected' : ''}>${escapeHtml(w.name || w.id)}</option>`).join('');
           if (items.length > 0 && !items.find(w => w.id === cur)) setWorkspace('default');
+          const st = document.getElementById('settings-toggle');
+          if (st && st.open && typeof window.loadWorkspaceAgentSettingsPanel === 'function') window.loadWorkspaceAgentSettingsPanel();
         }
       } catch (_) {}
     }
+
+    // Phase 63–65: Server agent-default hint + workspace agent settings UI
+    (function initWorkspaceAgentSettingsPanel() {
+      const hintEl = document.getElementById('agent-server-defaults-hint');
+      const systemTa = document.getElementById('workspace-agent-system-prompt');
+      const memoryTa = document.getElementById('workspace-agent-memory-lines');
+      const loadBtn = document.getElementById('workspace-agent-settings-load');
+      const saveBtn = document.getElementById('workspace-agent-settings-save');
+      const statusEl = document.getElementById('workspace-agent-settings-status');
+      const settingsToggle = document.getElementById('settings-toggle');
+
+      function stMsg(key) {
+        return (window.SiskelI18n && SiskelI18n.t) ? SiskelI18n.t('settings.' + key) : '';
+      }
+
+      async function loadPanel() {
+        if (!systemTa || !memoryTa || !statusEl) return;
+        const ws = typeof getSelectedWorkspace === 'function' ? getSelectedWorkspace() : 'default';
+        statusEl.textContent = '';
+        try {
+          const res = await fetch('/api/workspaces/' + encodeURIComponent(ws) + '/agent-settings', getStorageFetchOptions());
+          if (!res.ok) {
+            statusEl.textContent = stMsg('workspaceAgentLoadError');
+            return;
+          }
+          const data = await res.json();
+          systemTa.value = data.defaultSystemPrompt || '';
+          memoryTa.value = (Array.isArray(data.memorySnippets) ? data.memorySnippets : []).join('\n');
+          statusEl.textContent = stMsg('workspaceAgentLoaded');
+        } catch (_) {
+          statusEl.textContent = stMsg('workspaceAgentLoadError');
+        }
+      }
+
+      async function savePanel() {
+        if (!systemTa || !memoryTa || !statusEl) return;
+        const ws = typeof getSelectedWorkspace === 'function' ? getSelectedWorkspace() : 'default';
+        const lines = memoryTa.value.split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean);
+        statusEl.textContent = '';
+        try {
+          const res = await fetch('/api/workspaces/' + encodeURIComponent(ws) + '/agent-settings', {
+            ...getStorageFetchOptions(),
+            method: 'PUT',
+            body: JSON.stringify({
+              defaultSystemPrompt: systemTa.value.trim(),
+              memorySnippets: lines,
+            }),
+          });
+          let data = {};
+          try { data = await res.json(); } catch (_) {}
+          if (!res.ok) {
+            const hint = (data.hint || data.error || '').toLowerCase();
+            if (res.status === 403 && hint.indexOf('viewer') !== -1)
+              statusEl.textContent = stMsg('workspaceAgentViewerError');
+            else
+              statusEl.textContent = stMsg('workspaceAgentSaveError');
+            return;
+          }
+          statusEl.textContent = stMsg('workspaceAgentSaved');
+        } catch (_) {
+          statusEl.textContent = stMsg('workspaceAgentSaveError');
+        }
+      }
+
+      window.refreshAgentServerDefaultsHint = function (cfg) {
+        if (!hintEl || !cfg) return;
+        hintEl.style.display = cfg.agentDefaultSystemSet ? 'block' : 'none';
+      };
+      window.loadWorkspaceAgentSettingsPanel = loadPanel;
+
+      if (loadBtn) loadBtn.onclick = function () { loadPanel(); };
+      if (saveBtn) saveBtn.onclick = function () { savePanel(); };
+      if (settingsToggle) {
+        settingsToggle.addEventListener('toggle', function () {
+          if (settingsToggle.open) loadPanel();
+        });
+      }
+      if (workspaceSelect) {
+        workspaceSelect.addEventListener('change', function () {
+          if (settingsToggle && settingsToggle.open) loadPanel();
+        });
+      }
+    })();
 
     // Phase 29: Team workspaces - create, join, invite, members, activity
     (function initPhase29Workspace() {
