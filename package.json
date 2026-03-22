@@ -4,8 +4,12 @@
   "description": "Siskel Bot — realtime streaming assistant proxy for Ollama, vLLM, or OpenAI",
   "type": "module",
   "main": "server.js",
+  "bin": {
+    "siskelbot": "./bin/siskelbot.js"
+  },
   "scripts": {
     "start": "node server.js",
+    "cli": "node bin/siskelbot.js",
     "dev": "node --watch server.js",
     "desktop": "electron ./electron/main.cjs",
     "vendor:node-win": "node scripts/vendor-node-win.mjs all",

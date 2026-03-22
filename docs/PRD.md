@@ -1,7 +1,7 @@
 # Siskel Bot – Product Requirements Document
 
 **Version:** 1.0  
-**Last updated:** March 2025
+**Last updated:** March 2026
 
 ---
 
@@ -188,15 +188,24 @@ Enable developers and teams to build AI-powered workflows with:
 | 66 | Postgres KV storage — `STORAGE_BACKEND=postgres` + `DATABASE_URL`; `storage_kv` path keys for `lib/storage.js` (async API) |
 | 67 | OTEL auto-instrumentation — `@opentelemetry/instrumentation-http` + `instrumentation-undici` (global `fetch`); `OTEL_AUTO_INSTRUMENT=0` disables |
 
-### Future Phases (Planned)
+### Roadmap: next 10 phases (68–77)
 
-| Phase | Name | Priority |
-|-------|------|----------|
-| 45 | Audit log archival to object storage | Medium |
-| 68 | Extend durable storage to schedules, teams, webhooks, workspace agent-settings, and other `data/*.json` modules | High |
-| 69 | Deeper tracing — DB client spans, custom attributes, sampling policies | Medium |
-| 48 | Multi-region deployment | Low |
-| 49 | Plugin marketplace | Low |
+These phases extend production posture (storage, observability, compliance), agent reliability at scale, and platform maturity. They supersede the ad-hoc “future” list (former 45 / 48 / 49 are folded in below).
+
+| Phase | Name | Priority | Outcomes & deliverables |
+|-------|------|----------|-------------------------|
+| **68** | **Durable storage for all tenant modules** | High | Move schedules, teams, webhooks, notifications, workspace `agent-settings`, and other `data/*.json` modules onto the same async path store as `lib/storage.js` (Postgres/SQLite), with migration notes and backup/restore coverage. Enables horizontal scale without split-brain JSON files. |
+| **69** | **Deeper OpenTelemetry** | Medium | DB/client spans for Postgres (and SQLite where applicable), consistent trace attributes (`workspaceId`, `userId` hashes), head-based and/or tail sampling envs, documented exemplars with Prometheus. |
+| **70** | **Audit & long-term retention** | Medium | Ship audit log archival to S3-compatible object storage (configurable prefix, credentials, optional SSE); optional compaction job; admin visibility into export status. Replaces indefinite local-only growth. |
+| **71** | **Durable agent trajectories** | Medium | Persist `GET /api/agent/trajectory/:runId` data in the durable store (not in-memory TTL) so multi-instance and restart-safe debugging work; retention policy aligned with Phase 70. |
+| **72** | **Knowledge / RAG pipeline v2** | Medium | Document chunking strategy, incremental reindex hooks, and optional “connector” pattern (e.g. watched paths or URL allowlist) with quota and size limits; keep OpenAI embedding path as default. |
+| **73** | **Swarm routing v2** | Medium | Replace or augment keyword intent routing with LLM- or embedding-based specialist selection; feature flag for rollback; eval cases for routing stability (golden traces). |
+| **74** | **Workspace compliance & lifecycle** | Medium | Self-serve workspace export (JSON/ZIP), account/workspace deletion workflow with documented data removal, and admin tooling for support requests. |
+| **75** | **API product hardening** | Low | Documented deprecation policy in OpenAPI, optional idempotency keys for safe retries on selected POSTs, and starter SDK snippets (fetch/TS) in repo or docs—without breaking existing clients. |
+| **76** | **Multi-region & HA** | Low | Design and document active-passive or geo-routed deployment, storage replication or single-writer assumptions, and WebSocket/presence behavior across regions. |
+| **77** | **Plugin marketplace (curated)** | Low | Signed or hashed plugin bundles, version pinning, discovery list (static or simple registry), and install UX aligned with `docs/PLUGINS.md` security model. |
+
+**Dependency sketch:** 68 → 71 → 70 (shared durable store simplifies trajectory + archival). 69 can proceed in parallel. 73 and 65 (eval) reinforce each other. 76 assumes 68 is largely complete.
 
 ---
 

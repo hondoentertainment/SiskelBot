@@ -80,6 +80,7 @@ See **[docs/DOCKER.md](docs/DOCKER.md)** for build, run, compose, and health-che
 
 - Open `http://localhost:3000` in a browser
 - API: `POST http://localhost:3000/v1/chat/completions` (OpenAI-compatible)
+- **CLI (Phase 38):** `npx . chat "Hello"` or `npm run cli -- chat "Your message"` — see [CLI usage](#cli-phase-38) below
 - **API docs:** [http://localhost:3000/api/docs](http://localhost:3000/api/docs) (Swagger UI)
 - **Admin dashboard:** [http://localhost:3000/admin](http://localhost:3000/admin) (requires `ADMIN_API_KEY` or user in `QUOTA_ADMIN_USER_IDS`)
 - **Metrics:** `GET /metrics` (Prometheus text format when `ENABLE_METRICS=1`). See [docs/RUNBOOK.md](docs/RUNBOOK.md) Phase 36.
@@ -119,6 +120,33 @@ Copy `.env.example` to `.env`:
 | `ANALYTICS_COST_PER_1K_OUTPUT` | 0.006 | Phase 18: $ per 1K output tokens. |
 | `ENABLE_SCHEDULED_RECIPES` | — | Phase 16: Set to `1` to enable scheduled recipe execution (local node-cron). Requires `ALLOW_RECIPE_STEP_EXECUTION=1`. |
 | `CRON_SECRET` | — | Phase 16: Optional; protects `GET /api/cron` for Vercel Cron. Pass via `Authorization: Bearer` or `?secret=`. |
+
+## CLI (Phase 38)
+
+Command-line client for chat, context, and recipes. Works with local or deployed instances.
+
+```bash
+# Chat (streaming by default)
+npx . chat "Hello"
+npm run cli -- chat "Summarize this" --model gpt-4
+
+# Chat (wait for full response)
+npx . chat "Say ok" --no-stream
+
+# Context: list and add
+npx . context list
+npx . context add --file ./notes.txt --title "Notes"
+echo "Content" | npx . context add --title "From stdin"
+
+# Recipes: list and run
+npx . recipes list
+npx . recipes run "Build and Deploy"
+
+# Config (backend, URL, auth)
+npx . config --url https://app.example.com
+```
+
+**Options:** `--url`, `--api-key`, `--workspace`, `--json`, `--no-stream` (chat), `--model` (chat). Env: `SISKELBOT_URL`, `SISKELBOT_API_KEY` (or `API_KEY`). See [docs/RUNBOOK.md](docs/RUNBOOK.md) Phase 38.
 
 ## Phase 16: Scheduled & Automated Recipes
 

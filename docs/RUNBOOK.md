@@ -54,6 +54,77 @@ No secrets needed for push; the workflow uses `GITHUB_TOKEN` (automatically prov
 
 ---
 
+## Phase 38: CLI Client
+
+Command-line client for SiskelBot. Connects to local or deployed instances via REST API.
+
+### Entry point
+
+- **Bin:** `bin/siskelbot.js` — run via `npx . <command>` or `npm run cli -- <command>`
+- **Install globally:** `npm install -g .` then `siskelbot <command>`
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `chat "message"` | Send message, stream or full response |
+| `context list` | List context documents |
+| `context add` | Add from file or stdin |
+| `recipes list` | List recipes |
+| `recipes run <name>` | Run a recipe by name |
+| `config` | Show backend, URL, auth status |
+
+### Options (global)
+
+| Option | Env | Description |
+|--------|-----|-------------|
+| `--url <url>` | `SISKELBOT_URL` | Base URL (default: http://localhost:3000) |
+| `--api-key <key>` | `SISKELBOT_API_KEY` or `API_KEY` | API key for protected endpoints |
+| `--workspace <id>` | — | Workspace (default: default) |
+| `--json` | — | Machine-readable output |
+| `--no-stream` | — | Chat only: wait for full response |
+| `--model <name>` | — | Chat only: model (e.g. gpt-4) |
+
+### Examples
+
+```bash
+# Chat (streaming)
+npx . chat "Hello"
+npm run cli -- chat "Summarize this" --model gpt-4
+
+# Chat (no stream)
+npx . chat "Say ok" --no-stream
+
+# List context
+npx . context list --workspace default
+
+# Add context from file
+npx . context add --file ./notes.txt --title "Notes"
+
+# Add from stdin
+echo "Content here" | npx . context add --title "From stdin"
+
+# List and run recipes
+npx . recipes list
+npx . recipes run "Build and Deploy"
+
+# Config check
+npx . config --url https://app.example.com
+```
+
+### Auth
+
+- When server has `API_KEY`, set `SISKELBOT_API_KEY` or `API_KEY`, or pass `--api-key`
+- Chat, recipes run, and storage routes require auth when configured
+- Clear errors on 401 (auth required) and ECONNREFUSED (server not running)
+
+### Exit codes
+
+- `0` — success
+- `1` — error (auth failed, connection refused, invalid input)
+
+---
+
 ## Phase 34: Production Hardening
 
 Production readiness: graceful shutdown, security headers, health probes, startup validation, structured logging.
