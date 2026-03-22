@@ -612,6 +612,86 @@
       background: #0f172a;
       border: 1px solid #334155;
     }
+    .interaction-modes {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.75rem;
+      margin-bottom: 0.65rem;
+      padding: 0.5rem 0.65rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+    }
+    .interaction-modes-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #64748b;
+      flex-shrink: 0;
+    }
+    .mode-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      align-items: center;
+    }
+    .mode-chip {
+      padding: 0.35rem 0.65rem;
+      font-size: 0.8125rem;
+      border-radius: 999px;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: #cbd5e1;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .mode-chip:hover:not(:disabled) {
+      border-color: #475569;
+      color: #e2e8f0;
+    }
+    .mode-chip[aria-pressed="true"] {
+      background: #1d4ed8;
+      border-color: #2563eb;
+      color: #fff;
+    }
+    .mode-chip:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .tool-swarm-panel {
+      margin-bottom: 0.65rem;
+      padding: 0.5rem 0.65rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      font-size: 0.8125rem;
+      color: #94a3b8;
+    }
+    .tool-swarm-panel summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: #cbd5e1;
+    }
+    .tool-swarm-fieldset {
+      border: none;
+      margin: 0.5rem 0 0 0;
+      padding: 0;
+    }
+    .tool-swarm-specialists-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
+      margin-bottom: 0.5rem;
+    }
+    .tool-swarm-specialists-row label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      cursor: pointer;
+      color: #e2e8f0;
+    }
     .chat-toolbar {
       flex-shrink: 0;
       padding: 0.5rem 1rem;
@@ -1712,8 +1792,30 @@
   <div id="input-area">
     <div class="status-row">
       <span class="status-pill" id="connection-status">Ready</span>
+      <span class="status-pill" id="interaction-mode-badge" title="How the next send is handled">Chat</span>
       <span id="shortcut-hint">Shortcut: Ctrl/Cmd + Enter to send</span>
     </div>
+    <div class="interaction-modes" role="toolbar" aria-label="Agent interaction mode">
+      <span class="interaction-modes-label">Mode</span>
+      <div class="mode-chips" role="radiogroup" aria-label="How to run the next message">
+        <button type="button" class="mode-chip" data-interaction-mode="chat" aria-pressed="true" title="Standard completion — no tools">Chat</button>
+        <button type="button" class="mode-chip" data-interaction-mode="agent" aria-pressed="false" title="Model can use tools (context, recipes, steps)">Agent</button>
+        <button type="button" class="mode-chip" id="mode-chip-swarm" data-interaction-mode="swarm" aria-pressed="false" title="Streaming multi-agent (ENABLE_AGENT_SWARM)">Multi-agent</button>
+        <button type="button" class="mode-chip" data-interaction-mode="tool-swarm" aria-pressed="false" title="Parallel specialist tools (POST /v1/swarm) — no streaming LLM">Tool swarm</button>
+      </div>
+    </div>
+    <details class="tool-swarm-panel" id="tool-swarm-panel" style="display:none;">
+      <summary>Tool swarm options</summary>
+      <fieldset class="tool-swarm-fieldset">
+        <legend class="sr-only">Specialists to run in parallel</legend>
+        <p class="panel-hint" style="margin:0 0 0.35rem 0;font-size:0.75rem;">Runs researcher / executor tools in parallel against your message. Optional server execution for recipe steps.</p>
+        <div class="tool-swarm-specialists-row" id="tool-swarm-specialists" role="group" aria-label="Specialists"></div>
+        <label class="settings-toggle-row" style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;">
+          <input type="checkbox" id="tool-swarm-allow-exec">
+          Allow recipe / deploy execution on server
+        </label>
+      </fieldset>
+    </details>
     <div id="system-prompt-row">
       <label for="template-select">Template:</label>
       <select id="template-select">
@@ -2016,6 +2118,7 @@
           }
           if (typeof updateSwarmSectionVisibility === 'function') updateSwarmSectionVisibility();
           if (typeof window.refreshAgentServerDefaultsHint === 'function') window.refreshAgentServerDefaultsHint(config);
+          if (typeof initInteractionModes === 'function') initInteractionModes();
         }
       } catch (_) {}
     }
@@ -2319,6 +2422,7 @@
         try {
           localStorage.setItem(AGENT_MODE_STORAGE_KEY, agentModeCheckbox.checked ? '1' : '0');
         } catch (_) {}
+        syncInteractionModeFromCheckboxes();
       });
     }
 
@@ -2333,10 +2437,168 @@
         try {
           localStorage.setItem(SWARM_MODE_STORAGE_KEY, swarmModeCheckbox.checked ? '1' : '0');
         } catch (_) {}
+        syncInteractionModeFromCheckboxes();
       });
     }
     function updateSwarmSectionVisibility() {
       if (swarmModeSection) swarmModeSection.style.display = config.swarmEnabled ? '' : 'none';
+    }
+
+    const INTERACTION_MODE_STORAGE_KEY = 'siskelbot-interaction-mode';
+    const TOOL_SWARM_SPECS_STORAGE_KEY = 'siskelbot-tool-swarm-specialists';
+    const TOOL_SWARM_ALLOW_EXEC_KEY = 'siskelbot-tool-swarm-allow-exec';
+    let suppressInteractionSync = false;
+    let currentInteractionMode = 'chat';
+    const interactionModeBadge = document.getElementById('interaction-mode-badge');
+    const toolSwarmPanel = document.getElementById('tool-swarm-panel');
+    const toolSwarmSpecialistsEl = document.getElementById('tool-swarm-specialists');
+    const toolSwarmAllowExec = document.getElementById('tool-swarm-allow-exec');
+
+    function modeBadgeLabel(mode) {
+      if (mode === 'agent') return 'Agent';
+      if (mode === 'swarm') return 'Multi-agent';
+      if (mode === 'tool-swarm') return 'Tool swarm';
+      return 'Chat';
+    }
+
+    function updateInteractionModeBadge() {
+      if (interactionModeBadge) {
+        interactionModeBadge.textContent = modeBadgeLabel(currentInteractionMode);
+        interactionModeBadge.title = 'How the next send runs: ' + modeBadgeLabel(currentInteractionMode);
+      }
+    }
+
+    function getLegacySpecialistNames() {
+      const names = config.legacySwarmSpecialists;
+      return Array.isArray(names) && names.length ? names.slice() : ['researcher', 'executor'];
+    }
+
+    function persistToolSwarmSpecialists() {
+      if (!toolSwarmSpecialistsEl) return;
+      const sel = [...toolSwarmSpecialistsEl.querySelectorAll('input[type="checkbox"]:checked')].map((c) => c.value);
+      try {
+        localStorage.setItem(TOOL_SWARM_SPECS_STORAGE_KEY, JSON.stringify(sel));
+      } catch (_) {}
+    }
+
+    function populateToolSwarmSpecialists() {
+      if (!toolSwarmSpecialistsEl) return;
+      const names = getLegacySpecialistNames();
+      let saved = [];
+      try {
+        const raw = localStorage.getItem(TOOL_SWARM_SPECS_STORAGE_KEY);
+        if (raw) saved = JSON.parse(raw);
+      } catch (_) {}
+      toolSwarmSpecialistsEl.innerHTML = names.map((n) => {
+        const checked = saved.length === 0 ? true : saved.indexOf(n) >= 0;
+        const id = 'tool-swarm-spec-' + n.replace(/[^a-z0-9_-]/gi, '-');
+        return '<label for="' + id + '"><input type="checkbox" id="' + id + '" value="' + escapeHtml(n) + '" ' + (checked ? 'checked ' : '') + '> ' + escapeHtml(n) + '</label>';
+      }).join('');
+      toolSwarmSpecialistsEl.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+        cb.addEventListener('change', persistToolSwarmSpecialists);
+      });
+    }
+
+    function getSelectedToolSwarmSpecialists() {
+      if (!toolSwarmSpecialistsEl) return getLegacySpecialistNames();
+      const sel = [...toolSwarmSpecialistsEl.querySelectorAll('input[type="checkbox"]:checked')].map((c) => c.value.trim()).filter(Boolean);
+      return sel.length ? sel : getLegacySpecialistNames();
+    }
+
+    function applyInteractionMode(mode) {
+      let m = mode;
+      if (m === 'swarm' && !config.swarmEnabled) m = 'agent';
+      currentInteractionMode = m;
+      document.querySelectorAll('.mode-chip[data-interaction-mode]').forEach((btn) => {
+        btn.setAttribute('aria-pressed', btn.dataset.interactionMode === m ? 'true' : 'false');
+      });
+      if (toolSwarmPanel) {
+        const show = m === 'tool-swarm';
+        toolSwarmPanel.style.display = show ? '' : 'none';
+        if (show) toolSwarmPanel.open = true;
+      }
+      const swarmChip = document.getElementById('mode-chip-swarm');
+      if (swarmChip) {
+        swarmChip.disabled = !config.swarmEnabled;
+        swarmChip.title = config.swarmEnabled
+          ? 'Streaming multi-agent (ENABLE_AGENT_SWARM)'
+          : 'Disabled on server — set ENABLE_AGENT_SWARM=1';
+      }
+      suppressInteractionSync = true;
+      if (m !== 'tool-swarm') {
+        const agentOn = m === 'agent' || m === 'swarm';
+        const swarmOn = m === 'swarm' && config.swarmEnabled;
+        if (agentModeCheckbox) agentModeCheckbox.checked = agentOn;
+        if (swarmModeCheckbox) swarmModeCheckbox.checked = swarmOn;
+        try {
+          localStorage.setItem(AGENT_MODE_STORAGE_KEY, agentOn ? '1' : '0');
+          localStorage.setItem(SWARM_MODE_STORAGE_KEY, swarmOn ? '1' : '0');
+        } catch (_) {}
+      }
+      suppressInteractionSync = false;
+      try {
+        localStorage.setItem(INTERACTION_MODE_STORAGE_KEY, m);
+      } catch (_) {}
+      updateInteractionModeBadge();
+    }
+
+    function syncInteractionModeFromCheckboxes() {
+      if (suppressInteractionSync) return;
+      if (currentInteractionMode === 'tool-swarm') return;
+      const ag = agentModeCheckbox?.checked;
+      const sw = swarmModeCheckbox?.checked;
+      let mode = 'chat';
+      if (ag && sw && config.swarmEnabled) mode = 'swarm';
+      else if (ag) mode = 'agent';
+      currentInteractionMode = mode;
+      document.querySelectorAll('.mode-chip[data-interaction-mode]').forEach((btn) => {
+        btn.setAttribute('aria-pressed', btn.dataset.interactionMode === mode ? 'true' : 'false');
+      });
+      updateInteractionModeBadge();
+      try {
+        localStorage.setItem(INTERACTION_MODE_STORAGE_KEY, mode);
+      } catch (_) {}
+    }
+
+    function initInteractionModes() {
+      populateToolSwarmSpecialists();
+      let stored = null;
+      try {
+        stored = localStorage.getItem(INTERACTION_MODE_STORAGE_KEY);
+      } catch (_) {}
+      if (stored === 'tool-swarm') {
+        applyInteractionMode('tool-swarm');
+      } else if (stored === 'swarm' || stored === 'agent' || stored === 'chat') {
+        if (stored === 'swarm' && !config.swarmEnabled) applyInteractionMode('agent');
+        else applyInteractionMode(stored);
+      } else {
+        const ag = agentModeCheckbox?.checked;
+        const sw = swarmModeCheckbox?.checked;
+        const derived = ag && sw && config.swarmEnabled ? 'swarm' : ag ? 'agent' : 'chat';
+        applyInteractionMode(derived);
+      }
+      if (toolSwarmAllowExec) {
+        try {
+          toolSwarmAllowExec.checked = localStorage.getItem(TOOL_SWARM_ALLOW_EXEC_KEY) === '1';
+        } catch (_) {}
+        if (!toolSwarmAllowExec.dataset.wired) {
+          toolSwarmAllowExec.dataset.wired = '1';
+          toolSwarmAllowExec.addEventListener('change', () => {
+            try {
+              localStorage.setItem(TOOL_SWARM_ALLOW_EXEC_KEY, toolSwarmAllowExec.checked ? '1' : '0');
+            } catch (_) {}
+          });
+        }
+      }
+      document.querySelectorAll('.mode-chip[data-interaction-mode]').forEach((btn) => {
+        if (btn.dataset.wired) return;
+        btn.dataset.wired = '1';
+        btn.addEventListener('click', () => {
+          const mode = btn.dataset.interactionMode;
+          if (mode === 'swarm' && !config.swarmEnabled) return;
+          applyInteractionMode(mode);
+        });
+      });
     }
 
     // Phase 24: Backup & Restore (Settings)
@@ -3355,6 +3617,9 @@
       const maxInput = document.getElementById('max-tokens');
       if (maxInput) maxInput.value = r.maxTokens;
       if (profileSelect && uc.profileId) profileSelect.value = uc.profileId;
+      if (currentInteractionMode !== 'tool-swarm' && typeof syncInteractionModeFromCheckboxes === 'function') {
+        syncInteractionModeFromCheckboxes();
+      }
     }
 
     async function initUseCases() {
@@ -4163,9 +4428,13 @@
 
     function updatePlanTaskButtonState() {
       if (!planTaskBtn) return;
+      const draft = (promptInput?.value || '').trim();
       const hasMessages = messages.length > 0;
-      planTaskBtn.disabled = !hasMessages;
-      planTaskBtn.title = hasMessages ? 'Get a structured task plan from the LLM' : 'Send a message first to plan a task';
+      const canPlan = hasMessages || !!draft;
+      planTaskBtn.disabled = !canPlan;
+      planTaskBtn.title = canPlan
+        ? 'Structured task plan from the LLM (uses chat history and optional draft in the box)'
+        : 'Type a goal or send a message first';
     }
 
     function formatPlanForClipboard(plan) {
@@ -4291,9 +4560,14 @@
     }
 
     async function fetchTaskPlan() {
-      if (messages.length === 0) {
-        showNotice('Send a message first to plan a task', 'warning', false);
+      const draft = (promptInput?.value || '').trim();
+      if (messages.length === 0 && !draft) {
+        showNotice('Type a goal or send a message first to plan a task', 'warning', false);
         return;
+      }
+      let planMessages = messages.slice();
+      if (draft && (!planMessages.length || planMessages[planMessages.length - 1]?.content !== draft)) {
+        planMessages = planMessages.concat([{ role: 'user', content: draft }]);
       }
       const model = modelInput.value.trim() || config.modelPlaceholder || 'model';
       const headers = { 'Content-Type': 'application/json' };
@@ -4306,7 +4580,11 @@
         const res = await fetch(TASKS_PLAN_API, {
           method: 'POST',
           headers,
-          body: JSON.stringify({ messages, model }),
+          body: JSON.stringify({
+            messages: planMessages,
+            model,
+            workspace: typeof getSelectedWorkspace === 'function' ? getSelectedWorkspace() : 'default',
+          }),
         });
         const data = await res.json();
         if (!res.ok) {
@@ -4331,9 +4609,101 @@
       updatePlanTaskButtonState();
     }
 
+    if (promptInput) {
+      promptInput.addEventListener('input', () => {
+        if (typeof updatePlanTaskButtonState === 'function') updatePlanTaskButtonState();
+      });
+    }
+
+    function formatToolSwarmMarkdown(data) {
+      const parts = [];
+      if (data && data.query) parts.push('**Query:** ' + data.query);
+      const agg = data && data.aggregation;
+      if (!Array.isArray(agg) || agg.length === 0) {
+        return parts.join('\n\n') || '```json\n' + JSON.stringify(data, null, 2) + '\n```';
+      }
+      agg.forEach((r) => {
+        parts.push('### ' + (r.specialist || 'specialist') + (r.success ? '' : ' (failed)'));
+        if (r.error) parts.push('_' + String(r.error) + '_');
+        const out = String(r.output || '').trim();
+        if (out) {
+          const cap = out.length > 12000 ? out.slice(0, 12000) + '\n…' : out;
+          parts.push('```\n' + cap + '\n```');
+        }
+      });
+      return parts.join('\n\n');
+    }
+
+    async function runToolSwarmRequest(userText) {
+      sendBtn.disabled = true;
+      clearNotice();
+      setConnectionStatus('Tool swarm…');
+      addMessage('user', userText);
+      promptInput.value = '';
+      addTypingIndicator();
+      const headers = { 'Content-Type': 'application/json' };
+      const clientApiKey = clientApiKeyInput.value.trim();
+      if (clientApiKey) headers.Authorization = 'Bearer ' + clientApiKey;
+      if (config.authRequired && typeof getStorageHeaders === 'function') {
+        const sh = getStorageHeaders();
+        if (sh['x-user-api-key']) headers['x-user-api-key'] = sh['x-user-api-key'];
+      }
+      const specialists = getSelectedToolSwarmSpecialists();
+      const allowExecution = toolSwarmAllowExec && toolSwarmAllowExec.checked === true;
+      const workspace = typeof getSelectedWorkspace === 'function' ? getSelectedWorkspace() : 'default';
+      try {
+        const res = await fetch('/v1/swarm', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ query: userText, specialists, allowExecution, workspace }),
+        });
+        removeTypingIndicator();
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg = data.hint || data.error || res.statusText;
+          addMessage('assistant', '**Tool swarm failed**\n\n' + msg, null).classList.add('error-message');
+          showNotice(msg, 'error', true);
+          setConnectionStatus('Error');
+          return;
+        }
+        const md = formatToolSwarmMarkdown(data);
+        const metaParts = [];
+        if (data.metrics && data.metrics.agentCount != null) metaParts.push(data.metrics.agentCount + ' specialists');
+        if (data.metrics && data.metrics.durationMs != null) metaParts.push((data.metrics.durationMs / 1000).toFixed(1) + 's');
+        const meta = metaParts.length ? metaParts.join(' · ') : null;
+        messages.push({ role: 'user', content: userText });
+        messages.push({ role: 'assistant', content: md });
+        persistMessages();
+        addMessage('assistant', md, meta);
+        if (typeof updatePlanTaskButtonState === 'function') updatePlanTaskButtonState();
+        if (typeof addLocalNotification === 'function') {
+          addLocalNotification('swarm_completed', 'Tool swarm finished', (data.query || '').slice(0, 120));
+        }
+        setConnectionStatus(window.SiskelI18n && SiskelI18n.t ? SiskelI18n.t('status.ready') : 'Ready');
+      } catch (err) {
+        removeTypingIndicator();
+        addMessage('assistant', '**Tool swarm failed**\n\n' + (err.message || 'Network error'), null).classList.add('error-message');
+        showNotice(err.message || 'Request failed', 'error', true);
+        setConnectionStatus('Error');
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+
     sendBtn.onclick = async () => {
       const model = modelInput.value.trim() || config.modelPlaceholder || 'model';
       const prompt = promptInput.value.trim();
+
+      if (currentInteractionMode === 'tool-swarm') {
+        if (!prompt) return;
+        if (attachedImages.length) {
+          showNotice('Tool swarm is text-only. Remove images or switch mode.', 'warning', false);
+          return;
+        }
+        if (typeof haptic === 'function') haptic('send');
+        await runToolSwarmRequest(prompt);
+        return;
+      }
 
       if (!prompt && !attachedImages.length) return;
       if (typeof haptic === 'function') haptic('send');

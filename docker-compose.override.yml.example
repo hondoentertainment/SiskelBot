@@ -1,0 +1,12 @@
+# Phase 35: Example override for local development with Ollama
+# Copy to docker-compose.override.yml:  cp docker-compose.override.yml.example docker-compose.override.yml
+# docker compose up merges override automatically.
+
+services:
+  siskelbot:
+    environment:
+      BACKEND: ollama
+      OLLAMA_URL: http://ollama:11434
+    # Optional: bind-mount host data for easy inspection; ensure ./data exists and is writable (chown 1000:1000 on Linux)
+    volumes:
+      - ./data:/app/data

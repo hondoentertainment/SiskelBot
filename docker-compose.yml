@@ -1,0 +1,28 @@
+# Phase 35: Docker Compose for SiskelBot
+# Self-hosted deployment with optional local Ollama
+
+services:
+  siskelbot:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      BACKEND: ollama
+      OLLAMA_URL: http://ollama:11434
+      PORT: 3000
+    volumes:
+      - siskelbot-data:/app/data
+    restart: unless-stopped
+
+  # Optional: local Ollama for dev/self-hosted. Omit if using OpenAI or external Ollama.
+  ollama:
+    image: ollama/ollama
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+
+volumes:
+  ollama-data:
+  siskelbot-data:

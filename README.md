@@ -1,5 +1,7 @@
 # Siskel Bot
 
+[![CI](https://github.com/YOUR_USERNAME/experimentagent/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/experimentagent/actions) [![Docker](https://github.com/YOUR_USERNAME/experimentagent/actions/workflows/docker.yml/badge.svg)](https://github.com/YOUR_USERNAME/experimentagent/actions)
+
 *Streaming assistant (OpenAI-compatible API for Ollama, vLLM, or OpenAI). Repository package name: `experimentagent`.*
 
 Realtime streaming assistant proxy for Ollama, vLLM, or OpenAI. Node.js proxy that streams chat completions to clients.
@@ -40,12 +42,45 @@ npm start
 
 Runs on `http://localhost:3000`.
 
+### Desktop app (Electron)
+
+Wraps the same UI + API in a native window; data lives under the OS app data directory.
+
+```bash
+npm install
+npm run desktop
+```
+
+Default URL: `http://127.0.0.1:38447/`. See **[docs/DESKTOP.md](docs/DESKTOP.md)** for ports, OAuth redirects, and packaging notes.
+
+**Windows installer (x64 NSIS):**
+
+```bash
+npm run desktop:dist
+```
+
+Writes `release/Siskel Bot-<version>-Windows-x64.exe`. The first build downloads **Node.js** `node.exe` into `vendor/node-win/` so installers work without Node on the user’s PATH.
+
+### Docker (self-hosted)
+
+```bash
+# Build and run with optional local Ollama
+docker compose up -d
+
+# Or build and run standalone
+docker build -t siskelbot .
+docker run -d -p 3000:3000 -e BACKEND=ollama -e OLLAMA_URL=http://host.docker.internal:11434 siskelbot
+```
+
+See **[docs/DOCKER.md](docs/DOCKER.md)** for build, run, compose, and health-check details. Vercel deployment is unchanged.
+
 ### 4. Use the app
 
 - Open `http://localhost:3000` in a browser
 - API: `POST http://localhost:3000/v1/chat/completions` (OpenAI-compatible)
 - **API docs:** [http://localhost:3000/api/docs](http://localhost:3000/api/docs) (Swagger UI)
 - **Admin dashboard:** [http://localhost:3000/admin](http://localhost:3000/admin) (requires `ADMIN_API_KEY` or user in `QUOTA_ADMIN_USER_IDS`)
+- **Metrics:** `GET /metrics` (Prometheus text format when `ENABLE_METRICS=1`). See [docs/RUNBOOK.md](docs/RUNBOOK.md) Phase 36.
 
 ## Backends
 
@@ -428,7 +463,7 @@ node --test tests/server.test.js
 node --test tests/**/*.test.js --test-reporter=spec
 ```
 
-The CI workflow runs the same tests on pushes and pull requests.
+The CI workflow runs the same tests on pushes and pull requests. **Tests:** [Actions → CI](https://github.com/YOUR_USERNAME/experimentagent/actions/workflows/ci.yml). **Build:** [Actions → Docker](https://github.com/YOUR_USERNAME/experimentagent/actions/workflows/docker.yml). Replace `YOUR_USERNAME` in badge URLs and links with your GitHub username or org.
 
 ### Test coverage
 
@@ -518,6 +553,8 @@ After DNS propagates (often within minutes, sometimes up to 48 hours), Vercel au
 ```
 experimentagent/
 ├── server.js           # Express streaming proxy
+├── Dockerfile          # Phase 35: Docker build
+├── docker-compose.yml  # Phase 35: Compose (siskelbot + optional Ollama)
 ├── vercel.json         # Vercel deploy config (builds, functions, routes; env vars in Dashboard)
 ├── docs/
 │   ├── DEPLOYMENT.md   # Vercel deployment and custom domain setup
@@ -532,7 +569,9 @@ experimentagent/
 │   ├── sw.js                # Service worker
 │   └── icon.svg             # App icon
 ├── .github/workflows/
-│   └── ci.yml          # CI on push
+│   ├── ci.yml          # Phase 37: CI (lint, test, smoke)
+│   ├── docker.yml      # Phase 37: Docker build
+│   └── release.yml     # Phase 37: Release on tag v*
 ├── render.yaml         # Render deploy config
 ├── tests/
 │   ├── server.test.js      # Server API integration tests

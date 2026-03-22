@@ -2,6 +2,58 @@
 
 Operations guide for the SiskelBot streaming assistant: common failures, environment checklist, backend verification, and troubleshooting.
 
+## Phase 37: CI/CD (GitHub Actions)
+
+GitHub Actions workflows for SiskelBot (experimentagent).
+
+### Workflows
+
+| Workflow | File | Triggers | Purpose |
+|----------|------|----------|---------|
+| CI | `ci.yml` | Push to main, PR to main | Lint (optional), test, smoke |
+| Docker | `docker.yml` | Push to main, manual | Build Docker image |
+| Release | `release.yml` | Tag push `v*` | GitHub release + Docker push |
+
+### CI (ci.yml)
+
+- **Triggers:** Push or PR to `main` / `master`
+- **Jobs:** lint (optional; add `"lint"` script to package.json to enable), test, smoke
+- **Node:** 20, `npm ci`
+- **Test timeout:** 5 minutes (`--test-timeout=300000`)
+- **Fail fast:** Concurrent runs cancel when a new one starts
+
+### Docker (docker.yml)
+
+- **Triggers:** Push to main, or manual (`workflow_dispatch`)
+- **Actions:** Builds Docker image, tags `latest` and `sha-<short-sha>`
+- **Push to GHCR:** Optional. Enable by either:
+  - **Repo variable:** `Settings → Secrets and variables → Actions → Variables` → add `GHCR_PUSH` = `1`
+  - **Manual run:** Run workflow manually and check "Push to GitHub Container Registry"
+- **Image:** `ghcr.io/<owner>/<repo>:latest`, `ghcr.io/<owner>/<repo>:sha-<sha>`
+
+### Release (release.yml)
+
+- **Trigger:** Push a tag matching `v*` (e.g. `v1.0.0`)
+- **Actions:** Creates GitHub Release with generated notes, builds and pushes Docker image with version tag
+- **Image tags:** `ghcr.io/<owner>/<repo>:<version>`, `ghcr.io/<owner>/<repo>:latest`
+
+### Env vars for GHCR
+
+No secrets needed for push; the workflow uses `GITHUB_TOKEN` (automatically provided). To enable push on push-to-main:
+
+1. Repo → **Settings** → **Secrets and variables** → **Actions**
+2. **Variables** → **New repository variable**
+3. Name: `GHCR_PUSH`, Value: `1`
+
+### How to trigger
+
+- **CI:** Push to main or open a PR. Runs automatically.
+- **Docker build (no push):** Push to main, or Actions → Docker → Run workflow.
+- **Docker build + push:** Set `GHCR_PUSH=1` and push to main, or run Docker workflow manually with "Push to GitHub Container Registry" checked.
+- **Release:** `git tag v1.0.0 && git push origin v1.0.0`
+
+---
+
 ## Phase 34: Production Hardening
 
 Production readiness: graceful shutdown, security headers, health probes, startup validation, structured logging.
@@ -62,6 +114,39 @@ CSP header in production when `ENABLE_CSP=1`. Report-only by default to avoid br
 
 Directives allow: `'self'`, `cdn.jsdelivr.net`, `api.openai.com`, `ws:`, `wss:`, `'unsafe-inline'` for scripts/styles (SPA).
 
+## Prometheus Metrics (Phase 36 / Phase 40)
+
+When `ENABLE_METRICS=1`, `GET /metrics` (or `METRICS_PATH`) returns Prometheus exposition format for scraping.
+
+### Metrics exposed
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `http_requests_total{method, path, status}` | counter | Total HTTP requests |
+| `http_request_duration_seconds{method, path}` | histogram | Request duration in seconds |
+| `siskelbot_chat_requests_total` | counter | Chat completion requests |
+| `siskelbot_tokens_used_total` | counter | Tokens used (from usage-tracker) |
+| `siskelbot_active_connections` | gauge | Active WebSocket connections |
+| `process_cpu_seconds_total` | counter | Node.js process CPU time |
+| `process_resident_memory_bytes` | gauge | Node.js resident memory |
+
+### Env vars
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `ENABLE_METRICS` | — | Set to `1` to expose metrics |
+| `METRICS_PATH` | `/metrics` | Custom path for Prometheus scrape |
+| `METRICS_PROTECTED` | — | Set to `1` to require auth |
+| `METRICS_SECRET` | — | When `METRICS_PROTECTED=1`, use `?secret=` or `Authorization: Bearer` |
+
+When `METRICS_PROTECTED=1`, either `METRICS_SECRET` (query or Bearer) or `ADMIN_API_KEY` (Bearer or `x-admin-api-key`) is required. Common for internal Prometheus: leave unauthenticated.
+
+### Lightweight
+
+- No external calls; all metrics are in-memory or process stats.
+- Route is fast; suitable for Prometheus scrape intervals (e.g. 15s).
+- Compatible with Docker health checks; use `/health/live` for liveness.
+
 ## Phase 36: Log Sanitization
 
 All structured log entries are sanitized to redact sensitive values. Keys matching `api_key`, `authorization`, `token`, `password`, `secret`, `cookie`, and similar are replaced with `[REDACTED]` before logging.
@@ -86,6 +171,14 @@ When unhandled errors occur (`uncaughtException`, `unhandledRejection`) in produ
 | Variable | Notes |
 |----------|-------|
 | `ERROR_REPORT_WEBHOOK_URL` | URL for error webhook (Slack, PagerDuty, etc.). Only active when `NODE_ENV=production`. |
+
+## Docker & Container Support
+
+Docker and docker-compose for self-hosted deployment. See [docs/DOCKER.md](DOCKER.md) for build, run, compose, and health-check details.
+
+- **Build:** `docker build -t siskelbot .`
+- **Run:** `docker compose up -d` (includes optional Ollama)
+- **Health:** `GET /health/live` (liveness), `GET /health/ready` (readiness)
 
 ## Phase 39: Deployment Smoke Tests
 

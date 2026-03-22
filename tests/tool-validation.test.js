@@ -31,3 +31,23 @@ test("parseError surfaces JSON hint", () => {
   assert.equal(v.valid, false);
   assert.ok(v.repairHint.includes("JSON"));
 });
+
+test("semantic_search_context requires query", () => {
+  const v = validateToolCall("semantic_search_context", {});
+  assert.equal(v.valid, false);
+});
+
+test("get_context_document requires id", () => {
+  const v = validateToolCall("get_context_document", { id: "" });
+  assert.equal(v.valid, false);
+});
+
+test("list_recipes accepts empty object", () => {
+  const v = validateToolCall("list_recipes", {});
+  assert.equal(v.valid, true);
+});
+
+test("get_recipe requires name", () => {
+  const v = validateToolCall("get_recipe", {});
+  assert.equal(v.valid, false);
+});

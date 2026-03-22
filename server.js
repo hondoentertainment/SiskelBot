@@ -49,7 +49,7 @@ import { execute as circuitExecute } from "./lib/circuit-breaker.js";
 import { initErrorReporting, reportError } from "./lib/error-reporting.js";
 import { runSwarm, runSwarmLegacy, getSpecialists } from "./lib/swarm.js";
 import { initTracing } from "./lib/tracing.js";
-import { recordRequest, recordSwarm, renderPrometheus, isEnabled as metricsEnabled } from "./lib/metrics.js";
+import { recordRequest, recordSwarm, renderPrometheus, recordChatRequest, recordTokensUsed, isEnabled as metricsEnabled } from "./lib/metrics.js";
 import { fetchWithTimeoutAndRetry } from "./lib/backend-fetch.js";
 import { validateToolCall, toolValidationEnabled } from "./lib/tool-validation.js";
 import { detectStagnation, stagnationDetectionEnabled } from "./lib/agent-stagnation.js";
@@ -524,6 +524,7 @@ app.get("/config", (req, res) => {
     agentRequireCitations: process.env.AGENT_REQUIRE_CITATIONS === "1",
     agentTrajectoryApi: trajectoryApiEnabled(),
     agentDefaultSystemSet: defaultAgentSystemConfigured(),
+    legacySwarmSpecialists: getSpecialists().map((s) => s.name).filter((n) => n !== "synthesizer"),
   };
   if (IS_PRODUCTION && !API_KEY) {
     payload.productionHint = "Set API_KEY in Vercel env vars to protect /v1/chat/completions";
@@ -754,6 +755,7 @@ async function runAgentLoop(req, res, config, model) {
 }
 
 app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRateLimiter, chatRateLimiter, logRequest, async (req, res) => {
+  recordChatRequest();
   try {
     const workspace = req.body?.agentOptions?.workspace || "default";
     const userId = req.userId || null;
@@ -841,6 +843,7 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
 
       const inputTokens = estimate.inputFromMessages(req.body?.messages || []);
       const outputTokens = estimate.outputFromChars(content?.length || 0);
+      recordTokensUsed(inputTokens, outputTokens);
       await recordUsage({ timestamp: new Date().toISOString(), model, inputTokens, outputTokens, backend: BACKEND, workspace, userId }).catch(() => {});
 
       if (STREAM_AGENT_FINAL && content && typeof content === "string") {
@@ -941,6 +944,7 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
 
     const outputTokens = usageFromApi?.completion_tokens ?? estimate.outputFromChars(outputChars);
     const finalInputTokens = usageFromApi?.prompt_tokens ?? inputTokens;
+    recordTokensUsed(finalInputTokens, outputTokens);
     await recordUsage({
       timestamp: new Date().toISOString(),
       model,
@@ -1047,6 +1051,7 @@ const taskPlanRateLimiter = rateLimit({
 
 // POST /v1/agent/swarm: same as chat completions with agentMode+swarmMode (forces swarm path)
 app.post("/v1/agent/swarm", chatAuth, requireScope("write"), perKeyChatRateLimiter, chatRateLimiter, logRequest, async (req, res) => {
+  recordChatRequest();
   try {
     if (!ENABLE_AGENT_SWARM) {
       return res.status(400).json({
@@ -1093,6 +1098,7 @@ app.post("/v1/agent/swarm", chatAuth, requireScope("write"), perKeyChatRateLimit
 
     const inputTokens = estimate.inputFromMessages(req.body?.messages || []);
     const outputTokens = estimate.outputFromChars(content?.length || 0);
+    recordTokensUsed(inputTokens, outputTokens);
     await recordUsage({
       timestamp: new Date().toISOString(),
       model,
@@ -1320,9 +1326,30 @@ async function runHealthChecks() {
   };
 }
 
-// Phase 40: Prometheus metrics (when ENABLE_METRICS=1)
+// Phase 40 / Phase 36: Prometheus metrics (when ENABLE_METRICS=1)
+// METRICS_PATH defaults to /metrics; METRICS_PROTECTED=1 requires METRICS_SECRET or ADMIN_API_KEY
+const METRICS_PATH = (process.env.METRICS_PATH || "/metrics").replace(/^\/+/, "/").replace(/\/+$/, "") || "/metrics";
+const METRICS_PROTECTED = process.env.METRICS_PROTECTED === "1";
+const METRICS_SECRET = process.env.METRICS_SECRET?.trim() || null;
+
+function metricsAuth(req, res, next) {
+  if (!METRICS_PROTECTED) return next();
+  const adminKey = process.env.ADMIN_API_KEY;
+  const secret = METRICS_SECRET;
+  const bearer = req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7).trim() : null;
+  const querySecret = req.query?.secret;
+  const xKey = req.headers["x-admin-api-key"];
+  const key = bearer || xKey;
+  if (secret && (querySecret === secret || bearer === secret)) return next();
+  if (adminKey && key && key === adminKey) return next();
+  if (secret || adminKey) {
+    return res.status(401).json({ error: "Metrics require authentication", code: "AUTH_REQUIRED", hint: "Use ?secret=<METRICS_SECRET> or Authorization: Bearer <ADMIN_API_KEY>" });
+  }
+  next(); // No protection configured: allow (common for internal Prometheus)
+}
+
 if (metricsEnabled()) {
-  app.get("/metrics", (req, res) => {
+  app.get(METRICS_PATH, metricsAuth, (req, res) => {
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.send(renderPrometheus());
   });
@@ -3219,7 +3246,8 @@ if (process.env.VERCEL !== "1") {
       process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
       process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
-      httpServer.listen(PORT, () => {
+      const listenHost = process.env.LISTEN_HOST?.trim() || undefined;
+      const onListen = () => {
         console.log(`Proxy: http://localhost:${PORT}`);
         console.log(`Backend: ${BACKEND}`);
         if (BACKEND === "vllm") console.log(`vLLM:  ${VLLM_URL}`);
@@ -3230,7 +3258,12 @@ if (process.env.VERCEL !== "1") {
         }
         console.log("Phase 33: WebSocket real-time sync enabled at /ws");
         console.log("Phase 34: Health probes at /health/live, /health/ready");
-      });
+      };
+      if (listenHost) {
+        httpServer.listen(PORT, listenHost, onListen);
+      } else {
+        httpServer.listen(PORT, onListen);
+      }
     });
 }
 export default app;

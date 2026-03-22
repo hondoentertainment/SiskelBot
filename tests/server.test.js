@@ -170,6 +170,63 @@ test("Phase 34: responses include X-Request-Id header", async () => {
   assert.match(response.headers["x-request-id"], /^[0-9a-f-]{36}$|^[0-9a-f]{8}-[0-9a-f]{4}/);
 });
 
+// Phase 36: Prometheus metrics
+test("GET /metrics returns 404 when ENABLE_METRICS not set", async () => {
+  const app = await loadApp({ BACKEND: "ollama", ENABLE_METRICS: "" });
+  const response = await request(app).get("/metrics");
+  assert.equal(response.status, 404);
+});
+
+test("GET /metrics returns valid Prometheus format when ENABLE_METRICS=1", async () => {
+  const app = await loadApp({ BACKEND: "ollama", ENABLE_METRICS: "1" });
+  const response = await request(app).get("/metrics");
+  assert.equal(response.status, 200);
+  assert.ok(
+    response.headers["content-type"]?.includes("text/plain"),
+    "Content-Type should be text/plain"
+  );
+  const text = response.text;
+  assert.ok(text.length > 0, "Response should not be empty");
+  assert.ok(text.includes("# HELP") && text.includes("# TYPE"), "Should have HELP and TYPE lines");
+  assert.ok(text.includes("siskelbot_chat_requests_total"), "Should expose Phase 36 chat counter");
+  assert.ok(text.includes("siskelbot_tokens_used_total"), "Should expose tokens counter");
+  assert.ok(text.includes("siskelbot_active_connections"), "Should expose active connections gauge");
+  // Valid Prometheus metric line: name{labels} value or name value (numeric)
+  const metricLine = text.split("\n").find((l) => /^[a-z0-9_]+(\{[^}]*\})?\s+[\d.eE+-]+$/.test(l.trim()));
+  assert.ok(metricLine, "Should have at least one valid Prometheus metric line");
+});
+
+test("GET /metrics returns 401 when METRICS_PROTECTED=1 and no auth", async () => {
+  const { app, restore } = await loadAppKeepEnv({
+    BACKEND: "ollama",
+    ENABLE_METRICS: "1",
+    METRICS_PROTECTED: "1",
+    METRICS_SECRET: "my-secret",
+  });
+  try {
+    const response = await request(app).get("/metrics");
+    assert.equal(response.status, 401);
+  } finally {
+    restore();
+  }
+});
+
+test("GET /metrics returns 200 when METRICS_PROTECTED=1 and secret provided", async () => {
+  const { app, restore } = await loadAppKeepEnv({
+    BACKEND: "ollama",
+    ENABLE_METRICS: "1",
+    METRICS_PROTECTED: "1",
+    METRICS_SECRET: "my-secret",
+  });
+  try {
+    const response = await request(app).get("/metrics?secret=my-secret");
+    assert.equal(response.status, 200);
+    assert.ok(response.text.includes("siskelbot_chat_requests_total"));
+  } finally {
+    restore();
+  }
+});
+
 // --- Phase 4: Toolchain Integration Hub ---
 
 test("GET /api/integrations/status returns { github, vercel } booleans", async () => {

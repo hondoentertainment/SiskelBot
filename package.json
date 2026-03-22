@@ -7,6 +7,13 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "desktop": "electron ./electron/main.cjs",
+    "vendor:node-win": "node scripts/vendor-node-win.mjs all",
+    "vendor:node-win:x64": "node scripts/vendor-node-win.mjs x64",
+    "vendor:node-win:arm64": "node scripts/vendor-node-win.mjs arm64",
+    "desktop:dist": "node scripts/ensure-node-vendor.mjs x64 && node scripts/stage-node-vendor.mjs x64 && electron-builder --win --x64",
+    "desktop:dist:arm64": "node scripts/ensure-node-vendor.mjs arm64 && node scripts/stage-node-vendor.mjs arm64 && electron-builder --win --arm64",
+    "desktop:dist:all": "node scripts/ensure-node-vendor.mjs all && node scripts/stage-node-vendor.mjs x64 && electron-builder --win --x64 && node scripts/stage-node-vendor.mjs arm64 && electron-builder --win --arm64",
     "test": "node --test tests/**/*.test.js",
     "smoke-test": "node scripts/smoke-test.js",
     "smoke-test:ci": "node scripts/smoke-test.js --live-only"
@@ -41,9 +48,58 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "electron": "^34.0.0",
+    "electron-builder": "^25.1.8",
     "supertest": "^7.2.2"
   },
   "optionalDependencies": {
     "better-sqlite3": "^11.8.1"
+  },
+  "build": {
+    "appId": "com.hondoentertainment.siskelbot",
+    "productName": "Siskel Bot",
+    "copyright": "Copyright © hondoentertainment",
+    "asar": false,
+    "npmRebuild": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "**/*",
+      "!tests/**",
+      "!**/*.test.js",
+      "!docs/**",
+      "!scripts/**",
+      "!release/**",
+      "!vendor/**",
+      "!.github/**",
+      "!data/**",
+      "!backups/**",
+      "!node_modules/.cache/**"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.cjs"
+    },
+    "extraResources": [
+      {
+        "from": "vendor/node-win",
+        "to": "node-win",
+        "filter": ["node.exe"]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "artifactName": "${productName}-${version}-Windows-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }
