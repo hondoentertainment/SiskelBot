@@ -53,13 +53,15 @@ npm run desktop
 
 Default URL: `http://127.0.0.1:38447/`. See **[docs/DESKTOP.md](docs/DESKTOP.md)** for ports, OAuth redirects, and packaging notes.
 
-**Windows installer (x64 NSIS):**
+**Windows installers (NSIS):**
 
 ```bash
-npm run desktop:dist
+npm run desktop:dist          # x64 → ...-Windows-x64.exe
+npm run desktop:dist:arm64    # ARM64 → ...-Windows-arm64.exe
+npm run desktop:dist:all      # both (two installers)
 ```
 
-Writes `release/Siskel Bot-<version>-Windows-x64.exe`. The first build downloads **Node.js** `node.exe` into `vendor/node-win/` so installers work without Node on the user’s PATH.
+The first build downloads the matching **Node.js** `node.exe` into `vendor/node-win-x64` / `vendor/node-win-arm64` (then staged for `electron-builder`). See **[docs/DESKTOP.md](docs/DESKTOP.md)**.
 
 ### Docker (self-hosted)
 

@@ -60,35 +60,49 @@ If you change **`DESKTOP_PORT`**, use that port in the provider settings. If the
   npm run desktop
   ```
 
-## Windows installer (x64, NSIS)
-
-Configured for **Windows x64 only** (`electron-builder`).
+## Windows installers (NSIS) — x64 & ARM64
 
 1. On **Windows**, install dependencies: `npm install`
-2. Build:
+
+2. Build **x64** (Intel/AMD):
 
    ```bash
    npm run desktop:dist
    ```
 
-3. **First run** downloads official **Node.js** `node.exe` (see `scripts/vendor-node-win.mjs`, default `NODE_VENDOR_VERSION=20.18.1`) into `vendor/node-win/` if missing, then produces:
+   → `release/Siskel Bot-<version>-Windows-x64.exe`
 
-   - `release/Siskel Bot-<version>-Windows-x64.exe` — NSIS setup (choose install dir, not one-click)
-   - Installed app bundles **Electron** + app files + **`node.exe`** in `resources/node-win/` so end users **do not need Node on PATH**
-
-4. Pre-download Node only (no full installer):
+3. Build **ARM64** (Snapdragon / Windows on ARM):
 
    ```bash
-   npm run vendor:node-win
+   npm run desktop:dist:arm64
    ```
 
-5. **Offline builds:** run `vendor:node-win` once on a machine with internet, keep `vendor/node-win/node.exe`, then run `electron-builder --win --x64` without `ensure-node-vendor` if you add a separate script.
+   → `release/Siskel Bot-<version>-Windows-arm64.exe`
+
+4. Build **both** (downloads both Node zips if needed, then two installer passes):
+
+   ```bash
+   npm run desktop:dist:all
+   ```
+
+5. **Bundled Node:** each installer ships the matching **`node.exe`** under `resources/node-win/` (staged from `vendor/node-win-x64` or `vendor/node-win-arm64`). End users do **not** need Node on PATH.
+
+6. Pre-download Node only:
+
+   ```bash
+   npm run vendor:node-win          # both arch
+   npm run vendor:node-win:x64      # x64 only
+   npm run vendor:node-win:arm64    # arm64 only
+   ```
+
+7. **Offline builds:** run the appropriate `vendor:node-win:*` on a machine with internet, keep `vendor/node-win-x64/` and/or `vendor/node-win-arm64/`, then run the `desktop:dist*` scripts (they skip download if `node.exe` exists).
 
 **Notes**
 
-- `npmRebuild` is **disabled** so native addons (e.g. optional `better-sqlite3`) stay built for **Node**, not Electron’s ABI (the API runs in a child `node` process).
-- Build on **x64 Windows** for the Windows target. No macOS/Linux artifacts are configured.
-- Optional: add a `.ico` under `build/icon.ico` and set `"icon": "build/icon.ico"` under `build.win` in `package.json`.
+- `npmRebuild` is **disabled** so native addons (e.g. optional `better-sqlite3`) stay built for **Node**, not Electron’s ABI (the API runs in a child `node` process). Run `npm install` on the **same architecture** you target when optional native modules matter.
+- **ARM64 installer:** build with `desktop:dist:arm64` on an **ARM64 Windows** machine (or use cross-compilation if your toolchain supports it — untested here).
+- Optional: add `build/icon.ico` and set `"icon": "build/icon.ico"` under `build.win` in `package.json`.
 
 ## Security notes
 

@@ -1,11 +1,14 @@
 # Vendor files (desktop build)
 
-- **`node-win/node.exe`** — Official Node.js Windows x64 binary, copied here by:
+Official **Node.js for Windows** binaries (no git; generated locally):
 
-  ```bash
-  npm run vendor:node-win
-  ```
+| Folder | Arch | Created by |
+|--------|------|------------|
+| `node-win-x64/` | x64 | `npm run vendor:node-win:x64` or `vendor:node-win` (all) |
+| `node-win-arm64/` | ARM64 | `npm run vendor:node-win:arm64` or `vendor:node-win` (all) |
+| `node-win/` | staging | `scripts/stage-node-vendor.mjs` — copy of one arch for `electron-builder` |
 
-  `npm run desktop:dist` runs `ensure-node-vendor` first and downloads this automatically if it is missing (requires internet once).
+- **`npm run vendor:node-win`** downloads **both** (requires internet).
+- **`ensure-node-vendor`** + **`stage-node-vendor`** run automatically from **`desktop:dist`** scripts.
 
-- These paths are **gitignored**; each machine / CI runner that builds the installer should generate them locally.
+Version: **`NODE_VENDOR_VERSION`** (default `20.18.1` in `scripts/vendor-node-win.mjs`).
