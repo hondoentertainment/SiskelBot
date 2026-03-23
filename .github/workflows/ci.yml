@@ -43,7 +43,7 @@ jobs:
         run: npm ci
 
       - name: Run tests
-        run: npm test -- --test-timeout=300000
+        run: npm run test:ci
 
   # Phase 39: Smoke tests (server must respond to health/config)
   smoke:
