@@ -378,32 +378,45 @@ Evaluation harness for automated testing of chat and task-planning APIs against 
   "id": "string",
   "name": "string",
   "description": "optional",
+  "chatRequestDefaults": "optional object: agentMode, swarmMode, agentOptions, tools, tool_choice, temperature, top_p, max_tokens, stream — merged into chat cases",
   "cases": [
     {
       "id": "string",
       "prompt": "string",
       "systemPrompt": "optional",
-      "target": "chat | task (default: chat)",
+      "target": "chat | task | trace | judge (default: chat)",
+      "skip": "optional boolean; if true, case is not run (counts toward total, increments skipped)",
+      "skipReason": "optional string shown in results",
+      "chatRequest": "optional object; same keys as chatRequestDefaults, merged last",
       "expectedContains": "substring to find",
       "expectedPattern": "regex string",
-      "expectedJson": ["key1", "key2"] | "key"
+      "expectedJson": ["key1", "key2"] | "key",
+      "expectedAgentActivityToolNames": "tool name(s) that must appear in SSE agent_activity.toolCalls",
+      "expectedAgentActivityToolSequence": "ordered tool names (subsequence of flattened tool call names)",
+      "expectedMinAgentActivityToolCalls": "minimum count of named tool calls in agent_activity",
+      "expectedSwarmStepNames": "specialist/step labels that must appear in agent_activity.swarmSteps",
+      "expectedMinSwarmSteps": "minimum swarm step count",
+      "judgeRubric": "for target judge: rubric string passed to eval judge LLM"
     }
   ]
 }
 ```
+
+For **live agent/swarm** checks, the server returns SSE with an `agent_activity` event; the runner collects tool names and swarm step labels from that payload. Use **`skip: true`** on templates that require a real backend so CI does not call the LLM (see `data/eval-sets/example.json` and `data/eval-sets/agent-outcome-examples.json`). Duplicate a case and set `skip: false` in staging to run manually.
 
 ### API
 
 | Endpoint | Method | Description |
 |----------|--------|--------------|
 | `GET /api/eval/sets` | GET | List available eval sets (from `data/eval-sets/*.json` or `data/eval-sets.json`). Returns `{ sets: [{ id, name }] }`. |
-| `POST /api/eval/run` | POST | Run eval set. Body: `{ evalSetId?: string, evalSet?: object, model?: string }`. Returns `{ results, passed, total, durationMs }`. |
+| `POST /api/eval/run` | POST | Run eval set. Body: `{ evalSetId?: string, evalSet?: object, model?: string }`. Returns `{ results, passed, total, skipped, durationMs }`. Each result may include `skipped`, `reason`, `agentActivityHint` (truncated tools/swarm summary when SSE included `agent_activity`). **`passed`** counts only non-skipped cases that passed. |
 
 ### Criteria
 
 - **expectedContains:** Substring must be present in output (case-sensitive).
 - **expectedPattern:** Output must match regex.
 - **expectedJson:** Parsed JSON (from task API or code block) must have all listed keys.
+- **Agent activity:** When any of `expectedAgentActivityToolNames`, `expectedAgentActivityToolSequence`, `expectedMinAgentActivityToolCalls`, `expectedSwarmStepNames`, or `expectedMinSwarmSteps` is set, the chat response must include SSE `agent_activity` with matching tool calls or swarm steps.
 
 ### Auth
 
@@ -510,7 +523,7 @@ Eval sets live in `data/eval-sets/*.json` or a single `data/eval-sets.json`. Sch
 | Endpoint | Method | Description |
 |----------|--------|--------------|
 | `GET /api/eval/sets` | GET | List available eval sets. Returns `{ sets: [{ id, name }, ...] }`. |
-| `POST /api/eval/run` | POST | Run eval. Body: `{ evalSetId?: string, evalSet?: object, model?: string }`. Returns `{ results, passed, total, durationMs }`. |
+| `POST /api/eval/run` | POST | Run eval. Body: `{ evalSetId?: string, evalSet?: object, model?: string }`. Returns `{ results, passed, total, skipped, durationMs }`. |
 
 ### Auth
 
@@ -573,7 +586,7 @@ Eval sets are JSON files in `data/eval-sets/*.json` or a single `data/eval-sets.
 | Endpoint | Method | Description |
 |----------|--------|--------------|
 | `GET /api/eval/sets` | GET | List available eval sets (`data/eval-sets/*.json` or `data/eval-sets.json`). Returns `{ sets: [{ id, name }] }`. |
-| `POST /api/eval/run` | POST | Run eval. Body: `{ evalSetId?: string, evalSet?: object, model?: string }`. Returns `{ results, passed, total, durationMs }`. |
+| `POST /api/eval/run` | POST | Run eval. Body: `{ evalSetId?: string, evalSet?: object, model?: string }`. Returns `{ results, passed, total, skipped, durationMs }`. |
 
 ### Auth
 

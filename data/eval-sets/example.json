@@ -1,7 +1,7 @@
 {
   "id": "example",
   "name": "Example Eval Set",
-  "description": "Sample eval cases for chat and task planning",
+  "description": "Sample eval cases for chat, task planning, golden traces, and skippable live-agent templates (Phases 93–95).",
   "cases": [
     {
       "id": "greeting",
@@ -42,6 +42,30 @@
       "expectedToolCalls": [
         { "name": "search_context", "requiredArgKeys": ["query"] }
       ]
+    },
+    {
+      "id": "template-live-agent-tools",
+      "skip": true,
+      "skipReason": "Requires live LLM with tools; set skip:false to run manually. See also data/eval-sets/agent-outcome-examples.json.",
+      "prompt": "Use list_context once, then summarize in one sentence.",
+      "target": "chat",
+      "agentMode": true,
+      "agentOptions": { "workspace": "default", "allowExecution": false },
+      "expectedMinAgentActivityToolCalls": 1,
+      "expectedAgentActivityToolNames": ["list_context"],
+      "expectedContains": "."
+    },
+    {
+      "id": "template-chat-request-defaults",
+      "skip": true,
+      "skipReason": "Demonstrates set-level chatRequestDefaults; enable for manual staging runs only.",
+      "prompt": "Reply with OK.",
+      "target": "chat",
+      "expectedContains": "OK"
     }
-  ]
+  ],
+  "chatRequestDefaults": {
+    "temperature": 0.2,
+    "max_tokens": 64
+  }
 }

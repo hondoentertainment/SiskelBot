@@ -1315,6 +1315,7 @@ test("POST /api/eval/run accepts evalSet JSON and returns results", async () => 
     assert.ok(Array.isArray(response.body.results));
     assert.equal(typeof response.body.passed, "number");
     assert.equal(typeof response.body.total, "number");
+    assert.equal(typeof response.body.skipped, "number");
     assert.equal(typeof response.body.durationMs, "number");
     assert.ok(response.body.total >= 1);
   } finally {
@@ -1400,6 +1401,7 @@ test("POST /api/eval/run accepts evalSet JSON in body", async () => {
     assert.ok(Array.isArray(response.body.results));
     assert.equal(response.body.total, 1);
     assert.ok(typeof response.body.passed === "number");
+    assert.ok(typeof response.body.skipped === "number");
     assert.ok(typeof response.body.durationMs === "number");
   } finally {
     restore();
@@ -1567,6 +1569,7 @@ test("POST /api/eval/run accepts evalSet JSON and returns results", async () => 
   assert.ok(Array.isArray(response.body.results));
   assert.equal(response.body.total, 1);
   assert.ok(typeof response.body.passed === "number");
+  assert.ok(typeof response.body.skipped === "number");
   assert.ok(typeof response.body.durationMs === "number");
 });
 
@@ -1578,6 +1581,8 @@ test("POST /api/eval/run with evalSetId loads from file", async () => {
   assert.equal(response.status, 200);
   assert.ok(Array.isArray(response.body.results));
   assert.ok(response.body.total >= 1);
+  assert.ok(typeof response.body.skipped === "number");
+  assert.ok(response.body.skipped >= 2, "example.json includes skippable template cases");
 });
 
 // --- Phase 32: Evaluation Harness ---

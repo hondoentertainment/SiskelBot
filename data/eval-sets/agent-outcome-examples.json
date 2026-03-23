@@ -1,6 +1,6 @@
 {
   "id": "agent-outcome-examples",
-  "name": "Agent outcome examples (Phase 94)",
+  "name": "Agent outcome examples (live SSE)",
   "description": "Eval cases showing agentMode + SSE agent_activity assertions. Live cases use skip:true so CI and default runs do not require a tool-capable LLM. Clear skip (or copy the case) to run manually against your backend.",
   "chatRequestDefaults": {
     "agentMode": true,

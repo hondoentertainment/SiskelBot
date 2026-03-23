@@ -217,6 +217,10 @@ Enable developers and teams to build AI-powered workflows with:
 | 90 | Client swarm roster — `SWARM_CLIENT_SPECIALISTS=1`, `SWARM_MAX_SPECIALISTS` (cap 1–12); `agentOptions.swarmSpecialists`; `resolveSwarmSpecialistNames` returns `rosterSource`; headers `X-Swarm-Roster-Source`, webhook `rosterSource`; `GET /config` → `swarmClientSpecialistsAllowed`, `swarmMaxSpecialists`, `swarmSelectableSpecialists`; Settings checkboxes + payload |
 | 91 | Swarm specialist allowlist — `SWARM_SPECIALISTS_ALLOWLIST` (comma-separated); intersects LLM swarm resolution (client / parallel / intent), `GET /config` → `swarmSpecialistsAllowlist` + filtered `swarmSelectableSpecialists` / `legacySwarmSpecialists`; `POST /v1/swarm` body specialists filtered |
 | 92 | Client-tunable iteration cap — `agentOptions.maxIterations` (integer ≥ 1) clamped to `MAX_AGENT_ITERATIONS`; `AGENT_MAX_ITERATIONS_IGNORE_CLIENT=1` disables client override; header `X-Agent-Max-Iterations`; `GET /config` → `agentMaxIterationsCeiling`, `agentMaxIterationsClientTunable` |
+| 93 | Eval live agent/swarm chat — `chatRequestDefaults` and per-case overrides (`agentMode`, `swarmMode`, `agentOptions`, `chatRequest`, etc.) merged into `POST /v1/chat/completions`; SSE responses parsed for assistant text + `agent_activity`; `lib/eval-runner.js` |
+| 94 | Eval harness schema docs — `docs/RUNBOOK.md` Phase 32 documents agent activity fields, skip cases, and API response shape (`skipped`, per-result `agentActivityHint`) |
+| 95 | Eval example sets — skippable live-agent templates in `data/eval-sets/example.json` and `data/eval-sets/agent-outcome-examples.json` for staging/manual runs |
+| 96 | Eval UI — `/eval` shows skipped cases distinctly; optional **Activity** column from `agentActivityHint`; summary uses `passed` (non-skipped passes) and `skipped` count |
 
 ---
 

@@ -30,7 +30,7 @@
     header h1 { margin: 0; font-size: 1.125rem; font-weight: 600; }
     header a { color: #60a5fa; text-decoration: none; }
     header a:hover { text-decoration: underline; }
-    main { padding: 1rem; max-width: 900px; margin: 0 auto; }
+    main { padding: 1rem; max-width: 1100px; margin: 0 auto; }
     .section {
       background: #1e293b;
       border: 1px solid #334155;
@@ -75,6 +75,7 @@
     button.run:disabled { opacity: 0.6; cursor: not-allowed; }
     .pass { color: #34d399; }
     .fail { color: #f87171; }
+    .skip { color: #94a3b8; font-style: italic; }
     .results-table {
       width: 100%;
       border-collapse: collapse;
@@ -94,7 +95,8 @@
       border-radius: 6px;
       font-size: 0.875rem;
     }
-    .output-cell { max-width: 300px; word-break: break-all; font-family: monospace; font-size: 0.8125rem; }
+    .output-cell { max-width: 260px; word-break: break-all; font-family: monospace; font-size: 0.8125rem; }
+    .activity-cell { max-width: 220px; word-break: break-word; font-size: 0.75rem; color: #cbd5e1; }
     .error-msg { color: #f87171; font-size: 0.8125rem; }
   </style>
 </head>
@@ -128,8 +130,9 @@
         <thead>
           <tr>
             <th>Case</th>
-            <th>Pass</th>
+            <th>Result</th>
             <th>Output</th>
+            <th>Activity</th>
             <th>Error / Reason</th>
           </tr>
         </thead>
@@ -200,19 +203,29 @@
           return;
         }
         const { results, passed, total, durationMs, skipped } = data;
+        const skipCount =
+          typeof skipped === "number"
+            ? skipped
+            : results.filter((r) => r.skipped).length;
         const skipNote =
-          typeof skipped === "number" && skipped > 0 ? ` (${skipped} skipped)` : "";
-        resultsSummary.innerHTML = `<strong>${passed}/${total}</strong> passed in ${durationMs}ms${skipNote}`;
+          skipCount > 0 ? ` — <strong>${skipCount}</strong> skipped (not run)` : "";
+        resultsSummary.innerHTML = `<strong>${passed}</strong> passed of <strong>${total}</strong> cases in ${durationMs}ms${skipNote}`;
         resultsBody.innerHTML = results
-          .map(
-            (res) =>
-              `<tr>
-                <td>${res.caseId}</td>
-                <td class="${res.pass ? "pass" : "fail"}">${res.pass ? "✓" : "✗"}</td>
+          .map((res) => {
+            let resultCell;
+            if (res.skipped) {
+              resultCell = `<td class="skip">skipped</td>`;
+            } else {
+              resultCell = `<td class="${res.pass ? "pass" : "fail"}">${res.pass ? "✓" : "✗"}</td>`;
+            }
+            return `<tr>
+                <td>${escapeHtml(String(res.caseId || ""))}</td>
+                ${resultCell}
                 <td class="output-cell">${escapeHtml((res.output || "").slice(0, 200))}</td>
+                <td class="activity-cell">${escapeHtml((res.agentActivityHint || "").slice(0, 200))}</td>
                 <td class="error-msg">${escapeHtml(res.error || res.reason || "")}</td>
-              </tr>`
-          )
+              </tr>`;
+          })
           .join("");
         resultsSection.style.display = "block";
       } catch (e) {
