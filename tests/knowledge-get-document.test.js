@@ -18,9 +18,9 @@ test.after(() => {
   } catch (_) {}
 });
 
-test("getDocumentById returns content after indexDocument", () => {
+test("getDocumentById returns content after indexDocument", async () => {
   const body = "Unique marker xyz-123 for retrieval test.";
-  const indexed = indexDocument({ text: body, workspace: "default", title: "T1" });
+  const indexed = await indexDocument({ text: body, workspace: "default", title: "T1" });
   assert.ok(indexed.id);
   const got = getDocumentById({ id: indexed.id, workspace: "default" });
   assert.equal(got.error, undefined);

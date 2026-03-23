@@ -102,6 +102,11 @@ Returns the list of registered action names (for recipe step dropdowns).
 
 **Auth:** Uses `userAuth` when Phase 14 auth is configured. Anonymous when not.
 
+## Phase 77: Pinning and discovery
+
+- **`PLUGINS_CONFIG_SHA256`:** When set, `plugins/config.json` is hashed at load time; a mismatch skips registration (see `lib/plugins-loader.js`).
+- **`data/plugin-registry.json`:** Small curated list describing common patterns (webhook notify, built-ins). It is documentation-only; the server does not auto-install from this file.
+
 ## Security
 
 - **No eval**, **no require(userPath)**. Only config-driven plugins.

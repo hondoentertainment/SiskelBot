@@ -218,6 +218,16 @@ When `METRICS_PROTECTED=1`, either `METRICS_SECRET` (query or Bearer) or `ADMIN_
 - Route is fast; suitable for Prometheus scrape intervals (e.g. 15s).
 - Compatible with Docker health checks; use `/health/live` for liveness.
 
+### OpenTelemetry ↔ Prometheus (Phase 69)
+
+When `OTEL_ENABLED=1` and `ENABLE_METRICS=1`:
+
+- **Trace attributes on HTTP spans:** `siskel.user_id_hash` (SHA-256 prefix of `req.userId`, never raw ids) and `siskel.workspace_id` (from query, `body.workspace`, or `body.agentOptions.workspace`) are set on the server span when the response finishes.
+- **Postgres:** `pg` queries are instrumented via `@opentelemetry/instrumentation-pg` when auto-instrumentation is on (`OTEL_PG_INSTRUMENT=0` disables). Set `OTEL_PG_ENHANCED=1` for richer `db.statement` attributes (higher cardinality; use with care).
+- **SQLite KV:** `STORAGE_BACKEND=sqlite` emits child spans `sqlite.kv.SELECT` / `sqlite.kv.INSERT` on the storage tracer.
+- **Head-based sampling (in-process):** `OTEL_TRACE_SAMPLING_RATIO` or `OTEL_TRACES_SAMPLER_ARG` with a value in `0..1` applies a `TraceIdRatioBasedSampler` at the root (still respects parent sampling for downstream requests). `OTEL_TRACES_SAMPLER=always_off` drops new roots; `traceidratio` / `parentbased_traceidratio` use `OTEL_TRACES_SAMPLER_ARG` as the ratio. **Tail sampling** is not implemented in the app; use an OpenTelemetry Collector tail sampler if you need slow-trace capture.
+- **Histogram exemplars:** `OTEL_PROMETHEUS_EXEMPLARS=1` attaches an OpenMetrics-style exemplar (with `trace_id`) to the `http_request_duration_seconds` **+Inf** bucket when the request ran inside an active trace. Scrapers need Prometheus 2.26+ with OpenMetrics support to use exemplars; otherwise metrics still parse without the exemplar suffix.
+
 ## Phase 36: Log Sanitization
 
 All structured log entries are sanitized to redact sensitive values. Keys matching `api_key`, `authorization`, `token`, `password`, `secret`, `cookie`, and similar are replaced with `[REDACTED]` before logging.

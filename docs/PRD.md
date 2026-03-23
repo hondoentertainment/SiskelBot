@@ -187,25 +187,21 @@ Enable developers and teams to build AI-powered workflows with:
 | 65 | Eval expansion — `data/eval-sets/example.json` golden-trace cases (`expectedToolSequence`, `expectedToolNames`, `expectedToolCalls`) |
 | 66 | Postgres KV storage — `STORAGE_BACKEND=postgres` + `DATABASE_URL`; `storage_kv` path keys for `lib/storage.js` (async API) |
 | 67 | OTEL auto-instrumentation — `@opentelemetry/instrumentation-http` + `instrumentation-undici` (global `fetch`); `OTEL_AUTO_INSTRUMENT=0` disables |
+| 69 | Deeper OpenTelemetry — `instrumentation-pg`, SQLite KV spans, request attributes (`siskel.user_id_hash`, `siskel.workspace_id`), head-based sampling envs, optional Prometheus histogram exemplars (`OTEL_PROMETHEUS_EXEMPLARS`) |
 
-### Roadmap: next 10 phases (68–77)
+### Implemented (Phases 68, 70–77) — production & platform
 
-These phases extend production posture (storage, observability, compliance), agent reliability at scale, and platform maturity. They supersede the ad-hoc “future” list (former 45 / 48 / 49 are folded in below).
-
-| Phase | Name | Priority | Outcomes & deliverables |
-|-------|------|----------|-------------------------|
-| **68** | **Durable storage for all tenant modules** | High | Move schedules, teams, webhooks, notifications, workspace `agent-settings`, and other `data/*.json` modules onto the same async path store as `lib/storage.js` (Postgres/SQLite), with migration notes and backup/restore coverage. Enables horizontal scale without split-brain JSON files. |
-| **69** | **Deeper OpenTelemetry** | Medium | DB/client spans for Postgres (and SQLite where applicable), consistent trace attributes (`workspaceId`, `userId` hashes), head-based and/or tail sampling envs, documented exemplars with Prometheus. |
-| **70** | **Audit & long-term retention** | Medium | Ship audit log archival to S3-compatible object storage (configurable prefix, credentials, optional SSE); optional compaction job; admin visibility into export status. Replaces indefinite local-only growth. |
-| **71** | **Durable agent trajectories** | Medium | Persist `GET /api/agent/trajectory/:runId` data in the durable store (not in-memory TTL) so multi-instance and restart-safe debugging work; retention policy aligned with Phase 70. |
-| **72** | **Knowledge / RAG pipeline v2** | Medium | Document chunking strategy, incremental reindex hooks, and optional “connector” pattern (e.g. watched paths or URL allowlist) with quota and size limits; keep OpenAI embedding path as default. |
-| **73** | **Swarm routing v2** | Medium | Replace or augment keyword intent routing with LLM- or embedding-based specialist selection; feature flag for rollback; eval cases for routing stability (golden traces). |
-| **74** | **Workspace compliance & lifecycle** | Medium | Self-serve workspace export (JSON/ZIP), account/workspace deletion workflow with documented data removal, and admin tooling for support requests. |
-| **75** | **API product hardening** | Low | Documented deprecation policy in OpenAPI, optional idempotency keys for safe retries on selected POSTs, and starter SDK snippets (fetch/TS) in repo or docs—without breaking existing clients. |
-| **76** | **Multi-region & HA** | Low | Design and document active-passive or geo-routed deployment, storage replication or single-writer assumptions, and WebSocket/presence behavior across regions. |
-| **77** | **Plugin marketplace (curated)** | Low | Signed or hashed plugin bundles, version pinning, discovery list (static or simple registry), and install UX aligned with `docs/PLUGINS.md` security model. |
-
-**Dependency sketch:** 68 → 71 → 70 (shared durable store simplifies trajectory + archival). 69 can proceed in parallel. 73 and 65 (eval) reinforce each other. 76 assumes 68 is largely complete.
+| Phase | Name |
+|-------|------|
+| 68 | Durable tenant modules — schedules, teams, webhooks, notifications, quotas, usage, API keys, OAuth state, agent-settings, etc. on `json-path-store` (Postgres/SQLite/file); backup snapshot coverage |
+| 70 | Audit S3 archival — `lib/audit-s3-archive.js`; `POST /api/admin/audit/archive-s3`, `GET /api/admin/audit/archive-status`; optional local trim after upload |
+| 71 | Durable agent trajectories — `AGENT_TRAJECTORY_DURABLE`; persist via json-path-store + `agent-trajectories.json` |
+| 72 | RAG v2 — chunking (`KNOWLEDGE_CHUNKING`), `POST /api/v1/knowledge/reindex`, `POST /api/v1/knowledge/fetch` + `KNOWLEDGE_URL_ALLOWLIST`; see `docs/RAG_PIPELINE_V2.md` |
+| 73 | Swarm routing v2 — `lib/swarm-intent-v2.js`; `SWARM_INTENT_MODE=embedding` optional |
+| 74 | Workspace lifecycle — `GET /api/v1/workspaces/:id/export`, `DELETE /api/v1/workspaces/:id` (owner, confirm); `lib/workspace-lifecycle.js` |
+| 75 | API hardening — OpenAPI deprecation policy; idempotency keys on `POST /workspaces`; `examples/sdk-starter.ts` |
+| 76 | Multi-region / HA — operator design note `docs/MULTI_REGION_HA.md` |
+| 77 | Plugin pinning — `PLUGINS_CONFIG_SHA256`; curated `data/plugin-registry.json`; `docs/PLUGINS.md` |
 
 ---
 

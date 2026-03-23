@@ -15,12 +15,12 @@ test("collector records steps and snapshot", () => {
   assert.ok(snap.stepCount >= 2);
 });
 
-test("saveTrajectory and loadTrajectory round-trip", () => {
+test("saveTrajectory and loadTrajectory round-trip", async () => {
   const runId = "traj-roundtrip-" + Date.now();
   const c = createTrajectoryCollector({ runId });
   c.record({ type: "stop", reason: "model_finished" });
-  saveTrajectory(runId, c.getSnapshot());
-  const loaded = loadTrajectory(runId);
+  await saveTrajectory(runId, c.getSnapshot());
+  const loaded = await loadTrajectory(runId);
   assert.ok(loaded);
   assert.equal(loaded.runId, runId);
   assert.ok(loaded.steps.some((s) => s.type === "stop"));

@@ -11,7 +11,13 @@ import { dirname, join } from "path";
 import multer from "multer";
 import passport from "passport";
 import { initPassport, isOAuthConfigured } from "./lib/oauth.js";
-import { indexDocument, search as knowledgeSearch, semanticSearch as knowledgeSemanticSearch, list as knowledgeList } from "./lib/knowledge-store.js";
+import {
+  indexDocument,
+  search as knowledgeSearch,
+  semanticSearch as knowledgeSemanticSearch,
+  list as knowledgeList,
+  reindexKnowledgeEmbeddingsInWorkspace,
+} from "./lib/knowledge-store.js";
 import { embed, embedBatch, isAvailable as embeddingsAvailable } from "./lib/embeddings.js";
 import { executeStep, appendAuditLog, getRegisteredActions } from "./lib/action-executor.js";
 import { loadPlugins } from "./lib/plugins-loader.js";
@@ -30,7 +36,7 @@ import { adminAuth } from "./lib/admin-auth.js";
 import { listAllUsers, listAllWorkspaces, getRecentAuditLog } from "./lib/admin-data.js";
 import { requireScope } from "./lib/scope-middleware.js";
 import { logKeyUsage } from "./lib/api-key-audit.js";
-import { listKeysForAdmin, addKey, revokeKey } from "./lib/api-keys.js";
+import { listKeysForAdmin, addKey, revokeKey, warmApiKeysCache } from "./lib/api-keys.js";
 import {
   canAccessWorkspace,
   resolveStorageUserId,
@@ -69,6 +75,11 @@ import {
   canEditWorkspaceAgentSettings,
 } from "./lib/workspace-agent-settings.js";
 import compression from "compression";
+import { otelHttpEnrichmentMiddleware } from "./lib/otel-context.js";
+import { exportWorkspaceBundle, deleteWorkspaceForUser } from "./lib/workspace-lifecycle.js";
+import { idempotencyLookup, idempotencyStore } from "./lib/idempotency.js";
+import { archiveExecutionAuditToS3, getAuditArchiveStatus } from "./lib/audit-s3-archive.js";
+import { fetchTextFromAllowedUrl } from "./lib/knowledge-url-fetch.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -231,6 +242,7 @@ if (ENABLE_COMPRESSION) {
   );
 }
 app.use(express.json());
+app.use(otelHttpEnrichmentMiddleware());
 
 // Phase 34: Request ID for all responses (k8s/tracing)
 app.use((req, res, next) => {
@@ -296,6 +308,9 @@ if (isOAuthConfigured()) {
   app.use(passport.session());
   oauthProviders = initPassport();
 }
+
+// Phase 68: Warm Postgres-backed API key cache before isAuthConfigured / rate limiters.
+await warmApiKeysCache().catch((e) => console.warn("[startup] api-keys warm:", e.message));
 
 // Rate limit for /v1/chat/completions
 // Phase 21: When auth configured, rate limit by userId; else by IP
@@ -383,8 +398,8 @@ function apiRoute(method, path, ...handlers) {
 }
 
 // Phase 21: Set quota headers on response when quota is configured
-function setQuotaHeaders(res, workspace, userId) {
-  const quota = getWorkspaceQuota(workspace, userId);
+async function setQuotaHeaders(res, workspace, userId) {
+  const quota = await getWorkspaceQuota(workspace, userId);
   if (quota) {
     res.setHeader("X-Quota-Limit", String(quota.limit));
     res.setHeader("X-Quota-Remaining", String(quota.remaining));
@@ -473,7 +488,7 @@ function logRequest(req, res, next) {
     });
     const msg = IS_PRODUCTION ? JSON.stringify(entry) : `${entry.method} ${entry.path} ${entry.status} ${entry.durationMs}ms`;
     console.log(msg);
-    if (req.apiKeyId) logKeyUsage({ keyId: req.apiKeyId, path: req.path, method: req.method });
+    if (req.apiKeyId) void logKeyUsage({ keyId: req.apiKeyId, path: req.path, method: req.method }).catch(() => {});
     if (metricsEnabled()) recordRequest(req.method, req.path, res.statusCode, durationMs);
   });
   next();
@@ -740,7 +755,7 @@ async function runAgentLoop(req, res, config, model) {
   trajCollector.record({ type: "stop", reason: stopReason, iterations: iteration });
   const trajectorySnapshot = trajCollector.getSnapshot();
   if (trajectoryApiEnabled()) {
-    saveTrajectory(runId, trajectorySnapshot);
+    await saveTrajectory(runId, trajectorySnapshot);
   }
 
   return {
@@ -763,7 +778,7 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
     // Phase 21: Per-workspace token quota check
     if (isQuotaConfigured()) {
       const inputTokens = estimate.inputFromMessages(req.body?.messages || []);
-      const { allowed, quota } = checkQuota(workspace, userId, inputTokens + 512);
+      const { allowed, quota } = await checkQuota(workspace, userId, inputTokens + 512);
       if (!allowed && quota) {
         res.setHeader("X-Quota-Limit", String(quota.limit));
         res.setHeader("X-Quota-Remaining", "0");
@@ -813,7 +828,7 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
       if (req._agentLoopMeta?.runId) {
         res.setHeader("X-Agent-Run-Id", req._agentLoopMeta.runId);
       }
-      setQuotaHeaders(res, workspace, userId);
+      await setQuotaHeaders(res, workspace, userId);
       res.flushHeaders();
 
       if (toolCalls?.length || swarmSteps?.length || req._agentLoopMeta) {
@@ -901,7 +916,7 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
-    setQuotaHeaders(res, workspace, userId);
+    await setQuotaHeaders(res, workspace, userId);
     res.flushHeaders();
 
     let buffer = "";
@@ -956,7 +971,7 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
     }).catch((e) => console.warn("[usage-tracker] Record failed:", e.message));
 
     if (USAGE_ALERT_TOKENS) {
-      const totalInWindow = getTotalTokensInWindow();
+      const totalInWindow = await getTotalTokensInWindow();
       if (totalInWindow >= USAGE_ALERT_TOKENS) {
         res.setHeader("X-Usage-Alert", "1");
         console.warn(`[usage] Budget alert: ${totalInWindow} tokens >= ${USAGE_ALERT_TOKENS}`);
@@ -1069,7 +1084,7 @@ app.post("/v1/agent/swarm", chatAuth, requireScope("write"), perKeyChatRateLimit
 
     if (isQuotaConfigured()) {
       const inputTokens = estimate.inputFromMessages(req.body?.messages || []);
-      const { allowed, quota } = checkQuota(workspace, userId, inputTokens + 512);
+      const { allowed, quota } = await checkQuota(workspace, userId, inputTokens + 512);
       if (!allowed && quota) {
         res.setHeader("X-Quota-Limit", String(quota.limit));
         res.setHeader("X-Quota-Remaining", "0");
@@ -1093,7 +1108,7 @@ app.post("/v1/agent/swarm", chatAuth, requireScope("write"), perKeyChatRateLimit
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Agent-Iteration", String(iteration));
-    setQuotaHeaders(res, workspace, userId);
+    await setQuotaHeaders(res, workspace, userId);
     res.flushHeaders();
 
     const inputTokens = estimate.inputFromMessages(req.body?.messages || []);
@@ -1447,15 +1462,15 @@ const usageSummaryRateLimiter = rateLimit({
   legacyHeaders: false,
 });
 // Phase 21: Usage summary with quota headers when workspace in query
-apiRoute("get", "/usage/summary", usageSummaryRateLimiter, logRequest, (req, res) => {
+apiRoute("get", "/usage/summary", usageSummaryRateLimiter, logRequest, async (req, res) => {
   try {
     const days = Math.min(90, Math.max(1, Number(req.query?.days) || 7));
     const workspace = req.query?.workspace ? String(req.query.workspace).trim() : "default";
-    const summary = getSummary(days);
+    const summary = await getSummary(days);
     const userId = req.userId || null;
 
     if (isQuotaConfigured()) {
-      const quota = getWorkspaceQuota(workspace, userId);
+      const quota = await getWorkspaceQuota(workspace, userId);
       if (quota) {
         res.setHeader("X-Quota-Limit", String(quota.limit));
         res.setHeader("X-Quota-Remaining", String(quota.remaining));
@@ -1488,7 +1503,7 @@ apiRoute("get", "/analytics/dashboard", ...analyticsHandlers, async (req, res) =
     if (req.userId) opts.userId = req.userId;
     const dashboard = await getDashboard(days, opts);
     if (isQuotaConfigured() && (workspace || "default")) {
-      const quota = getWorkspaceQuota(workspace || "default", req.userId || null);
+      const quota = await getWorkspaceQuota(workspace || "default", req.userId || null);
       if (quota) {
         res.setHeader("X-Quota-Limit", String(quota.limit));
         res.setHeader("X-Quota-Remaining", String(quota.remaining));
@@ -1510,7 +1525,7 @@ apiRoute("get", "/analytics/export", ...analyticsHandlers, async (req, res) => {
     const workspace = req.query?.workspace ? String(req.query.workspace).trim() : undefined;
     const opts = { workspace };
     if (req.userId) opts.userId = req.userId;
-    const records = getRecordsForPeriod(days, opts);
+    const records = await getRecordsForPeriod(days, opts);
     const dashboard = await getDashboard(days, opts);
 
     if (format === "csv") {
@@ -1896,7 +1911,7 @@ apiRoute("post", "/knowledge/index",
       if (computeEmbedding && embeddingsAvailable()) {
         embedding = await embed(text.trim());
       }
-      const result = indexDocument({ text, workspace, title, embedding });
+      const result = await indexDocument({ text, workspace, title, embedding });
       if (result.error) {
         return res.status(400).json({ error: result.error, code: result.code, hint: result.hint });
       }
@@ -1941,6 +1956,64 @@ apiRoute("get", "/knowledge/list", logRequest, (req, res) => {
   }
 });
 
+apiRoute("post", "/knowledge/reindex", embeddingsRateLimiter, logRequest, async (req, res) => {
+  try {
+    if (!embeddingsAvailable()) {
+      return apiError(res, 503, "EMBEDDINGS_UNAVAILABLE", "OPENAI_API_KEY required for reindex", "Set OPENAI_API_KEY or skip semantic refresh.");
+    }
+    const workspace = sanitizeWorkspace(req.body?.workspace);
+    const result = await reindexKnowledgeEmbeddingsInWorkspace(workspace);
+    if (result.error) {
+      return res.status(400).json({ error: result.error, code: result.code });
+    }
+    res.json(result);
+  } catch (err) {
+    console.error("Knowledge reindex error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RAG_PIPELINE_V2.md.");
+  }
+});
+
+apiRoute("post", "/knowledge/fetch", knowledgeIndexRateLimiter, logRequest, async (req, res) => {
+  try {
+    const url = typeof req.body?.url === "string" ? req.body.url.trim() : "";
+    const workspace = sanitizeWorkspace(req.body?.workspace);
+    const title = typeof req.body?.title === "string" ? req.body.title.trim().slice(0, 200) : undefined;
+    const computeEmbedding = req.body?.computeEmbedding === true;
+
+    if (!url) {
+      return apiError(res, 400, "INVALID_INPUT", "url is required", "Send { url, workspace?, title?, computeEmbedding? }.");
+    }
+
+    const fetched = await fetchTextFromAllowedUrl(url);
+    if (fetched.error) {
+      const st =
+        fetched.code === "ALLOWLIST_REQUIRED" || fetched.code === "URL_NOT_ALLOWED"
+          ? 403
+          : fetched.code === "DOC_TOO_LARGE"
+            ? 413
+            : fetched.code === "UNSUPPORTED_MEDIA"
+              ? 415
+              : 502;
+      return res.status(st).json({ error: fetched.error, code: fetched.code });
+    }
+
+    let embedding;
+    if (computeEmbedding && embeddingsAvailable()) {
+      embedding = await embed(fetched.text.slice(0, 8000));
+    }
+
+    const docTitle = title || fetched.finalUrl;
+    const result = await indexDocument({ text: fetched.text, workspace, title: docTitle, embedding });
+    if (result.error) {
+      return res.status(400).json({ error: result.error, code: result.code, hint: result.hint });
+    }
+    res.status(201).json({ ...result, sourceUrl: fetched.finalUrl });
+  } catch (err) {
+    console.error("Knowledge fetch error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RAG_PIPELINE_V2.md.");
+  }
+});
+
 // --- Phase 10: Rate limiter for storage/workspace routes ---
 const storageRateLimiter = rateLimit({
   windowMs: 60_000,
@@ -1962,12 +2035,62 @@ apiRoute("get", "/workspaces", storageRateLimiter, userAuth, logRequest, async (
 
 apiRoute("post", "/workspaces", storageRateLimiter, userAuth, logRequest, async (req, res) => {
   try {
+    const idemKey = req.headers["idempotency-key"] || req.headers["x-idempotency-key"];
+    if (idemKey) {
+      const prev = await idempotencyLookup(String(idemKey), "POST:/api/workspaces", req.userId || "anonymous");
+      if (prev.hit) return res.status(prev.status).json(prev.body);
+    }
     const name = typeof req.body?.name === "string" ? req.body.name.trim().slice(0, 100) : "Workspace";
     const type = req.body?.type === "team" ? "team" : "personal";
     const ws = await storage.createWorkspace(req.userId, name, type);
+    if (idemKey) {
+      await idempotencyStore(String(idemKey), "POST:/api/workspaces", req.userId || "anonymous", 201, ws);
+    }
     res.status(201).json(ws);
   } catch (err) {
     console.error("Workspace create error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+// Phase 74: Workspace export (JSON) and owner delete
+apiRoute("get", "/workspaces/:id/export", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
+  try {
+    const workspaceId = sanitizeWorkspace(req.params.id);
+    const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
+    if (!access.allowed) {
+      return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+    }
+    const bundle = await exportWorkspaceBundle(req.userId, workspaceId);
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Content-Disposition", `attachment; filename="workspace-${workspaceId}-export.json"`);
+    res.send(JSON.stringify(bundle, null, 2));
+  } catch (err) {
+    console.error("Workspace export error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("delete", "/workspaces/:id", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
+  try {
+    const workspaceId = sanitizeWorkspace(req.params.id);
+    if (req.body?.confirm !== "DELETE" && req.query?.confirm !== "DELETE") {
+      return apiError(
+        res,
+        400,
+        "CONFIRM_REQUIRED",
+        'Send JSON { "confirm": "DELETE" } or ?confirm=DELETE to delete a workspace.',
+        "Phase 74: destructive operation requires explicit confirmation."
+      );
+    }
+    const result = await deleteWorkspaceForUser(req.userId, workspaceId);
+    if (!result.ok) {
+      const st = result.error?.includes("owner") || result.error?.includes("Only") ? 403 : 400;
+      return res.status(st).json({ error: result.error, code: "DELETE_WORKSPACE_FAILED" });
+    }
+    res.status(204).send();
+  } catch (err) {
+    console.error("Workspace delete error:", err.message);
     return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
   }
 });
@@ -3010,8 +3133,8 @@ app.get("/api/docs", (req, res) => {
 </html>`);
 });
 
-// Phases 55–59: Agent trajectory JSON (debug / replay)
-apiRoute("get", "/agent/trajectory/:runId", logRequest, userAuth, (req, res) => {
+// Phases 55–59: Agent trajectory JSON (debug / replay); Phase 71: durable store
+apiRoute("get", "/agent/trajectory/:runId", logRequest, userAuth, async (req, res) => {
   if (!trajectoryApiEnabled()) {
     return apiError(
       res,
@@ -3022,7 +3145,7 @@ apiRoute("get", "/agent/trajectory/:runId", logRequest, userAuth, (req, res) => 
     );
   }
   const runId = String(req.params.runId || "").trim();
-  const t = loadTrajectory(runId);
+  const t = await loadTrajectory(runId);
   if (!t) {
     return apiError(
       res,
@@ -3109,26 +3232,28 @@ function adminAuthOrQuery(req, res, next) {
 
 app.get("/api/admin/summary", adminRateLimiter, adminAuthOrQuery, logRequest, async (req, res) => {
   try {
-    const users = listAllUsers();
+    const users = await listAllUsers();
     const workspaces = await listAllWorkspaces();
-    const usageSummary = getSummary(7);
+    const usageSummary = await getSummary(7);
     const auditLog = getRecentAuditLog(50);
-    const quotaOverrides = getQuotaOverrides();
+    const quotaOverrides = await getQuotaOverrides();
 
     // Enrich workspaces with quota and usage
-    const workspacesWithQuota = workspaces.map(({ userId, workspace: ws }) => {
-      const wsId = ws?.id || "default";
-      const quota = getWorkspaceQuota(wsId, null);
-      const used = isQuotaConfigured() ? getWorkspaceTokensUsed(wsId) : 0;
-      return {
-        userId,
-        workspaceId: wsId,
-        workspaceName: ws?.name || wsId,
-        quota,
-        tokensUsed: used,
-        override: quotaOverrides[wsId],
-      };
-    });
+    const workspacesWithQuota = await Promise.all(
+      workspaces.map(async ({ userId, workspace: ws }) => {
+        const wsId = ws?.id || "default";
+        const quota = await getWorkspaceQuota(wsId, null);
+        const used = isQuotaConfigured() ? await getWorkspaceTokensUsed(wsId) : 0;
+        return {
+          userId,
+          workspaceId: wsId,
+          workspaceName: ws?.name || wsId,
+          quota,
+          tokensUsed: used,
+          override: quotaOverrides[wsId],
+        };
+      })
+    );
 
     const [health] = await Promise.all([runHealthChecks()]);
     const integrations = {
@@ -3187,7 +3312,7 @@ app.get("/api/admin/keys", adminRateLimiter, adminAuth, logRequest, async (req, 
 app.post("/api/admin/keys", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
   try {
     const { userId, scopes } = req.body || {};
-    const result = addKey({ userId, scopes: Array.isArray(scopes) ? scopes : undefined });
+    const result = await addKey({ userId, scopes: Array.isArray(scopes) ? scopes : undefined });
     if (!result.ok) {
       return res.status(400).json({ error: result.error, code: "INVALID_INPUT" });
     }
@@ -3200,13 +3325,36 @@ app.post("/api/admin/keys", adminRateLimiter, adminAuth, logRequest, async (req,
 
 app.delete("/api/admin/keys/:id", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
   try {
-    const result = revokeKey(req.params.id);
+    const result = await revokeKey(req.params.id);
     if (!result.ok) {
       return res.status(404).json({ error: result.error || "Key not found", code: "NOT_FOUND" });
     }
     res.status(204).send();
   } catch (err) {
     console.error("Admin keys revoke error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+app.post("/api/admin/audit/archive-s3", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const out = await archiveExecutionAuditToS3();
+    if (!out.ok) {
+      return res.status(out.error?.includes("not set") ? 503 : 502).json({ error: out.error, code: "AUDIT_ARCHIVE_FAILED" });
+    }
+    res.json({ ok: true, key: out.key });
+  } catch (err) {
+    console.error("Admin audit archive error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+app.get("/api/admin/audit/archive-status", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const status = await getAuditArchiveStatus();
+    res.json(status);
+  } catch (err) {
+    console.error("Admin audit archive-status error:", err.message);
     return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
   }
 });
