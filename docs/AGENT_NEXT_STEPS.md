@@ -26,4 +26,4 @@
 
 9. **Multi-region & audit archival** (PRD 45/48) — For enterprise operations.
 
-See `docs/PRD.md` for the full phase roadmap.
+See `docs/PRD.md` for the full phase roadmap (**Phases 79–92 implemented** — includes **Phase 89** `AGENT_TOOLS_ALLOWLIST`, **Phase 91** `SWARM_SPECIALISTS_ALLOWLIST`, **Phase 92** `agentOptions.maxIterations`).

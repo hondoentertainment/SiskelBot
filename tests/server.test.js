@@ -42,6 +42,33 @@ test("GET /config returns backend defaults", async () => {
   assert.equal(response.body.agentRequireCitations, false);
   assert.equal(response.body.agentTrajectoryApi, true);
   assert.equal(response.body.agentDefaultSystemSet, false);
+  assert.equal(response.body.streamSwarmSynth, false);
+  assert.equal(response.body.agentPlanReflect, false);
+  assert.equal(response.body.agentHooksConfigured, false);
+  assert.equal(response.body.agentBudgetToolCalls, null);
+  assert.equal(response.body.agentBudgetWallMs, null);
+  assert.equal(response.body.agentToolsAllowlist, null);
+  assert.equal(response.body.swarmClientSpecialistsAllowed, false);
+  assert.equal(response.body.swarmMaxSpecialists, 8);
+  assert.ok(Array.isArray(response.body.swarmSelectableSpecialists));
+  assert.ok(response.body.swarmSelectableSpecialists.includes("researcher"));
+  assert.ok(response.body.swarmSelectableSpecialists.includes("executor"));
+  assert.equal(response.body.swarmSpecialistsAllowlist, null);
+  assert.equal(response.body.agentMaxIterationsCeiling, 5);
+  assert.equal(response.body.agentMaxIterationsClientTunable, true);
+});
+
+test("GET /config filters swarmSelectableSpecialists when SWARM_SPECIALISTS_ALLOWLIST is set", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", SWARM_SPECIALISTS_ALLOWLIST: "researcher" });
+  try {
+    const response = await request(app).get("/config");
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.swarmSpecialistsAllowlist, ["researcher"]);
+    assert.ok(response.body.swarmSelectableSpecialists.includes("researcher"));
+    assert.equal(response.body.swarmSelectableSpecialists.includes("executor"), false);
+  } finally {
+    restore();
+  }
 });
 
 test("GET /config sets agentDefaultSystemSet when AGENT_DEFAULT_SYSTEM is set", async () => {

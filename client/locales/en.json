@@ -93,6 +93,7 @@
     "swarmMode": "Swarm mode",
     "parallelSwarmAgents": "Parallel specialists (researcher + executor)",
     "parallelSwarmAgentsHint": "When enabled, both specialists run together. Uses more tokens than intent-based routing.",
+    "swarmLlmRosterHelp": "Pick which specialists run together for this swarm. The host must enable SWARM_CLIENT_SPECIALISTS.",
     "backupRestore": "Backup & Restore",
     "backupRestoreHint": "Zip data to backups. Requires admin (QUOTA_ADMIN_USER_IDS or BACKUP_ADMIN_KEY).",
     "createBackup": "Create backup",

@@ -21,7 +21,8 @@ import {
 import { embed, embedBatch, isAvailable as embeddingsAvailable } from "./lib/embeddings.js";
 import { executeStep, appendAuditLog, getRegisteredActions } from "./lib/action-executor.js";
 import { loadPlugins } from "./lib/plugins-loader.js";
-import { getToolsSchema, runTool } from "./lib/agent-tools.js";
+import { getToolsSchema, runTool, intersectClientToolsWithAllowlist, getAgentToolsAllowlistNames } from "./lib/agent-tools.js";
+import { resolveAgentMaxIterations } from "./lib/agent-iterations.js";
 import * as storage from "./lib/storage.js";
 import * as scheduleStore from "./lib/schedules.js";
 import { start as schedulerStart, stop as schedulerStop, refresh as schedulerRefresh, runRecipeNow, runDueJobsVercel } from "./lib/scheduler.js";
@@ -53,7 +54,13 @@ import { createToken, attachToServer, getOnlineUsers, closeServer } from "./lib/
 import { sanitizeForLog } from "./lib/log-sanitizer.js";
 import { execute as circuitExecute } from "./lib/circuit-breaker.js";
 import { initErrorReporting, reportError } from "./lib/error-reporting.js";
-import { runSwarm, runSwarmLegacy, getSpecialists } from "./lib/swarm.js";
+import {
+  runSwarm,
+  runSwarmLegacy,
+  getSwarmSelectableSpecialistNames,
+  getSwarmSpecialistsAllowlistNames,
+  intersectSwarmSpecialistsWithAllowlist,
+} from "./lib/swarm.js";
 import { initTracing } from "./lib/tracing.js";
 import { recordRequest, recordSwarm, renderPrometheus, recordChatRequest, recordTokensUsed, isEnabled as metricsEnabled } from "./lib/metrics.js";
 import { fetchWithTimeoutAndRetry } from "./lib/backend-fetch.js";
@@ -80,6 +87,7 @@ import { exportWorkspaceBundle, deleteWorkspaceForUser } from "./lib/workspace-l
 import { idempotencyLookup, idempotencyStore } from "./lib/idempotency.js";
 import { archiveExecutionAuditToS3, getAuditArchiveStatus } from "./lib/audit-s3-archive.js";
 import { fetchTextFromAllowedUrl } from "./lib/knowledge-url-fetch.js";
+import { pipeLlmChatStreamToSse } from "./lib/llm-stream-sse.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -118,6 +126,9 @@ const IS_PRODUCTION = process.env.NODE_ENV === "production";
 // Phase 51: Chunk final agent SSE for smoother client rendering (optional)
 const STREAM_AGENT_FINAL = process.env.STREAM_AGENT_FINAL === "1";
 const AGENT_STREAM_CHUNK_SIZE = Math.max(64, Number(process.env.AGENT_STREAM_CHUNK_SIZE) || 320);
+const STREAM_SWARM_SYNTH = process.env.STREAM_SWARM_SYNTH === "1";
+const MAX_AGENT_TOOL_CALLS_ENV = Number(process.env.MAX_AGENT_TOOL_CALLS) || 0;
+const AGENT_MAX_WALL_MS_ENV = Number(process.env.AGENT_MAX_WALL_MS) || 0;
 
 // Production security: warn if API_KEY not set (backend may be exposed)
 if (IS_PRODUCTION && !API_KEY) {
@@ -523,6 +534,10 @@ app.get("/config", (req, res) => {
     scheduleEnabled: process.env.ENABLE_SCHEDULED_RECIPES === "1",
     swarmEnabled: process.env.ENABLE_AGENT_SWARM === "1",
     swarmParallelAgentsDefault: process.env.SWARM_PARALLEL_AGENTS === "1",
+    swarmClientSpecialistsAllowed: process.env.SWARM_CLIENT_SPECIALISTS === "1",
+    swarmMaxSpecialists: Math.min(12, Math.max(1, Number(process.env.SWARM_MAX_SPECIALISTS) || 8)),
+    swarmSelectableSpecialists: getSwarmSelectableSpecialistNames(),
+    swarmSpecialistsAllowlist: getSwarmSpecialistsAllowlistNames(),
     authRequired: isAuthConfigured(),
     oauthProviders,
     storageBackend:
@@ -540,7 +555,15 @@ app.get("/config", (req, res) => {
     agentRequireCitations: process.env.AGENT_REQUIRE_CITATIONS === "1",
     agentTrajectoryApi: trajectoryApiEnabled(),
     agentDefaultSystemSet: defaultAgentSystemConfigured(),
-    legacySwarmSpecialists: getSpecialists().map((s) => s.name).filter((n) => n !== "synthesizer"),
+    legacySwarmSpecialists: getSwarmSelectableSpecialistNames(),
+    streamSwarmSynth: STREAM_SWARM_SYNTH,
+    agentPlanReflect: process.env.AGENT_PLAN_REFLECT === "1",
+    agentHooksConfigured: Boolean((process.env.AGENT_HOOKS_MODULE || "").trim()),
+    agentBudgetToolCalls: MAX_AGENT_TOOL_CALLS_ENV || null,
+    agentBudgetWallMs: AGENT_MAX_WALL_MS_ENV || null,
+    agentToolsAllowlist: getAgentToolsAllowlistNames(),
+    agentMaxIterationsCeiling: Math.max(1, Number(process.env.MAX_AGENT_ITERATIONS) || 5),
+    agentMaxIterationsClientTunable: process.env.AGENT_MAX_ITERATIONS_IGNORE_CLIENT !== "1",
   };
   if (IS_PRODUCTION && !API_KEY) {
     payload.productionHint = "Set API_KEY in Vercel env vars to protect /v1/chat/completions";
@@ -577,8 +600,7 @@ app.get("/auth/me", (req, res) => {
 // Phase 13: Usage tracking env
 const USAGE_ALERT_TOKENS = process.env.USAGE_ALERT_TOKENS ? Number(process.env.USAGE_ALERT_TOKENS) : null;
 
-// Phase 15: Agent mode
-const MAX_AGENT_ITERATIONS = Number(process.env.MAX_AGENT_ITERATIONS) || 5;
+// Phase 15: Agent mode (iteration ceiling: MAX_AGENT_ITERATIONS env; Phase 92: optional agentOptions.maxIterations)
 const ALLOW_RECIPE_STEP_EXECUTION = process.env.ALLOW_RECIPE_STEP_EXECUTION === "1";
 const ENABLE_AGENT_SWARM = process.env.ENABLE_AGENT_SWARM === "1";
 
@@ -591,11 +613,15 @@ async function runAgentLoop(req, res, config, model) {
   messages = await augmentMessagesWithWorkspaceAgent(messages, storageUserId, workspace);
   messages = augmentMessagesForGrounding(messages);
   const allowExecution = req.body?.agentOptions?.allowExecution === true;
+  const agentOpts = req.body?.agentOptions || {};
+  const maxAgentIterations = resolveAgentMaxIterations(agentOpts, process.env.MAX_AGENT_ITERATIONS);
+  res.setHeader("X-Agent-Max-Iterations", String(maxAgentIterations));
   const toolCtx = {
     allowExecution: ALLOW_RECIPE_STEP_EXECUTION && allowExecution,
     projectDir: process.env.PROJECT_DIR || process.cwd(),
     vercelToken: process.env.VERCEL_TOKEN,
     workspace,
+    workspaceUserId: storageUserId,
   };
 
   const runId = randomUUID();
@@ -607,32 +633,52 @@ async function runAgentLoop(req, res, config, model) {
   });
   trajCollector.record({ type: "start", model: req.body?.model || model });
 
-  const tools = req.body?.tools?.length ? req.body.tools : getToolsSchema();
-  const toolChoice = req.body?.tool_choice ?? "auto";
+  const tools = req.body?.tools?.length ? intersectClientToolsWithAllowlist(req.body.tools) : getToolsSchema();
+  const baseToolChoice = agentOpts.toolChoice != null ? agentOpts.toolChoice : req.body?.tool_choice ?? "auto";
+  const requiredSeq = Array.isArray(agentOpts.requiredToolSequence)
+    ? agentOpts.requiredToolSequence.map((x) => String(x).trim()).filter(Boolean)
+    : [];
+  const runStarted = Date.now();
+  let totalToolCalls = 0;
+
   const bodyBase = {
     model: req.body?.model || model,
     messages,
     tools,
-    tool_choice: toolChoice,
     stream: false,
     ...(req.body?.temperature != null && { temperature: req.body.temperature }),
     ...(req.body?.max_tokens != null && { max_tokens: req.body.max_tokens }),
   };
+  if (agentOpts.responseFormat && typeof agentOpts.responseFormat === "object") {
+    bodyBase.response_format = agentOpts.responseFormat;
+  }
 
   let lastContent = "";
   let iteration = 0;
   const toolCallsLog = [];
   let stopReason = "complete";
 
-  while (iteration < MAX_AGENT_ITERATIONS) {
+  while (iteration < maxAgentIterations) {
     iteration++;
     res.setHeader("X-Agent-Iteration", String(iteration));
     trajCollector.record({ type: "iteration", iteration });
 
+    if (AGENT_MAX_WALL_MS_ENV > 0 && Date.now() - runStarted > AGENT_MAX_WALL_MS_ENV) {
+      lastContent = "(Agent stopped: wall clock budget exceeded)";
+      stopReason = "wall_clock";
+      res.setHeader("X-Agent-Truncated", "wall_clock");
+      break;
+    }
+
+    let toolChoiceThis = baseToolChoice;
+    if (requiredSeq.length > 0 && iteration === 1) {
+      toolChoiceThis = { type: "function", function: { name: requiredSeq[0] } };
+    }
+
     const response = await backendFetch(url, {
       method: "POST",
       headers: config.headers,
-      body: JSON.stringify({ ...bodyBase, messages }),
+      body: JSON.stringify({ ...bodyBase, messages, tool_choice: toolChoiceThis }),
     });
 
     if (!response.ok) {
@@ -735,6 +781,14 @@ async function runAgentLoop(req, res, config, model) {
       });
     }
 
+    totalToolCalls += toolCalls.length;
+    if (MAX_AGENT_TOOL_CALLS_ENV > 0 && totalToolCalls >= MAX_AGENT_TOOL_CALLS_ENV) {
+      lastContent = "(Agent stopped: tool call budget reached; partial context is in the conversation.)";
+      stopReason = "tool_budget";
+      res.setHeader("X-Agent-Truncated", "tool_budget");
+      break;
+    }
+
     if (stagnationDetectionEnabled() && detectStagnation(toolCallsLog)) {
       lastContent = "(Agent stopped: repeated identical tool calls with no progress)";
       stopReason = "stagnation";
@@ -743,9 +797,46 @@ async function runAgentLoop(req, res, config, model) {
     }
   }
 
-  if (iteration >= MAX_AGENT_ITERATIONS && lastContent === "") {
+  if (iteration >= maxAgentIterations && lastContent === "") {
     lastContent = "(Agent reached max iterations without final response)";
     stopReason = "max_iterations";
+    res.setHeader("X-Agent-Truncated", "max_iterations");
+  }
+
+  if (
+    process.env.AGENT_PLAN_REFLECT === "1" &&
+    stopReason === "model_finished" &&
+    typeof lastContent === "string" &&
+    lastContent &&
+    !lastContent.startsWith("(Agent stopped:") &&
+    !lastContent.startsWith("(Agent reached max")
+  ) {
+    try {
+      const reflectMessages = [
+        ...messages,
+        {
+          role: "user",
+          content:
+            "Briefly summarize what was accomplished and list any recommended follow-ups (one short paragraph). Do not call tools.",
+        },
+      ];
+      const rr = await backendFetch(url, {
+        method: "POST",
+        headers: config.headers,
+        body: JSON.stringify({
+          model: req.body?.model || model,
+          messages: reflectMessages,
+          stream: false,
+        }),
+      });
+      if (rr.ok) {
+        const rd = await rr.json().catch(() => ({}));
+        const reflect = rd.choices?.[0]?.message?.content;
+        if (typeof reflect === "string" && reflect.trim()) {
+          lastContent = `${lastContent}\n\n---\n**Reflection**\n${reflect.trim()}`;
+        }
+      }
+    } catch (_) {}
   }
 
   const cite = checkCitationCoverage(lastContent, messages);
@@ -800,15 +891,17 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
     const hasTools = Array.isArray(req.body?.tools) && req.body.tools.length > 0;
 
     if (agentMode || swarmMode || hasTools) {
-      const tools = hasTools ? req.body.tools : getToolsSchema();
+      const tools = hasTools ? intersectClientToolsWithAllowlist(req.body.tools) : getToolsSchema();
       const bodyWithTools = { ...req.body, tools, tool_choice: req.body?.tool_choice ?? "auto" };
       if (!hasTools) req.body = bodyWithTools;
 
       let content, iteration, toolCalls, swarmSteps;
+      let swarmResult = null;
       if (agentMode && swarmMode && ENABLE_AGENT_SWARM) {
-        const swarmResult = await runSwarm(req, res, config, model, {
+        const swarmMaxIter = resolveAgentMaxIterations(req.body?.agentOptions || {}, process.env.MAX_AGENT_ITERATIONS);
+        swarmResult = await runSwarm(req, res, config, model, {
           backendFetch,
-          maxIterations: MAX_AGENT_ITERATIONS,
+          maxIterations: swarmMaxIter,
           allowRecipeExecution: ALLOW_RECIPE_STEP_EXECUTION,
         });
         content = swarmResult.content;
@@ -858,11 +951,20 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
       }
 
       const inputTokens = estimate.inputFromMessages(req.body?.messages || []);
-      const outputTokens = estimate.outputFromChars(content?.length || 0);
-      recordTokensUsed(inputTokens, outputTokens);
-      await recordUsage({ timestamp: new Date().toISOString(), model, inputTokens, outputTokens, backend: BACKEND, workspace, userId }).catch(() => {});
+      let outputTokens = estimate.outputFromChars(content?.length || 0);
 
-      if (STREAM_AGENT_FINAL && content && typeof content === "string") {
+      if (swarmResult?.synthesisDeferred) {
+        const d = swarmResult.synthesisDeferred;
+        const { fullText, error } = await pipeLlmChatStreamToSse(res, backendFetch, d.url, d.config, d.synthBody);
+        content = fullText || "";
+        if (error && !content.trim()) {
+          content = `Synthesis error: ${error}\n\n${swarmResult.fallbackAggregate || ""}`;
+          res.write(
+            `data: ${JSON.stringify({ choices: [{ delta: { content }, index: 0, finish_reason: "stop" }] })}\n\n`
+          );
+        }
+        outputTokens = estimate.outputFromChars(content?.length || 0);
+      } else if (STREAM_AGENT_FINAL && content && typeof content === "string") {
         for (let i = 0; i < content.length; i += AGENT_STREAM_CHUNK_SIZE) {
           const part = content.slice(i, i + AGENT_STREAM_CHUNK_SIZE);
           const isLast = i + AGENT_STREAM_CHUNK_SIZE >= content.length;
@@ -877,6 +979,11 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
         });
         res.write(`data: ${chunk}\n\n`);
       }
+
+      outputTokens = estimate.outputFromChars(content?.length || 0);
+      recordTokensUsed(inputTokens, outputTokens);
+      await recordUsage({ timestamp: new Date().toISOString(), model, inputTokens, outputTokens, backend: BACKEND, workspace, userId }).catch(() => {});
+
       res.write("data: [DONE]\n\n");
       res.end();
       const ws = req.body?.agentOptions?.workspace || "default";
@@ -1099,9 +1206,10 @@ app.post("/v1/agent/swarm", chatAuth, requireScope("write"), perKeyChatRateLimit
 
     const config = buildProxyConfig(BACKEND);
     const model = req.body?.model || MODEL_PRESETS[BACKEND]?.[0] || "unknown";
+    const swarmMaxIter = resolveAgentMaxIterations(req.body?.agentOptions || {}, process.env.MAX_AGENT_ITERATIONS);
     const { content, iteration } = await runSwarm(req, res, config, model, {
       backendFetch,
-      maxIterations: MAX_AGENT_ITERATIONS,
+      maxIterations: swarmMaxIter,
       allowRecipeExecution: ALLOW_RECIPE_STEP_EXECUTION,
     });
 
@@ -1146,8 +1254,10 @@ app.post("/v1/swarm", chatAuth, requireScope("write"), perKeyChatRateLimiter, ch
   try {
     const query = typeof req.body?.query === "string" ? req.body.query.trim() : "";
     const specialists = Array.isArray(req.body?.specialists)
-      ? req.body.specialists.filter((s) => typeof s === "string" && s.trim()).map((s) => s.trim())
-      : getSpecialists().map((s) => s.name).filter((n) => n !== "synthesizer");
+      ? intersectSwarmSpecialistsWithAllowlist(
+          req.body.specialists.filter((s) => typeof s === "string" && s.trim()).map((s) => s.trim())
+        )
+      : getSwarmSelectableSpecialistNames();
     const workspace = req.body?.workspace || "default";
     const allowExecution = req.body?.allowExecution === true;
 

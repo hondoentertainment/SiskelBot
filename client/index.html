@@ -1600,6 +1600,10 @@
                 <span data-i18n="header.parallelSwarmAgents">Parallel specialists (researcher + executor)</span>
               </label>
               <span id="swarm-parallel-hint" class="sr-only" data-i18n="header.parallelSwarmAgentsHint">When enabled, both specialists run together. Uses more tokens than intent-based routing.</span>
+              <div id="swarm-llm-roster-panel" class="settings-field" style="display:none;margin-top:0.65rem;padding-left:1rem;">
+                <p class="panel-hint" style="margin:0 0 0.35rem 0;font-size:0.8rem;color:#94a3b8;" data-i18n="header.swarmLlmRosterHelp">Choose which specialists run in parallel for this swarm (host must allow client roster).</p>
+                <div id="swarm-llm-roster-specialists" class="settings-checkbox-grid" role="group" aria-label="Swarm specialist roster"></div>
+              </div>
             </div>
             <div id="agent-server-defaults-hint" class="settings-field settings-field-full" style="display:none;margin-top:0.5rem;padding:0.5rem 0.65rem;background:rgba(59,130,246,0.08);border-radius:6px;border:1px solid #334155;" role="status">
               <p class="panel-hint" style="margin:0;font-size:0.8125rem;color:#94a3b8;" data-i18n="settings.serverAgentDefaultsHint">The host has deployment-wide default agent instructions enabled (AGENT_DEFAULT_SYSTEM). Your workspace settings are applied after those.</p>
@@ -1877,6 +1881,7 @@
     const AGENT_MODE_STORAGE_KEY = 'siskelbot-agent-mode';
     const SWARM_MODE_STORAGE_KEY = 'siskelbot-swarm-mode';
     const SWARM_PARALLEL_STORAGE_KEY = 'siskelbot-swarm-parallel-agents';
+    const SWARM_ROSTER_STORAGE_KEY = 'siskelbot-swarm-llm-roster-json';
     const CONVERSATIONS_STORAGE_KEY = 'siskelbot-conversations';
     const INSTALL_DISMISSED_KEY = 'siskelbot-install-dismissed';
     const NOTIFICATIONS_STORAGE_KEY = 'siskelbot-notifications';
@@ -2123,6 +2128,7 @@
             if (workspaceDetails) workspaceDetails.style.display = '';
           }
           if (typeof updateSwarmSectionVisibility === 'function') updateSwarmSectionVisibility();
+          if (typeof populateSwarmLlmRosterSpecialists === 'function') populateSwarmLlmRosterSpecialists();
           if (typeof window.refreshAgentServerDefaultsHint === 'function') window.refreshAgentServerDefaultsHint(config);
           if (typeof initInteractionModes === 'function') initInteractionModes();
         }
@@ -2436,6 +2442,8 @@
     const swarmModeCheckbox = document.getElementById('swarm-mode');
     const swarmParallelAgentsCheckbox = document.getElementById('swarm-parallel-agents');
     const swarmModeSection = document.getElementById('swarm-mode-section');
+    const swarmLlmRosterPanel = document.getElementById('swarm-llm-roster-panel');
+    const swarmLlmRosterSpecialistsEl = document.getElementById('swarm-llm-roster-specialists');
     if (swarmModeCheckbox) {
       try {
         swarmModeCheckbox.checked = localStorage.getItem(SWARM_MODE_STORAGE_KEY) === '1';
@@ -2459,8 +2467,76 @@
         } catch (_) {}
       });
     }
+
+    function persistSwarmLlmRosterSelection() {
+      if (!swarmLlmRosterSpecialistsEl) return;
+      const sel = [...swarmLlmRosterSpecialistsEl.querySelectorAll('input[type="checkbox"]:checked')].map((c) => c.value);
+      try {
+        localStorage.setItem(SWARM_ROSTER_STORAGE_KEY, JSON.stringify(sel));
+      } catch (_) {}
+    }
+
+    function populateSwarmLlmRosterSpecialists() {
+      if (!swarmLlmRosterSpecialistsEl || !config) return;
+      const names =
+        Array.isArray(config.swarmSelectableSpecialists) && config.swarmSelectableSpecialists.length
+          ? config.swarmSelectableSpecialists.slice()
+          : ['researcher', 'executor'];
+      let saved = [];
+      try {
+        const raw = localStorage.getItem(SWARM_ROSTER_STORAGE_KEY);
+        if (raw) saved = JSON.parse(raw).filter((n) => typeof n === 'string' && names.includes(n));
+      } catch (_) {}
+      const defaultSet = new Set();
+      if (saved.length === 0) {
+        if (names.includes('researcher')) defaultSet.add('researcher');
+        if (names.includes('executor')) defaultSet.add('executor');
+        if (defaultSet.size === 0) names.slice(0, 2).forEach((n) => defaultSet.add(n));
+        if (defaultSet.size === 0 && names[0]) defaultSet.add(names[0]);
+      }
+      swarmLlmRosterSpecialistsEl.innerHTML = names
+        .map((n) => {
+          const checked = saved.length > 0 ? saved.includes(n) : defaultSet.has(n);
+          const id = 'swarm-llm-roster-' + String(n).replace(/[^a-z0-9_-]/gi, '-');
+          return (
+            '<label for="' +
+            id +
+            '"><input type="checkbox" id="' +
+            id +
+            '" value="' +
+            escapeHtml(n) +
+            '" ' +
+            (checked ? 'checked ' : '') +
+            '> ' +
+            escapeHtml(n) +
+            '</label>'
+          );
+        })
+        .join('');
+      swarmLlmRosterSpecialistsEl.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+        cb.addEventListener('change', persistSwarmLlmRosterSelection);
+      });
+    }
+
+    function getSelectedSwarmLlmSpecialists() {
+      if (!config || !config.swarmClientSpecialistsAllowed || !swarmLlmRosterSpecialistsEl) return null;
+      const sel = [...swarmLlmRosterSpecialistsEl.querySelectorAll('input[type="checkbox"]:checked')]
+        .map((c) => c.value.trim())
+        .filter(Boolean);
+      if (sel.length) return sel;
+      const fb =
+        Array.isArray(config.swarmSelectableSpecialists) && config.swarmSelectableSpecialists[0]
+          ? [config.swarmSelectableSpecialists[0]]
+          : ['researcher'];
+      return fb;
+    }
+
     function updateSwarmSectionVisibility() {
       if (swarmModeSection) swarmModeSection.style.display = config.swarmEnabled ? '' : 'none';
+      if (swarmLlmRosterPanel) {
+        swarmLlmRosterPanel.style.display =
+          config.swarmEnabled && config.swarmClientSpecialistsAllowed ? '' : 'none';
+      }
     }
 
     const INTERACTION_MODE_STORAGE_KEY = 'siskelbot-interaction-mode';
@@ -2581,6 +2657,7 @@
 
     function initInteractionModes() {
       populateToolSwarmSpecialists();
+      populateSwarmLlmRosterSpecialists();
       let stored = null;
       try {
         stored = localStorage.getItem(INTERACTION_MODE_STORAGE_KEY);
@@ -4777,6 +4854,10 @@
         if (isSwarmMode && swarmParallelAgentsCheckbox) {
           payloadObj.agentOptions.parallelAgents = swarmParallelAgentsCheckbox.checked === true;
         }
+        if (isSwarmMode && config.swarmClientSpecialistsAllowed) {
+          const roster = getSelectedSwarmLlmSpecialists();
+          if (Array.isArray(roster) && roster.length) payloadObj.agentOptions.swarmSpecialists = roster;
+        }
       } else {
         payloadObj.agentOptions = { workspace: workspace };
       }
@@ -4874,9 +4955,11 @@
           const swarmAgents = res.headers.get('X-Swarm-Agents');
           const swarmDuration = res.headers.get('X-Swarm-Duration-Ms');
           const swarmParallel = res.headers.get('X-Swarm-Parallel');
-          if (swarmAgents || swarmDuration || swarmParallel) {
+          const swarmRosterSource = res.headers.get('X-Swarm-Roster-Source');
+          if (swarmAgents || swarmDuration || swarmParallel || swarmRosterSource) {
             const parts = [];
             if (swarmParallel === '1') parts.push('parallel');
+            if (swarmRosterSource === 'client') parts.push('custom roster');
             if (swarmAgents) parts.push(`${swarmAgents} agents`);
             if (swarmDuration) parts.push(`${Number(swarmDuration) / 1000}s`);
             const swarmMeta = parts.join(' · ');

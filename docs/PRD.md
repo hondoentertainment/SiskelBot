@@ -203,6 +203,20 @@ Enable developers and teams to build AI-powered workflows with:
 | 76 | Multi-region / HA — operator design note `docs/MULTI_REGION_HA.md` |
 | 77 | Plugin pinning — `PLUGINS_CONFIG_SHA256`; curated `data/plugin-registry.json`; `docs/PLUGINS.md` |
 | 78 | Parallel swarm specialists — `SWARM_PARALLEL_AGENTS`, `agentOptions.parallelAgents`, `resolveSwarmSpecialistNames`; headers `X-Swarm-Parallel`, `X-Swarm-Intent-Mode`; Settings UI + i18n |
+| 79 | Tool-choice policy — `agentOptions.toolChoice`, `requiredToolSequence` (first tool forced on iteration 1); single-agent + swarm specialist loops |
+| 80 | Agent run budgets — `MAX_AGENT_TOOL_CALLS`, `AGENT_MAX_WALL_MS`; `X-Agent-Truncated` (`wall_clock`, `tool_budget`, `max_iterations`) |
+| 81 | Structured outputs — `agentOptions.responseFormat` merged into LLM requests (OpenAI-compatible when backend supports) |
+| 82 | Tool-writable memory — `remember_workspace_fact`, `list_workspace_memory`; audit `agent_remember_workspace`; uses workspace agent-settings caps |
+| 83 | Plan–reflect — `AGENT_PLAN_REFLECT=1` appends one non-tool reflection LLM paragraph after successful agent completion |
+| 84 | Configurable specialists — `data/specialists-extra.json` or `SPECIALISTS_EXTRA_PATH`; merge/override `lib/specialists.js` |
+| 85 | `fetch_allowed_url` tool — `AGENT_FETCH_ALLOWLIST` or `KNOWLEDGE_URL_ALLOWLIST`; `lib/agent-fetch-url.js` + `fetchTextFromUrlWithEntries` |
+| 86 | `STREAM_SWARM_SYNTH` — stream synthesizer via `lib/llm-stream-sse.js`; `synthesisDeferred` in `runSwarm` return |
+| 87 | Eval judge — `target: "judge"`, `judgeRubric`; `lib/eval-judge.js` |
+| 88 | Agent hooks — `AGENT_HOOKS_MODULE` ESM; `beforeToolCall` / `afterToolCall` in `lib/agent-hooks.js` |
+| 89 | Deployment tool allowlist — `AGENT_TOOLS_ALLOWLIST`; filters `getToolsSchema` / `getToolsForNames`; intersects client `tools`; `runTool` rejects disallowed names; `GET /config` → `agentToolsAllowlist` |
+| 90 | Client swarm roster — `SWARM_CLIENT_SPECIALISTS=1`, `SWARM_MAX_SPECIALISTS` (cap 1–12); `agentOptions.swarmSpecialists`; `resolveSwarmSpecialistNames` returns `rosterSource`; headers `X-Swarm-Roster-Source`, webhook `rosterSource`; `GET /config` → `swarmClientSpecialistsAllowed`, `swarmMaxSpecialists`, `swarmSelectableSpecialists`; Settings checkboxes + payload |
+| 91 | Swarm specialist allowlist — `SWARM_SPECIALISTS_ALLOWLIST` (comma-separated); intersects LLM swarm resolution (client / parallel / intent), `GET /config` → `swarmSpecialistsAllowlist` + filtered `swarmSelectableSpecialists` / `legacySwarmSpecialists`; `POST /v1/swarm` body specialists filtered |
+| 92 | Client-tunable iteration cap — `agentOptions.maxIterations` (integer ≥ 1) clamped to `MAX_AGENT_ITERATIONS`; `AGENT_MAX_ITERATIONS_IGNORE_CLIENT=1` disables client override; header `X-Agent-Max-Iterations`; `GET /config` → `agentMaxIterationsCeiling`, `agentMaxIterationsClientTunable` |
 
 ---
 
