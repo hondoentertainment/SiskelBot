@@ -56,6 +56,8 @@ test("GET /config returns backend defaults", async () => {
   assert.equal(response.body.swarmSpecialistsAllowlist, null);
   assert.equal(response.body.agentMaxIterationsCeiling, 5);
   assert.equal(response.body.agentMaxIterationsClientTunable, true);
+  assert.equal(response.body.prometheusEnabled, false);
+  assert.equal(response.body.prometheusPath, "/metrics");
 });
 
 test("GET /config filters swarmSelectableSpecialists when SWARM_SPECIALISTS_ALLOWLIST is set", async () => {
@@ -1662,4 +1664,32 @@ test("POST /api/eval/run accepts inline evalSet", async () => {
   assert.ok(typeof response.body.total === "number");
   assert.ok(Array.isArray(response.body.results));
   assert.ok(typeof response.body.durationMs === "number");
+});
+
+test("GET /config sets prometheusEnabled when ENABLE_METRICS=1", async () => {
+  const { app, restore } = await loadAppKeepEnv({ BACKEND: "ollama", ENABLE_METRICS: "1" });
+  try {
+    const response = await request(app).get("/config");
+    assert.equal(response.status, 200);
+    assert.equal(response.body.prometheusEnabled, true);
+    assert.equal(response.body.prometheusPath, "/metrics");
+  } finally {
+    restore();
+  }
+});
+
+test("GET /api/knowledge/status returns documentCount", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).get("/api/knowledge/status").query({ workspace: "default" });
+  assert.equal(response.status, 200);
+  assert.equal(response.body.workspace, "default");
+  assert.ok(typeof response.body.documentCount === "number");
+});
+
+test("GET /api/agent/trajectories returns items", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).get("/api/agent/trajectories").query({ workspace: "default" });
+  assert.equal(response.status, 200);
+  assert.ok(Array.isArray(response.body.items));
+  assert.ok(typeof response.body.total === "number");
 });

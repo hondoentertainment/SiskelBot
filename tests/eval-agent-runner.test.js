@@ -127,6 +127,20 @@ test("parseSseEvalResponse extracts agent_activity toolCalls and assistant text"
   assert.equal(agentActivity.toolCalls[0].name, "list_context");
 });
 
+test("parseSseEvalResponse ignores agent_progress SSE events", () => {
+  const raw = [
+    `data: ${JSON.stringify({ type: "agent_progress", iteration: 1, llmMs: 10, toolsWallMs: 5, tools: [] })}`,
+    "",
+    `data: ${JSON.stringify({ choices: [{ delta: { content: "hi" }, index: 0, finish_reason: "stop" }] })}`,
+    "",
+    "data: [DONE]",
+    "",
+  ].join("\n");
+  const { content, agentActivity } = parseSseEvalResponse(raw);
+  assert.equal(content, "hi");
+  assert.equal(agentActivity, null);
+});
+
 test("checkCriteria enforces expectedAgentActivityToolNames", () => {
   const activity = {
     type: "agent_activity",

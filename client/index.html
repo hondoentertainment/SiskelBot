@@ -340,6 +340,87 @@
     .agent-activity-label { color: #94a3b8; margin-right: 0.35rem; }
     .agent-activity-meta { color: #64748b; font-size: 0.75rem; }
     .agent-activity-block ul { margin: 0.25rem 0 0 1rem; padding: 0; }
+    .agent-progress-strip {
+      margin: 0.35rem 0 0.5rem 0;
+      padding: 0.5rem 0.65rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      font-size: 0.8125rem;
+      color: #cbd5e1;
+    }
+    .agent-progress-strip .agent-progress-title { font-weight: 600; color: #94a3b8; margin-bottom: 0.35rem; }
+    .agent-progress-tools { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0; padding: 0; list-style: none; }
+    .agent-progress-tools li {
+      display: inline-flex; align-items: center; gap: 0.25rem;
+      padding: 0.2rem 0.45rem; border-radius: 4px; background: #1e293b; border: 1px solid #334155; font-size: 0.75rem;
+    }
+    .agent-progress-tools li.ok-false { border-color: #b45309; color: #fdba74; }
+    .tool-io-json {
+      margin: 0.35rem 0 0 0; padding: 0.45rem; background: #020617; border-radius: 4px;
+      font-size: 0.7rem; overflow-x: auto; max-height: 140px; white-space: pre-wrap; word-break: break-word;
+    }
+    .tool-copy-btn {
+      margin-top: 0.35rem; font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px;
+      border: 1px solid #475569; background: #334155; color: #e2e8f0; cursor: pointer;
+    }
+    .tool-copy-btn:hover { background: #475569; }
+    @media (max-width: 640px) {
+      .agent-activity-block {
+        position: relative;
+        max-height: min(40vh, 280px);
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .message.assistant .agent-activity-block {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        max-height: min(45vh, 320px);
+        z-index: 50;
+        margin: 0;
+        border-radius: 12px 12px 0 0;
+        box-shadow: 0 -8px 24px rgba(0,0,0,0.45);
+      }
+      #chat-container { padding-bottom: env(safe-area-inset-bottom, 0); }
+      #input-area {
+        padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0));
+      }
+    }
+    #onboarding-modal, #trajectory-json-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      z-index: 2000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    #onboarding-modal .onboarding-card, #trajectory-json-modal .trajectory-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 1.25rem;
+      max-width: 420px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    #onboarding-modal h2 { margin: 0 0 0.75rem 0; font-size: 1.125rem; }
+    #onboarding-modal ul { margin: 0 0 1rem 1rem; padding: 0; color: #cbd5e1; font-size: 0.875rem; }
+    #onboarding-modal .onboarding-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+    .btn-view-run {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      border: 1px solid #475569;
+      background: #334155;
+      color: #e2e8f0;
+      cursor: pointer;
+    }
+    .btn-view-run:hover { background: #475569; }
     #system-prompt-area {
       margin-bottom: 0.5rem;
     }
@@ -1420,53 +1501,33 @@
       <details id="knowledge-toggle">
         <summary class="header-button">Knowledge</summary>
         <div id="knowledge-panel" class="panel-content">
-          <p class="panel-hint">Index documents for retrieval. Search matches are included in chat when &quot;Include in chat&quot; is on.</p>
-          <label class="knowledge-toggle-include">
-            <input type="checkbox" id="knowledge-include-in-chat" aria-label="Include knowledge in chat"> Include in chat
+          <p class="panel-hint">Index documents for retrieval. When enabled, matching snippets are merged into chat context. About 1MB max per document.</p>
+          <label class="knowledge-include-toggle" title="Include matching knowledge in chat">
+            <input type="checkbox" id="use-knowledge" aria-describedby="use-knowledge-hint" />
+            Include in chat
           </label>
+          <span id="use-knowledge-hint" class="sr-only">When enabled, matching knowledge snippets are added to your message context</span>
           <div class="knowledge-add">
             <label for="knowledge-paste" class="sr-only">Paste or type document text</label>
-            <textarea id="knowledge-paste" rows="3" placeholder="Paste text or type to index..." aria-label="Document text"></textarea>
+            <textarea id="knowledge-paste" rows="3" placeholder="Paste text to index..." aria-label="Document text"></textarea>
             <label for="knowledge-title" class="sr-only">Optional title</label>
             <input type="text" id="knowledge-title" placeholder="Optional title" aria-label="Document title">
             <div class="knowledge-add-actions">
-              <input type="file" id="knowledge-file" accept=".txt,.md,.json" aria-label="Upload file" style="display:none">
+              <input type="file" id="knowledge-file" accept=".txt,.md,.json,.csv" aria-label="Upload file" style="display:none">
               <button id="knowledge-upload-btn" type="button" class="header-button">Add from file</button>
               <button id="knowledge-index-btn" type="button" class="header-button">Index</button>
+              <label class="knowledge-embed-toggle" title="Store embeddings for semantic search (requires OPENAI_API_KEY)">
+                <input type="checkbox" id="knowledge-store-embeddings" aria-label="Store embeddings when indexing"> Store embeddings
+              </label>
             </div>
           </div>
           <div class="knowledge-search-wrap">
-            <label for="knowledge-search" class="sr-only">Search knowledge base</label>
+            <label for="knowledge-search" class="sr-only">Search knowledge</label>
             <input type="search" id="knowledge-search" placeholder="Search knowledge..." autocomplete="off" aria-label="Search knowledge">
             <button id="knowledge-search-btn" type="button" class="header-button">Search</button>
           </div>
-          <div id="knowledge-results" class="knowledge-results" aria-live="polite"></div>
+          <div id="knowledge-search-results" class="knowledge-results" aria-live="polite"></div>
           <ul id="knowledge-list" class="knowledge-list" aria-label="Indexed documents"></ul>
-        </div>
-      </details>
-      <details id="knowledge-toggle">
-        <summary class="header-button">Knowledge</summary>
-        <div id="knowledge-panel" class="panel-content">
-          <label class="use-knowledge-toggle" title="Include matching knowledge in chat">
-            <input type="checkbox" id="use-knowledge" />
-            Include in chat
-          </label>
-          <div class="knowledge-add">
-            <label for="knowledge-paste" class="sr-only">Paste or type document text</label>
-            <textarea id="knowledge-paste" rows="3" placeholder="Paste or type text to index..." aria-label="Document text"></textarea>
-            <div class="knowledge-add-actions">
-              <input type="file" id="knowledge-file" accept=".txt,.md,.json,.csv" aria-label="Upload document" style="display:none">
-              <button id="knowledge-upload-btn" type="button" class="header-button">Add from file</button>
-              <button id="knowledge-index-btn" type="button" class="header-button">Index</button>
-            </div>
-          </div>
-          <div class="knowledge-search-row">
-            <label class="sr-only" for="knowledge-search">Search knowledge</label>
-            <input type="search" id="knowledge-search" placeholder="Search..." autocomplete="off">
-            <button id="knowledge-search-btn" type="button" class="header-button">Search</button>
-          </div>
-          <ul id="knowledge-list" class="knowledge-list" aria-label="Indexed documents"></ul>
-          <div id="knowledge-search-results" class="knowledge-search-results" aria-live="polite"></div>
         </div>
       </details>
       <details id="context-toggle">
@@ -1487,35 +1548,6 @@
             <button id="context-load-btn" type="button" class="header-button" title="Replace local data with server data">Load from server</button>
           </div>
           <ul id="context-list" class="context-list" aria-label="Context documents"></ul>
-        </div>
-      </details>
-      <details id="knowledge-toggle">
-        <summary class="header-button">Knowledge</summary>
-        <div id="knowledge-panel" class="panel-content">
-          <p class="panel-hint">Index documents for search. Use when relevant for chat (toggle below). Max 1MB per doc.</p>
-          <label class="knowledge-include-toggle">
-            <input type="checkbox" id="use-knowledge" aria-describedby="use-knowledge-hint" />
-            Include in chat
-          </label>
-          <span id="use-knowledge-hint" class="sr-only">When enabled, matching knowledge snippets are added to your message context</span>
-          <div class="knowledge-add">
-            <textarea id="knowledge-paste" rows="3" placeholder="Paste text to index..." aria-label="Paste text to add to knowledge"></textarea>
-            <div class="knowledge-add-actions">
-              <input type="file" id="knowledge-file" accept=".txt,.md,.json" aria-label="Upload file to index" style="display:none">
-              <button id="knowledge-upload-btn" type="button" class="header-button">Add from file</button>
-              <button id="knowledge-index-btn" type="button" class="header-button">Index</button>
-              <label class="knowledge-embed-toggle" title="Store embeddings for semantic search (requires OPENAI_API_KEY)">
-                <input type="checkbox" id="knowledge-store-embeddings" aria-label="Store embeddings when indexing"> Store embeddings
-              </label>
-            </div>
-          </div>
-          <div class="knowledge-search-row">
-            <label class="sr-only" for="knowledge-search-input">Search knowledge</label>
-            <input type="search" id="knowledge-search-input" placeholder="Search knowledge..." aria-label="Search knowledge">
-            <button id="knowledge-search-btn" type="button" class="header-button">Search</button>
-          </div>
-          <div id="knowledge-search-results" class="knowledge-results" aria-live="polite"></div>
-          <ul id="knowledge-list" class="knowledge-items" aria-label="Indexed documents"></ul>
         </div>
       </details>
       <details id="recipes-toggle">
@@ -1589,6 +1621,22 @@
               </label>
               <span id="agent-mode-hint" class="sr-only">When enabled, the assistant can use tools: search context, list context, get recipe, and (if allowed above) execute steps.</span>
             </div>
+            <div class="settings-field settings-field-full">
+              <label for="agent-max-iterations">Agent max iterations (optional)</label>
+              <input id="agent-max-iterations" type="number" min="1" max="99" step="1" placeholder="Server default" aria-describedby="agent-max-iter-hint">
+              <span id="agent-max-iter-hint" class="settings-help" style="display:block;margin-top:0.25rem;">When set, sent as <code>agentOptions.maxIterations</code> (capped by the host).</span>
+            </div>
+            <div class="settings-field settings-field-full">
+              <label for="agent-preset-select">Agent presets</label>
+              <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+                <select id="agent-preset-select" aria-label="Load agent preset" style="flex:1;min-width:140px;padding:0.4rem;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;">
+                  <option value="">— Load preset —</option>
+                </select>
+                <button type="button" id="agent-preset-apply" class="header-button">Apply</button>
+                <button type="button" id="agent-preset-save" class="header-button">Save current</button>
+              </div>
+              <p class="settings-help" style="margin:0.35rem 0 0 0;">Stores agent mode, swarm, parallel, max iterations, and execution toggle in this browser.</p>
+            </div>
             <div id="swarm-mode-section" class="settings-field settings-field-full" style="display:none;">
               <label class="settings-toggle-row" title="When on, use multi-agent swarm to solve complex tasks. Works with agent mode.">
                 <input type="checkbox" id="swarm-mode" aria-describedby="swarm-mode-hint">
@@ -1622,6 +1670,16 @@
                 <button type="button" id="workspace-agent-settings-save" class="header-button" data-i18n="settings.workspaceAgentSave">Save</button>
               </div>
               <p id="workspace-agent-settings-status" class="panel-hint" style="margin:0;font-size:0.75rem;color:#64748b;"></p>
+            </div>
+            <div id="settings-diagnostics-section" class="settings-field settings-field-full" style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid #334155;">
+              <p class="panel-hint" style="margin:0 0 0.5rem 0;font-weight:600;">Diagnostics</p>
+              <p id="settings-knowledge-count" class="settings-help" style="margin:0 0 0.35rem 0;">Knowledge: —</p>
+              <p id="settings-slo-hint" class="settings-help" style="margin:0 0 0.5rem 0;display:none;"></p>
+              <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.5rem;">
+                <button type="button" id="settings-refresh-diagnostics" class="header-button">Refresh status</button>
+              </div>
+              <p class="panel-hint" style="margin:0 0 0.35rem 0;font-size:0.8rem;">Recent agent runs</p>
+              <ul id="settings-agent-runs-list" style="margin:0;padding-left:1.1rem;font-size:0.78rem;max-height:140px;overflow-y:auto;color:#94a3b8;"></ul>
             </div>
             <div id="use-cases-settings-section" class="settings-field settings-field-full" style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid #334155;">
               <p class="panel-hint" style="margin:0 0 0.5rem 0;font-weight:600;">Use cases</p>
@@ -1662,6 +1720,33 @@
     <div class="modal-buttons" style="display:flex;gap:0.5rem;">
       <button id="continue-yes" type="button" class="btn-yes">Yes</button>
       <button id="continue-no" type="button" class="btn-no">No</button>
+    </div>
+  </div>
+  <div id="onboarding-modal" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+    <div class="onboarding-card">
+      <h2 id="onboarding-title">Welcome to Siskel Bot</h2>
+      <ul>
+        <li><strong>Chat</strong> — default streaming assistant.</li>
+        <li><strong>Agent mode</strong> — tools (search context, recipes, optional execution).</li>
+        <li><strong>Swarm</strong> — multiple specialists when the host enables it.</li>
+      </ul>
+      <p class="panel-hint" style="margin:0 0 0.5rem 0;font-size:0.8125rem;">Tip: Open <strong>Settings</strong> for API keys, workspace agent text, and presets.</p>
+      <p id="onboarding-health-status" class="panel-hint" style="margin:0;font-size:0.8125rem;min-height:1.25rem;" role="status"></p>
+      <p id="onboarding-metrics-hint" class="panel-hint" style="margin:0.35rem 0 0 0;font-size:0.75rem;color:#64748b;display:none;"></p>
+      <div class="onboarding-actions">
+        <button type="button" id="onboarding-test-health" class="header-button">Test connection</button>
+        <button type="button" id="onboarding-dismiss" class="header-button">Get started</button>
+      </div>
+    </div>
+  </div>
+  <div id="trajectory-json-modal" role="dialog" aria-modal="true" aria-labelledby="trajectory-json-title">
+    <div class="trajectory-card">
+      <h2 id="trajectory-json-title" style="margin:0 0 0.5rem 0;font-size:1rem;">Agent run (JSON)</h2>
+      <pre id="trajectory-json-body" style="margin:0;font-size:0.7rem;overflow:auto;max-height:60vh;background:#0f172a;padding:0.5rem;border-radius:6px;"></pre>
+      <div style="display:flex;gap:0.5rem;margin-top:0.75rem;flex-wrap:wrap;">
+        <button type="button" id="trajectory-json-copy" class="header-button">Copy</button>
+        <button type="button" id="trajectory-json-close" class="header-button">Close</button>
+      </div>
     </div>
   </div>
   <div id="approval-modal" data-modal-overlay role="dialog" aria-modal="true" aria-labelledby="approval-title">
@@ -1853,6 +1938,7 @@
   </div>
   </main>
 
+  <script src="/js/stream-ui-batch.js"></script>
   <script>
     (function initI18n() {
       if (window.SiskelI18n) {
@@ -1882,14 +1968,40 @@
     const SWARM_MODE_STORAGE_KEY = 'siskelbot-swarm-mode';
     const SWARM_PARALLEL_STORAGE_KEY = 'siskelbot-swarm-parallel-agents';
     const SWARM_ROSTER_STORAGE_KEY = 'siskelbot-swarm-llm-roster-json';
+    const AGENT_MAX_ITER_CLIENT_KEY = 'siskelbot-agent-max-iterations';
+    const AGENT_PRESETS_STORAGE_KEY = 'siskelbot-agent-option-presets-v1';
+    const EXECUTION_ENABLE_CONFIRMED_KEY = 'siskelbot-exec-enable-session';
     const CONVERSATIONS_STORAGE_KEY = 'siskelbot-conversations';
     const INSTALL_DISMISSED_KEY = 'siskelbot-install-dismissed';
     const NOTIFICATIONS_STORAGE_KEY = 'siskelbot-notifications';
     const MAX_CONVERSATIONS = 50;
     const MAX_NOTIFICATIONS = 100;
+    const ONBOARDING_DONE_KEY = 'siskelbot-onboarding-v3-done';
+    const MAX_CHAT_DOM_MESSAGES = 120;
+    const scheduleDom = (typeof SiskelRafBatcher !== 'undefined' && SiskelRafBatcher.create)
+      ? SiskelRafBatcher.create()
+      : function (fn) { fn(); };
     if (window.SiskelI18n) SiskelI18n.init();
 
     const chatContainer = document.getElementById('chat-container');
+    if (chatContainer) {
+      chatContainer.addEventListener('click', (e) => {
+        const btn = e.target.closest('.tool-copy-btn');
+        if (!btn || !chatContainer.contains(btn)) return;
+        const pre = btn.previousElementSibling;
+        const text = pre && pre.classList && pre.classList.contains('tool-io-json') ? pre.textContent : '';
+        if (text) {
+          navigator.clipboard.writeText(text).then(() => {
+            if (typeof showNotice === 'function') {
+              showNotice('JSON copied', 'warning', false);
+              setTimeout(clearNotice, 1500);
+            }
+          }).catch(() => {
+            if (typeof showNotice === 'function') showNotice('Copy failed', 'error', false);
+          });
+        }
+      });
+    }
     const promptInput = document.getElementById('prompt');
     const sendBtn = document.getElementById('send');
     const clearBtn = document.getElementById('clear-btn');
@@ -2131,6 +2243,8 @@
           if (typeof populateSwarmLlmRosterSpecialists === 'function') populateSwarmLlmRosterSpecialists();
           if (typeof window.refreshAgentServerDefaultsHint === 'function') window.refreshAgentServerDefaultsHint(config);
           if (typeof initInteractionModes === 'function') initInteractionModes();
+          if (typeof maybeShowOnboarding === 'function') maybeShowOnboarding();
+          if (typeof refreshSettingsDiagnostics === 'function') refreshSettingsDiagnostics();
         }
       } catch (_) {}
     }
@@ -2155,6 +2269,163 @@
     function getSelectedWorkspace() {
       return (workspaceSelect?.value || getWorkspace() || 'default');
     }
+
+    function mapChatHttpError(status, errData) {
+      errData = errData || {};
+      const code = errData.code;
+      const extra = {
+        QUOTA_EXCEEDED: 'Try another workspace or wait until the quota period resets.',
+        AUTH_REQUIRED: 'Add a deployment or user API key in Settings, or sign in with OAuth.',
+        AUTH_INVALID: 'Check the user API key in Settings.',
+        NOT_AUTHENTICATED: 'Sign in or provide a valid API key.',
+        FEATURE_DISABLED: errData.hint || 'This feature is disabled on the server.',
+      };
+      const summary = errData.message || errData.error || ('HTTP ' + status);
+      const detail = extra[code] || errData.hint || '';
+      return { summary, detail };
+    }
+
+    function maybeShowOnboarding() {
+      try {
+        if (localStorage.getItem(ONBOARDING_DONE_KEY) === '1') return;
+        const m = document.getElementById('onboarding-modal');
+        if (!m) return;
+        m.style.display = 'flex';
+        const mh = document.getElementById('onboarding-metrics-hint');
+        if (mh && config && config.prometheusEnabled) {
+          mh.style.display = 'block';
+          mh.textContent = 'Operators: Prometheus metrics at ' + (config.prometheusPath || '/metrics') + ' (ENABLE_METRICS=1).';
+        }
+        document.getElementById('onboarding-test-health')?.focus();
+      } catch (_) {}
+    }
+
+    function dismissOnboarding() {
+      try {
+        localStorage.setItem(ONBOARDING_DONE_KEY, '1');
+        const m = document.getElementById('onboarding-modal');
+        if (m) m.style.display = 'none';
+      } catch (_) {}
+    }
+
+    async function refreshSettingsDiagnostics() {
+      const kEl = document.getElementById('settings-knowledge-count');
+      const slo = document.getElementById('settings-slo-hint');
+      const ws = typeof getSelectedWorkspace === 'function' ? getSelectedWorkspace() : 'default';
+      if (kEl) {
+        try {
+          const r = await fetch('/api/knowledge/status?workspace=' + encodeURIComponent(ws));
+          if (r.ok) {
+            const d = await r.json();
+            kEl.textContent = 'Knowledge: ' + d.documentCount + ' document(s) indexed in workspace "' + d.workspace + '".';
+          } else {
+            kEl.textContent = 'Knowledge: could not load status.';
+          }
+        } catch (_) {
+          kEl.textContent = 'Knowledge: could not load status.';
+        }
+      }
+      if (slo && config) {
+        if (config.prometheusEnabled) {
+          slo.style.display = 'block';
+          slo.textContent = 'SLO/metrics: scrape ' + (config.prometheusPath || '/metrics') + ' with Prometheus.';
+        } else {
+          slo.style.display = 'none';
+        }
+      }
+      const ul = document.getElementById('settings-agent-runs-list');
+      if (!ul) return;
+      ul.innerHTML = '';
+      if (!config || !config.agentTrajectoryApi) {
+        ul.innerHTML = '<li>Trajectory API off on this host</li>';
+        return;
+      }
+      try {
+        const r = await fetch('/api/agent/trajectories?workspace=' + encodeURIComponent(ws) + '&limit=12', getStorageFetchOptions());
+        if (!r.ok) {
+          ul.innerHTML = '<li>Could not list runs (sign in or set API key)</li>';
+          return;
+        }
+        const data = await r.json();
+        const items = data.items || [];
+        if (!items.length) {
+          ul.innerHTML = '<li>No recent runs in memory/store</li>';
+          return;
+        }
+        items.forEach(function (it) {
+          const li = document.createElement('li');
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'btn-view-run';
+          btn.textContent = (it.runId || '').slice(0, 8) + '…';
+          btn.title = it.runId;
+          btn.onclick = function () { showTrajectoryJsonModal(it.runId); };
+          li.appendChild(btn);
+          li.appendChild(document.createTextNode(' · ' + (it.stepCount || 0) + ' steps'));
+          ul.appendChild(li);
+        });
+      } catch (_) {
+        ul.innerHTML = '<li>List failed</li>';
+      }
+    }
+
+    function showTrajectoryJsonModal(runId) {
+      const modal = document.getElementById('trajectory-json-modal');
+      const pre = document.getElementById('trajectory-json-body');
+      if (!modal || !pre || !runId) return;
+      pre.textContent = 'Loading…';
+      modal.style.display = 'flex';
+      fetch('/api/agent/trajectory/' + encodeURIComponent(runId), getStorageFetchOptions())
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j }; }); })
+        .then(function (x) {
+          pre.textContent = JSON.stringify(x.j, null, 2);
+        })
+        .catch(function () { pre.textContent = 'Failed to load trajectory.'; });
+    }
+
+    function attachViewRunButton(assistantEl, runId) {
+      if (!assistantEl || !runId) return;
+      const header = assistantEl.querySelector('.message-header');
+      if (!header || header.querySelector('.btn-view-run')) return;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn-view-run';
+      btn.textContent = 'Run details';
+      btn.setAttribute('aria-label', 'View agent run JSON');
+      btn.onclick = function () { showTrajectoryJsonModal(runId); };
+      header.appendChild(btn);
+    }
+
+    document.getElementById('onboarding-dismiss')?.addEventListener('click', dismissOnboarding);
+    document.getElementById('onboarding-test-health')?.addEventListener('click', async function () {
+      const st = document.getElementById('onboarding-health-status');
+      if (st) st.textContent = 'Checking…';
+      try {
+        const r = await fetch('/health');
+        const ok = r.ok;
+        const t = await r.text().catch(function () { return ''; });
+        if (st) st.textContent = ok ? 'Connection OK (HTTP ' + r.status + ').' : 'Health check failed (' + r.status + '). ' + t.slice(0, 120);
+      } catch (_) {
+        if (st) st.textContent = 'Could not reach the server. Is it running?';
+      }
+    });
+    document.getElementById('trajectory-json-close')?.addEventListener('click', function () {
+      const modal = document.getElementById('trajectory-json-modal');
+      if (modal) modal.style.display = 'none';
+    });
+    document.getElementById('trajectory-json-copy')?.addEventListener('click', function () {
+      const pre = document.getElementById('trajectory-json-body');
+      if (!pre) return;
+      navigator.clipboard.writeText(pre.textContent || '').then(function () {
+        showNotice('Copied trajectory JSON', 'warning', false);
+        setTimeout(clearNotice, 1500);
+      }).catch(function () {});
+    });
+    document.getElementById('settings-refresh-diagnostics')?.addEventListener('click', function () { refreshSettingsDiagnostics(); });
+    document.getElementById('settings-toggle')?.addEventListener('toggle', function () {
+      if (this.open) refreshSettingsDiagnostics();
+    });
+
     async function loadWorkspaces() {
       if (!workspaceSelect || !config.authRequired) return;
       try {
@@ -2411,18 +2682,137 @@
       });
     }
 
-    // Phase 9: Allow recipe step execution toggle (Settings)
+    // Phase 9: Allow recipe step execution toggle (Settings) — Phase 100: confirm before enabling
     const allowRecipeExecutionCheckbox = document.getElementById('allow-recipe-execution');
     if (allowRecipeExecutionCheckbox) {
       try {
         allowRecipeExecutionCheckbox.checked = localStorage.getItem(RECIPE_EXECUTION_STORAGE_KEY) === '1';
       } catch (_) {}
       allowRecipeExecutionCheckbox.addEventListener('change', () => {
+        if (allowRecipeExecutionCheckbox.checked) {
+          const serverAllows = config && config.allowRecipeStepExecution;
+          let ok = true;
+          try {
+            const seen = sessionStorage.getItem(EXECUTION_ENABLE_CONFIRMED_KEY) === '1';
+            if (!seen) {
+              ok = window.confirm(
+                serverAllows
+                  ? 'Recipe step execution can run build/deploy actions on the server when the model calls execute_step. Only enable if you trust this workspace and model. Continue?'
+                  : 'You enabled client-side execution permission, but this host may still block runs until ALLOW_RECIPE_STEP_EXECUTION=1. Continue saving this preference?'
+              );
+              if (ok) sessionStorage.setItem(EXECUTION_ENABLE_CONFIRMED_KEY, '1');
+            }
+          } catch (_) {}
+          if (!ok) {
+            allowRecipeExecutionCheckbox.checked = false;
+            return;
+          }
+        }
         try {
           localStorage.setItem(RECIPE_EXECUTION_STORAGE_KEY, allowRecipeExecutionCheckbox.checked ? '1' : '0');
         } catch (_) {}
       });
     }
+
+    const agentMaxIterationsInput = document.getElementById('agent-max-iterations');
+    if (agentMaxIterationsInput) {
+      try {
+        const v = localStorage.getItem(AGENT_MAX_ITER_CLIENT_KEY);
+        if (v) agentMaxIterationsInput.value = v;
+      } catch (_) {}
+      agentMaxIterationsInput.addEventListener('change', () => {
+        try {
+          const n = agentMaxIterationsInput.value.trim();
+          if (n) localStorage.setItem(AGENT_MAX_ITER_CLIENT_KEY, n);
+          else localStorage.removeItem(AGENT_MAX_ITER_CLIENT_KEY);
+        } catch (_) {}
+      });
+    }
+
+    function loadAgentPresets() {
+      try {
+        const raw = localStorage.getItem(AGENT_PRESETS_STORAGE_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        return Array.isArray(arr) ? arr : [];
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function saveAgentPresets(list) {
+      try {
+        localStorage.setItem(AGENT_PRESETS_STORAGE_KEY, JSON.stringify(list.slice(0, 24)));
+      } catch (_) {}
+    }
+
+    function refreshAgentPresetSelect() {
+      const sel = document.getElementById('agent-preset-select');
+      if (!sel) return;
+      const presets = loadAgentPresets();
+      sel.innerHTML = '<option value="">— Load preset —</option>';
+      presets.forEach((p, i) => {
+        const o = document.createElement('option');
+        o.value = String(i);
+        o.textContent = p.name || `Preset ${i + 1}`;
+        sel.appendChild(o);
+      });
+    }
+
+    refreshAgentPresetSelect();
+
+    document.getElementById('agent-preset-apply')?.addEventListener('click', () => {
+      const sel = document.getElementById('agent-preset-select');
+      const idx = sel && sel.value !== '' ? Number(sel.value) : NaN;
+      const presets = loadAgentPresets();
+      const p = presets[idx];
+      if (!p) {
+        showNotice('Select a preset first', 'warning', false);
+        return;
+      }
+      if (agentModeCheckbox) agentModeCheckbox.checked = !!p.agentMode;
+      if (swarmModeCheckbox) swarmModeCheckbox.checked = !!p.swarmMode;
+      if (swarmParallelAgentsCheckbox) swarmParallelAgentsCheckbox.checked = !!p.parallelAgents;
+      if (allowRecipeExecutionCheckbox) allowRecipeExecutionCheckbox.checked = !!p.allowExecution;
+      if (agentMaxIterationsInput && p.maxIterations != null) agentMaxIterationsInput.value = String(p.maxIterations);
+      else if (agentMaxIterationsInput && p.maxIterations === null) agentMaxIterationsInput.value = '';
+      try {
+        localStorage.setItem(AGENT_MODE_STORAGE_KEY, agentModeCheckbox?.checked ? '1' : '0');
+        localStorage.setItem(SWARM_MODE_STORAGE_KEY, swarmModeCheckbox?.checked ? '1' : '0');
+        localStorage.setItem(SWARM_PARALLEL_STORAGE_KEY, swarmParallelAgentsCheckbox?.checked ? '1' : '0');
+        localStorage.setItem(RECIPE_EXECUTION_STORAGE_KEY, allowRecipeExecutionCheckbox?.checked ? '1' : '0');
+        if (p.maxIterations != null) localStorage.setItem(AGENT_MAX_ITER_CLIENT_KEY, String(p.maxIterations));
+        else localStorage.removeItem(AGENT_MAX_ITER_CLIENT_KEY);
+      } catch (_) {}
+      syncInteractionModeFromCheckboxes();
+      showNotice('Preset applied', 'warning', false);
+      setTimeout(clearNotice, 1500);
+    });
+
+    document.getElementById('agent-preset-save')?.addEventListener('click', () => {
+      const name = window.prompt('Preset name', 'My agent setup');
+      if (name == null || !String(name).trim()) return;
+      let maxIt = null;
+      if (agentMaxIterationsInput && agentMaxIterationsInput.value.trim()) {
+        const n = parseInt(agentMaxIterationsInput.value, 10);
+        if (n >= 1) maxIt = n;
+      }
+      const entry = {
+        name: String(name).trim(),
+        agentMode: !!(agentModeCheckbox && agentModeCheckbox.checked),
+        swarmMode: !!(swarmModeCheckbox && swarmModeCheckbox.checked),
+        parallelAgents: !!(swarmParallelAgentsCheckbox && swarmParallelAgentsCheckbox.checked),
+        allowExecution: !!(allowRecipeExecutionCheckbox && allowRecipeExecutionCheckbox.checked),
+        maxIterations: maxIt,
+      };
+      const presets = loadAgentPresets();
+      presets.push(entry);
+      saveAgentPresets(presets);
+      refreshAgentPresetSelect();
+      const sel = document.getElementById('agent-preset-select');
+      if (sel) sel.value = String(presets.length - 1);
+      showNotice('Preset saved', 'warning', false);
+      setTimeout(clearNotice, 1500);
+    });
 
     // Phase 15: Agent mode toggle (Settings)
     const agentModeCheckbox = document.getElementById('agent-mode');
@@ -3059,24 +3449,6 @@
     const contextAddSave = document.getElementById('context-add-save');
     const contextAddCancel = document.getElementById('context-add-cancel');
     const contextUseRagCheckbox = document.getElementById('context-use-rag');
-
-    async function indexContextDoc(doc) {
-      if (!doc || !doc.content || !String(doc.content).trim()) return;
-      const storeEmbeddings = document.getElementById('knowledge-store-embeddings')?.checked === true;
-      try {
-        await fetch('/api/knowledge/index', getStorageFetchOptions({
-          method: 'POST',
-          body: JSON.stringify({
-            text: doc.content,
-            title: doc.title || 'Untitled',
-            workspace: getSelectedWorkspace(),
-            computeEmbedding: storeEmbeddings,
-          }),
-        }));
-      } catch (e) {
-        console.warn('SiskelBot: failed to index context doc', e);
-      }
-    }
 
     function renderContextList() {
       if (!contextList) return;
@@ -3880,6 +4252,7 @@
     let messages = [];
     let streamStartTime = 0;
     let ttfb = null;
+    let assistantSseStreaming = false;
 
     clientApiKeyInput.value = sessionStorage.getItem(SESSION_API_KEY) || '';
     clientApiKeyInput.addEventListener('input', () => {
@@ -3924,16 +4297,20 @@
       } catch (_) {}
     }
 
-    async function indexContextDoc(opts) {
-      const { title, content } = opts || {};
-      if (!content || !String(content).trim()) return;
+    async function indexContextDoc(docOrOpts) {
+      const raw = docOrOpts || {};
+      const content = raw.content != null ? raw.content : '';
+      if (!String(content).trim()) return;
+      const title = raw.title != null ? String(raw.title).trim() : '';
+      const storeEmbeddings = document.getElementById('knowledge-store-embeddings')?.checked === true;
       try {
         const res = await fetch('/api/knowledge/index', getStorageFetchOptions({
           method: 'POST',
           body: JSON.stringify({
             text: String(content).trim(),
-            title: title || 'Context',
+            title: title || 'Untitled',
             workspace: getSelectedWorkspace(),
+            computeEmbedding: storeEmbeddings,
           }),
         }));
         if (!res.ok) {
@@ -3941,7 +4318,7 @@
           console.warn('Knowledge index failed:', data.error || res.statusText);
         }
       } catch (e) {
-        console.warn('Knowledge index failed:', e.message);
+        console.warn('SiskelBot: failed to index context doc', e);
       }
     }
 
@@ -3966,22 +4343,6 @@
       const docs = loadContextDocuments();
       if (!docs.length) return '';
       return docs.map((d) => `--- ${(d.title || 'Context').trim()} ---\n${String(d.content || '').trim()}`).filter(Boolean).join('\n\n');
-    }
-
-    async function indexContextDoc(doc) {
-      if (!doc || !doc.content || !String(doc.content).trim()) return;
-      const storeEmbeddings = document.getElementById('knowledge-store-embeddings')?.checked === true;
-      try {
-        await fetch('/api/knowledge/index', getStorageFetchOptions({
-          method: 'POST',
-          body: JSON.stringify({
-            text: doc.content,
-            title: doc.title || 'Untitled',
-            workspace: getSelectedWorkspace(),
-            computeEmbedding: storeEmbeddings,
-          }),
-        }));
-      } catch (_) {}
     }
 
     async function buildApiMessages(userPrompt) {
@@ -4289,7 +4650,21 @@
     if (clearBtn) clearBtn.onclick = () => { saveCurrentToConversations(); clearHistory(); };
 
     function scrollToBottom() {
-      chatContainer.scrollTop = chatContainer.scrollHeight;
+      if (!chatContainer) return;
+      scheduleDom(function () {
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+      });
+    }
+
+    function pruneChatDom(maxKeep) {
+      if (!chatContainer) return;
+      const cap = maxKeep || MAX_CHAT_DOM_MESSAGES;
+      const msgs = chatContainer.querySelectorAll('.message');
+      if (msgs.length <= cap) return;
+      const drop = msgs.length - cap;
+      for (let i = 0; i < drop; i++) {
+        msgs[i].remove();
+      }
     }
 
     function addMessage(role, content, meta = null) {
@@ -4308,6 +4683,7 @@
         ${meta ? `<div class="message-meta">${escapeHtml(meta)}</div>` : ''}
       `;
       chatContainer.appendChild(el);
+      pruneChatDom();
       if (role === 'assistant') attachSpeakerButton(el);
       scrollToBottom();
       announce(`${label} message added`);
@@ -4449,10 +4825,16 @@
 
     function updateAssistantContent(el, content, meta) {
       const contentEl = el.querySelector('.message-content');
+      if (!contentEl) return;
       const metaEl = el.querySelector('.message-meta');
-      contentEl.innerHTML = renderAssistantMarkdown(content);
-      contentEl.classList.remove('typing-indicator');
-      contentEl.classList.add('markdown-rendered');
+      if (assistantSseStreaming) {
+        contentEl.textContent = content || '';
+        contentEl.classList.remove('typing-indicator', 'markdown-rendered');
+      } else {
+        contentEl.innerHTML = renderAssistantMarkdown(content);
+        contentEl.classList.remove('typing-indicator');
+        contentEl.classList.add('markdown-rendered');
+      }
       if (meta) {
         if (metaEl) metaEl.textContent = meta;
         else {
@@ -4466,6 +4848,40 @@
       announce('Assistant message updated');
     }
 
+    function formatAgentLimitsHud(resHeaders, agentActivity) {
+      if (!resHeaders || typeof resHeaders.get !== 'function') return '';
+      const parts = [];
+      const trunc = resHeaders.get('X-Agent-Truncated');
+      const stopped = resHeaders.get('X-Agent-Stopped');
+      const cite = resHeaders.get('X-Agent-Citations-Missing');
+      const maxIter = resHeaders.get('X-Agent-Max-Iterations');
+      const runId = resHeaders.get('X-Agent-Run-Id');
+      if (trunc) parts.push('Limit: ' + trunc.replace(/_/g, ' '));
+      if (stopped === 'stagnation') parts.push('Stopped: stagnation');
+      if (cite === '1' || (agentActivity && agentActivity.citationWarning)) parts.push('Citations check');
+      if (maxIter) parts.push('Max iter ' + maxIter);
+      if (runId) parts.push('Run ' + runId.slice(0, 8) + '…');
+      const sr = agentActivity && agentActivity.stopReason;
+      if (sr && sr !== 'model_finished') parts.push('Reason: ' + String(sr).replace(/_/g, ' '));
+      return parts.length ? parts.join(' · ') : '';
+    }
+
+    function renderAgentProgressHtml(ev) {
+      const tools = ev.tools || [];
+      const toolEls = tools
+        .map((t) => {
+          const ok = t.validationError ? false : t.ok !== false;
+          const cls = ok ? '' : ' ok-false';
+          const label = escapeHtml(t.name || '?');
+          const ms = t.durationMs != null ? `<span class="agent-activity-meta"> ${Number(t.durationMs)}ms</span>` : '';
+          return `<li class="${cls}"><code>${label}</code>${ms}</li>`;
+        })
+        .join('');
+      const llm = ev.llmMs != null ? `${ev.llmMs}ms` : '—';
+      const tw = ev.toolsWallMs != null ? `${ev.toolsWallMs}ms` : '—';
+      return `<div class="agent-progress-strip" role="status" aria-live="polite"><div class="agent-progress-title">Iteration ${escapeHtml(String(ev.iteration))} · LLM ${escapeHtml(llm)} · Tools wall ${escapeHtml(tw)}</div><ul class="agent-progress-tools">${toolEls}</ul></div>`;
+    }
+
     function renderAgentActivityBlock(toolCalls, swarmSteps, iteration) {
       if ((!toolCalls || !toolCalls.length) && (!swarmSteps || !swarmSteps.length)) return '';
       const parts = [];
@@ -4475,7 +4891,16 @@
       }
       if (toolCalls && toolCalls.length) {
         parts.push('<div class="agent-activity-tools"><span class="agent-activity-label">Tools</span><ul>' +
-          toolCalls.map(t => `<li><code>${escapeHtml(t.name)}</code>${t.args && Object.keys(t.args).length ? ` <span class="agent-activity-meta">${escapeHtml(JSON.stringify(t.args).slice(0, 60))}…</span>` : ''}</li>`).join('') + '</ul></div>');
+          toolCalls.map((t) => {
+            const dur = t.durationMs != null ? ` <span class="agent-activity-meta">${Number(t.durationMs)}ms</span>` : '';
+            let argsHtml = '';
+            if (t.args && typeof t.args === 'object' && Object.keys(t.args).length) {
+              const j = escapeHtml(JSON.stringify(t.args, null, 2));
+              argsHtml = ` <details style="margin-top:0.25rem;"><summary class="agent-activity-meta" style="cursor:pointer;">Args</summary><pre class="tool-io-json">${j}</pre><button type="button" class="tool-copy-btn">Copy JSON</button></details>`;
+            }
+            const flag = t.validationError ? ' <span class="agent-activity-meta">(validation)</span>' : t.error ? ' <span class="agent-activity-meta">(error)</span>' : '';
+            return `<li><code>${escapeHtml(t.name || '')}</code>${dur}${flag}${argsHtml}</li>`;
+          }).join('') + '</ul></div>');
       }
       return `<details class="agent-activity-block" open><summary>Agent activity ${iteration ? '(' + iteration + ' iter)' : ''}</summary>${parts.join('')}</details>`;
     }
@@ -4483,13 +4908,16 @@
     function createAssistantBubble(content, meta, activityHtml) {
       const el = document.createElement('div');
       el.className = 'message assistant';
+      const bodyClass = assistantSseStreaming ? 'message-content' : 'message-content markdown-rendered';
+      const bodyHtml = assistantSseStreaming ? escapeHtml(content || '') : renderAssistantMarkdown(content || '');
       el.innerHTML = `
         <div class="message-header"><div class="message-label">Assistant</div><button class="btn-speaker" type="button" aria-label="Read aloud" title="Read aloud">&#128266;</button></div>
         ${activityHtml || ''}
-        <div class="message-content markdown-rendered">${renderAssistantMarkdown(content || '')}</div>
+        <div class="${bodyClass}">${bodyHtml}</div>
         ${meta ? `<div class="message-meta">${escapeHtml(meta)}</div>` : ''}
       `;
       chatContainer.appendChild(el);
+      pruneChatDom();
       attachSpeakerButton(el);
       scrollToBottom();
       return el;
@@ -4500,6 +4928,14 @@
         activeAbortController.abort();
       }
     };
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      if (stopBtn && stopBtn.style.display !== 'none' && activeAbortController) {
+        e.preventDefault();
+        stopBtn.click();
+      }
+    });
 
     retryLastBtn.onclick = () => {
       if (!lastSubmittedPrompt) return;
@@ -4858,6 +5294,11 @@
           const roster = getSelectedSwarmLlmSpecialists();
           if (Array.isArray(roster) && roster.length) payloadObj.agentOptions.swarmSpecialists = roster;
         }
+        const maxItEl = document.getElementById('agent-max-iterations');
+        if (maxItEl && maxItEl.value && String(maxItEl.value).trim()) {
+          const n = parseInt(maxItEl.value, 10);
+          if (n >= 1) payloadObj.agentOptions.maxIterations = n;
+        }
       } else {
         payloadObj.agentOptions = { workspace: workspace };
       }
@@ -4869,6 +5310,7 @@
       let lastError = null;
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         try {
+          assistantSseStreaming = false;
           const headers = { 'Content-Type': 'application/json' };
           const clientApiKey = clientApiKeyInput.value.trim();
           if (clientApiKey) {
@@ -4878,6 +5320,8 @@
             const sh = getStorageHeaders();
             if (sh['x-user-api-key']) headers['x-user-api-key'] = sh['x-user-api-key'];
           }
+          ttfb = null;
+          streamStartTime = performance.now();
           const res = await fetch(API, {
             method: 'POST',
             headers,
@@ -4890,7 +5334,7 @@
             try {
               errData = await res.json();
             } catch (_) {}
-            const msg = errData.hint || errData.message || errData.error || res.statusText;
+            const mapped = mapChatHttpError(res.status, errData);
             const isQuotaExceeded = res.status === 429 && errData.code === 'QUOTA_EXCEEDED';
             const isRetryable = (res.status >= 500 || (res.status === 429 && !isQuotaExceeded)) && attempt < MAX_RETRIES;
             if (isRetryable) {
@@ -4898,20 +5342,22 @@
               continue;
             }
             if (res.status === 401) {
-              showNotice('This deployment requires an API key. Enter it in Settings and try again.', 'warning', true);
+              showNotice(mapped.detail || mapped.summary, 'warning', true);
             }
             if (isQuotaExceeded) {
-              showNotice('Workspace token quota exceeded', 'error', true);
+              showNotice(mapped.detail || mapped.summary, 'error', true);
             }
-            throw new Error(msg);
+            throw new Error(mapped.summary + (mapped.detail ? ' — ' + mapped.detail : ''));
           }
 
           setConnectionStatus('Streaming...');
+          assistantSseStreaming = true;
           const reader = res.body.getReader();
           const decoder = new TextDecoder();
           let buffer = '';
           let content = '';
           let assistantEl = null;
+          let lastAgentActivity = null;
 
           while (true) {
             const { done, value } = await reader.read();
@@ -4927,30 +5373,63 @@
                 if (data === '[DONE]') continue;
                 try {
                   const parsed = JSON.parse(data);
+                  if (parsed.type === 'agent_progress') {
+                    scheduleDom(function () {
+                      if (!assistantEl) {
+                        removeTypingIndicator();
+                        assistantEl = createAssistantBubble('', null, renderAgentProgressHtml(parsed));
+                      } else {
+                        const strip = assistantEl.querySelector('.agent-progress-strip');
+                        if (strip) strip.outerHTML = renderAgentProgressHtml(parsed);
+                        else {
+                          const header = assistantEl.querySelector('.message-header');
+                          if (header) header.insertAdjacentHTML('afterend', renderAgentProgressHtml(parsed));
+                        }
+                      }
+                    });
+                    if (typeof announce === 'function') announce('Agent iteration ' + parsed.iteration);
+                    continue;
+                  }
                   if (parsed.type === 'agent_activity') {
-                    if (!assistantEl) {
-                      removeTypingIndicator();
+                    lastAgentActivity = parsed;
+                    scheduleDom(function () {
+                      const progressEl = assistantEl && assistantEl.querySelector('.agent-progress-strip');
+                      if (progressEl) progressEl.remove();
                       const activityHtml = renderAgentActivityBlock(parsed.toolCalls || [], parsed.swarmSteps || [], parsed.iteration);
-                      assistantEl = createAssistantBubble('', null, activityHtml);
-                    }
+                      if (!assistantEl) {
+                        removeTypingIndicator();
+                        assistantEl = createAssistantBubble('', null, activityHtml);
+                      } else {
+                        const oldAct = assistantEl.querySelector('.agent-activity-block');
+                        if (oldAct) oldAct.outerHTML = activityHtml;
+                        else {
+                          const header = assistantEl.querySelector('.message-header');
+                          if (header) header.insertAdjacentHTML('afterend', activityHtml);
+                        }
+                      }
+                    });
                     continue;
                   }
                   const delta = parsed.choices?.[0]?.delta?.content;
                   if (delta) {
                     if (ttfb === null) ttfb = Math.round(performance.now() - streamStartTime);
                     content += delta;
-                    if (!assistantEl) {
-                      removeTypingIndicator();
-                      assistantEl = createAssistantBubble(content, `First token: ${ttfb}ms`);
-                    } else {
-                      updateAssistantContent(assistantEl, content, `First token: ${ttfb}ms`);
-                    }
+                    const metaLine = ttfb !== null ? `First token: ${ttfb}ms` : null;
+                    scheduleDom(function () {
+                      if (!assistantEl) {
+                        removeTypingIndicator();
+                        assistantEl = createAssistantBubble(content, metaLine);
+                      } else {
+                        updateAssistantContent(assistantEl, content, metaLine);
+                      }
+                    });
                   }
                 } catch (_) {}
               }
             }
           }
 
+          assistantSseStreaming = false;
           let meta = ttfb !== null ? `First token: ${ttfb}ms` : null;
           const swarmAgents = res.headers.get('X-Swarm-Agents');
           const swarmDuration = res.headers.get('X-Swarm-Duration-Ms');
@@ -4965,7 +5444,11 @@
             const swarmMeta = parts.join(' · ');
             meta = meta ? `${meta} · ${swarmMeta}` : swarmMeta;
           }
+          const hud = formatAgentLimitsHud(res.headers, lastAgentActivity);
+          if (hud) meta = meta ? `${meta} · ${hud}` : hud;
           if (assistantEl && meta) updateAssistantContent(assistantEl, content, meta);
+          const runIdHdr = res.headers.get('X-Agent-Run-Id');
+          if (assistantEl && runIdHdr) attachViewRunButton(assistantEl, runIdHdr);
 
           if (!content) {
             removeTypingIndicator();
@@ -4984,6 +5467,7 @@
           }
           break;
         } catch (err) {
+          assistantSseStreaming = false;
           if (err.name === 'AbortError') {
             removeTypingIndicator();
             messages.pop(); // undo user message so they can retry
@@ -5001,7 +5485,14 @@
           }
           removeTypingIndicator();
           const backendHint = config.backend === 'vllm' ? 'vLLM (vllm serve <model> --max-model-len 4096)' : config.backend === 'ollama' ? 'Ollama (ollama serve)' : config.backend === 'openai' ? 'OpenAI (OPENAI_API_KEY)' : config.backend;
-          const errMsg = 'Error: ' + (lastError?.message || err.message) + '\n\nBackend: ' + backendHint + ' — visit /health to verify.';
+          let modeHint = '';
+          try {
+            const swarmOn = swarmModeCheckbox && swarmModeCheckbox.checked;
+            const agentOn = agentModeCheckbox && agentModeCheckbox.checked;
+            if (swarmOn && !config.swarmEnabled) modeHint += '\n\nSwarm mode is on, but this host reports swarm disabled (ENABLE_AGENT_SWARM). Turn off Swarm in Settings or enable it on the server.';
+            if (agentOn && lastError && /403|401/.test(String(lastError.message))) modeHint += '\n\nAgent mode may need an API key or sign-in for this deployment.';
+          } catch (_) {}
+          const errMsg = 'Error: ' + (lastError?.message || err.message) + '\n\nBackend: ' + backendHint + ' — visit /health to verify.' + modeHint;
           addMessage('assistant', errMsg, null).classList.add('error-message');
           showNotice(lastError?.message || err.message, 'error', true);
           setConnectionStatus('Error');

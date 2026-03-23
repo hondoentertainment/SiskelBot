@@ -62,7 +62,16 @@ import {
   intersectSwarmSpecialistsWithAllowlist,
 } from "./lib/swarm.js";
 import { initTracing } from "./lib/tracing.js";
-import { recordRequest, recordSwarm, renderPrometheus, recordChatRequest, recordTokensUsed, isEnabled as metricsEnabled } from "./lib/metrics.js";
+import {
+  recordRequest,
+  recordSwarm,
+  renderPrometheus,
+  recordChatRequest,
+  recordTokensUsed,
+  recordAgentPhaseMs,
+  recordAgentRunSummary,
+  isEnabled as metricsEnabled,
+} from "./lib/metrics.js";
 import { fetchWithTimeoutAndRetry } from "./lib/backend-fetch.js";
 import { validateToolCall, toolValidationEnabled } from "./lib/tool-validation.js";
 import { detectStagnation, stagnationDetectionEnabled } from "./lib/agent-stagnation.js";
@@ -71,6 +80,7 @@ import {
   createTrajectoryCollector,
   saveTrajectory,
   loadTrajectory,
+  listTrajectories,
   trajectoryApiEnabled,
 } from "./lib/agent-trajectory.js";
 import { augmentMessagesWithDefaultSystem, defaultAgentSystemConfigured } from "./lib/agent-defaults.js";
@@ -564,6 +574,8 @@ app.get("/config", (req, res) => {
     agentToolsAllowlist: getAgentToolsAllowlistNames(),
     agentMaxIterationsCeiling: Math.max(1, Number(process.env.MAX_AGENT_ITERATIONS) || 5),
     agentMaxIterationsClientTunable: process.env.AGENT_MAX_ITERATIONS_IGNORE_CLIENT !== "1",
+    prometheusEnabled: process.env.ENABLE_METRICS === "1",
+    prometheusPath: "/metrics",
   };
   if (IS_PRODUCTION && !API_KEY) {
     payload.productionHint = "Set API_KEY in Vercel env vars to protect /v1/chat/completions";
@@ -604,7 +616,8 @@ const USAGE_ALERT_TOKENS = process.env.USAGE_ALERT_TOKENS ? Number(process.env.U
 const ALLOW_RECIPE_STEP_EXECUTION = process.env.ALLOW_RECIPE_STEP_EXECUTION === "1";
 const ENABLE_AGENT_SWARM = process.env.ENABLE_AGENT_SWARM === "1";
 
-async function runAgentLoop(req, res, config, model) {
+async function runAgentLoop(req, res, config, model, streamOptions = null) {
+  const onProgress = streamOptions && typeof streamOptions.onProgress === "function" ? streamOptions.onProgress : null;
   const url = `${config.baseUrl}${config.path}`;
   const workspace = req.body?.agentOptions?.workspace || "default";
   let messages = Array.isArray(req.body?.messages) ? [...req.body.messages] : [];
@@ -615,7 +628,10 @@ async function runAgentLoop(req, res, config, model) {
   const allowExecution = req.body?.agentOptions?.allowExecution === true;
   const agentOpts = req.body?.agentOptions || {};
   const maxAgentIterations = resolveAgentMaxIterations(agentOpts, process.env.MAX_AGENT_ITERATIONS);
-  res.setHeader("X-Agent-Max-Iterations", String(maxAgentIterations));
+  const setAgentHeader = (name, value) => {
+    if (!res.headersSent) res.setHeader(name, value);
+  };
+  setAgentHeader("X-Agent-Max-Iterations", String(maxAgentIterations));
   const toolCtx = {
     allowExecution: ALLOW_RECIPE_STEP_EXECUTION && allowExecution,
     projectDir: process.env.PROJECT_DIR || process.cwd(),
@@ -624,8 +640,11 @@ async function runAgentLoop(req, res, config, model) {
     workspaceUserId: storageUserId,
   };
 
-  const runId = randomUUID();
-  res.setHeader("X-Agent-Run-Id", runId);
+  const runId = streamOptions?.presetRunId || randomUUID();
+  setAgentHeader("X-Agent-Run-Id", runId);
+  let llmMsTotal = 0;
+  let toolsMsTotal = 0;
+  let reflectMs = 0;
   const trajCollector = createTrajectoryCollector({
     runId,
     workspace,
@@ -660,13 +679,13 @@ async function runAgentLoop(req, res, config, model) {
 
   while (iteration < maxAgentIterations) {
     iteration++;
-    res.setHeader("X-Agent-Iteration", String(iteration));
+    setAgentHeader("X-Agent-Iteration", String(iteration));
     trajCollector.record({ type: "iteration", iteration });
 
     if (AGENT_MAX_WALL_MS_ENV > 0 && Date.now() - runStarted > AGENT_MAX_WALL_MS_ENV) {
       lastContent = "(Agent stopped: wall clock budget exceeded)";
       stopReason = "wall_clock";
-      res.setHeader("X-Agent-Truncated", "wall_clock");
+      setAgentHeader("X-Agent-Truncated", "wall_clock");
       break;
     }
 
@@ -675,6 +694,7 @@ async function runAgentLoop(req, res, config, model) {
       toolChoiceThis = { type: "function", function: { name: requiredSeq[0] } };
     }
 
+    const llmT0 = Date.now();
     const response = await backendFetch(url, {
       method: "POST",
       headers: config.headers,
@@ -687,6 +707,8 @@ async function runAgentLoop(req, res, config, model) {
     }
 
     const data = await response.json().catch(() => ({}));
+    const llmRoundMs = Date.now() - llmT0;
+    llmMsTotal += llmRoundMs;
     const choice = data.choices?.[0];
     const msg = choice?.message;
 
@@ -706,6 +728,8 @@ async function runAgentLoop(req, res, config, model) {
     }
 
     messages.push(msg);
+    const toolsWallT0 = Date.now();
+    const toolMetrics = [];
     const results = await Promise.all(
       toolCalls.map(async (tc) => {
         const name = tc.function?.name;
@@ -722,7 +746,8 @@ async function runAgentLoop(req, res, config, model) {
         if (toolValidationEnabled()) {
           const v = validateToolCall(name, args, { parseError });
           if (!v.valid) {
-            toolCallsLog.push({ name, args, iteration, validationError: true });
+            toolCallsLog.push({ name, args, iteration, validationError: true, durationMs: 0 });
+            toolMetrics.push({ name, durationMs: 0, ok: false, validationError: true });
             trajCollector.record({
               type: "tool_validation_error",
               name,
@@ -741,7 +766,6 @@ async function runAgentLoop(req, res, config, model) {
           }
         }
 
-        toolCallsLog.push({ name, args, iteration });
         trajCollector.record({
           type: "tool_call",
           name,
@@ -749,8 +773,12 @@ async function runAgentLoop(req, res, config, model) {
           argsPreview: trajCollector.truncate(JSON.stringify(args), 240),
         });
 
+        const execT0 = Date.now();
         try {
           const result = await runTool(name, args, toolCtx);
+          const durationMs = Date.now() - execT0;
+          toolCallsLog.push({ name, args, iteration, durationMs, ok: result.ok !== false });
+          toolMetrics.push({ name, durationMs, ok: result.ok !== false });
           trajCollector.record({
             type: "tool_result",
             name,
@@ -760,6 +788,9 @@ async function runAgentLoop(req, res, config, model) {
           });
           return { tool_call_id: tc.id, content: result.content };
         } catch (err) {
+          const durationMs = Date.now() - execT0;
+          toolCallsLog.push({ name, args, iteration, durationMs, ok: false, error: true });
+          toolMetrics.push({ name, durationMs, ok: false });
           trajCollector.record({
             type: "tool_error",
             name,
@@ -773,6 +804,15 @@ async function runAgentLoop(req, res, config, model) {
         }
       })
     );
+    const toolsWallMs = Date.now() - toolsWallT0;
+    toolsMsTotal += toolsWallMs;
+    onProgress?.({
+      type: "agent_progress",
+      iteration,
+      llmMs: llmRoundMs,
+      toolsWallMs,
+      tools: toolMetrics,
+    });
     for (const r of results) {
       messages.push({
         role: "tool",
@@ -785,14 +825,14 @@ async function runAgentLoop(req, res, config, model) {
     if (MAX_AGENT_TOOL_CALLS_ENV > 0 && totalToolCalls >= MAX_AGENT_TOOL_CALLS_ENV) {
       lastContent = "(Agent stopped: tool call budget reached; partial context is in the conversation.)";
       stopReason = "tool_budget";
-      res.setHeader("X-Agent-Truncated", "tool_budget");
+      setAgentHeader("X-Agent-Truncated", "tool_budget");
       break;
     }
 
     if (stagnationDetectionEnabled() && detectStagnation(toolCallsLog)) {
       lastContent = "(Agent stopped: repeated identical tool calls with no progress)";
       stopReason = "stagnation";
-      res.setHeader("X-Agent-Stopped", "stagnation");
+      setAgentHeader("X-Agent-Stopped", "stagnation");
       break;
     }
   }
@@ -800,7 +840,7 @@ async function runAgentLoop(req, res, config, model) {
   if (iteration >= maxAgentIterations && lastContent === "") {
     lastContent = "(Agent reached max iterations without final response)";
     stopReason = "max_iterations";
-    res.setHeader("X-Agent-Truncated", "max_iterations");
+    setAgentHeader("X-Agent-Truncated", "max_iterations");
   }
 
   if (
@@ -820,6 +860,7 @@ async function runAgentLoop(req, res, config, model) {
             "Briefly summarize what was accomplished and list any recommended follow-ups (one short paragraph). Do not call tools.",
         },
       ];
+      const reflT0 = Date.now();
       const rr = await backendFetch(url, {
         method: "POST",
         headers: config.headers,
@@ -829,6 +870,7 @@ async function runAgentLoop(req, res, config, model) {
           stream: false,
         }),
       });
+      reflectMs += Date.now() - reflT0;
       if (rr.ok) {
         const rd = await rr.json().catch(() => ({}));
         const reflect = rd.choices?.[0]?.message?.content;
@@ -841,13 +883,20 @@ async function runAgentLoop(req, res, config, model) {
 
   const cite = checkCitationCoverage(lastContent, messages);
   if (!cite.skipped && !cite.ok) {
-    res.setHeader("X-Agent-Citations-Missing", "1");
+    setAgentHeader("X-Agent-Citations-Missing", "1");
   }
 
   trajCollector.record({ type: "stop", reason: stopReason, iterations: iteration });
   const trajectorySnapshot = trajCollector.getSnapshot();
   if (trajectoryApiEnabled()) {
     await saveTrajectory(runId, trajectorySnapshot);
+  }
+
+  if (metricsEnabled()) {
+    recordAgentPhaseMs("single", "llm", llmMsTotal);
+    recordAgentPhaseMs("single", "tools", toolsMsTotal);
+    if (reflectMs > 0) recordAgentPhaseMs("single", "reflect", reflectMs);
+    recordAgentRunSummary("single", stopReason);
   }
 
   return {
@@ -908,22 +957,50 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
         iteration = swarmResult.iteration;
         swarmSteps = swarmResult.swarmSteps;
       } else {
-        const agentLoopResult = await runAgentLoop(req, res, config, model);
+        const useAgentProgressStream = agentMode && !swarmMode;
+        let presetRunId = null;
+        if (useAgentProgressStream) {
+          presetRunId = randomUUID();
+          res.setHeader("Content-Type", "text/event-stream");
+          res.setHeader("Cache-Control", "no-cache");
+          res.setHeader("Connection", "keep-alive");
+          res.setHeader("X-Agent-Run-Id", presetRunId);
+          await setQuotaHeaders(res, workspace, userId);
+          if (typeof res.flushHeaders === "function") res.flushHeaders();
+        }
+        const agentLoopResult = await runAgentLoop(
+          req,
+          res,
+          config,
+          model,
+          useAgentProgressStream
+            ? {
+                presetRunId,
+                onProgress: (evt) => {
+                  try {
+                    res.write(`data: ${JSON.stringify(evt)}\n\n`);
+                  } catch (_) {}
+                },
+              }
+            : null
+        );
         content = agentLoopResult.content;
         iteration = agentLoopResult.iteration;
         toolCalls = agentLoopResult.toolCalls;
         req._agentLoopMeta = agentLoopResult;
       }
 
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.setHeader("X-Agent-Iteration", String(iteration));
-      if (req._agentLoopMeta?.runId) {
-        res.setHeader("X-Agent-Run-Id", req._agentLoopMeta.runId);
+      if (!res.headersSent) {
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.setHeader("X-Agent-Iteration", String(iteration));
+        if (req._agentLoopMeta?.runId) {
+          res.setHeader("X-Agent-Run-Id", req._agentLoopMeta.runId);
+        }
+        await setQuotaHeaders(res, workspace, userId);
+        if (typeof res.flushHeaders === "function") res.flushHeaders();
       }
-      await setQuotaHeaders(res, workspace, userId);
-      res.flushHeaders();
 
       if (toolCalls?.length || swarmSteps?.length || req._agentLoopMeta) {
         const meta = req._agentLoopMeta || {};
@@ -2051,6 +2128,18 @@ apiRoute("get", "/knowledge/search", logRequest, async (req, res) => {
     console.error("Knowledge search error:", err.message);
     return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md for troubleshooting.");
   }
+});
+
+apiRoute("get", "/knowledge/status", logRequest, (req, res) => {
+  const workspace = String(req.query.workspace || "default").trim();
+  const result = knowledgeList({ workspace });
+  if (result.error) {
+    return apiError(res, 400, result.code || "INVALID_INPUT", result.error, result.hint || "");
+  }
+  res.json({
+    workspace,
+    documentCount: Array.isArray(result.items) ? result.items.length : 0,
+  });
 });
 
 apiRoute("get", "/knowledge/list", logRequest, (req, res) => {
@@ -3269,6 +3358,27 @@ apiRoute("get", "/agent/trajectory/:runId", logRequest, userAuth, async (req, re
   res.json(t);
 });
 
+apiRoute("get", "/agent/trajectories", logRequest, userAuth, async (req, res) => {
+  if (!trajectoryApiEnabled()) {
+    return apiError(
+      res,
+      503,
+      "FEATURE_DISABLED",
+      "Trajectory API disabled",
+      "Unset AGENT_TRAJECTORY_API=0 to enable trajectory listing."
+    );
+  }
+  const workspace = String(req.query.workspace || "default").trim();
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 30));
+  const offset = Math.max(0, Number(req.query.offset) || 0);
+  try {
+    const data = await listTrajectories({ workspace, limit, offset });
+    res.json(data);
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err?.message || "List failed", "See server logs.");
+  }
+});
+
 // --- Phase 32: Evaluation Harness ---
 const evalRateLimiter = rateLimit({
   windowMs: 60_000,
@@ -3470,7 +3580,23 @@ app.get("/api/admin/audit/archive-status", adminRateLimiter, adminAuth, logReque
   }
 });
 
-app.use(express.static(join(__dirname, "client")));
+const STATIC_CACHE_MAX_AGE_MS =
+  process.env.STATIC_CACHE_MAX_AGE === "0"
+    ? 0
+    : Number(process.env.STATIC_CACHE_MAX_AGE_MS) || (IS_PRODUCTION ? 86_400_000 : 0);
+
+app.use(
+  express.static(join(__dirname, "client"), {
+    maxAge: STATIC_CACHE_MAX_AGE_MS,
+    etag: true,
+    setHeaders(res, filePath) {
+      const norm = filePath.replace(/\\/g, "/");
+      if (/(^|\/)index\.html$/i.test(norm) || /(^|\/)admin\.html$/i.test(norm) || /(^|\/)eval\.html$/i.test(norm)) {
+        res.setHeader("Cache-Control", "no-store");
+      }
+    },
+  }),
+);
 
 // Phase 34: Graceful shutdown (SIGTERM, SIGINT). Vercel: not applicable.
 const SHUTDOWN_TIMEOUT_MS = Number(process.env.SHUTDOWN_TIMEOUT_MS) || 10_000;
