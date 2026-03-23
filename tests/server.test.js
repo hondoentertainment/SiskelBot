@@ -733,7 +733,8 @@ test("POST /api/embeddings returns 503 when OPENAI_API_KEY not set", async () =>
 });
 
 test("POST /api/embeddings returns 400 when body missing", async () => {
-  const app = await loadApp({ BACKEND: "ollama" });
+  // No deployment API_KEY so chatAuth allows anonymous; dummy OPENAI so route reaches body validation (not 503).
+  const app = await loadApp({ BACKEND: "ollama", API_KEY: "", OPENAI_API_KEY: "sk-test-body-validation" });
   const resEmpty = await request(app).post("/api/embeddings").set("Content-Type", "application/json").send({});
   assert.equal(resEmpty.status, 400);
   assert.equal(resEmpty.body.code, "INVALID_BODY");
