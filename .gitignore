@@ -8,6 +8,8 @@ data/*
 data/eval-sets/*
 !data/eval-sets/example.json
 !data/eval-sets/agent-outcome-examples.json
+!data/eval-sets/traces/
+!data/eval-sets/traces/example-staging.json
 backups/
 
 # Windows desktop build (electron-builder + bundled Node)
