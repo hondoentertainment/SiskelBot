@@ -147,6 +147,8 @@
     "allowRecipeExecution": "Permitir ejecución de pasos de receta",
     "agentMode": "Modo agente",
     "swarmMode": "Modo enjambre",
+    "parallelSwarmAgents": "Especialistas en paralelo (investigador + ejecutor)",
+    "parallelSwarmAgentsHint": "Si está activo, ambos especialistas se ejecutan a la vez. Usa más tokens que el enrutado por intención.",
     "backupRestore": "Copia de seguridad y restauración",
     "backupHint": "Comprimir datos a copias. Requiere admin.",
     "createBackup": "Crear copia",

@@ -522,6 +522,7 @@ app.get("/config", (req, res) => {
     allowRecipeStepExecution: process.env.ALLOW_RECIPE_STEP_EXECUTION === "1",
     scheduleEnabled: process.env.ENABLE_SCHEDULED_RECIPES === "1",
     swarmEnabled: process.env.ENABLE_AGENT_SWARM === "1",
+    swarmParallelAgentsDefault: process.env.SWARM_PARALLEL_AGENTS === "1",
     authRequired: isAuthConfigured(),
     oauthProviders,
     storageBackend:

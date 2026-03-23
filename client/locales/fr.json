@@ -143,6 +143,8 @@
     "allowRecipeExecution": "Autoriser exécution des étapes recette",
     "agentMode": "Mode agent",
     "swarmMode": "Mode essaim",
+    "parallelSwarmAgents": "Spécialistes en parallèle (chercheur + exécuteur)",
+    "parallelSwarmAgentsHint": "Les deux spécialistes tournent en même temps. Consomme plus de jetons que le routage par intention.",
     "backupRestore": "Sauvegarde et restauration",
     "backupHint": "Zipper données vers sauvegardes. Requiert admin.",
     "createBackup": "Créer sauvegarde",

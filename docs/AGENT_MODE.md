@@ -42,9 +42,10 @@ When `ENABLE_AGENT_SWARM=1`, you can use **swarm mode** for multi-specialist orc
 
 ### Flow
 
-1. **Intent detection**: The user message is analyzed (keywords) to pick eligible specialists (researcher, executor, or both).
+1. **Intent detection**: The user message is analyzed (keywords or optional embeddings via `SWARM_INTENT_MODE`) to pick eligible specialists (researcher, executor, or both).
 2. **Parallel execution**: Eligible specialists run their tool loops concurrently. Tool calls within a specialist are also executed in parallel.
-3. **Synthesis**: The synthesizer (no tools) receives aggregated outputs and produces the final answer.
+3. **Phase 78 — parallel specialists (optional)**: Set `SWARM_PARALLEL_AGENTS=1` or send `agentOptions.parallelAgents: true` to always run **researcher** and **executor** together (skips intent narrowing; higher token use). Send `parallelAgents: false` to force intent routing even when the env flag is set.
+4. **Synthesis**: The synthesizer (no tools) receives aggregated outputs and produces the final answer.
 
 ### Enabling swarm mode
 
@@ -62,6 +63,8 @@ Both require `ENABLE_AGENT_SWARM=1`.
 
 - `X-Swarm-Agents`: Number of specialists that ran.
 - `X-Swarm-Duration-Ms`: Total swarm duration in milliseconds.
+- `X-Swarm-Parallel`: `1` when researcher and executor both ran as a forced parallel fan-out.
+- `X-Swarm-Intent-Mode`: `keyword`, `embedding`, or `keyword_fallback`.
 - `X-Agent-Iteration`: Same as agent mode (specialists + synthesizer).
 
 ## Environment variables
@@ -71,6 +74,7 @@ Both require `ENABLE_AGENT_SWARM=1`.
 | `MAX_AGENT_ITERATIONS` | `5` | Maximum tool-call loop iterations per request. |
 | `ALLOW_RECIPE_STEP_EXECUTION` | (unset) | Set `1` to allow `execute_step` when the client also enables it. |
 | `ENABLE_AGENT_SWARM` | (unset) | Set `1` to enable swarm mode when `agentMode` and `swarmMode` are both true. When unset, agent mode behaves as today. |
+| `SWARM_PARALLEL_AGENTS` | (unset) | Phase 78: Set `1` to always run researcher + executor in parallel (unless the client sends `agentOptions.parallelAgents: false`). |
 
 ## Debugging
 
@@ -88,7 +92,7 @@ Reuses `POST /v1/chat/completions`:
   - `messages`, `model`, etc. (same as normal chat)
 - **Request body (when swarm mode)**:
   - `agentMode: true`, `swarmMode: true`
-  - Same `agentOptions` and `messages`
+  - Same `agentOptions` and `messages`; optional `agentOptions.parallelAgents: boolean`.
 - **Response**: SSE stream of final content; same format as non-agent chat.
 
 ## Backend support

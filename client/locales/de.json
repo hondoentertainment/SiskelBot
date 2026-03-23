@@ -143,6 +143,8 @@
     "allowRecipeExecution": "Rezeptschritt-Ausführung erlauben",
     "agentMode": "Agent-Modus",
     "swarmMode": "Schwarm-Modus",
+    "parallelSwarmAgents": "Parallele Spezialisten (Researcher + Executor)",
+    "parallelSwarmAgentsHint": "Beide Spezialisten laufen gleichzeitig. Verbraucht mehr Tokens als Intent-Routing.",
     "backupRestore": "Backup & Wiederherstellung",
     "backupHint": "Daten in Backups zippen. Admin erforderlich.",
     "createBackup": "Backup erstellen",

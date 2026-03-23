@@ -1595,6 +1595,11 @@
                 <span data-i18n="header.swarmMode">Swarm mode</span>
               </label>
               <span id="swarm-mode-hint" class="sr-only">When enabled, multiple agents collaborate on the task. Requires server ENABLE_AGENT_SWARM=1.</span>
+              <label class="settings-toggle-row" style="margin-top:0.5rem;padding-left:1rem;" title="Run researcher and executor at the same time instead of intent-based routing.">
+                <input type="checkbox" id="swarm-parallel-agents" aria-describedby="swarm-parallel-hint">
+                <span data-i18n="header.parallelSwarmAgents">Parallel specialists (researcher + executor)</span>
+              </label>
+              <span id="swarm-parallel-hint" class="sr-only" data-i18n="header.parallelSwarmAgentsHint">When enabled, both specialists run together. Uses more tokens than intent-based routing.</span>
             </div>
             <div id="agent-server-defaults-hint" class="settings-field settings-field-full" style="display:none;margin-top:0.5rem;padding:0.5rem 0.65rem;background:rgba(59,130,246,0.08);border-radius:6px;border:1px solid #334155;" role="status">
               <p class="panel-hint" style="margin:0;font-size:0.8125rem;color:#94a3b8;" data-i18n="settings.serverAgentDefaultsHint">The host has deployment-wide default agent instructions enabled (AGENT_DEFAULT_SYSTEM). Your workspace settings are applied after those.</p>
@@ -1871,6 +1876,7 @@
     const RECIPE_EXECUTION_STORAGE_KEY = 'siskelbot-allow-recipe-execution';
     const AGENT_MODE_STORAGE_KEY = 'siskelbot-agent-mode';
     const SWARM_MODE_STORAGE_KEY = 'siskelbot-swarm-mode';
+    const SWARM_PARALLEL_STORAGE_KEY = 'siskelbot-swarm-parallel-agents';
     const CONVERSATIONS_STORAGE_KEY = 'siskelbot-conversations';
     const INSTALL_DISMISSED_KEY = 'siskelbot-install-dismissed';
     const NOTIFICATIONS_STORAGE_KEY = 'siskelbot-notifications';
@@ -2428,6 +2434,7 @@
 
     // Swarm mode toggle (Settings) - shown when config.swarmEnabled
     const swarmModeCheckbox = document.getElementById('swarm-mode');
+    const swarmParallelAgentsCheckbox = document.getElementById('swarm-parallel-agents');
     const swarmModeSection = document.getElementById('swarm-mode-section');
     if (swarmModeCheckbox) {
       try {
@@ -2438,6 +2445,18 @@
           localStorage.setItem(SWARM_MODE_STORAGE_KEY, swarmModeCheckbox.checked ? '1' : '0');
         } catch (_) {}
         syncInteractionModeFromCheckboxes();
+      });
+    }
+    if (swarmParallelAgentsCheckbox) {
+      try {
+        const storedParallel = localStorage.getItem(SWARM_PARALLEL_STORAGE_KEY);
+        swarmParallelAgentsCheckbox.checked =
+          storedParallel !== null ? storedParallel === '1' : !!config.swarmParallelAgentsDefault;
+      } catch (_) {}
+      swarmParallelAgentsCheckbox.addEventListener('change', () => {
+        try {
+          localStorage.setItem(SWARM_PARALLEL_STORAGE_KEY, swarmParallelAgentsCheckbox.checked ? '1' : '0');
+        } catch (_) {}
       });
     }
     function updateSwarmSectionVisibility() {
@@ -4755,6 +4774,9 @@
           allowExecution: getAllowRecipeExecution(),
           workspace: workspace,
         };
+        if (isSwarmMode && swarmParallelAgentsCheckbox) {
+          payloadObj.agentOptions.parallelAgents = swarmParallelAgentsCheckbox.checked === true;
+        }
       } else {
         payloadObj.agentOptions = { workspace: workspace };
       }
@@ -4851,8 +4873,10 @@
           let meta = ttfb !== null ? `First token: ${ttfb}ms` : null;
           const swarmAgents = res.headers.get('X-Swarm-Agents');
           const swarmDuration = res.headers.get('X-Swarm-Duration-Ms');
-          if (swarmAgents || swarmDuration) {
+          const swarmParallel = res.headers.get('X-Swarm-Parallel');
+          if (swarmAgents || swarmDuration || swarmParallel) {
             const parts = [];
+            if (swarmParallel === '1') parts.push('parallel');
             if (swarmAgents) parts.push(`${swarmAgents} agents`);
             if (swarmDuration) parts.push(`${Number(swarmDuration) / 1000}s`);
             const swarmMeta = parts.join(' · ');

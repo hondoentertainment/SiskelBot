@@ -202,6 +202,7 @@ Enable developers and teams to build AI-powered workflows with:
 | 75 | API hardening — OpenAPI deprecation policy; idempotency keys on `POST /workspaces`; `examples/sdk-starter.ts` |
 | 76 | Multi-region / HA — operator design note `docs/MULTI_REGION_HA.md` |
 | 77 | Plugin pinning — `PLUGINS_CONFIG_SHA256`; curated `data/plugin-registry.json`; `docs/PLUGINS.md` |
+| 78 | Parallel swarm specialists — `SWARM_PARALLEL_AGENTS`, `agentOptions.parallelAgents`, `resolveSwarmSpecialistNames`; headers `X-Swarm-Parallel`, `X-Swarm-Intent-Mode`; Settings UI + i18n |
 
 ---
 
