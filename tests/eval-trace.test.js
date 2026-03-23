@@ -43,9 +43,9 @@ test("example eval set trace cases pass offline (Phase 65)", async () => {
   const example = JSON.parse(raw);
   const traceOnly = {
     ...example,
-    cases: (example.cases || []).filter((c) => c.target === "trace"),
+    cases: (example.cases || []).filter((c) => c.target === "trace" || c.target === "staging_trace"),
   };
-  assert.ok(traceOnly.cases.length >= 1, "example.json should include trace cases");
+  assert.ok(traceOnly.cases.length >= 1, "example.json should include trace or staging_trace cases");
   const out = await runEvalSet(traceOnly, { baseUrl: "http://127.0.0.1:9" });
   assert.equal(out.passed, out.total, "all golden-trace cases should pass");
   for (const r of out.results) {

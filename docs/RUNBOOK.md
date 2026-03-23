@@ -379,12 +379,13 @@ Evaluation harness for automated testing of chat and task-planning APIs against 
   "name": "string",
   "description": "optional",
   "chatRequestDefaults": "optional object: agentMode, swarmMode, agentOptions, tools, tool_choice, temperature, top_p, max_tokens, stream — merged into chat cases",
+  "stagingTraceRoot": "optional; base directory for staging_trace relative paths (default: process.cwd())",
   "cases": [
     {
       "id": "string",
       "prompt": "string",
       "systemPrompt": "optional",
-      "target": "chat | task | trace | judge (default: chat)",
+      "target": "chat | task | trace | staging_trace | judge (default: chat)",
       "skip": "optional boolean; if true, case is not run (counts toward total, increments skipped)",
       "skipReason": "optional string shown in results",
       "chatRequest": "optional object; same keys as chatRequestDefaults, merged last",
@@ -396,11 +397,15 @@ Evaluation harness for automated testing of chat and task-planning APIs against 
       "expectedMinAgentActivityToolCalls": "minimum count of named tool calls in agent_activity",
       "expectedSwarmStepNames": "specialist/step labels that must appear in agent_activity.swarmSteps",
       "expectedMinSwarmSteps": "minimum swarm step count",
-      "judgeRubric": "for target judge: rubric string passed to eval judge LLM"
+      "judgeRubric": "for target judge: rubric string passed to eval judge LLM",
+      "stagingTraceFile": "for target staging_trace: JSON file path (relative to stagingTraceRoot or cwd, or absolute)",
+      "traceFile": "alias for stagingTraceFile"
     }
   ]
 }
 ```
+
+**staging_trace:** Loads a JSON recording (e.g. exported from staging) and applies the same **golden-trace** criteria as `target: trace` (`expectedToolSequence`, `expectedToolNames`, `expectedToolCalls`) plus optional **agent_activity** criteria. Supported record shapes: `goldenTrace` / `trace` arrays, top-level `agentActivity`, top-level `toolCalls`, or trajectory-style `steps` with `type: tool_call`. See `data/eval-sets/traces/example-staging.json`.
 
 For **live agent/swarm** checks, the server returns SSE with an `agent_activity` event; the runner collects tool names and swarm step labels from that payload. Use **`skip: true`** on templates that require a real backend so CI does not call the LLM (see `data/eval-sets/example.json` and `data/eval-sets/agent-outcome-examples.json`). Duplicate a case and set `skip: false` in staging to run manually.
 

@@ -18,6 +18,13 @@ test("normalizeWorkspaceAgentSettings trims and filters snippets", () => {
   });
   assert.equal(n.defaultSystemPrompt, "hi");
   assert.deepEqual(n.memorySnippets, ["x", "y"]);
+  assert.deepEqual(n.allowedTools, []);
+});
+
+test("normalizeWorkspaceAgentSettings caps allowedTools", () => {
+  const many = Array.from({ length: 80 }, (_, i) => `tool_${i}`);
+  const n = normalizeWorkspaceAgentSettings({ allowedTools: many });
+  assert.ok(n.allowedTools.length <= 48);
 });
 
 test("buildWorkspaceAgentAugmentation includes approved memory heading", () => {

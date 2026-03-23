@@ -44,6 +44,14 @@
       ]
     },
     {
+      "id": "staging-trace-replay-example",
+      "target": "staging_trace",
+      "stagingTraceFile": "data/eval-sets/traces/example-staging.json",
+      "expectedToolSequence": ["list_context", "search_context"],
+      "expectedMinAgentActivityToolCalls": 2,
+      "expectedAgentActivityToolNames": ["search_context"]
+    },
+    {
       "id": "template-live-agent-tools",
       "skip": true,
       "skipReason": "Requires live LLM with tools; set skip:false to run manually. See also data/eval-sets/agent-outcome-examples.json.",

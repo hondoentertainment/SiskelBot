@@ -85,6 +85,10 @@ Commands:
   chat "message"              Send message, stream response
     --no-stream               Wait for full response
     --model <name>            Model (e.g. gpt-4)
+    --agent                   Set agentMode (tool loop on server)
+    --swarm                   Set swarmMode (requires ENABLE_AGENT_SWARM on server)
+    --allow-execution         agentOptions.allowExecution (recipe steps; server must allow)
+    --max-iterations <n>      agentOptions.maxIterations
     --url <url>               Base URL (default: SISKELBOT_URL or http://localhost:3000)
     --api-key <key>           API key (default: SISKELBOT_API_KEY or API_KEY)
     --workspace <id>          Workspace (default: default)
@@ -135,12 +139,33 @@ async function cmdChat(baseUrl, apiKey, args, json, noStream, model, workspace) 
   const msg = args[0];
   if (!msg) err('Usage: siskelbot chat "Your message"');
 
+  const agentMode = hasFlag("--agent");
+  const swarmMode = hasFlag("--swarm");
+  const allowExecution = hasFlag("--allow-execution");
+  const maxIterRaw = getFlag("--max-iterations");
+
   const body = {
     model: model || undefined,
     messages: [{ role: "user", content: msg }],
     stream: !noStream,
   };
-  if (workspace !== "default") body.agentOptions = { workspace };
+  if (agentMode) body.agentMode = true;
+  if (swarmMode) body.swarmMode = true;
+
+  const needAgentOpts =
+    workspace !== "default" ||
+    allowExecution ||
+    agentMode ||
+    swarmMode ||
+    (maxIterRaw != null && String(maxIterRaw).trim() !== "");
+  if (needAgentOpts) {
+    body.agentOptions = { workspace };
+    if (allowExecution) body.agentOptions.allowExecution = true;
+    if (maxIterRaw != null && String(maxIterRaw).trim() !== "") {
+      const n = Number(maxIterRaw);
+      if (Number.isFinite(n) && n >= 1) body.agentOptions.maxIterations = Math.floor(n);
+    }
+  }
 
   try {
     const res = await fetch(`${baseUrl}/v1/chat/completions`, {

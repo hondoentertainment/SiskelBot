@@ -31,3 +31,13 @@ test("intersectClientToolsWithAllowlist keeps only allowed names", async () => {
   assert.equal(x.length, 1);
   assert.equal(x[0].function.name, "list_context");
 });
+
+test("filterToolsByWorkspaceAllowlist intersects server tool list", async () => {
+  delete process.env.AGENT_TOOLS_ALLOWLIST;
+  const mod = await import("../lib/agent-tools.js");
+  const full = mod.getToolsSchema();
+  const one = mod.filterToolsByWorkspaceAllowlist(full, ["list_context"]);
+  assert.ok(one.length >= 1);
+  assert.ok(one.every((t) => t.function.name === "list_context"));
+  assert.equal(mod.filterToolsByWorkspaceAllowlist(full, []).length, full.length);
+});

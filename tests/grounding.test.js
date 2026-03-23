@@ -60,3 +60,20 @@ test("checkCitationCoverage fails when citations required and answer omits sourc
     process.env.AGENT_REQUIRE_CITATIONS = prev;
   }
 });
+
+test("checkCitationCoverage bracket mode requires [id] when enabled", () => {
+  const prevReq = process.env.AGENT_REQUIRE_CITATIONS;
+  const prevBr = process.env.AGENT_CITATION_BRACKET_IDS;
+  process.env.AGENT_REQUIRE_CITATIONS = "1";
+  process.env.AGENT_CITATION_BRACKET_IDS = "1";
+  try {
+    const toolMsg = { role: "tool", content: '{"snippets":[{"id":"uuid-abc","title":"My Doc","snippet":"hello"}]}' };
+    const bad = checkCitationCoverage("Answer cites uuid-abc in prose only.", [toolMsg]);
+    assert.equal(bad.ok, false);
+    const good = checkCitationCoverage("See [uuid-abc] for proof.", [toolMsg]);
+    assert.equal(good.ok, true);
+  } finally {
+    process.env.AGENT_REQUIRE_CITATIONS = prevReq;
+    process.env.AGENT_CITATION_BRACKET_IDS = prevBr;
+  }
+});
