@@ -733,18 +733,26 @@ test("POST /api/embeddings returns 503 when OPENAI_API_KEY not set", async () =>
 });
 
 test("POST /api/embeddings returns 400 when body missing", async () => {
-  // No deployment API_KEY so chatAuth allows anonymous; dummy OPENAI so route reaches body validation (not 503).
-  const app = await loadApp({ BACKEND: "ollama", API_KEY: "", OPENAI_API_KEY: "sk-test-body-validation" });
-  const resEmpty = await request(app).post("/api/embeddings").set("Content-Type", "application/json").send({});
-  assert.equal(resEmpty.status, 400);
-  assert.equal(resEmpty.body.code, "INVALID_BODY");
-  assert.ok(resEmpty.body.hint);
+  // loadApp restores env before requests run; keepEnv so embeddingsAvailable() still sees OPENAI_API_KEY at request time.
+  const { app, restore } = await loadAppKeepEnv({
+    BACKEND: "ollama",
+    API_KEY: "",
+    OPENAI_API_KEY: "sk-test-body-validation",
+  });
+  try {
+    const resEmpty = await request(app).post("/api/embeddings").set("Content-Type", "application/json").send({});
+    assert.equal(resEmpty.status, 400);
+    assert.equal(resEmpty.body.code, "INVALID_BODY");
+    assert.ok(resEmpty.body.hint);
 
-  const resNoText = await request(app)
-    .post("/api/embeddings")
-    .set("Content-Type", "application/json")
-    .send({ texts: [] });
-  assert.equal(resNoText.status, 400);
+    const resNoText = await request(app)
+      .post("/api/embeddings")
+      .set("Content-Type", "application/json")
+      .send({ texts: [] });
+    assert.equal(resNoText.status, 400);
+  } finally {
+    restore();
+  }
 });
 
 test("POST /api/embeddings returns 200 with embedding when OPENAI_API_KEY set", async () => {
