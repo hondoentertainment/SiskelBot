@@ -16,22 +16,19 @@ RUN npm ci --omit=dev
 FROM node:20-alpine
 WORKDIR /app
 
-# Create non-root user
-RUN addgroup -g 1000 appgroup && \
-    adduser -u 1000 -G appgroup -D appuser
+# Official node:alpine already defines user `node` (uid/gid 1000). Do not addgroup -g 1000 — it conflicts on current base images.
 
 # Copy dependencies from builder
 COPY --from=builder /app/node_modules ./node_modules
 COPY . .
 
 # Create data directory and set ownership
-RUN mkdir -p data && chown -R appuser:appgroup data
+RUN mkdir -p data && chown -R node:node data
 
 # Install curl for health check (lightweight)
 RUN apk add --no-cache curl
 
-# Switch to non-root user
-USER appuser
+USER node
 
 EXPOSE 3000
 

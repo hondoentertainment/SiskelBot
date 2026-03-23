@@ -61,8 +61,11 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "electron": "^34.0.0",
     "electron-builder": "^25.1.8",
+    "eslint": "^10.1.0",
+    "globals": "^17.4.0",
     "supertest": "^7.2.2"
   },
   "optionalDependencies": {
