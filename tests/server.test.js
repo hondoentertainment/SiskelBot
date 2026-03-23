@@ -1041,6 +1041,10 @@ test("checkCriteria (lib/eval-runner)", async () => {
   assert.strictEqual(checkCriteria({ expectedContains: "hello" }, "hi there").pass, false);
   assert.strictEqual(checkCriteria({ expectedPattern: "\\d+" }, "abc123").pass, true);
   assert.strictEqual(checkCriteria({ expectedJson: ["type", "name"] }, '{"type":"task","name":"x","steps":[]}', { type: "task", name: "x", steps: [] }).pass, true);
+  assert.strictEqual(
+    checkCriteria({ expectedMinAgentActivityToolCalls: 1 }, "x", null, null).pass,
+    false
+  );
 });
 
 test("runEvalSet returns results structure", async () => {
@@ -1053,6 +1057,7 @@ test("runEvalSet returns results structure", async () => {
   assert.ok(res.results.length === 1);
   assert.ok(typeof res.passed === "number");
   assert.ok(typeof res.total === "number");
+  assert.ok(typeof res.skipped === "number");
   assert.ok(typeof res.durationMs === "number");
 });
 

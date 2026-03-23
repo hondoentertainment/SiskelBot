@@ -2,7 +2,12 @@ node_modules/
 .env
 *.log
 .vercel
-data/
+# Runtime / local data (do not commit)
+data/*
+!data/eval-sets/
+data/eval-sets/*
+!data/eval-sets/example.json
+!data/eval-sets/agent-outcome-examples.json
 backups/
 
 # Windows desktop build (electron-builder + bundled Node)

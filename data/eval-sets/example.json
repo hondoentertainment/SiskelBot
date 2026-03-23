@@ -1,0 +1,47 @@
+{
+  "id": "example",
+  "name": "Example Eval Set",
+  "description": "Sample eval cases for chat and task planning",
+  "cases": [
+    {
+      "id": "greeting",
+      "prompt": "Say hello in one word.",
+      "target": "chat",
+      "expectedContains": "hello"
+    },
+    {
+      "id": "task-plan-simple",
+      "prompt": "Create a plan to water the plants.",
+      "target": "task",
+      "expectedJson": ["type", "name", "steps"]
+    },
+    {
+      "id": "trace-tool-order",
+      "target": "trace",
+      "trace": [
+        { "name": "get_recipe", "arguments": { "recipeId": "r1" } },
+        { "name": "list_context", "arguments": {} }
+      ],
+      "expectedToolSequence": ["get_recipe", "list_context"]
+    },
+    {
+      "id": "trace-tool-multiset",
+      "target": "trace",
+      "trace": [
+        { "tool": "search_context", "arguments": { "query": "docs" } },
+        { "name": "list_context", "args": {} }
+      ],
+      "expectedToolNames": ["list_context", "search_context"]
+    },
+    {
+      "id": "trace-tool-args",
+      "target": "trace",
+      "trace": [
+        { "name": "search_context", "arguments": { "query": "hello", "workspace": "default" } }
+      ],
+      "expectedToolCalls": [
+        { "name": "search_context", "requiredArgKeys": ["query"] }
+      ]
+    }
+  ]
+}

@@ -2,6 +2,7 @@
 
 ## Shipped in this iteration
 
+- **Phase 94:** Eval outcome assertions on live agent SSE — `expectedAgentActivityToolNames`, `expectedAgentActivityToolSequence`, `expectedMinAgentActivityToolCalls`, `expectedSwarmStepNames`, `expectedMinSwarmSteps`; `parseSseEvalResponse` reads `agent_activity` from the stream; per-case `skip` / `skipReason` for templates; example set `data/eval-sets/agent-outcome-examples.json`.
 - **Phase 60:** `AGENT_DEFAULT_SYSTEM` — deployment-wide default system text merged into agent and swarm LLM calls (see `.env.example`, `lib/agent-defaults.js`).
 - **Phases 61–62:** Per-workspace `defaultSystemPrompt` + `memorySnippets[]` — stored at `data/users/{storageUserId}/workspaces/{id}/agent-settings.json`, merged after the deployment default in **agent mode** and **swarm** (specialists + synthesizer). API: `GET` / `PUT /api/workspaces/:id/agent-settings` (and `/api/v1/...`). See `lib/workspace-agent-settings.js`, `.env.example` (`WORKSPACE_AGENT_*` caps).
 - **Phase 63:** Settings panel shows a notice when `GET /config` → `agentDefaultSystemSet` (no prompt text exposed).

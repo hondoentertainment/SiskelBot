@@ -1,0 +1,33 @@
+{
+  "id": "agent-outcome-examples",
+  "name": "Agent outcome examples (Phase 94)",
+  "description": "Eval cases showing agentMode + SSE agent_activity assertions. Live cases use skip:true so CI and default runs do not require a tool-capable LLM. Clear skip (or copy the case) to run manually against your backend.",
+  "chatRequestDefaults": {
+    "agentMode": true,
+    "stream": true,
+    "agentOptions": {
+      "workspace": "default",
+      "allowExecution": false
+    }
+  },
+  "cases": [
+    {
+      "id": "live-list-context-tools",
+      "skip": true,
+      "skipReason": "Requires live LLM with tool calling; set skip:false to run manually",
+      "prompt": "Use your tools to list the titles of indexed context documents, then reply with one short sentence summarizing what you found.",
+      "expectedAgentActivityToolNames": ["list_context"],
+      "expectedMinAgentActivityToolCalls": 1,
+      "expectedContains": "context"
+    },
+    {
+      "id": "live-swarm-checklist",
+      "skip": true,
+      "skipReason": "Requires ENABLE_AGENT_SWARM=1 and a capable backend; set skip:false to run manually",
+      "prompt": "Produce a short checklist (3 items) for verifying a deployment is healthy after release.",
+      "swarmMode": true,
+      "expectedContains": "1",
+      "expectedMinSwarmSteps": 1
+    }
+  ]
+}

@@ -199,8 +199,10 @@
           resultsBody.innerHTML = "";
           return;
         }
-        const { results, passed, total, durationMs } = data;
-        resultsSummary.innerHTML = `<strong>${passed}/${total}</strong> passed in ${durationMs}ms`;
+        const { results, passed, total, durationMs, skipped } = data;
+        const skipNote =
+          typeof skipped === "number" && skipped > 0 ? ` (${skipped} skipped)` : "";
+        resultsSummary.innerHTML = `<strong>${passed}/${total}</strong> passed in ${durationMs}ms${skipNote}`;
         resultsBody.innerHTML = results
           .map(
             (res) =>
