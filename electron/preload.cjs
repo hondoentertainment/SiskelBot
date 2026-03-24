@@ -1,5 +1,5 @@
 /**
- * Phase 101 — IPC bridge & preload.
+ * Phases 101–106 — IPC bridge & preload.
  *
  * Exposes a minimal, safe `window.siskelDesktop` API to the renderer
  * via contextBridge.  The main process registers matching ipcMain
@@ -14,9 +14,12 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 // Allowed IPC channels (documented for security review):
-// Send:    desktop:new-chat, desktop:set-tray-badge, desktop:set-auto-launch, desktop:show-notification
-// Invoke:  desktop:get-version, desktop:get-platform, desktop:get-auto-launch
-// Receive: desktop:deep-link, desktop:update-available, desktop:theme-changed
+// Send:    desktop:new-chat, desktop:set-tray-badge, desktop:set-auto-launch,
+//          desktop:show-notification, desktop:set-notification-prefs
+// Invoke:  desktop:get-version, desktop:get-platform, desktop:get-auto-launch,
+//          desktop:get-notification-prefs
+// Receive: desktop:deep-link, desktop:update-available, desktop:theme-changed,
+//          desktop:shortcut
 
 contextBridge.exposeInMainWorld("siskelDesktop", {
   /** App version from package.json */
@@ -43,6 +46,16 @@ contextBridge.exposeInMainWorld("siskelDesktop", {
   /** Request a new chat (tells main process) */
   newChat: () => ipcRenderer.send("desktop:new-chat"),
 
+  // ── Phase 102: Notification preferences ─────────────────────────
+  /** Get notification preferences (per-event toggles) */
+  getNotificationPrefs: () =>
+    ipcRenderer.invoke("desktop:get-notification-prefs"),
+
+  /** Update notification preferences */
+  setNotificationPrefs: (prefs) =>
+    ipcRenderer.send("desktop:set-notification-prefs", prefs),
+
+  // ── Phase 103: Deep link listener ───────────────────────────────
   /**
    * Listen for deep-link URLs forwarded from the main process.
    * Returns an unsubscribe function.
@@ -51,6 +64,18 @@ contextBridge.exposeInMainWorld("siskelDesktop", {
     const handler = (_event, url) => callback(url);
     ipcRenderer.on("desktop:deep-link", handler);
     return () => ipcRenderer.removeListener("desktop:deep-link", handler);
+  },
+
+  // ── Phase 104: Shortcut listener ────────────────────────────────
+  /**
+   * Listen for keyboard shortcuts forwarded from the main process.
+   * Shortcut names: "command-palette", "settings", "cycle-next", "cycle-prev"
+   * Returns an unsubscribe function.
+   */
+  onShortcut: (callback) => {
+    const handler = (_event, shortcutName) => callback(shortcutName);
+    ipcRenderer.on("desktop:shortcut", handler);
+    return () => ipcRenderer.removeListener("desktop:shortcut", handler);
   },
 
   /**

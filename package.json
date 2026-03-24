@@ -122,7 +122,15 @@
           ]
         }
       ],
-      "artifactName": "${productName}-${version}-Windows-${arch}.${ext}"
+      "artifactName": "${productName}-${version}-Windows-${arch}.${ext}",
+      "protocols": [
+        {
+          "name": "Siskel Bot",
+          "schemes": [
+            "siskelbot"
+          ]
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -151,7 +159,15 @@
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "protocols": [
+        {
+          "name": "Siskel Bot",
+          "schemes": [
+            "siskelbot"
+          ]
+        }
+      ]
     },
     "linux": {
       "target": [
@@ -180,7 +196,8 @@
       "desktop": {
         "Name": "Siskel Bot",
         "Comment": "AI streaming assistant",
-        "Categories": "Development;Utility;"
+        "Categories": "Development;Utility;",
+        "MimeType": "x-scheme-handler/siskelbot;"
       }
     }
   }

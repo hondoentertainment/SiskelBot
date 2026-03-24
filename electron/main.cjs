@@ -2,7 +2,8 @@
  * Siskel Bot desktop shell (Electron).
  * Spawns the Node Express server, stores data under app.getPath("userData"), opens a window.
  *
- * Phases 97–101: native menu, system tray, auto-updater, IPC bridge.
+ * Phases 97–106: native menu, system tray, auto-updater, IPC bridge,
+ *   native notifications, deep linking, shortcuts, window state, model manager.
  */
 const { app, BrowserWindow, shell, dialog } = require("electron");
 const { spawn } = require("child_process");
@@ -14,6 +15,10 @@ const { buildMenu } = require("./menu.cjs");
 const { createTray, setTrayBadge, destroyTray } = require("./tray.cjs");
 const { initUpdater, checkForUpdates, destroyUpdater } = require("./updater.cjs");
 const { registerIpcHandlers } = require("./ipc-handlers.cjs");
+const { connectNotificationWs, disconnectNotificationWs } = require("./notifications.cjs");
+const { registerProtocol, handleDeepLink, extractDeepLinkFromArgv } = require("./deep-link.cjs");
+const { registerGlobalShortcuts, registerLocalShortcuts, unregisterAll: unregisterShortcuts } = require("./shortcuts.cjs");
+const { loadWindowState, trackWindowState } = require("./window-state.cjs");
 
 /** @type {import('child_process').ChildProcess | null} */
 let serverProcess = null;
@@ -23,6 +28,9 @@ let serverPort = null;
 let serverBaseUrl = "http://127.0.0.1:38447";
 
 const closeToTray = process.env.DESKTOP_CLOSE_TO_TRAY === "1";
+
+// Phase 103: register protocol handler early (before app.whenReady)
+registerProtocol();
 
 function getFreePort() {
   return new Promise((resolve, reject) => {
@@ -143,9 +151,9 @@ async function startServer() {
     console.error("[desktop] Failed to spawn server:", err.message);
   });
 
-  serverProcess.on("exit", (code, signal) => {
+  serverProcess.on("exit", (code, _signal) => {
     if (code && code !== 0 && !app.isQuitting) {
-      console.error("[desktop] Server exited:", code, signal);
+      console.error("[desktop] Server exited:", code, _signal);
     }
     serverProcess = null;
   });
@@ -169,9 +177,12 @@ function onNewChat() {
 }
 
 function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 840,
+  // Phase 105: load persisted window state
+  const savedState = loadWindowState();
+
+  const winOpts = {
+    width: savedState.width,
+    height: savedState.height,
     minWidth: 800,
     minHeight: 600,
     show: false,
@@ -181,7 +192,21 @@ function createWindow() {
       sandbox: true,
       preload: path.join(__dirname, "preload.cjs"),
     },
-  });
+  };
+
+  // Only set position if we have saved coordinates
+  if (savedState.x !== undefined && savedState.y !== undefined) {
+    winOpts.x = savedState.x;
+    winOpts.y = savedState.y;
+  }
+
+  mainWindow = new BrowserWindow(winOpts);
+
+  // Phase 105: track state changes and restore maximized
+  trackWindowState(mainWindow);
+  if (savedState.isMaximized) {
+    mainWindow.maximize();
+  }
 
   mainWindow.once("ready-to-show", () => mainWindow?.show());
 
@@ -222,19 +247,38 @@ function createWindow() {
     onSetBadge: setTrayBadge,
     mainWindow,
   });
+
+  // Phase 102: connect notification WebSocket
+  connectNotificationWs(serverBaseUrl, mainWindow);
+
+  // Phase 104: register keyboard shortcuts
+  registerGlobalShortcuts(mainWindow);
+  registerLocalShortcuts(mainWindow, { serverBaseUrl });
 }
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
-  app.on("second-instance", (_event, _argv) => {
+  app.on("second-instance", (_event, argv) => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();
       mainWindow.focus();
     }
-    // Phase 103 (future): forward deep-link URL from argv
+    // Phase 103: forward deep-link URL from argv (Windows/Linux)
+    const deepUrl = extractDeepLinkFromArgv(argv);
+    if (deepUrl && mainWindow) {
+      handleDeepLink(mainWindow, serverBaseUrl, deepUrl);
+    }
+  });
+
+  // Phase 103: macOS open-url event
+  app.on("open-url", (event, url) => {
+    event.preventDefault();
+    if (mainWindow) {
+      handleDeepLink(mainWindow, serverBaseUrl, url);
+    }
   });
 
   app.whenReady().then(async () => {
@@ -264,6 +308,8 @@ if (!gotLock) {
 
   app.on("before-quit", () => {
     app.isQuitting = true;
+    unregisterShortcuts();
+    disconnectNotificationWs();
     destroyUpdater();
     destroyTray();
     stopServer();

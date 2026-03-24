@@ -165,7 +165,68 @@ The renderer has access to `window.siskelDesktop` (when running in Electron):
 | `onThemeChanged(callback)` | Listen for OS dark/light changes (returns unsubscribe) |
 | `onUpdateAvailable(callback)` | Listen for update events (returns unsubscribe) |
 
+| `getNotificationPrefs()` | Get per-event notification toggles (async) |
+| `setNotificationPrefs(prefs)` | Update notification preferences |
+| `onShortcut(callback)` | Listen for keyboard shortcuts (returns unsubscribe) |
+
 The preload script uses `contextBridge` with `contextIsolation: true` and `sandbox: true` — no Node APIs leak to the page.
+
+## Native notifications (Phase 102)
+
+Desktop builds connect to the server's WebSocket and show native OS notifications for:
+- **new_message** — new chat message received
+- **agent_complete** — agent task finished
+- **swarm_complete** — multi-agent swarm finished
+- **schedule_fired** — scheduled recipe executed
+
+Click any notification to focus the app window. Per-event toggles are persisted in `<userData>/notification-prefs.json` and can be managed via `window.siskelDesktop.getNotificationPrefs()` / `setNotificationPrefs()`.
+
+## Deep linking (Phase 103)
+
+The app registers the `siskelbot://` protocol. Supported URLs:
+
+| URL | Action |
+|-----|--------|
+| `siskelbot://chat?prompt=hello` | Open chat with pre-filled prompt |
+| `siskelbot://workspace/<id>` | Switch to workspace |
+| `siskelbot://recipe/<name>` | Open a recipe |
+
+Platform support: macOS `open-url` event, Windows registry via NSIS installer, Linux `.desktop` MimeType.
+
+## Keyboard shortcuts (Phase 104)
+
+**Global hotkey:** `Ctrl+Shift+S` (or `Cmd+Shift+S` on macOS) toggles the window. Override with:
+
+```bash
+DESKTOP_GLOBAL_HOTKEY="CmdOrCtrl+Shift+B" npm run desktop
+```
+
+**In-app shortcuts** (via `before-input-event`):
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+N` | New chat |
+| `Ctrl+L` | Clear / reload chat |
+| `Ctrl+K` | Command palette |
+| `Ctrl+,` | Open settings |
+| `Ctrl+Tab` | Next conversation |
+| `Ctrl+Shift+Tab` | Previous conversation |
+
+## Window state persistence (Phase 105)
+
+Window position, size, and maximized state are saved to `<userData>/window-state.json` and restored on next launch. Multi-monitor safe — if the saved position is off-screen, the window resets to the primary display.
+
+## Local model manager (Phase 106)
+
+Desktop builds expose API routes to manage Ollama models:
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET | `/api/desktop/models` | List installed models (size, quantization, family) |
+| POST | `/api/desktop/models/pull` | Pull a model (SSE progress stream) |
+| DELETE | `/api/desktop/models/:name` | Delete a model |
+
+These routes are only available when `ELECTRON_DESKTOP=1`. They proxy to the local Ollama API (`OLLAMA_URL`, default `http://localhost:11434`).
 
 ## Security notes
 

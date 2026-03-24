@@ -1,10 +1,11 @@
 /**
- * Phase 101 — IPC main-process handlers.
+ * Phases 101–106 — IPC main-process handlers.
  *
  * Registers ipcMain handlers that match the channels exposed by
  * electron/preload.cjs.
  */
 const { ipcMain, app, Notification, nativeTheme } = require("electron");
+const { getPrefs, setPrefs } = require("./notifications.cjs");
 
 /**
  * Register all IPC handlers.
@@ -21,6 +22,9 @@ function registerIpcHandlers({ onNewChat, onSetBadge, mainWindow } = {}) {
   ipcMain.handle("desktop:get-auto-launch", () => {
     return app.getLoginItemSettings().openAtLogin;
   });
+
+  // Phase 102: notification preferences
+  ipcMain.handle("desktop:get-notification-prefs", () => getPrefs());
 
   // ── Send (fire-and-forget) ────────────────────────────────────────
   ipcMain.on("desktop:new-chat", () => {
@@ -49,6 +53,13 @@ function registerIpcHandlers({ onNewChat, onSetBadge, mainWindow } = {}) {
         }
       });
       n.show();
+    }
+  });
+
+  // Phase 102: update notification preferences
+  ipcMain.on("desktop:set-notification-prefs", (_event, prefs) => {
+    if (prefs && typeof prefs === "object") {
+      setPrefs(prefs);
     }
   });
 
