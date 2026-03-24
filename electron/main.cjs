@@ -1,6 +1,8 @@
 /**
  * Siskel Bot desktop shell (Electron).
  * Spawns the Node Express server, stores data under app.getPath("userData"), opens a window.
+ *
+ * Phases 97–101: native menu, system tray, auto-updater, IPC bridge.
  */
 const { app, BrowserWindow, shell, dialog } = require("electron");
 const { spawn } = require("child_process");
@@ -8,12 +10,19 @@ const path = require("path");
 const net = require("net");
 const fs = require("fs");
 
+const { buildMenu } = require("./menu.cjs");
+const { createTray, setTrayBadge, destroyTray } = require("./tray.cjs");
+const { initUpdater, checkForUpdates, destroyUpdater } = require("./updater.cjs");
+const { registerIpcHandlers } = require("./ipc-handlers.cjs");
+
 /** @type {import('child_process').ChildProcess | null} */
 let serverProcess = null;
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
 let serverPort = null;
 let serverBaseUrl = "http://127.0.0.1:38447";
+
+const closeToTray = process.env.DESKTOP_CLOSE_TO_TRAY === "1";
 
 function getFreePort() {
   return new Promise((resolve, reject) => {
@@ -66,8 +75,17 @@ function getProjectPaths() {
 function resolveNodeBinary() {
   if (process.env.NODE_BINARY) return process.env.NODE_BINARY;
   if (app.isPackaged) {
-    const bundled = path.join(process.resourcesPath, "node-win", "node.exe");
-    if (fs.existsSync(bundled)) return bundled;
+    // Platform-specific bundled Node binary
+    if (process.platform === "win32") {
+      const bundled = path.join(process.resourcesPath, "node-win", "node.exe");
+      if (fs.existsSync(bundled)) return bundled;
+    } else if (process.platform === "darwin") {
+      const bundled = path.join(process.resourcesPath, "node-mac", "node");
+      if (fs.existsSync(bundled)) return bundled;
+    } else {
+      const bundled = path.join(process.resourcesPath, "node-linux", "node");
+      if (fs.existsSync(bundled)) return bundled;
+    }
   }
   return "node";
 }
@@ -142,6 +160,14 @@ function stopServer() {
   }
 }
 
+function onNewChat() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.loadURL(`${serverBaseUrl}/`);
+    mainWindow.show();
+    mainWindow.focus();
+  }
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -152,6 +178,8 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
+      preload: path.join(__dirname, "preload.cjs"),
     },
   });
 
@@ -164,8 +192,35 @@ function createWindow() {
     return { action: "deny" };
   });
 
+  // Phase 98: minimize-to-tray on close
+  if (closeToTray) {
+    mainWindow.on("close", (e) => {
+      if (!app.isQuitting) {
+        e.preventDefault();
+        mainWindow.hide();
+      }
+    });
+  }
+
   mainWindow.on("closed", () => {
     mainWindow = null;
+  });
+
+  // Phase 97: build native menu bar
+  buildMenu({
+    onNewChat,
+    onCheckUpdates: checkForUpdates,
+    serverBaseUrl,
+  });
+
+  // Phase 98: create system tray
+  createTray(mainWindow, { onNewChat });
+
+  // Phase 101: register IPC handlers
+  registerIpcHandlers({
+    onNewChat,
+    onSetBadge: setTrayBadge,
+    mainWindow,
   });
 }
 
@@ -173,17 +228,22 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
+  app.on("second-instance", (_event, _argv) => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
       mainWindow.focus();
     }
+    // Phase 103 (future): forward deep-link URL from argv
   });
 
   app.whenReady().then(async () => {
     try {
       await startServer();
       createWindow();
+
+      // Phase 100: start auto-updater
+      initUpdater();
     } catch (e) {
       console.error("[desktop] Startup failed:", e.message);
       dialog.showErrorBox(
@@ -195,7 +255,7 @@ if (!gotLock) {
   });
 
   app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") {
+    if (process.platform !== "darwin" && !closeToTray) {
       app.isQuitting = true;
       stopServer();
       app.quit();
@@ -204,6 +264,8 @@ if (!gotLock) {
 
   app.on("before-quit", () => {
     app.isQuitting = true;
+    destroyUpdater();
+    destroyTray();
     stopServer();
   });
 

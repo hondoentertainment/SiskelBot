@@ -18,6 +18,8 @@
     "desktop:dist": "node scripts/ensure-node-vendor.mjs x64 && node scripts/stage-node-vendor.mjs x64 && electron-builder --win --x64",
     "desktop:dist:arm64": "node scripts/ensure-node-vendor.mjs arm64 && node scripts/stage-node-vendor.mjs arm64 && electron-builder --win --arm64",
     "desktop:dist:all": "node scripts/ensure-node-vendor.mjs all && node scripts/stage-node-vendor.mjs x64 && electron-builder --win --x64 && node scripts/stage-node-vendor.mjs arm64 && electron-builder --win --arm64",
+    "desktop:dist:mac": "electron-builder --mac",
+    "desktop:dist:linux": "electron-builder --linux",
     "lint": "node scripts/syntax-check.mjs && eslint .",
     "lint:eslint": "eslint .",
     "test": "node scripts/run-tests.mjs",
@@ -64,6 +66,7 @@
     "@eslint/js": "^10.0.1",
     "electron": "^34.0.0",
     "electron-builder": "^25.1.8",
+    "electron-updater": "^6.3.9",
     "eslint": "^10.1.0",
     "globals": "^17.4.0",
     "supertest": "^7.2.2"
@@ -105,6 +108,11 @@
         ]
       }
     ],
+    "publish": {
+      "provider": "github",
+      "owner": "hondoentertainment",
+      "repo": "SiskelBot"
+    },
     "win": {
       "target": [
         {
@@ -120,6 +128,60 @@
       "oneClick": false,
       "allowElevation": true,
       "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.developer-tools",
+      "artifactName": "${productName}-${version}-macOS-${arch}.${ext}",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "rpm",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Development",
+      "artifactName": "${productName}-${version}-Linux-${arch}.${ext}",
+      "desktop": {
+        "Name": "Siskel Bot",
+        "Comment": "AI streaming assistant",
+        "Categories": "Development;Utility;"
+      }
     }
   }
 }
