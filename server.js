@@ -89,6 +89,14 @@ import { archiveExecutionAuditToS3, getAuditArchiveStatus } from "./lib/audit-s3
 import { fetchTextFromAllowedUrl } from "./lib/knowledge-url-fetch.js";
 import { pipeLlmChatStreamToSse } from "./lib/llm-stream-sse.js";
 import { runAgentLoop } from "./lib/agent-loop.js";
+import {
+  recordTrace,
+  listTraces as listRecordedTraces,
+  getTrace as getRecordedTrace,
+  deleteTrace as deleteRecordedTrace,
+  autoRecordEnabled,
+} from "./lib/trace-recorder.js";
+import { replayTrace, replayAll } from "./lib/trace-replay.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -763,6 +771,26 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
       outputTokens = estimate.outputFromChars(content?.length || 0);
       recordTokensUsed(inputTokens, outputTokens);
       await recordUsage({ timestamp: new Date().toISOString(), model, inputTokens, outputTokens, backend: BACKEND, workspace, userId }).catch(() => {});
+
+      if (autoRecordEnabled()) {
+        try {
+          const tracePayload = req._agentLoopMeta || {};
+          await recordTrace({
+            runId: tracePayload.runId || undefined,
+            workspace: req.body?.agentOptions?.workspace || "default",
+            userId: req.userId || null,
+            steps: tracePayload.trajectory?.steps || [],
+            stepCount: tracePayload.trajectory?.stepCount || 0,
+            toolCalls: tracePayload.toolCalls || [],
+            swarmSteps: swarmSteps || [],
+            stopReason: tracePayload.stopReason || undefined,
+            content: typeof content === "string" ? content.slice(0, 2000) : null,
+            type: swarmResult ? "swarm" : "agent",
+          });
+        } catch (e) {
+          console.warn("[trace-recorder] Auto-record failed:", e?.message || e);
+        }
+      }
 
       res.write("data: [DONE]\n\n");
       res.end();
@@ -3120,6 +3148,66 @@ apiRoute("get", "/agent/trajectories", logRequest, userAuth, async (req, res) =>
   } catch (err) {
     return apiError(res, 500, "INTERNAL_ERROR", err?.message || "List failed", "See server logs.");
   }
+});
+
+// --- Staging Trace Replay API ---
+
+apiRoute("get", "/traces", logRequest, evalAuth, async (req, res) => {
+  try {
+    const opts = {
+      type: req.query.type || undefined,
+      workspace: req.query.workspace || undefined,
+      limit: Number(req.query.limit) || 50,
+      offset: Number(req.query.offset) || 0,
+    };
+    const data = await listRecordedTraces(opts);
+    res.json(data);
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err?.message || "List traces failed", "See server logs.");
+  }
+});
+
+apiRoute("get", "/traces/:id", logRequest, evalAuth, async (req, res) => {
+  const id = String(req.params.id || "").trim();
+  if (!id) return apiError(res, 400, "INVALID_ID", "Trace ID required", "Provide a valid trace ID.");
+  const trace = await getRecordedTrace(id);
+  if (!trace) return apiError(res, 404, "NOT_FOUND", "Trace not found", `No trace with id: ${id}`);
+  res.json(trace);
+});
+
+apiRoute("post", "/traces/record", logRequest, evalAuth, async (req, res) => {
+  try {
+    const traceData = req.body;
+    if (!traceData || typeof traceData !== "object") {
+      return apiError(res, 400, "INVALID_BODY", "Request body must be a trace object", "Send JSON with steps, toolCalls, or goldenTrace.");
+    }
+    const result = await recordTrace(traceData);
+    res.status(201).json(result);
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err?.message || "Record failed", "See server logs.");
+  }
+});
+
+apiRoute("post", "/traces/:id/replay", logRequest, evalAuth, async (req, res) => {
+  const id = String(req.params.id || "").trim();
+  if (!id) return apiError(res, 400, "INVALID_ID", "Trace ID required", "Provide a valid trace ID.");
+  try {
+    const expectations = req.body && typeof req.body === "object" && Object.keys(req.body).length > 0
+      ? req.body
+      : null;
+    const result = await replayTrace(id, expectations);
+    res.json(result);
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err?.message || "Replay failed", "See server logs.");
+  }
+});
+
+apiRoute("delete", "/traces/:id", logRequest, evalAuth, async (req, res) => {
+  const id = String(req.params.id || "").trim();
+  if (!id) return apiError(res, 400, "INVALID_ID", "Trace ID required", "Provide a valid trace ID.");
+  const deleted = await deleteRecordedTrace(id);
+  if (!deleted) return apiError(res, 404, "NOT_FOUND", "Trace not found", `No trace with id: ${id}`);
+  res.json({ ok: true, traceId: id });
 });
 
 // --- Phase 32: Evaluation Harness ---
