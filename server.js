@@ -107,6 +107,16 @@ import {
 } from "./lib/trace-recorder.js";
 import { replayTrace, replayAll } from "./lib/trace-replay.js";
 
+import {
+  createTemplate,
+  listTemplates,
+  getTemplate,
+  updateTemplate,
+  deleteTemplate,
+  applyTemplate,
+  createWorkspaceFromTemplate,
+} from "./lib/workspace-templates.js";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Phase 38: Error reporting webhook (production)
@@ -2013,6 +2023,92 @@ apiRoute("post", "/workspaces", storageRateLimiter, userAuth, requireScope("writ
     res.status(201).json(ws);
   } catch (err) {
     console.error("Workspace create error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+// --- Workspace Templates ---
+apiRoute("get", "/workspace-templates", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+  try {
+    const templates = await listTemplates();
+    res.json({ _version: 1, items: templates });
+  } catch (err) {
+    console.error("Workspace templates list error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("post", "/workspace-templates", storageRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const template = await createTemplate(req.body);
+    res.status(201).json(template);
+  } catch (err) {
+    console.error("Workspace template create error:", err.message);
+    if (err.message === "Template name is required") {
+      return apiError(res, 400, "VALIDATION_ERROR", err.message, "Provide a name field.");
+    }
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("get", "/workspace-templates/:id", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+  try {
+    const template = await getTemplate(req.params.id);
+    if (!template) {
+      return apiError(res, 404, "NOT_FOUND", "Template not found", null);
+    }
+    res.json(template);
+  } catch (err) {
+    console.error("Workspace template get error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("put", "/workspace-templates/:id", storageRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const updated = await updateTemplate(req.params.id, req.body);
+    if (!updated) {
+      return apiError(res, 404, "NOT_FOUND", "Template not found", null);
+    }
+    res.json(updated);
+  } catch (err) {
+    console.error("Workspace template update error:", err.message);
+    if (err.message === "Cannot update a default template") {
+      return apiError(res, 403, "FORBIDDEN", err.message, "Default templates cannot be modified.");
+    }
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("delete", "/workspace-templates/:id", storageRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const deleted = await deleteTemplate(req.params.id);
+    if (!deleted) {
+      return apiError(res, 404, "NOT_FOUND", "Template not found", null);
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Workspace template delete error:", err.message);
+    if (err.message === "Cannot delete a default template") {
+      return apiError(res, 403, "FORBIDDEN", err.message, "Default templates cannot be deleted.");
+    }
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("post", "/workspace-templates/:id/apply", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+  try {
+    const workspaceId = typeof req.body?.workspaceId === "string" ? req.body.workspaceId.trim() : null;
+    if (!workspaceId) {
+      return apiError(res, 400, "VALIDATION_ERROR", "workspaceId is required", null);
+    }
+    const result = await applyTemplate(req.params.id, workspaceId, req.userId);
+    res.json(result);
+  } catch (err) {
+    console.error("Workspace template apply error:", err.message);
+    if (err.message === "Template not found") {
+      return apiError(res, 404, "NOT_FOUND", err.message, null);
+    }
     return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
   }
 });

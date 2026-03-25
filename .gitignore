@@ -11,6 +11,9 @@ data/eval-sets/*
 !data/eval-sets/agent-outcome-examples.json
 !data/eval-sets/traces/
 !data/eval-sets/traces/example-staging.json
+!data/workspace-templates/
+data/workspace-templates/*
+!data/workspace-templates/defaults/
 backups/
 
 # Windows desktop build (electron-builder + bundled Node)
