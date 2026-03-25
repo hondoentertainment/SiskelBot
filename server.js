@@ -12,6 +12,9 @@ import multer from "multer";
 import passport from "passport";
 import { initPassport, isOAuthConfigured } from "./lib/oauth.js";
 import { configureSSO, isSSOConfigured } from "./lib/sso.js";
+import { getLeaderElection } from "./lib/leader-election.js";
+import { getRegionHealth } from "./lib/region-health.js";
+import { getReplicationManager, internalAuth } from "./lib/storage-replication.js";
 import {
   branchConversation,
   getConversationTree,
@@ -3837,6 +3840,44 @@ app.get("/api/routing/config", adminRateLimiter, adminAuth, logRequest, (req, re
     ? MODEL_ROUTING_CONFIG.map((e) => ({ backend: e.backend, weight: e.weight }))
     : [];
   res.json({ enabled: AB_ROUTING_ENABLED, backends: config, raw: process.env.MODEL_ROUTING || "" });
+});
+
+// --- Phase 45-48: Multi-region & HA routes ---
+
+app.get("/api/regions", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const rh = getRegionHealth();
+    await rh.checkRegions();
+    const regions = rh.getRegionStatus();
+    res.json({ ok: true, regions });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message);
+  }
+});
+
+app.get("/api/regions/leader", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const le = getLeaderElection();
+    const leader = await le.getLeader();
+    res.json({ ok: true, leader });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message);
+  }
+});
+
+app.post("/api/internal/sync", internalAuth, express.json(), async (req, res) => {
+  try {
+    const rm = getReplicationManager();
+    const result = rm.receive(req.body);
+    if (result.accepted) {
+      res.json({ ok: true, accepted: true });
+    } else {
+      res.status(409).json({ ok: false, accepted: false, reason: result.reason });
+    }
+  } catch (err) {
+    console.error("[replication] Sync receive error:", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 const STATIC_CACHE_MAX_AGE_MS =
