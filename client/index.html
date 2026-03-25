@@ -1152,6 +1152,31 @@
       font-weight: 600;
       text-transform: uppercase;
     }
+    .message.user .queued-badge {
+      display: inline-block;
+      font-size: 0.65rem;
+      background: rgba(245, 158, 11, 0.25);
+      color: #fbbf24;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      margin-top: 0.35rem;
+      font-weight: 600;
+    }
+    .queue-replay-notice {
+      position: fixed;
+      top: 0.75rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e293b;
+      color: #fbbf24;
+      border: 1px solid #334155;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      z-index: 2000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      transition: opacity 0.3s;
+    }
     @media (max-width: 768px) {
       .header-button, summary.header-button { min-width: 44px; min-height: 44px; padding: 0.6rem 0.9rem; display: inline-flex; align-items: center; justify-content: center; }
       header input, header select { min-height: 44px; padding: 0.6rem 0.9rem; }
@@ -1939,6 +1964,7 @@
   </main>
 
   <script src="/js/stream-ui-batch.js"></script>
+  <script type="module" src="/js/offline-queue.js"></script>
   <script>
     (function initI18n() {
       if (window.SiskelI18n) {
@@ -5240,6 +5266,26 @@
       if (!prompt && !attachedImages.length) return;
       if (typeof haptic === 'function') haptic('send');
 
+      /* --- Offline queue: store message and show queued badge instead of sending --- */
+      if (!navigator.onLine && window.SiskelOfflineQueue) {
+        const entry = await window.SiskelOfflineQueue.queueMessage(prompt);
+        const msgEl = addMessage('user', prompt);
+        const badge = document.createElement('span');
+        badge.className = 'queued-badge';
+        badge.textContent = '\u{1F552} Queued';
+        badge.setAttribute('data-queue-id', entry.id);
+        msgEl.appendChild(badge);
+        promptInput.value = '';
+        showNotice('You are offline — message queued and will be sent when you reconnect', 'warning', false);
+        /* Request background sync so the SW can nudge us when connectivity returns */
+        if ('serviceWorker' in navigator && navigator.serviceWorker.ready) {
+          navigator.serviceWorker.ready.then((reg) => {
+            if (reg.sync) reg.sync.register('siskelbot-offline-queue').catch(() => {});
+          });
+        }
+        return;
+      }
+
       if (activeAbortController) activeAbortController.abort();
       activeAbortController = new AbortController();
       const signal = activeAbortController.signal;
@@ -5904,12 +5950,67 @@
     function updateOfflineUI() {
       const offline = !navigator.onLine;
       if (offlineIndicator) offlineIndicator.style.display = offline ? 'inline-block' : 'none';
-      if (sendBtn) sendBtn.disabled = offline || (stopBtn && stopBtn.style.display === 'inline-block');
+      /* When offline the send button stays enabled so users can queue messages */
+      if (sendBtn && !offline) sendBtn.disabled = (stopBtn && stopBtn.style.display === 'inline-block');
       setConnectionStatus(offline ? (window.SiskelI18n && SiskelI18n.t ? SiskelI18n.t('header.offline') : 'Offline') : (window.SiskelI18n && SiskelI18n.t ? SiskelI18n.t('status.ready') : 'Ready'));
     }
     updateOfflineUI();
-    window.addEventListener('online', updateOfflineUI);
+
+    /* --- Offline queue: replay on reconnect --- */
+    async function replayOfflineQueue() {
+      const oq = window.SiskelOfflineQueue;
+      if (!oq) return;
+      const pending = await oq.getQueuedMessages();
+      if (!pending.length) return;
+      /* Show notification banner */
+      const notice = document.createElement('div');
+      notice.className = 'queue-replay-notice';
+      notice.textContent = 'Sending ' + pending.length + ' queued message' + (pending.length > 1 ? 's' : '') + '...';
+      document.body.appendChild(notice);
+      try {
+        await oq.replayQueue(async (text) => {
+          /* Remove queued badge from matching message bubble if present */
+          const badges = chatContainer.querySelectorAll('.queued-badge');
+          for (const b of badges) {
+            const contentEl = b.closest('.message')?.querySelector('.message-content');
+            if (contentEl && contentEl.textContent.trim() === text.trim()) {
+              b.remove();
+              break;
+            }
+          }
+          /* Programmatically send: put text in prompt and click send */
+          promptInput.value = text;
+          sendBtn.click();
+          /* Wait for the response to finish (sendBtn re-enabled) */
+          await new Promise((resolve) => {
+            const check = () => {
+              if (!sendBtn.disabled) { resolve(); return; }
+              setTimeout(check, 200);
+            };
+            setTimeout(check, 300);
+          });
+        });
+        notice.textContent = 'All queued messages sent!';
+      } catch (err) {
+        notice.textContent = 'Some queued messages failed to send';
+      }
+      setTimeout(() => notice.remove(), 3000);
+    }
+
+    window.addEventListener('online', () => {
+      updateOfflineUI();
+      replayOfflineQueue();
+    });
     window.addEventListener('offline', updateOfflineUI);
+
+    /* Listen for background sync replay message from service worker */
+    if ('serviceWorker' in navigator && navigator.serviceWorker) {
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'REPLAY_OFFLINE_QUEUE') {
+          replayOfflineQueue();
+        }
+      });
+    }
 
     // --- Phase 20: Tap-outside-to-close for modals ---
     document.querySelectorAll('[data-modal-overlay]').forEach((overlay) => {
