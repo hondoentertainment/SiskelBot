@@ -21,6 +21,14 @@ import {
 import { embed, embedBatch, isAvailable as embeddingsAvailable } from "./lib/embeddings.js";
 import { executeStep, appendAuditLog, getRegisteredActions } from "./lib/action-executor.js";
 import { loadPlugins } from "./lib/plugins-loader.js";
+import {
+  discoverPacks,
+  registry as marketplaceRegistry,
+  listAvailable as marketplaceListAvailable,
+  listInstalled as marketplaceListInstalled,
+  installPack as marketplaceInstallPack,
+  uninstallPack as marketplaceUninstallPack,
+} from "./lib/plugin-marketplace.js";
 import { loadPlugin as loadJsPlugin, executePlugin as execJsPlugin, listPlugins as listJsPlugins } from "./lib/plugin-sandbox.js";
 import { getToolsSchema, intersectClientToolsWithAllowlist, getAgentToolsAllowlistNames } from "./lib/agent-tools.js";
 import { resolveAgentMaxIterations } from "./lib/agent-iterations.js";
@@ -105,6 +113,9 @@ initErrorReporting();
 
 // Phase 17: Load plugins at startup (plugins/config.json or PLUGINS_PATH)
 loadPlugins();
+
+// Phase 49: Discover marketplace plugin packs at startup
+discoverPacks();
 
 // Environment config
 const VLLM_URL = process.env.VLLM_URL || "http://localhost:8000";
@@ -2698,6 +2709,90 @@ apiRoute("post", "/plugins/execute", pluginsActionsRateLimiter, userAuth, logReq
   }
 });
 
+// --- Phase 49: Plugin Marketplace API ---
+const marketplaceRateLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+apiRoute("get", "/marketplace", marketplaceRateLimiter, logRequest, (req, res) => {
+  try {
+    const packs = marketplaceListAvailable();
+    const category = req.query?.category;
+    const filtered = category ? packs.filter((p) => p.category === category) : packs;
+    res.json({ _version: 1, packs: filtered });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
+  }
+});
+
+apiRoute("get", "/marketplace/:packId", marketplaceRateLimiter, logRequest, (req, res) => {
+  try {
+    const packId = req.params.packId;
+    const manifest = marketplaceRegistry.get(packId);
+    if (!manifest) {
+      return apiError(res, 404, "NOT_FOUND", `Pack not found: ${packId}`, "Use GET /api/marketplace to list available packs.");
+    }
+    res.json({
+      id: manifest.id,
+      name: manifest.name,
+      version: manifest.version,
+      description: manifest.description,
+      author: manifest.author,
+      category: manifest.category || "uncategorized",
+      actions: manifest.actions,
+    });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
+  }
+});
+
+apiRoute("post", "/marketplace/:packId/install", marketplaceRateLimiter, userAuth, logRequest, (req, res) => {
+  try {
+    const packId = req.params.packId;
+    const workspaceId = req.body?.workspaceId;
+    if (!workspaceId || typeof workspaceId !== "string") {
+      return apiError(res, 400, "INVALID_INPUT", "workspaceId required", "Send { workspaceId: string }.");
+    }
+    const result = marketplaceInstallPack(packId, workspaceId);
+    if (!result.ok) {
+      return apiError(res, 400, "INSTALL_FAILED", result.error, "Check that the pack exists.");
+    }
+    res.json({ ok: true, packId, workspaceId, alreadyInstalled: result.alreadyInstalled || false });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
+  }
+});
+
+apiRoute("delete", "/marketplace/:packId/install", marketplaceRateLimiter, userAuth, logRequest, (req, res) => {
+  try {
+    const packId = req.params.packId;
+    const workspaceId = req.body?.workspaceId || req.query?.workspaceId;
+    if (!workspaceId || typeof workspaceId !== "string") {
+      return apiError(res, 400, "INVALID_INPUT", "workspaceId required", "Send { workspaceId: string } or ?workspaceId=.");
+    }
+    const result = marketplaceUninstallPack(packId, workspaceId);
+    if (!result.ok) {
+      return apiError(res, 400, "UNINSTALL_FAILED", result.error, "Check that the pack exists.");
+    }
+    res.json({ ok: true, packId, workspaceId });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
+  }
+});
+
+apiRoute("get", "/workspaces/:id/plugins", marketplaceRateLimiter, userAuth, logRequest, (req, res) => {
+  try {
+    const workspaceId = req.params.id;
+    const packs = marketplaceListInstalled(workspaceId);
+    res.json({ _version: 1, workspaceId, packs });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
+  }
+});
+
 // --- Phase 22: Event Webhooks & Notifications ---
 const webhooksRateLimiter = rateLimit({
   windowMs: 60_000,
@@ -3264,6 +3359,10 @@ app.get("/eval", (req, res) => {
 // --- Phase 25: Admin Dashboard ---
 app.get("/admin", (req, res) => {
   res.sendFile(join(__dirname, "client", "admin.html"));
+});
+
+app.get("/marketplace", (req, res) => {
+  res.sendFile(join(__dirname, "client", "marketplace.html"));
 });
 
 const adminRateLimiter = rateLimit({

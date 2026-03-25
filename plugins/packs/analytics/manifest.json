@@ -1,0 +1,20 @@
+{
+  "id": "analytics",
+  "name": "Analytics Helpers",
+  "version": "1.0.0",
+  "description": "Analytics utilities: usage summary generator and trend report builder",
+  "author": "SiskelBot",
+  "category": "analytics",
+  "actions": [
+    {
+      "name": "usage-summary",
+      "type": "builtin",
+      "config": { "target": "build" }
+    },
+    {
+      "name": "trend-report",
+      "type": "builtin",
+      "config": { "target": "build" }
+    }
+  ]
+}
