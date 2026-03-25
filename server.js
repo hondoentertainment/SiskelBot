@@ -11,6 +11,7 @@ import { dirname, join } from "path";
 import multer from "multer";
 import passport from "passport";
 import { initPassport, isOAuthConfigured } from "./lib/oauth.js";
+import { configureSSO, isSSOConfigured } from "./lib/sso.js";
 import {
   indexDocument,
   search as knowledgeSearch,
@@ -349,12 +350,15 @@ if (SESSION_SECRET) {
   );
 }
 
-// Phase 19: Passport (when OAuth configured)
+// Phase 19: Passport (when OAuth or SSO configured)
 let oauthProviders = { github: false, google: false };
-if (isOAuthConfigured()) {
+let ssoProviders = { oidc: false, saml: false };
+const needsPassport = isOAuthConfigured() || isSSOConfigured();
+if (needsPassport) {
   app.use(passport.initialize());
   app.use(passport.session());
   oauthProviders = initPassport();
+  ssoProviders = configureSSO(app, passport);
 }
 
 // Phase 68: Warm Postgres-backed API key cache before isAuthConfigured / rate limiters.
