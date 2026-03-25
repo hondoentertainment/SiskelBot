@@ -63,6 +63,8 @@ import { createToken, attachToServer, getOnlineUsers, closeServer } from "./lib/
 import { sanitizeForLog } from "./lib/log-sanitizer.js";
 import { execute as circuitExecute } from "./lib/circuit-breaker.js";
 import { parseRoutingConfig, selectBackend, logRouting, getRoutingStats } from "./lib/ab-router.js";
+import { AuditLifecycle } from "./lib/audit-lifecycle.js";
+import { queryAudit, exportAudit } from "./lib/audit-query.js";
 import { initErrorReporting, reportError } from "./lib/error-reporting.js";
 import {
   runSwarm,
@@ -3662,6 +3664,84 @@ app.get("/api/admin/audit/archive-status", adminRateLimiter, adminAuth, requireS
     res.json(status);
   } catch (err) {
     console.error("Admin audit archive-status error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+// --- Enhanced audit lifecycle & query routes ---
+const _auditLifecycle = new AuditLifecycle();
+
+app.get("/api/admin/audit/query", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const options = {};
+    if (req.query.startDate || req.query.endDate) {
+      options.dateRange = { start: req.query.startDate, end: req.query.endDate };
+    }
+    if (req.query.userId) options.userId = req.query.userId;
+    if (req.query.action) options.action = req.query.action;
+    if (req.query.workspaceId) options.workspaceId = req.query.workspaceId;
+    if (req.query.level) options.level = req.query.level;
+    if (req.query.cursor) options.cursor = Number(req.query.cursor);
+    if (req.query.limit) options.limit = Number(req.query.limit);
+    const result = await queryAudit(options);
+    res.json(result);
+  } catch (err) {
+    console.error("Admin audit query error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+app.get("/api/admin/audit/export", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const options = {};
+    if (req.query.startDate || req.query.endDate) {
+      options.dateRange = { start: req.query.startDate, end: req.query.endDate };
+    }
+    if (req.query.userId) options.userId = req.query.userId;
+    if (req.query.action) options.action = req.query.action;
+    if (req.query.workspaceId) options.workspaceId = req.query.workspaceId;
+    if (req.query.level) options.level = req.query.level;
+    if (req.query.limit) options.limit = Number(req.query.limit);
+    const format = req.query.format === "csv" ? "csv" : "json";
+    const result = await exportAudit(options, format);
+    res.setHeader("Content-Type", result.contentType);
+    res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
+    res.send(result.data);
+  } catch (err) {
+    console.error("Admin audit export error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+app.get("/api/admin/audit/retention", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    res.json(_auditLifecycle.getRetentionPolicy());
+  } catch (err) {
+    console.error("Admin audit retention get error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+app.put("/api/admin/audit/retention", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const { retentionDays, archiveAfterDays, deleteAfterDays, bucketName } = req.body || {};
+    _auditLifecycle.configure({ retentionDays, archiveAfterDays, deleteAfterDays, bucketName });
+    res.json(_auditLifecycle.getRetentionPolicy());
+  } catch (err) {
+    console.error("Admin audit retention update error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+app.post("/api/admin/audit/archive-now", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const result = await _auditLifecycle.archiveOldEntries();
+    if (result.error) {
+      return res.status(502).json({ error: result.error, code: "ARCHIVE_FAILED" });
+    }
+    res.json(result);
+  } catch (err) {
+    console.error("Admin audit archive-now error:", err.message);
     return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
   }
 });
