@@ -1064,7 +1064,7 @@ app.post("/v1/swarm", chatAuth, requireScope("write"), perKeyChatRateLimiter, ch
   }
 });
 
-app.post("/v1/tasks/plan", taskPlanRateLimiter, apiKeyAuth, logRequest, async (req, res) => {
+app.post("/v1/tasks/plan", taskPlanRateLimiter, apiKeyAuth, requireScope("write"), logRequest, async (req, res) => {
   try {
     const { messages, model } = req.body || {};
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -1779,6 +1779,7 @@ apiRoute("post", "/embeddings", embeddingsRateLimiter, chatAuth, requireScope("e
 
 apiRoute("post", "/knowledge/index",
   knowledgeIndexRateLimiter,
+  requireScope("write"),
   logRequest,
   async (req, res) => {
     try {
@@ -1813,7 +1814,7 @@ apiRoute("post", "/knowledge/index",
   }
 );
 
-apiRoute("get", "/knowledge/search", logRequest, async (req, res) => {
+apiRoute("get", "/knowledge/search", requireScope("read"), logRequest, async (req, res) => {
   try {
     const q = (req.query?.q ?? "").toString();
     const workspace = sanitizeWorkspace(req.query?.workspace);
@@ -1832,7 +1833,7 @@ apiRoute("get", "/knowledge/search", logRequest, async (req, res) => {
   }
 });
 
-apiRoute("get", "/knowledge/status", logRequest, (req, res) => {
+apiRoute("get", "/knowledge/status", requireScope("read"), logRequest, (req, res) => {
   const workspace = String(req.query.workspace || "default").trim();
   const result = knowledgeList({ workspace });
   if (result.error) {
@@ -1844,7 +1845,7 @@ apiRoute("get", "/knowledge/status", logRequest, (req, res) => {
   });
 });
 
-apiRoute("get", "/knowledge/list", logRequest, (req, res) => {
+apiRoute("get", "/knowledge/list", requireScope("read"), logRequest, (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const result = knowledgeList({ workspace });
@@ -1858,7 +1859,7 @@ apiRoute("get", "/knowledge/list", logRequest, (req, res) => {
   }
 });
 
-apiRoute("post", "/knowledge/reindex", embeddingsRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/knowledge/reindex", embeddingsRateLimiter, requireScope("embed"), logRequest, async (req, res) => {
   try {
     if (!embeddingsAvailable()) {
       return apiError(res, 503, "EMBEDDINGS_UNAVAILABLE", "OPENAI_API_KEY required for reindex", "Set OPENAI_API_KEY or skip semantic refresh.");
@@ -1875,7 +1876,7 @@ apiRoute("post", "/knowledge/reindex", embeddingsRateLimiter, logRequest, async 
   }
 });
 
-apiRoute("post", "/knowledge/fetch", knowledgeIndexRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/knowledge/fetch", knowledgeIndexRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const url = typeof req.body?.url === "string" ? req.body.url.trim() : "";
     const workspace = sanitizeWorkspace(req.body?.workspace);
@@ -1925,7 +1926,7 @@ const storageRateLimiter = rateLimit({
 });
 
 // --- Phase 14: Workspaces API ---
-apiRoute("get", "/workspaces", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("get", "/workspaces", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspaces = await storage.listWorkspaces(req.userId);
     res.json({ _version: 1, items: workspaces });
@@ -1935,7 +1936,7 @@ apiRoute("get", "/workspaces", storageRateLimiter, userAuth, logRequest, async (
   }
 });
 
-apiRoute("post", "/workspaces", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("post", "/workspaces", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
   try {
     const idemKey = req.headers["idempotency-key"] || req.headers["x-idempotency-key"];
     if (idemKey) {
@@ -1998,7 +1999,7 @@ apiRoute("delete", "/workspaces/:id", storageRateLimiter, userAuth, requireScope
 });
 
 // Phase 61–62: Per-workspace agent system prompt + approved memory (agent / swarm)
-apiRoute("get", "/workspaces/:id/agent-settings", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("get", "/workspaces/:id/agent-settings", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspaceId = sanitizeWorkspace(req.params.id);
     const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
@@ -2058,7 +2059,7 @@ apiRoute(
 );
 
 // --- Phase 29: Team workspaces - invite, join, members, activity ---
-apiRoute("post", "/workspaces/join", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("post", "/workspaces/join", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
   try {
     const code = req.body?.code?.trim?.();
     if (!code) return apiError(res, 400, "INVALID_INPUT", "code required", "Send { code: string }.");
@@ -2080,7 +2081,7 @@ apiRoute("post", "/workspaces/join", storageRateLimiter, userAuth, logRequest, a
   }
 });
 
-apiRoute("post", "/workspaces/:id/invite", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("post", "/workspaces/:id/invite", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspaceId = req.params.id;
     const access = await canAccessWorkspace(workspaceId, req.userId);
@@ -2100,7 +2101,7 @@ apiRoute("post", "/workspaces/:id/invite", storageRateLimiter, userAuth, logRequ
   }
 });
 
-apiRoute("get", "/workspaces/:id/members", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("get", "/workspaces/:id/members", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspaceId = req.params.id;
     const access = await canAccessWorkspace(workspaceId, req.userId);
@@ -2114,7 +2115,7 @@ apiRoute("get", "/workspaces/:id/members", storageRateLimiter, userAuth, logRequ
   }
 });
 
-apiRoute("get", "/workspaces/:id/activity", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("get", "/workspaces/:id/activity", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspaceId = req.params.id;
     const access = await canAccessWorkspace(workspaceId, req.userId);
@@ -2130,7 +2131,7 @@ apiRoute("get", "/workspaces/:id/activity", storageRateLimiter, userAuth, logReq
 
 // --- Phase 10: Persistent Backend Storage (SiskelBot) ---
 // GET/POST /api/context (userAuth attaches req.userId; anonymous when no auth configured)
-apiRoute("get", "/context", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("get", "/context", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const data = await storage.listItems("context", workspace, req.userId);
@@ -2141,7 +2142,7 @@ apiRoute("get", "/context", storageRateLimiter, userAuth, logRequest, async (req
   }
 });
 
-apiRoute("post", "/context", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/context", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const { title, content } = req.body || {};
@@ -2166,7 +2167,7 @@ apiRoute("post", "/context", storageRateLimiter, logRequest, async (req, res) =>
 });
 
 // GET/PUT/DELETE /api/context/:id
-apiRoute("get", "/context/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("get", "/context/:id", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const item = await storage.getItem("context", req.params.id, workspace);
@@ -2178,7 +2179,7 @@ apiRoute("get", "/context/:id", storageRateLimiter, logRequest, async (req, res)
   }
 });
 
-apiRoute("put", "/context/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("put", "/context/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const { title, content } = req.body || {};
@@ -2195,7 +2196,7 @@ apiRoute("put", "/context/:id", storageRateLimiter, logRequest, async (req, res)
   }
 });
 
-apiRoute("delete", "/context/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("delete", "/context/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const deleted = await storage.deleteItem("context", req.params.id, workspace);
@@ -2208,7 +2209,7 @@ apiRoute("delete", "/context/:id", storageRateLimiter, logRequest, async (req, r
 });
 
 // POST /api/context/sync - merge client payload, return merged list
-apiRoute("post", "/context/sync", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/context/sync", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
@@ -2222,7 +2223,7 @@ apiRoute("post", "/context/sync", storageRateLimiter, logRequest, async (req, re
 });
 
 // GET/POST /api/recipes
-apiRoute("get", "/recipes", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("get", "/recipes", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const data = await storage.listItems("recipes", workspace);
@@ -2233,7 +2234,7 @@ apiRoute("get", "/recipes", storageRateLimiter, logRequest, async (req, res) => 
   }
 });
 
-apiRoute("post", "/recipes", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/recipes", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const recipe = req.body;
@@ -2259,7 +2260,7 @@ apiRoute("post", "/recipes", storageRateLimiter, logRequest, async (req, res) =>
 });
 
 // GET/PUT/DELETE /api/recipes/:id
-apiRoute("get", "/recipes/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("get", "/recipes/:id", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const item = await storage.getItem("recipes", req.params.id, workspace);
@@ -2271,7 +2272,7 @@ apiRoute("get", "/recipes/:id", storageRateLimiter, logRequest, async (req, res)
   }
 });
 
-apiRoute("put", "/recipes/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("put", "/recipes/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const { name, description, steps } = req.body || {};
@@ -2289,7 +2290,7 @@ apiRoute("put", "/recipes/:id", storageRateLimiter, logRequest, async (req, res)
   }
 });
 
-apiRoute("delete", "/recipes/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("delete", "/recipes/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const deleted = await storage.deleteItem("recipes", req.params.id, workspace);
@@ -2302,7 +2303,7 @@ apiRoute("delete", "/recipes/:id", storageRateLimiter, logRequest, async (req, r
 });
 
 // POST /api/recipes/sync
-apiRoute("post", "/recipes/sync", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/recipes/sync", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
@@ -2317,7 +2318,7 @@ apiRoute("post", "/recipes/sync", storageRateLimiter, logRequest, async (req, re
 
 // --- Phase 16: Scheduled & Automated Recipes ---
 // GET /api/schedules - list scheduled recipes
-apiRoute("get", "/schedules", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("get", "/schedules", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const items = await scheduleStore.list(workspace);
@@ -2335,7 +2336,7 @@ apiRoute("get", "/schedules", storageRateLimiter, logRequest, async (req, res) =
 });
 
 // POST /api/schedules - add/update schedule for recipe
-apiRoute("post", "/schedules", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/schedules", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const { recipeId, cron, timezone, enabled } = req.body || {};
@@ -2359,7 +2360,7 @@ apiRoute("post", "/schedules", storageRateLimiter, logRequest, async (req, res) 
 });
 
 // DELETE /api/schedules/:recipeId - remove schedule
-apiRoute("delete", "/schedules/:recipeId", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("delete", "/schedules/:recipeId", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const removed = await scheduleStore.remove(req.params.recipeId, workspace);
@@ -2373,7 +2374,7 @@ apiRoute("delete", "/schedules/:recipeId", storageRateLimiter, logRequest, async
 });
 
 // POST /api/schedules/run-now/:recipeId - manual trigger
-apiRoute("post", "/schedules/run-now/:recipeId", storageRateLimiter, apiKeyAuth, logRequest, async (req, res) => {
+apiRoute("post", "/schedules/run-now/:recipeId", storageRateLimiter, apiKeyAuth, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace || req.query?.workspace);
     const result = await runRecipeNow(req.params.recipeId, workspace);
@@ -2453,7 +2454,7 @@ app.get("/api/backup/cron", logRequest, async (req, res) => {
 });
 
 // GET/POST /api/conversations
-apiRoute("get", "/conversations", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("get", "/conversations", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const data = await storage.listItems("conversations", workspace);
@@ -2464,7 +2465,7 @@ apiRoute("get", "/conversations", storageRateLimiter, logRequest, async (req, re
   }
 });
 
-apiRoute("post", "/conversations", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/conversations", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const { id, title, messages, meta } = req.body || {};
@@ -2487,7 +2488,7 @@ apiRoute("post", "/conversations", storageRateLimiter, logRequest, async (req, r
 });
 
 // GET/PUT/DELETE /api/conversations/:id
-apiRoute("get", "/conversations/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("get", "/conversations/:id", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const item = await storage.getItem("conversations", req.params.id, workspace);
@@ -2499,7 +2500,7 @@ apiRoute("get", "/conversations/:id", storageRateLimiter, logRequest, async (req
   }
 });
 
-apiRoute("put", "/conversations/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("put", "/conversations/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const { title, messages, meta } = req.body || {};
@@ -2517,7 +2518,7 @@ apiRoute("put", "/conversations/:id", storageRateLimiter, logRequest, async (req
   }
 });
 
-apiRoute("delete", "/conversations/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("delete", "/conversations/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const deleted = await storage.deleteItem("conversations", req.params.id, workspace);
@@ -2769,6 +2770,7 @@ const executeStepRateLimiter = rateLimit({
 apiRoute("post", "/execute-step",
   executeStepRateLimiter,
   apiKeyAuth,
+  requireScope("write"),
   logRequest,
   async (req, res) => {
     if (!ALLOW_RECIPE_STEP_EXECUTION) {
@@ -3163,7 +3165,7 @@ function adminAuthOrQuery(req, res, next) {
   return adminAuth(req, res, next);
 }
 
-app.get("/api/admin/summary", adminRateLimiter, adminAuthOrQuery, logRequest, async (req, res) => {
+app.get("/api/admin/summary", adminRateLimiter, adminAuthOrQuery, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const users = await listAllUsers();
     const workspaces = await listAllWorkspaces();
@@ -3216,7 +3218,7 @@ app.get("/api/admin/summary", adminRateLimiter, adminAuthOrQuery, logRequest, as
   }
 });
 
-app.post("/api/admin/quotas/override", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.post("/api/admin/quotas/override", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const { workspace, limit } = req.body || {};
     const ws = sanitizeWorkspace(workspace);
@@ -3232,7 +3234,7 @@ app.post("/api/admin/quotas/override", adminRateLimiter, adminAuth, logRequest, 
 });
 
 // Phase 30: Admin API key management
-app.get("/api/admin/keys", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.get("/api/admin/keys", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const keys = listKeysForAdmin();
     res.json({ keys });
@@ -3242,7 +3244,7 @@ app.get("/api/admin/keys", adminRateLimiter, adminAuth, logRequest, async (req, 
   }
 });
 
-app.post("/api/admin/keys", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.post("/api/admin/keys", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const { userId, scopes } = req.body || {};
     const result = await addKey({ userId, scopes: Array.isArray(scopes) ? scopes : undefined });
@@ -3256,7 +3258,7 @@ app.post("/api/admin/keys", adminRateLimiter, adminAuth, logRequest, async (req,
   }
 });
 
-app.delete("/api/admin/keys/:id", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.delete("/api/admin/keys/:id", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const result = await revokeKey(req.params.id);
     if (!result.ok) {
@@ -3269,7 +3271,7 @@ app.delete("/api/admin/keys/:id", adminRateLimiter, adminAuth, logRequest, async
   }
 });
 
-app.post("/api/admin/audit/archive-s3", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.post("/api/admin/audit/archive-s3", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const out = await archiveExecutionAuditToS3();
     if (!out.ok) {
@@ -3282,7 +3284,7 @@ app.post("/api/admin/audit/archive-s3", adminRateLimiter, adminAuth, logRequest,
   }
 });
 
-app.get("/api/admin/audit/archive-status", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.get("/api/admin/audit/archive-status", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const status = await getAuditArchiveStatus();
     res.json(status);
