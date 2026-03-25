@@ -69,7 +69,7 @@ import {
 } from "./lib/teams.js";
 import openApiSpec from "./lib/openapi-spec.js";
 import { runEvalSet } from "./lib/eval-runner.js";
-import { listEvalSets, loadEvalSet } from "./lib/eval-sets.js";
+import { listEvalSets, loadEvalSet } from "./lib/storage-eval.js";
 import { createToken, attachToServer, getOnlineUsers, closeServer } from "./lib/realtime.js";
 import { sanitizeForLog } from "./lib/log-sanitizer.js";
 import { execute as circuitExecute } from "./lib/circuit-breaker.js";
@@ -3558,9 +3558,9 @@ const evalRateLimiter = rateLimit({
   },
 });
 
-apiRoute("get", "/eval/sets", evalRateLimiter, evalAuth, logRequest, (req, res) => {
+apiRoute("get", "/eval/sets", evalRateLimiter, evalAuth, logRequest, async (req, res) => {
   try {
-    const sets = listEvalSets();
+    const sets = await listEvalSets();
     res.json({ sets });
   } catch (err) {
     console.error("Eval sets list error:", err.message);
@@ -3573,7 +3573,7 @@ apiRoute("post", "/eval/run", evalRateLimiter, evalAuth, logRequest, async (req,
     const { evalSetId, evalSet, model } = req.body || {};
     let set = evalSet;
     if (!set && evalSetId) {
-      set = loadEvalSet(String(evalSetId).trim());
+      set = await loadEvalSet(String(evalSetId).trim());
       if (!set) return apiError(res, 404, "NOT_FOUND", "Eval set not found", `No eval set with id: ${evalSetId}`);
     }
     if (!set || !Array.isArray(set.cases)) {
