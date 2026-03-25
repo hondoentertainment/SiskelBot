@@ -62,6 +62,7 @@ import { listEvalSets, loadEvalSet } from "./lib/eval-sets.js";
 import { createToken, attachToServer, getOnlineUsers, closeServer } from "./lib/realtime.js";
 import { sanitizeForLog } from "./lib/log-sanitizer.js";
 import { execute as circuitExecute } from "./lib/circuit-breaker.js";
+import { parseRoutingConfig, selectBackend, logRouting, getRoutingStats } from "./lib/ab-router.js";
 import { initErrorReporting, reportError } from "./lib/error-reporting.js";
 import {
   runSwarm,
@@ -140,6 +141,10 @@ function getBackend() {
   }
   return "ollama"; // default: Ollama (runs on Windows, easy local setup)
 }
+
+// A/B routing: parse MODEL_ROUTING env var (e.g. "ollama:0.8,openai:0.2")
+const MODEL_ROUTING_CONFIG = parseRoutingConfig(process.env.MODEL_ROUTING);
+const AB_ROUTING_ENABLED = MODEL_ROUTING_CONFIG.length > 0;
 
 const BACKEND = getBackend();
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
@@ -649,9 +654,17 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
       }
     }
 
-    const config = buildProxyConfig(BACKEND);
+    // A/B routing: select backend per-request when MODEL_ROUTING is configured
+    const requestId = randomUUID();
+    let activeBackend = BACKEND;
+    if (AB_ROUTING_ENABLED) {
+      activeBackend = selectBackend(MODEL_ROUTING_CONFIG, requestId);
+      logRouting(requestId, activeBackend, MODEL_ROUTING_CONFIG);
+    }
+
+    const config = buildProxyConfig(activeBackend);
     const url = `${config.baseUrl}${config.path}`;
-    const model = req.body?.model || MODEL_PRESETS[BACKEND]?.[0] || "unknown";
+    const model = req.body?.model || MODEL_PRESETS[activeBackend]?.[0] || "unknown";
     const agentMode = req.body?.agentMode === true;
     const swarmMode = req.body?.swarmMode === true;
     const hasTools = Array.isArray(req.body?.tools) && req.body.tools.length > 0;
@@ -715,6 +728,10 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
         res.setHeader("X-Agent-Iteration", String(iteration));
         if (req._agentLoopMeta?.runId) {
           res.setHeader("X-Agent-Run-Id", req._agentLoopMeta.runId);
+        }
+        if (AB_ROUTING_ENABLED) {
+          res.setHeader("x-model-backend", activeBackend);
+          res.setHeader("x-model-request-id", requestId);
         }
         await setQuotaHeaders(res, workspace, userId);
         if (typeof res.flushHeaders === "function") res.flushHeaders();
@@ -843,6 +860,10 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
+    if (AB_ROUTING_ENABLED) {
+      res.setHeader("x-model-backend", activeBackend);
+      res.setHeader("x-model-request-id", requestId);
+    }
     await setQuotaHeaders(res, workspace, userId);
     res.flushHeaders();
 
@@ -3508,6 +3529,18 @@ app.get("/api/admin/audit/archive-status", adminRateLimiter, adminAuth, requireS
     console.error("Admin audit archive-status error:", err.message);
     return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
   }
+});
+
+// A/B routing admin endpoints
+app.get("/api/routing/stats", adminRateLimiter, adminAuth, logRequest, (req, res) => {
+  res.json({ stats: getRoutingStats(), enabled: AB_ROUTING_ENABLED });
+});
+
+app.get("/api/routing/config", adminRateLimiter, adminAuth, logRequest, (req, res) => {
+  const config = AB_ROUTING_ENABLED
+    ? MODEL_ROUTING_CONFIG.map((e) => ({ backend: e.backend, weight: e.weight }))
+    : [];
+  res.json({ enabled: AB_ROUTING_ENABLED, backends: config, raw: process.env.MODEL_ROUTING || "" });
 });
 
 const STATIC_CACHE_MAX_AGE_MS =
