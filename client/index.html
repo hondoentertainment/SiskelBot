@@ -975,6 +975,44 @@
       gap: 0.35rem;
       flex-wrap: wrap;
     }
+    /* Conversation branching UI */
+    .btn-branch {
+      padding: 0.15rem 0.35rem;
+      font-size: 0.7rem;
+      background: transparent;
+      border: 1px solid #334155;
+      border-radius: 4px;
+      color: #64748b;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.15s;
+      line-height: 1;
+    }
+    .message:hover .btn-branch { opacity: 1; }
+    .btn-branch:hover { background: #1e293b; color: #93c5fd; border-color: #2563eb; }
+    .branch-indicator {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-left: auto;
+    }
+    .branch-indicator select {
+      padding: 0.25rem 0.4rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.75rem;
+      max-width: 200px;
+    }
+    .branch-indicator .branch-badge {
+      font-size: 0.7rem;
+      color: #93c5fd;
+      white-space: nowrap;
+    }
+    .message.branched-conv {
+      border-left: 3px solid #6366f1;
+    }
     #health-panel {
       width: 100%;
       background: #111827;
@@ -1151,31 +1189,6 @@
       font-size: 0.7rem;
       font-weight: 600;
       text-transform: uppercase;
-    }
-    .message.user .queued-badge {
-      display: inline-block;
-      font-size: 0.65rem;
-      background: rgba(245, 158, 11, 0.25);
-      color: #fbbf24;
-      padding: 0.15rem 0.4rem;
-      border-radius: 4px;
-      margin-top: 0.35rem;
-      font-weight: 600;
-    }
-    .queue-replay-notice {
-      position: fixed;
-      top: 0.75rem;
-      left: 50%;
-      transform: translateX(-50%);
-      background: #1e293b;
-      color: #fbbf24;
-      border: 1px solid #334155;
-      padding: 0.5rem 1rem;
-      border-radius: 8px;
-      font-size: 0.8rem;
-      z-index: 2000;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-      transition: opacity 0.3s;
     }
     @media (max-width: 768px) {
       .header-button, summary.header-button { min-width: 44px; min-height: 44px; padding: 0.6rem 0.9rem; display: inline-flex; align-items: center; justify-content: center; }
@@ -1904,6 +1917,10 @@
       <div class="conversation-export-row">
         <button id="copy-link-btn" type="button" class="header-button" title="Copy shareable JSON to clipboard">Copy link</button>
       </div>
+      <div class="branch-indicator" id="branch-indicator" style="display:none;">
+        <span class="branch-badge" id="branch-badge"></span>
+        <select id="branch-selector" aria-label="Switch branch" title="Switch to a different branch"></select>
+      </div>
     </div>
   </div>
   <div class="sr-only" id="live-region" aria-live="polite" aria-atomic="false"></div>
@@ -1964,7 +1981,6 @@
   </main>
 
   <script src="/js/stream-ui-batch.js"></script>
-  <script type="module" src="/js/offline-queue.js"></script>
   <script>
     (function initI18n() {
       if (window.SiskelI18n) {
@@ -4700,9 +4716,10 @@
       const label = role === 'user' ? 'User' : 'Assistant';
       const contentHtml = role === 'assistant' ? renderAssistantMarkdown(content) : escapeHtml(content);
       const contentClass = role === 'assistant' ? ' message-content markdown-rendered' : ' message-content';
+      const branchBtnHtml = `<button class="btn-branch" type="button" aria-label="Branch conversation here" title="Branch conversation here">&#9095; Branch</button>`;
       const headerHtml = role === 'assistant'
-        ? `<div class="message-header"><div class="message-label">${label}</div><button class="btn-speaker" type="button" aria-label="Read aloud" title="Read aloud">&#128266;</button></div>`
-        : `<div class="message-label">${label}</div>`;
+        ? `<div class="message-header"><div class="message-label">${label}</div><button class="btn-speaker" type="button" aria-label="Read aloud" title="Read aloud">&#128266;</button>${branchBtnHtml}</div>`
+        : `<div class="message-header"><div class="message-label">${label}</div>${branchBtnHtml}</div>`;
       el.innerHTML = `
         ${headerHtml}
         <div class="${contentClass.trim()}">${contentHtml}</div>
@@ -4711,6 +4728,7 @@
       chatContainer.appendChild(el);
       pruneChatDom();
       if (role === 'assistant') attachSpeakerButton(el);
+      attachBranchButton(el);
       scrollToBottom();
       announce(`${label} message added`);
       return el;
@@ -4779,6 +4797,139 @@
         speakText(text);
       });
     }
+
+    // --- Conversation Branching ---
+    function getMessageIndex(msgEl) {
+      const allMsgs = chatContainer.querySelectorAll('.message');
+      for (let i = 0; i < allMsgs.length; i++) {
+        if (allMsgs[i] === msgEl) return i;
+      }
+      return -1;
+    }
+
+    function attachBranchButton(msgEl) {
+      const btn = msgEl.querySelector('.btn-branch');
+      if (!btn) return;
+      btn.addEventListener('click', async () => {
+        const idx = getMessageIndex(msgEl);
+        if (idx < 0) return;
+        if (!currentConversationId) {
+          saveCurrentToConversations();
+        }
+        if (!currentConversationId) return;
+        const ws = typeof getSelectedWorkspace === 'function' ? getSelectedWorkspace() : 'default';
+        try {
+          btn.disabled = true;
+          btn.textContent = '...';
+          const resp = await fetch('/api/conversations/' + encodeURIComponent(currentConversationId) + '/branch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ atMessageIndex: idx, workspace: ws }),
+          });
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            alert('Branch failed: ' + (err.error || resp.statusText));
+            return;
+          }
+          const branch = await resp.json();
+          // Save the branch locally as a conversation and switch to it
+          const list = loadConversations();
+          list.unshift({
+            id: branch.id,
+            title: branch.title,
+            messages: branch.messages,
+            pinned: false,
+            tags: branch.tags || [],
+            createdAt: branch.createdAt,
+            updatedAt: branch.updatedAt,
+            _isBranch: true,
+            parentConversationId: branch.parentConversationId,
+            branchPoint: branch.branchPoint,
+            label: branch.label,
+          });
+          saveConversations(list);
+          switchToConversation(branch.id);
+          updateBranchIndicator();
+          announce('Branched conversation at message ' + idx);
+        } catch (e) {
+          alert('Branch failed: ' + (e.message || 'Network error'));
+        } finally {
+          btn.disabled = false;
+          btn.textContent = '\u2B57 Branch';
+        }
+      });
+    }
+
+    async function updateBranchIndicator() {
+      const indicator = document.getElementById('branch-indicator');
+      const badge = document.getElementById('branch-badge');
+      const selector = document.getElementById('branch-selector');
+      if (!indicator || !badge || !selector) return;
+
+      if (!currentConversationId) {
+        indicator.style.display = 'none';
+        return;
+      }
+
+      // Check if this conversation is a branch
+      const list = loadConversations();
+      const current = list.find(c => c && String(c.id) === String(currentConversationId));
+      const parentId = current?._isBranch ? current.parentConversationId : currentConversationId;
+
+      // Find all branches of the parent (or self)
+      const branches = list.filter(c => c && c._isBranch && String(c.parentConversationId) === String(parentId));
+      const parent = list.find(c => c && String(c.id) === String(parentId));
+
+      if (branches.length === 0) {
+        indicator.style.display = 'none';
+        return;
+      }
+
+      indicator.style.display = 'flex';
+      if (current?._isBranch) {
+        badge.textContent = '\u2B57 Branch';
+        // Add visual indicator to all messages
+        chatContainer.querySelectorAll('.message').forEach(m => m.classList.add('branched-conv'));
+      } else {
+        badge.textContent = branches.length + ' branch' + (branches.length > 1 ? 'es' : '');
+      }
+
+      // Populate the selector
+      selector.innerHTML = '';
+      const parentOpt = document.createElement('option');
+      parentOpt.value = parentId;
+      parentOpt.textContent = (parent?.title || 'Original').slice(0, 40);
+      if (String(currentConversationId) === String(parentId)) parentOpt.selected = true;
+      selector.appendChild(parentOpt);
+
+      branches.forEach(b => {
+        const opt = document.createElement('option');
+        opt.value = b.id;
+        opt.textContent = ('\u2B57 ' + (b.label || b.title || 'Branch')).slice(0, 40);
+        if (String(currentConversationId) === String(b.id)) opt.selected = true;
+        selector.appendChild(opt);
+      });
+    }
+
+    // Branch selector change handler
+    (function() {
+      const selector = document.getElementById('branch-selector');
+      if (selector) {
+        selector.addEventListener('change', () => {
+          const id = selector.value;
+          if (id && String(id) !== String(currentConversationId)) {
+            switchToConversation(id);
+          }
+        });
+      }
+    })();
+
+    // Update branch indicator on conversation switch
+    const _origSwitchToConversation = switchToConversation;
+    switchToConversation = function(id) {
+      _origSwitchToConversation(id);
+      updateBranchIndicator();
+    };
 
     // --- Voice: Speech-to-Text ---
     const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -5266,26 +5417,6 @@
       if (!prompt && !attachedImages.length) return;
       if (typeof haptic === 'function') haptic('send');
 
-      /* --- Offline queue: store message and show queued badge instead of sending --- */
-      if (!navigator.onLine && window.SiskelOfflineQueue) {
-        const entry = await window.SiskelOfflineQueue.queueMessage(prompt);
-        const msgEl = addMessage('user', prompt);
-        const badge = document.createElement('span');
-        badge.className = 'queued-badge';
-        badge.textContent = '\u{1F552} Queued';
-        badge.setAttribute('data-queue-id', entry.id);
-        msgEl.appendChild(badge);
-        promptInput.value = '';
-        showNotice('You are offline — message queued and will be sent when you reconnect', 'warning', false);
-        /* Request background sync so the SW can nudge us when connectivity returns */
-        if ('serviceWorker' in navigator && navigator.serviceWorker.ready) {
-          navigator.serviceWorker.ready.then((reg) => {
-            if (reg.sync) reg.sync.register('siskelbot-offline-queue').catch(() => {});
-          });
-        }
-        return;
-      }
-
       if (activeAbortController) activeAbortController.abort();
       activeAbortController = new AbortController();
       const signal = activeAbortController.signal;
@@ -5602,6 +5733,7 @@
         messages.forEach(m => addMessage(m.role, m.content, null));
         updatePinTagUI();
         persistMessages();
+        updateBranchIndicator();
       };
       continueNo.onclick = () => {
         localStorage.removeItem(STORAGE_KEY);
@@ -5950,67 +6082,12 @@
     function updateOfflineUI() {
       const offline = !navigator.onLine;
       if (offlineIndicator) offlineIndicator.style.display = offline ? 'inline-block' : 'none';
-      /* When offline the send button stays enabled so users can queue messages */
-      if (sendBtn && !offline) sendBtn.disabled = (stopBtn && stopBtn.style.display === 'inline-block');
+      if (sendBtn) sendBtn.disabled = offline || (stopBtn && stopBtn.style.display === 'inline-block');
       setConnectionStatus(offline ? (window.SiskelI18n && SiskelI18n.t ? SiskelI18n.t('header.offline') : 'Offline') : (window.SiskelI18n && SiskelI18n.t ? SiskelI18n.t('status.ready') : 'Ready'));
     }
     updateOfflineUI();
-
-    /* --- Offline queue: replay on reconnect --- */
-    async function replayOfflineQueue() {
-      const oq = window.SiskelOfflineQueue;
-      if (!oq) return;
-      const pending = await oq.getQueuedMessages();
-      if (!pending.length) return;
-      /* Show notification banner */
-      const notice = document.createElement('div');
-      notice.className = 'queue-replay-notice';
-      notice.textContent = 'Sending ' + pending.length + ' queued message' + (pending.length > 1 ? 's' : '') + '...';
-      document.body.appendChild(notice);
-      try {
-        await oq.replayQueue(async (text) => {
-          /* Remove queued badge from matching message bubble if present */
-          const badges = chatContainer.querySelectorAll('.queued-badge');
-          for (const b of badges) {
-            const contentEl = b.closest('.message')?.querySelector('.message-content');
-            if (contentEl && contentEl.textContent.trim() === text.trim()) {
-              b.remove();
-              break;
-            }
-          }
-          /* Programmatically send: put text in prompt and click send */
-          promptInput.value = text;
-          sendBtn.click();
-          /* Wait for the response to finish (sendBtn re-enabled) */
-          await new Promise((resolve) => {
-            const check = () => {
-              if (!sendBtn.disabled) { resolve(); return; }
-              setTimeout(check, 200);
-            };
-            setTimeout(check, 300);
-          });
-        });
-        notice.textContent = 'All queued messages sent!';
-      } catch (err) {
-        notice.textContent = 'Some queued messages failed to send';
-      }
-      setTimeout(() => notice.remove(), 3000);
-    }
-
-    window.addEventListener('online', () => {
-      updateOfflineUI();
-      replayOfflineQueue();
-    });
+    window.addEventListener('online', updateOfflineUI);
     window.addEventListener('offline', updateOfflineUI);
-
-    /* Listen for background sync replay message from service worker */
-    if ('serviceWorker' in navigator && navigator.serviceWorker) {
-      navigator.serviceWorker.addEventListener('message', (event) => {
-        if (event.data && event.data.type === 'REPLAY_OFFLINE_QUEUE') {
-          replayOfflineQueue();
-        }
-      });
-    }
 
     // --- Phase 20: Tap-outside-to-close for modals ---
     document.querySelectorAll('[data-modal-overlay]').forEach((overlay) => {

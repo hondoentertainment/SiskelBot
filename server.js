@@ -13,6 +13,13 @@ import passport from "passport";
 import { initPassport, isOAuthConfigured } from "./lib/oauth.js";
 import { configureSSO, isSSOConfigured } from "./lib/sso.js";
 import {
+  branchConversation,
+  getConversationTree,
+  listBranches as listConversationBranches,
+  getBranch as getConversationBranch,
+  deleteBranch as deleteConversationBranch,
+} from "./lib/conversation-tree.js";
+import {
   indexDocument,
   search as knowledgeSearch,
   semanticSearch as knowledgeSemanticSearch,
@@ -2689,6 +2696,76 @@ apiRoute("delete", "/conversations/:id", storageRateLimiter, requireScope("write
     res.status(204).send();
   } catch (err) {
     console.error("Storage conversations delete error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+// --- Conversation branching & forking ---
+apiRoute("post", "/conversations/:id/branch", storageRateLimiter, logRequest, async (req, res) => {
+  try {
+    const workspace = sanitizeWorkspace(req.body?.workspace || req.query?.workspace);
+    const userId = req.userId || "anonymous";
+    const { atMessageIndex, label } = req.body || {};
+    if (typeof atMessageIndex !== "number" || !Number.isInteger(atMessageIndex) || atMessageIndex < 0) {
+      return apiError(res, 400, "INVALID_INPUT", "atMessageIndex must be a non-negative integer.");
+    }
+    const branch = await branchConversation(req.params.id, atMessageIndex, userId, { label, workspace });
+    res.status(201).json(branch);
+  } catch (err) {
+    if (err.message.includes("not found")) return apiError(res, 404, "NOT_FOUND", err.message);
+    if (err.message.includes("Invalid branch point")) return apiError(res, 400, "INVALID_INPUT", err.message);
+    console.error("Branch conversation error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("get", "/conversations/:id/tree", storageRateLimiter, logRequest, async (req, res) => {
+  try {
+    const workspace = sanitizeWorkspace(req.query?.workspace);
+    const userId = req.userId || "anonymous";
+    const tree = await getConversationTree(req.params.id, workspace, userId);
+    if (!tree) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
+    res.json(tree);
+  } catch (err) {
+    console.error("Conversation tree error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("get", "/conversations/:id/branches", storageRateLimiter, logRequest, async (req, res) => {
+  try {
+    const workspace = sanitizeWorkspace(req.query?.workspace);
+    const userId = req.userId || "anonymous";
+    const branches = await listConversationBranches(req.params.id, workspace, userId);
+    res.json({ branches });
+  } catch (err) {
+    console.error("List branches error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("get", "/conversations/branches/:branchId", storageRateLimiter, logRequest, async (req, res) => {
+  try {
+    const workspace = sanitizeWorkspace(req.query?.workspace);
+    const userId = req.userId || "anonymous";
+    const branch = await getConversationBranch(req.params.branchId, workspace, userId);
+    if (!branch) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
+    res.json(branch);
+  } catch (err) {
+    console.error("Get branch error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("delete", "/conversations/branches/:branchId", storageRateLimiter, logRequest, async (req, res) => {
+  try {
+    const workspace = sanitizeWorkspace(req.query?.workspace);
+    const userId = req.userId || "anonymous";
+    const deleted = await deleteConversationBranch(req.params.branchId, workspace, userId);
+    if (!deleted) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
+    res.status(204).send();
+  } catch (err) {
+    console.error("Delete branch error:", err.message);
     return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
   }
 });
