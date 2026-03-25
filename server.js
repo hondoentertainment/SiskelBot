@@ -21,6 +21,7 @@ import {
 import { embed, embedBatch, isAvailable as embeddingsAvailable } from "./lib/embeddings.js";
 import { executeStep, appendAuditLog, getRegisteredActions } from "./lib/action-executor.js";
 import { loadPlugins } from "./lib/plugins-loader.js";
+import { loadPlugin as loadJsPlugin, executePlugin as execJsPlugin, listPlugins as listJsPlugins } from "./lib/plugin-sandbox.js";
 import { getToolsSchema, intersectClientToolsWithAllowlist, getAgentToolsAllowlistNames } from "./lib/agent-tools.js";
 import { resolveAgentMaxIterations } from "./lib/agent-iterations.js";
 import * as storage from "./lib/storage.js";
@@ -2638,6 +2639,34 @@ apiRoute("get", "/plugins/actions", pluginsActionsRateLimiter, userAuth, logRequ
     res.json({ actions: [...actions].sort() });
   } catch (err) {
     return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+// --- Phase 17.1: JS Plugin Management API ---
+apiRoute("get", "/plugins", pluginsActionsRateLimiter, userAuth, logRequest, (req, res) => {
+  try {
+    const plugins = listJsPlugins();
+    res.json({ plugins });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGIN_API.md.");
+  }
+});
+
+apiRoute("post", "/plugins/execute", pluginsActionsRateLimiter, userAuth, logRequest, async (req, res) => {
+  try {
+    const { pluginId, input, workspaceId, config } = req.body || {};
+    if (!pluginId || typeof pluginId !== "string") {
+      return apiError(res, 400, "INVALID_INPUT", "pluginId is required", "Send { pluginId, input?, workspaceId?, config? }.");
+    }
+    const result = await execJsPlugin(pluginId.trim(), {
+      input: typeof input === "string" ? input : "",
+      workspaceId: workspaceId || null,
+      userId: req.userId || null,
+      config: config && typeof config === "object" ? config : {},
+    });
+    res.json({ ok: true, output: result.output, metadata: result.metadata });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
   }
 });
 
