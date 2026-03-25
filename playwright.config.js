@@ -1,3 +1,4 @@
+/* global process */
 import { defineConfig } from "@playwright/test";
 
 const PORT = 3847;
