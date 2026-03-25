@@ -6,7 +6,8 @@ const APP_ASSETS = [
   "/index.html",
   "/app.webmanifest",
   "/icon.svg",
-  "/icon-maskable.svg"
+  "/icon-maskable.svg",
+  "/js/offline-queue.js"
 ];
 const CDN_ASSETS = [
   "https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js",
@@ -51,6 +52,19 @@ self.addEventListener("message", (event) => {
       if (ports && ports[0]) ports[0].postMessage({ ok: false });
     }
   })());
+});
+
+/* Background Sync: when connectivity returns, notify the client to replay queued messages */
+self.addEventListener("sync", (event) => {
+  if (event.tag === "siskelbot-offline-queue") {
+    event.waitUntil(
+      self.clients.matchAll({ type: "window" }).then((clients) => {
+        for (const client of clients) {
+          client.postMessage({ type: "REPLAY_OFFLINE_QUEUE" });
+        }
+      })
+    );
+  }
 });
 
 self.addEventListener("fetch", (event) => {

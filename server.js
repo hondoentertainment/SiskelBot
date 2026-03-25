@@ -11,6 +11,17 @@ import { dirname, join } from "path";
 import multer from "multer";
 import passport from "passport";
 import { initPassport, isOAuthConfigured } from "./lib/oauth.js";
+import { configureSSO, isSSOConfigured } from "./lib/sso.js";
+import { getLeaderElection } from "./lib/leader-election.js";
+import { getRegionHealth } from "./lib/region-health.js";
+import { getReplicationManager, internalAuth } from "./lib/storage-replication.js";
+import {
+  branchConversation,
+  getConversationTree,
+  listBranches as listConversationBranches,
+  getBranch as getConversationBranch,
+  deleteBranch as deleteConversationBranch,
+} from "./lib/conversation-tree.js";
 import {
   indexDocument,
   search as knowledgeSearch,
@@ -21,6 +32,15 @@ import {
 import { embed, embedBatch, isAvailable as embeddingsAvailable } from "./lib/embeddings.js";
 import { executeStep, appendAuditLog, getRegisteredActions } from "./lib/action-executor.js";
 import { loadPlugins } from "./lib/plugins-loader.js";
+import {
+  discoverPacks,
+  registry as marketplaceRegistry,
+  listAvailable as marketplaceListAvailable,
+  listInstalled as marketplaceListInstalled,
+  installPack as marketplaceInstallPack,
+  uninstallPack as marketplaceUninstallPack,
+} from "./lib/plugin-marketplace.js";
+import { loadPlugin as loadJsPlugin, executePlugin as execJsPlugin, listPlugins as listJsPlugins } from "./lib/plugin-sandbox.js";
 import { getToolsSchema, intersectClientToolsWithAllowlist, getAgentToolsAllowlistNames } from "./lib/agent-tools.js";
 import { resolveAgentMaxIterations } from "./lib/agent-iterations.js";
 import * as storage from "./lib/storage.js";
@@ -49,10 +69,13 @@ import {
 } from "./lib/teams.js";
 import openApiSpec from "./lib/openapi-spec.js";
 import { runEvalSet } from "./lib/eval-runner.js";
-import { listEvalSets, loadEvalSet } from "./lib/eval-sets.js";
+import { listEvalSets, loadEvalSet } from "./lib/storage-eval.js";
 import { createToken, attachToServer, getOnlineUsers, closeServer } from "./lib/realtime.js";
 import { sanitizeForLog } from "./lib/log-sanitizer.js";
 import { execute as circuitExecute } from "./lib/circuit-breaker.js";
+import { parseRoutingConfig, selectBackend, logRouting, getRoutingStats } from "./lib/ab-router.js";
+import { AuditLifecycle } from "./lib/audit-lifecycle.js";
+import { queryAudit, exportAudit } from "./lib/audit-query.js";
 import { initErrorReporting, reportError } from "./lib/error-reporting.js";
 import {
   runSwarm,
@@ -88,6 +111,24 @@ import { archiveExecutionAuditToS3, getAuditArchiveStatus } from "./lib/audit-s3
 import { fetchTextFromAllowedUrl } from "./lib/knowledge-url-fetch.js";
 import { pipeLlmChatStreamToSse } from "./lib/llm-stream-sse.js";
 import { runAgentLoop } from "./lib/agent-loop.js";
+import {
+  recordTrace,
+  listTraces as listRecordedTraces,
+  getTrace as getRecordedTrace,
+  deleteTrace as deleteRecordedTrace,
+  autoRecordEnabled,
+} from "./lib/trace-recorder.js";
+import { replayTrace, replayAll } from "./lib/trace-replay.js";
+
+import {
+  createTemplate,
+  listTemplates,
+  getTemplate,
+  updateTemplate,
+  deleteTemplate,
+  applyTemplate,
+  createWorkspaceFromTemplate,
+} from "./lib/workspace-templates.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -96,6 +137,9 @@ initErrorReporting();
 
 // Phase 17: Load plugins at startup (plugins/config.json or PLUGINS_PATH)
 loadPlugins();
+
+// Phase 49: Discover marketplace plugin packs at startup
+discoverPacks();
 
 // Environment config
 const VLLM_URL = process.env.VLLM_URL || "http://localhost:8000";
@@ -120,6 +164,10 @@ function getBackend() {
   }
   return "ollama"; // default: Ollama (runs on Windows, easy local setup)
 }
+
+// A/B routing: parse MODEL_ROUTING env var (e.g. "ollama:0.8,openai:0.2")
+const MODEL_ROUTING_CONFIG = parseRoutingConfig(process.env.MODEL_ROUTING);
+const AB_ROUTING_ENABLED = MODEL_ROUTING_CONFIG.length > 0;
 
 const BACKEND = getBackend();
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
@@ -312,12 +360,15 @@ if (SESSION_SECRET) {
   );
 }
 
-// Phase 19: Passport (when OAuth configured)
+// Phase 19: Passport (when OAuth or SSO configured)
 let oauthProviders = { github: false, google: false };
-if (isOAuthConfigured()) {
+let ssoProviders = { oidc: false, saml: false };
+const needsPassport = isOAuthConfigured() || isSSOConfigured();
+if (needsPassport) {
   app.use(passport.initialize());
   app.use(passport.session());
   oauthProviders = initPassport();
+  ssoProviders = configureSSO(app, passport);
 }
 
 // Phase 68: Warm Postgres-backed API key cache before isAuthConfigured / rate limiters.
@@ -629,9 +680,17 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
       }
     }
 
-    const config = buildProxyConfig(BACKEND);
+    // A/B routing: select backend per-request when MODEL_ROUTING is configured
+    const requestId = randomUUID();
+    let activeBackend = BACKEND;
+    if (AB_ROUTING_ENABLED) {
+      activeBackend = selectBackend(MODEL_ROUTING_CONFIG, requestId);
+      logRouting(requestId, activeBackend, MODEL_ROUTING_CONFIG);
+    }
+
+    const config = buildProxyConfig(activeBackend);
     const url = `${config.baseUrl}${config.path}`;
-    const model = req.body?.model || MODEL_PRESETS[BACKEND]?.[0] || "unknown";
+    const model = req.body?.model || MODEL_PRESETS[activeBackend]?.[0] || "unknown";
     const agentMode = req.body?.agentMode === true;
     const swarmMode = req.body?.swarmMode === true;
     const hasTools = Array.isArray(req.body?.tools) && req.body.tools.length > 0;
@@ -695,6 +754,10 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
         res.setHeader("X-Agent-Iteration", String(iteration));
         if (req._agentLoopMeta?.runId) {
           res.setHeader("X-Agent-Run-Id", req._agentLoopMeta.runId);
+        }
+        if (AB_ROUTING_ENABLED) {
+          res.setHeader("x-model-backend", activeBackend);
+          res.setHeader("x-model-request-id", requestId);
         }
         await setQuotaHeaders(res, workspace, userId);
         if (typeof res.flushHeaders === "function") res.flushHeaders();
@@ -763,6 +826,26 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
       recordTokensUsed(inputTokens, outputTokens);
       await recordUsage({ timestamp: new Date().toISOString(), model, inputTokens, outputTokens, backend: BACKEND, workspace, userId }).catch(() => {});
 
+      if (autoRecordEnabled()) {
+        try {
+          const tracePayload = req._agentLoopMeta || {};
+          await recordTrace({
+            runId: tracePayload.runId || undefined,
+            workspace: req.body?.agentOptions?.workspace || "default",
+            userId: req.userId || null,
+            steps: tracePayload.trajectory?.steps || [],
+            stepCount: tracePayload.trajectory?.stepCount || 0,
+            toolCalls: tracePayload.toolCalls || [],
+            swarmSteps: swarmSteps || [],
+            stopReason: tracePayload.stopReason || undefined,
+            content: typeof content === "string" ? content.slice(0, 2000) : null,
+            type: swarmResult ? "swarm" : "agent",
+          });
+        } catch (e) {
+          console.warn("[trace-recorder] Auto-record failed:", e?.message || e);
+        }
+      }
+
       res.write("data: [DONE]\n\n");
       res.end();
       const ws = req.body?.agentOptions?.workspace || "default";
@@ -803,6 +886,10 @@ app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRate
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
+    if (AB_ROUTING_ENABLED) {
+      res.setHeader("x-model-backend", activeBackend);
+      res.setHeader("x-model-request-id", requestId);
+    }
     await setQuotaHeaders(res, workspace, userId);
     res.flushHeaders();
 
@@ -1064,7 +1151,7 @@ app.post("/v1/swarm", chatAuth, requireScope("write"), perKeyChatRateLimiter, ch
   }
 });
 
-app.post("/v1/tasks/plan", taskPlanRateLimiter, apiKeyAuth, logRequest, async (req, res) => {
+app.post("/v1/tasks/plan", taskPlanRateLimiter, apiKeyAuth, requireScope("write"), logRequest, async (req, res) => {
   try {
     const { messages, model } = req.body || {};
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -1779,6 +1866,7 @@ apiRoute("post", "/embeddings", embeddingsRateLimiter, chatAuth, requireScope("e
 
 apiRoute("post", "/knowledge/index",
   knowledgeIndexRateLimiter,
+  requireScope("write"),
   logRequest,
   async (req, res) => {
     try {
@@ -1813,7 +1901,7 @@ apiRoute("post", "/knowledge/index",
   }
 );
 
-apiRoute("get", "/knowledge/search", logRequest, async (req, res) => {
+apiRoute("get", "/knowledge/search", requireScope("read"), logRequest, async (req, res) => {
   try {
     const q = (req.query?.q ?? "").toString();
     const workspace = sanitizeWorkspace(req.query?.workspace);
@@ -1832,7 +1920,7 @@ apiRoute("get", "/knowledge/search", logRequest, async (req, res) => {
   }
 });
 
-apiRoute("get", "/knowledge/status", logRequest, (req, res) => {
+apiRoute("get", "/knowledge/status", requireScope("read"), logRequest, (req, res) => {
   const workspace = String(req.query.workspace || "default").trim();
   const result = knowledgeList({ workspace });
   if (result.error) {
@@ -1844,7 +1932,7 @@ apiRoute("get", "/knowledge/status", logRequest, (req, res) => {
   });
 });
 
-apiRoute("get", "/knowledge/list", logRequest, (req, res) => {
+apiRoute("get", "/knowledge/list", requireScope("read"), logRequest, (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const result = knowledgeList({ workspace });
@@ -1858,7 +1946,7 @@ apiRoute("get", "/knowledge/list", logRequest, (req, res) => {
   }
 });
 
-apiRoute("post", "/knowledge/reindex", embeddingsRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/knowledge/reindex", embeddingsRateLimiter, requireScope("embed"), logRequest, async (req, res) => {
   try {
     if (!embeddingsAvailable()) {
       return apiError(res, 503, "EMBEDDINGS_UNAVAILABLE", "OPENAI_API_KEY required for reindex", "Set OPENAI_API_KEY or skip semantic refresh.");
@@ -1875,7 +1963,7 @@ apiRoute("post", "/knowledge/reindex", embeddingsRateLimiter, logRequest, async 
   }
 });
 
-apiRoute("post", "/knowledge/fetch", knowledgeIndexRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/knowledge/fetch", knowledgeIndexRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const url = typeof req.body?.url === "string" ? req.body.url.trim() : "";
     const workspace = sanitizeWorkspace(req.body?.workspace);
@@ -1925,7 +2013,7 @@ const storageRateLimiter = rateLimit({
 });
 
 // --- Phase 14: Workspaces API ---
-apiRoute("get", "/workspaces", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("get", "/workspaces", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspaces = await storage.listWorkspaces(req.userId);
     res.json({ _version: 1, items: workspaces });
@@ -1935,7 +2023,7 @@ apiRoute("get", "/workspaces", storageRateLimiter, userAuth, logRequest, async (
   }
 });
 
-apiRoute("post", "/workspaces", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("post", "/workspaces", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
   try {
     const idemKey = req.headers["idempotency-key"] || req.headers["x-idempotency-key"];
     if (idemKey) {
@@ -1951,6 +2039,92 @@ apiRoute("post", "/workspaces", storageRateLimiter, userAuth, logRequest, async 
     res.status(201).json(ws);
   } catch (err) {
     console.error("Workspace create error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+// --- Workspace Templates ---
+apiRoute("get", "/workspace-templates", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+  try {
+    const templates = await listTemplates();
+    res.json({ _version: 1, items: templates });
+  } catch (err) {
+    console.error("Workspace templates list error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("post", "/workspace-templates", storageRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const template = await createTemplate(req.body);
+    res.status(201).json(template);
+  } catch (err) {
+    console.error("Workspace template create error:", err.message);
+    if (err.message === "Template name is required") {
+      return apiError(res, 400, "VALIDATION_ERROR", err.message, "Provide a name field.");
+    }
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("get", "/workspace-templates/:id", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+  try {
+    const template = await getTemplate(req.params.id);
+    if (!template) {
+      return apiError(res, 404, "NOT_FOUND", "Template not found", null);
+    }
+    res.json(template);
+  } catch (err) {
+    console.error("Workspace template get error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("put", "/workspace-templates/:id", storageRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const updated = await updateTemplate(req.params.id, req.body);
+    if (!updated) {
+      return apiError(res, 404, "NOT_FOUND", "Template not found", null);
+    }
+    res.json(updated);
+  } catch (err) {
+    console.error("Workspace template update error:", err.message);
+    if (err.message === "Cannot update a default template") {
+      return apiError(res, 403, "FORBIDDEN", err.message, "Default templates cannot be modified.");
+    }
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("delete", "/workspace-templates/:id", storageRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const deleted = await deleteTemplate(req.params.id);
+    if (!deleted) {
+      return apiError(res, 404, "NOT_FOUND", "Template not found", null);
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Workspace template delete error:", err.message);
+    if (err.message === "Cannot delete a default template") {
+      return apiError(res, 403, "FORBIDDEN", err.message, "Default templates cannot be deleted.");
+    }
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("post", "/workspace-templates/:id/apply", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+  try {
+    const workspaceId = typeof req.body?.workspaceId === "string" ? req.body.workspaceId.trim() : null;
+    if (!workspaceId) {
+      return apiError(res, 400, "VALIDATION_ERROR", "workspaceId is required", null);
+    }
+    const result = await applyTemplate(req.params.id, workspaceId, req.userId);
+    res.json(result);
+  } catch (err) {
+    console.error("Workspace template apply error:", err.message);
+    if (err.message === "Template not found") {
+      return apiError(res, 404, "NOT_FOUND", err.message, null);
+    }
     return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
   }
 });
@@ -1998,7 +2172,7 @@ apiRoute("delete", "/workspaces/:id", storageRateLimiter, userAuth, requireScope
 });
 
 // Phase 61–62: Per-workspace agent system prompt + approved memory (agent / swarm)
-apiRoute("get", "/workspaces/:id/agent-settings", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("get", "/workspaces/:id/agent-settings", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspaceId = sanitizeWorkspace(req.params.id);
     const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
@@ -2058,7 +2232,7 @@ apiRoute(
 );
 
 // --- Phase 29: Team workspaces - invite, join, members, activity ---
-apiRoute("post", "/workspaces/join", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("post", "/workspaces/join", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
   try {
     const code = req.body?.code?.trim?.();
     if (!code) return apiError(res, 400, "INVALID_INPUT", "code required", "Send { code: string }.");
@@ -2080,7 +2254,7 @@ apiRoute("post", "/workspaces/join", storageRateLimiter, userAuth, logRequest, a
   }
 });
 
-apiRoute("post", "/workspaces/:id/invite", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("post", "/workspaces/:id/invite", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspaceId = req.params.id;
     const access = await canAccessWorkspace(workspaceId, req.userId);
@@ -2100,7 +2274,7 @@ apiRoute("post", "/workspaces/:id/invite", storageRateLimiter, userAuth, logRequ
   }
 });
 
-apiRoute("get", "/workspaces/:id/members", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("get", "/workspaces/:id/members", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspaceId = req.params.id;
     const access = await canAccessWorkspace(workspaceId, req.userId);
@@ -2114,7 +2288,7 @@ apiRoute("get", "/workspaces/:id/members", storageRateLimiter, userAuth, logRequ
   }
 });
 
-apiRoute("get", "/workspaces/:id/activity", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("get", "/workspaces/:id/activity", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspaceId = req.params.id;
     const access = await canAccessWorkspace(workspaceId, req.userId);
@@ -2130,7 +2304,7 @@ apiRoute("get", "/workspaces/:id/activity", storageRateLimiter, userAuth, logReq
 
 // --- Phase 10: Persistent Backend Storage (SiskelBot) ---
 // GET/POST /api/context (userAuth attaches req.userId; anonymous when no auth configured)
-apiRoute("get", "/context", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("get", "/context", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const data = await storage.listItems("context", workspace, req.userId);
@@ -2141,7 +2315,7 @@ apiRoute("get", "/context", storageRateLimiter, userAuth, logRequest, async (req
   }
 });
 
-apiRoute("post", "/context", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/context", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const { title, content } = req.body || {};
@@ -2166,7 +2340,7 @@ apiRoute("post", "/context", storageRateLimiter, logRequest, async (req, res) =>
 });
 
 // GET/PUT/DELETE /api/context/:id
-apiRoute("get", "/context/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("get", "/context/:id", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const item = await storage.getItem("context", req.params.id, workspace);
@@ -2178,7 +2352,7 @@ apiRoute("get", "/context/:id", storageRateLimiter, logRequest, async (req, res)
   }
 });
 
-apiRoute("put", "/context/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("put", "/context/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const { title, content } = req.body || {};
@@ -2195,7 +2369,7 @@ apiRoute("put", "/context/:id", storageRateLimiter, logRequest, async (req, res)
   }
 });
 
-apiRoute("delete", "/context/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("delete", "/context/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const deleted = await storage.deleteItem("context", req.params.id, workspace);
@@ -2208,7 +2382,7 @@ apiRoute("delete", "/context/:id", storageRateLimiter, logRequest, async (req, r
 });
 
 // POST /api/context/sync - merge client payload, return merged list
-apiRoute("post", "/context/sync", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/context/sync", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
@@ -2222,7 +2396,7 @@ apiRoute("post", "/context/sync", storageRateLimiter, logRequest, async (req, re
 });
 
 // GET/POST /api/recipes
-apiRoute("get", "/recipes", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("get", "/recipes", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const data = await storage.listItems("recipes", workspace);
@@ -2233,7 +2407,7 @@ apiRoute("get", "/recipes", storageRateLimiter, logRequest, async (req, res) => 
   }
 });
 
-apiRoute("post", "/recipes", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/recipes", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const recipe = req.body;
@@ -2259,7 +2433,7 @@ apiRoute("post", "/recipes", storageRateLimiter, logRequest, async (req, res) =>
 });
 
 // GET/PUT/DELETE /api/recipes/:id
-apiRoute("get", "/recipes/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("get", "/recipes/:id", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const item = await storage.getItem("recipes", req.params.id, workspace);
@@ -2271,7 +2445,7 @@ apiRoute("get", "/recipes/:id", storageRateLimiter, logRequest, async (req, res)
   }
 });
 
-apiRoute("put", "/recipes/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("put", "/recipes/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const { name, description, steps } = req.body || {};
@@ -2289,7 +2463,7 @@ apiRoute("put", "/recipes/:id", storageRateLimiter, logRequest, async (req, res)
   }
 });
 
-apiRoute("delete", "/recipes/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("delete", "/recipes/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const deleted = await storage.deleteItem("recipes", req.params.id, workspace);
@@ -2302,7 +2476,7 @@ apiRoute("delete", "/recipes/:id", storageRateLimiter, logRequest, async (req, r
 });
 
 // POST /api/recipes/sync
-apiRoute("post", "/recipes/sync", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/recipes/sync", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
@@ -2317,7 +2491,7 @@ apiRoute("post", "/recipes/sync", storageRateLimiter, logRequest, async (req, re
 
 // --- Phase 16: Scheduled & Automated Recipes ---
 // GET /api/schedules - list scheduled recipes
-apiRoute("get", "/schedules", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("get", "/schedules", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const items = await scheduleStore.list(workspace);
@@ -2335,7 +2509,7 @@ apiRoute("get", "/schedules", storageRateLimiter, logRequest, async (req, res) =
 });
 
 // POST /api/schedules - add/update schedule for recipe
-apiRoute("post", "/schedules", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/schedules", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const { recipeId, cron, timezone, enabled } = req.body || {};
@@ -2359,7 +2533,7 @@ apiRoute("post", "/schedules", storageRateLimiter, logRequest, async (req, res) 
 });
 
 // DELETE /api/schedules/:recipeId - remove schedule
-apiRoute("delete", "/schedules/:recipeId", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("delete", "/schedules/:recipeId", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const removed = await scheduleStore.remove(req.params.recipeId, workspace);
@@ -2373,7 +2547,7 @@ apiRoute("delete", "/schedules/:recipeId", storageRateLimiter, logRequest, async
 });
 
 // POST /api/schedules/run-now/:recipeId - manual trigger
-apiRoute("post", "/schedules/run-now/:recipeId", storageRateLimiter, apiKeyAuth, logRequest, async (req, res) => {
+apiRoute("post", "/schedules/run-now/:recipeId", storageRateLimiter, apiKeyAuth, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace || req.query?.workspace);
     const result = await runRecipeNow(req.params.recipeId, workspace);
@@ -2453,7 +2627,7 @@ app.get("/api/backup/cron", logRequest, async (req, res) => {
 });
 
 // GET/POST /api/conversations
-apiRoute("get", "/conversations", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("get", "/conversations", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const data = await storage.listItems("conversations", workspace);
@@ -2464,7 +2638,7 @@ apiRoute("get", "/conversations", storageRateLimiter, logRequest, async (req, re
   }
 });
 
-apiRoute("post", "/conversations", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/conversations", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const { id, title, messages, meta } = req.body || {};
@@ -2487,7 +2661,7 @@ apiRoute("post", "/conversations", storageRateLimiter, logRequest, async (req, r
 });
 
 // GET/PUT/DELETE /api/conversations/:id
-apiRoute("get", "/conversations/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("get", "/conversations/:id", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const item = await storage.getItem("conversations", req.params.id, workspace);
@@ -2499,7 +2673,7 @@ apiRoute("get", "/conversations/:id", storageRateLimiter, logRequest, async (req
   }
 });
 
-apiRoute("put", "/conversations/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("put", "/conversations/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const { title, messages, meta } = req.body || {};
@@ -2517,7 +2691,7 @@ apiRoute("put", "/conversations/:id", storageRateLimiter, logRequest, async (req
   }
 });
 
-apiRoute("delete", "/conversations/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("delete", "/conversations/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const deleted = await storage.deleteItem("conversations", req.params.id, workspace);
@@ -2525,6 +2699,76 @@ apiRoute("delete", "/conversations/:id", storageRateLimiter, logRequest, async (
     res.status(204).send();
   } catch (err) {
     console.error("Storage conversations delete error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+// --- Conversation branching & forking ---
+apiRoute("post", "/conversations/:id/branch", storageRateLimiter, logRequest, async (req, res) => {
+  try {
+    const workspace = sanitizeWorkspace(req.body?.workspace || req.query?.workspace);
+    const userId = req.userId || "anonymous";
+    const { atMessageIndex, label } = req.body || {};
+    if (typeof atMessageIndex !== "number" || !Number.isInteger(atMessageIndex) || atMessageIndex < 0) {
+      return apiError(res, 400, "INVALID_INPUT", "atMessageIndex must be a non-negative integer.");
+    }
+    const branch = await branchConversation(req.params.id, atMessageIndex, userId, { label, workspace });
+    res.status(201).json(branch);
+  } catch (err) {
+    if (err.message.includes("not found")) return apiError(res, 404, "NOT_FOUND", err.message);
+    if (err.message.includes("Invalid branch point")) return apiError(res, 400, "INVALID_INPUT", err.message);
+    console.error("Branch conversation error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("get", "/conversations/:id/tree", storageRateLimiter, logRequest, async (req, res) => {
+  try {
+    const workspace = sanitizeWorkspace(req.query?.workspace);
+    const userId = req.userId || "anonymous";
+    const tree = await getConversationTree(req.params.id, workspace, userId);
+    if (!tree) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
+    res.json(tree);
+  } catch (err) {
+    console.error("Conversation tree error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("get", "/conversations/:id/branches", storageRateLimiter, logRequest, async (req, res) => {
+  try {
+    const workspace = sanitizeWorkspace(req.query?.workspace);
+    const userId = req.userId || "anonymous";
+    const branches = await listConversationBranches(req.params.id, workspace, userId);
+    res.json({ branches });
+  } catch (err) {
+    console.error("List branches error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("get", "/conversations/branches/:branchId", storageRateLimiter, logRequest, async (req, res) => {
+  try {
+    const workspace = sanitizeWorkspace(req.query?.workspace);
+    const userId = req.userId || "anonymous";
+    const branch = await getConversationBranch(req.params.branchId, workspace, userId);
+    if (!branch) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
+    res.json(branch);
+  } catch (err) {
+    console.error("Get branch error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("delete", "/conversations/branches/:branchId", storageRateLimiter, logRequest, async (req, res) => {
+  try {
+    const workspace = sanitizeWorkspace(req.query?.workspace);
+    const userId = req.userId || "anonymous";
+    const deleted = await deleteConversationBranch(req.params.branchId, workspace, userId);
+    if (!deleted) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
+    res.status(204).send();
+  } catch (err) {
+    console.error("Delete branch error:", err.message);
     return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
   }
 });
@@ -2637,6 +2881,118 @@ apiRoute("get", "/plugins/actions", pluginsActionsRateLimiter, userAuth, logRequ
     res.json({ actions: [...actions].sort() });
   } catch (err) {
     return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+// --- Phase 17.1: JS Plugin Management API ---
+apiRoute("get", "/plugins", pluginsActionsRateLimiter, userAuth, logRequest, (req, res) => {
+  try {
+    const plugins = listJsPlugins();
+    res.json({ plugins });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGIN_API.md.");
+  }
+});
+
+apiRoute("post", "/plugins/execute", pluginsActionsRateLimiter, userAuth, logRequest, async (req, res) => {
+  try {
+    const { pluginId, input, workspaceId, config } = req.body || {};
+    if (!pluginId || typeof pluginId !== "string") {
+      return apiError(res, 400, "INVALID_INPUT", "pluginId is required", "Send { pluginId, input?, workspaceId?, config? }.");
+    }
+    const result = await execJsPlugin(pluginId.trim(), {
+      input: typeof input === "string" ? input : "",
+      workspaceId: workspaceId || null,
+      userId: req.userId || null,
+      config: config && typeof config === "object" ? config : {},
+    });
+    res.json({ ok: true, output: result.output, metadata: result.metadata });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// --- Phase 49: Plugin Marketplace API ---
+const marketplaceRateLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+apiRoute("get", "/marketplace", marketplaceRateLimiter, logRequest, (req, res) => {
+  try {
+    const packs = marketplaceListAvailable();
+    const category = req.query?.category;
+    const filtered = category ? packs.filter((p) => p.category === category) : packs;
+    res.json({ _version: 1, packs: filtered });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
+  }
+});
+
+apiRoute("get", "/marketplace/:packId", marketplaceRateLimiter, logRequest, (req, res) => {
+  try {
+    const packId = req.params.packId;
+    const manifest = marketplaceRegistry.get(packId);
+    if (!manifest) {
+      return apiError(res, 404, "NOT_FOUND", `Pack not found: ${packId}`, "Use GET /api/marketplace to list available packs.");
+    }
+    res.json({
+      id: manifest.id,
+      name: manifest.name,
+      version: manifest.version,
+      description: manifest.description,
+      author: manifest.author,
+      category: manifest.category || "uncategorized",
+      actions: manifest.actions,
+    });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
+  }
+});
+
+apiRoute("post", "/marketplace/:packId/install", marketplaceRateLimiter, userAuth, logRequest, (req, res) => {
+  try {
+    const packId = req.params.packId;
+    const workspaceId = req.body?.workspaceId;
+    if (!workspaceId || typeof workspaceId !== "string") {
+      return apiError(res, 400, "INVALID_INPUT", "workspaceId required", "Send { workspaceId: string }.");
+    }
+    const result = marketplaceInstallPack(packId, workspaceId);
+    if (!result.ok) {
+      return apiError(res, 400, "INSTALL_FAILED", result.error, "Check that the pack exists.");
+    }
+    res.json({ ok: true, packId, workspaceId, alreadyInstalled: result.alreadyInstalled || false });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
+  }
+});
+
+apiRoute("delete", "/marketplace/:packId/install", marketplaceRateLimiter, userAuth, logRequest, (req, res) => {
+  try {
+    const packId = req.params.packId;
+    const workspaceId = req.body?.workspaceId || req.query?.workspaceId;
+    if (!workspaceId || typeof workspaceId !== "string") {
+      return apiError(res, 400, "INVALID_INPUT", "workspaceId required", "Send { workspaceId: string } or ?workspaceId=.");
+    }
+    const result = marketplaceUninstallPack(packId, workspaceId);
+    if (!result.ok) {
+      return apiError(res, 400, "UNINSTALL_FAILED", result.error, "Check that the pack exists.");
+    }
+    res.json({ ok: true, packId, workspaceId });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
+  }
+});
+
+apiRoute("get", "/workspaces/:id/plugins", marketplaceRateLimiter, userAuth, logRequest, (req, res) => {
+  try {
+    const workspaceId = req.params.id;
+    const packs = marketplaceListInstalled(workspaceId);
+    res.json({ _version: 1, workspaceId, packs });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
   }
 });
 
@@ -2769,6 +3125,7 @@ const executeStepRateLimiter = rateLimit({
 apiRoute("post", "/execute-step",
   executeStepRateLimiter,
   apiKeyAuth,
+  requireScope("write"),
   logRequest,
   async (req, res) => {
     if (!ALLOW_RECIPE_STEP_EXECUTION) {
@@ -3005,13 +3362,52 @@ apiRoute("post", "/documents/extract",
   }
 );
 
-apiRoute("post", "/ocr", multimodalRateLimiter, (req, res) => {
-  return res.status(501).json({
-    error: "OCR not implemented",
-    code: "NOT_IMPLEMENTED",
-    hint: "OCR will use an external service (e.g. Tesseract.js or cloud OCR). See README for planned integration.",
-  });
+const OCR_MAX_BYTES = 20 * 1024 * 1024; // 20 MB
+const ALLOWED_OCR_TYPES = ["image/png", "image/jpeg", "image/tiff", "image/bmp", "application/pdf"];
+
+const ocrUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: OCR_MAX_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_OCR_TYPES.includes(file.mimetype)) cb(null, true);
+    else cb(new Error("Unsupported file type. Accepted: PNG, JPG, TIFF, BMP, PDF."));
+  },
 });
+
+apiRoute("post", "/ocr",
+  multimodalRateLimiter,
+  (req, res, next) => {
+    ocrUpload.single("file")(req, res, (err) => {
+      if (err) {
+        if (err instanceof multer.MulterError) {
+          if (err.code === "LIMIT_FILE_SIZE")
+            return apiError(res, 400, "FILE_TOO_LARGE", `File exceeds ${OCR_MAX_BYTES / 1024 / 1024}MB limit`, "Reduce file size.");
+          if (err.code === "LIMIT_UNEXPECTED_FILE")
+            return apiError(res, 400, "INVALID_BODY", "Use field name 'file' for multipart upload", null);
+        }
+        if (err.message && err.message.includes("Unsupported file type"))
+          return apiError(res, 415, "UNSUPPORTED_FORMAT", err.message, "Accepted formats: PNG, JPG, TIFF, BMP, PDF.");
+        return apiError(res, 400, "INVALID_FILE", err.message || "Invalid file upload", null);
+      }
+      next();
+    });
+  },
+  logRequest,
+  async (req, res) => {
+    try {
+      if (!req.file?.buffer)
+        return apiError(res, 400, "INVALID_BODY", "file required (multipart/form-data)", "Upload an image or PDF with field name 'file'.");
+      const { extractText } = await import("./lib/ocr.js");
+      const mime = req.file.mimetype || "";
+      const { text, confidence } = await extractText(req.file.buffer, mime);
+      return res.json({ text: sanitizeText(text), pages: 1, confidence });
+    } catch (err) {
+      if (err.code === "UNSUPPORTED_FORMAT")
+        return apiError(res, 415, "UNSUPPORTED_FORMAT", err.message, "Accepted formats: PNG, JPG, TIFF, BMP, PDF.");
+      return apiError(res, 500, "OCR_FAILED", err.message || "OCR processing failed", "See docs/RUNBOOK.md.");
+    }
+  }
+);
 
 // Phase 23: API docs - OpenAPI spec and Swagger UI (not versioned, no deprecation)
 app.get("/api/docs/openapi.json", (req, res) => {
@@ -3091,6 +3487,66 @@ apiRoute("get", "/agent/trajectories", logRequest, userAuth, async (req, res) =>
   }
 });
 
+// --- Staging Trace Replay API ---
+
+apiRoute("get", "/traces", logRequest, evalAuth, async (req, res) => {
+  try {
+    const opts = {
+      type: req.query.type || undefined,
+      workspace: req.query.workspace || undefined,
+      limit: Number(req.query.limit) || 50,
+      offset: Number(req.query.offset) || 0,
+    };
+    const data = await listRecordedTraces(opts);
+    res.json(data);
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err?.message || "List traces failed", "See server logs.");
+  }
+});
+
+apiRoute("get", "/traces/:id", logRequest, evalAuth, async (req, res) => {
+  const id = String(req.params.id || "").trim();
+  if (!id) return apiError(res, 400, "INVALID_ID", "Trace ID required", "Provide a valid trace ID.");
+  const trace = await getRecordedTrace(id);
+  if (!trace) return apiError(res, 404, "NOT_FOUND", "Trace not found", `No trace with id: ${id}`);
+  res.json(trace);
+});
+
+apiRoute("post", "/traces/record", logRequest, evalAuth, async (req, res) => {
+  try {
+    const traceData = req.body;
+    if (!traceData || typeof traceData !== "object") {
+      return apiError(res, 400, "INVALID_BODY", "Request body must be a trace object", "Send JSON with steps, toolCalls, or goldenTrace.");
+    }
+    const result = await recordTrace(traceData);
+    res.status(201).json(result);
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err?.message || "Record failed", "See server logs.");
+  }
+});
+
+apiRoute("post", "/traces/:id/replay", logRequest, evalAuth, async (req, res) => {
+  const id = String(req.params.id || "").trim();
+  if (!id) return apiError(res, 400, "INVALID_ID", "Trace ID required", "Provide a valid trace ID.");
+  try {
+    const expectations = req.body && typeof req.body === "object" && Object.keys(req.body).length > 0
+      ? req.body
+      : null;
+    const result = await replayTrace(id, expectations);
+    res.json(result);
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err?.message || "Replay failed", "See server logs.");
+  }
+});
+
+apiRoute("delete", "/traces/:id", logRequest, evalAuth, async (req, res) => {
+  const id = String(req.params.id || "").trim();
+  if (!id) return apiError(res, 400, "INVALID_ID", "Trace ID required", "Provide a valid trace ID.");
+  const deleted = await deleteRecordedTrace(id);
+  if (!deleted) return apiError(res, 404, "NOT_FOUND", "Trace not found", `No trace with id: ${id}`);
+  res.json({ ok: true, traceId: id });
+});
+
 // --- Phase 32: Evaluation Harness ---
 const evalRateLimiter = rateLimit({
   windowMs: 60_000,
@@ -3102,9 +3558,9 @@ const evalRateLimiter = rateLimit({
   },
 });
 
-apiRoute("get", "/eval/sets", evalRateLimiter, evalAuth, logRequest, (req, res) => {
+apiRoute("get", "/eval/sets", evalRateLimiter, evalAuth, logRequest, async (req, res) => {
   try {
-    const sets = listEvalSets();
+    const sets = await listEvalSets();
     res.json({ sets });
   } catch (err) {
     console.error("Eval sets list error:", err.message);
@@ -3117,7 +3573,7 @@ apiRoute("post", "/eval/run", evalRateLimiter, evalAuth, logRequest, async (req,
     const { evalSetId, evalSet, model } = req.body || {};
     let set = evalSet;
     if (!set && evalSetId) {
-      set = loadEvalSet(String(evalSetId).trim());
+      set = await loadEvalSet(String(evalSetId).trim());
       if (!set) return apiError(res, 404, "NOT_FOUND", "Eval set not found", `No eval set with id: ${evalSetId}`);
     }
     if (!set || !Array.isArray(set.cases)) {
@@ -3147,6 +3603,10 @@ app.get("/admin", (req, res) => {
   res.sendFile(join(__dirname, "client", "admin.html"));
 });
 
+app.get("/marketplace", (req, res) => {
+  res.sendFile(join(__dirname, "client", "marketplace.html"));
+});
+
 const adminRateLimiter = rateLimit({
   windowMs: 60_000,
   max: 60,
@@ -3163,7 +3623,7 @@ function adminAuthOrQuery(req, res, next) {
   return adminAuth(req, res, next);
 }
 
-app.get("/api/admin/summary", adminRateLimiter, adminAuthOrQuery, logRequest, async (req, res) => {
+app.get("/api/admin/summary", adminRateLimiter, adminAuthOrQuery, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const users = await listAllUsers();
     const workspaces = await listAllWorkspaces();
@@ -3216,7 +3676,7 @@ app.get("/api/admin/summary", adminRateLimiter, adminAuthOrQuery, logRequest, as
   }
 });
 
-app.post("/api/admin/quotas/override", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.post("/api/admin/quotas/override", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const { workspace, limit } = req.body || {};
     const ws = sanitizeWorkspace(workspace);
@@ -3232,7 +3692,7 @@ app.post("/api/admin/quotas/override", adminRateLimiter, adminAuth, logRequest, 
 });
 
 // Phase 30: Admin API key management
-app.get("/api/admin/keys", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.get("/api/admin/keys", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const keys = listKeysForAdmin();
     res.json({ keys });
@@ -3242,7 +3702,7 @@ app.get("/api/admin/keys", adminRateLimiter, adminAuth, logRequest, async (req, 
   }
 });
 
-app.post("/api/admin/keys", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.post("/api/admin/keys", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const { userId, scopes } = req.body || {};
     const result = await addKey({ userId, scopes: Array.isArray(scopes) ? scopes : undefined });
@@ -3256,7 +3716,7 @@ app.post("/api/admin/keys", adminRateLimiter, adminAuth, logRequest, async (req,
   }
 });
 
-app.delete("/api/admin/keys/:id", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.delete("/api/admin/keys/:id", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const result = await revokeKey(req.params.id);
     if (!result.ok) {
@@ -3269,7 +3729,7 @@ app.delete("/api/admin/keys/:id", adminRateLimiter, adminAuth, logRequest, async
   }
 });
 
-app.post("/api/admin/audit/archive-s3", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.post("/api/admin/audit/archive-s3", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const out = await archiveExecutionAuditToS3();
     if (!out.ok) {
@@ -3282,13 +3742,141 @@ app.post("/api/admin/audit/archive-s3", adminRateLimiter, adminAuth, logRequest,
   }
 });
 
-app.get("/api/admin/audit/archive-status", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.get("/api/admin/audit/archive-status", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const status = await getAuditArchiveStatus();
     res.json(status);
   } catch (err) {
     console.error("Admin audit archive-status error:", err.message);
     return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+// --- Enhanced audit lifecycle & query routes ---
+const _auditLifecycle = new AuditLifecycle();
+
+app.get("/api/admin/audit/query", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const options = {};
+    if (req.query.startDate || req.query.endDate) {
+      options.dateRange = { start: req.query.startDate, end: req.query.endDate };
+    }
+    if (req.query.userId) options.userId = req.query.userId;
+    if (req.query.action) options.action = req.query.action;
+    if (req.query.workspaceId) options.workspaceId = req.query.workspaceId;
+    if (req.query.level) options.level = req.query.level;
+    if (req.query.cursor) options.cursor = Number(req.query.cursor);
+    if (req.query.limit) options.limit = Number(req.query.limit);
+    const result = await queryAudit(options);
+    res.json(result);
+  } catch (err) {
+    console.error("Admin audit query error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+app.get("/api/admin/audit/export", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const options = {};
+    if (req.query.startDate || req.query.endDate) {
+      options.dateRange = { start: req.query.startDate, end: req.query.endDate };
+    }
+    if (req.query.userId) options.userId = req.query.userId;
+    if (req.query.action) options.action = req.query.action;
+    if (req.query.workspaceId) options.workspaceId = req.query.workspaceId;
+    if (req.query.level) options.level = req.query.level;
+    if (req.query.limit) options.limit = Number(req.query.limit);
+    const format = req.query.format === "csv" ? "csv" : "json";
+    const result = await exportAudit(options, format);
+    res.setHeader("Content-Type", result.contentType);
+    res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
+    res.send(result.data);
+  } catch (err) {
+    console.error("Admin audit export error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+app.get("/api/admin/audit/retention", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    res.json(_auditLifecycle.getRetentionPolicy());
+  } catch (err) {
+    console.error("Admin audit retention get error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+app.put("/api/admin/audit/retention", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const { retentionDays, archiveAfterDays, deleteAfterDays, bucketName } = req.body || {};
+    _auditLifecycle.configure({ retentionDays, archiveAfterDays, deleteAfterDays, bucketName });
+    res.json(_auditLifecycle.getRetentionPolicy());
+  } catch (err) {
+    console.error("Admin audit retention update error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+app.post("/api/admin/audit/archive-now", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const result = await _auditLifecycle.archiveOldEntries();
+    if (result.error) {
+      return res.status(502).json({ error: result.error, code: "ARCHIVE_FAILED" });
+    }
+    res.json(result);
+  } catch (err) {
+    console.error("Admin audit archive-now error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+// A/B routing admin endpoints
+app.get("/api/routing/stats", adminRateLimiter, adminAuth, logRequest, (req, res) => {
+  res.json({ stats: getRoutingStats(), enabled: AB_ROUTING_ENABLED });
+});
+
+app.get("/api/routing/config", adminRateLimiter, adminAuth, logRequest, (req, res) => {
+  const config = AB_ROUTING_ENABLED
+    ? MODEL_ROUTING_CONFIG.map((e) => ({ backend: e.backend, weight: e.weight }))
+    : [];
+  res.json({ enabled: AB_ROUTING_ENABLED, backends: config, raw: process.env.MODEL_ROUTING || "" });
+});
+
+// --- Phase 45-48: Multi-region & HA routes ---
+
+app.get("/api/regions", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const rh = getRegionHealth();
+    await rh.checkRegions();
+    const regions = rh.getRegionStatus();
+    res.json({ ok: true, regions });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message);
+  }
+});
+
+app.get("/api/regions/leader", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const le = getLeaderElection();
+    const leader = await le.getLeader();
+    res.json({ ok: true, leader });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message);
+  }
+});
+
+app.post("/api/internal/sync", internalAuth, express.json(), async (req, res) => {
+  try {
+    const rm = getReplicationManager();
+    const result = rm.receive(req.body);
+    if (result.accepted) {
+      res.json({ ok: true, accepted: true });
+    } else {
+      res.status(409).json({ ok: false, accepted: false, reason: result.reason });
+    }
+  } catch (err) {
+    console.error("[replication] Sync receive error:", err.message);
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 

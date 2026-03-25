@@ -1,0 +1,20 @@
+{
+  "id": "devtools",
+  "name": "Developer Tools",
+  "version": "1.0.0",
+  "description": "Developer productivity tools: code formatter and linter runner",
+  "author": "SiskelBot",
+  "category": "development",
+  "actions": [
+    {
+      "name": "format-code",
+      "type": "builtin",
+      "config": { "target": "build" }
+    },
+    {
+      "name": "run-linter",
+      "type": "builtin",
+      "config": { "target": "build" }
+    }
+  ]
+}
