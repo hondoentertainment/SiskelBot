@@ -3276,13 +3276,52 @@ apiRoute("post", "/documents/extract",
   }
 );
 
-apiRoute("post", "/ocr", multimodalRateLimiter, (req, res) => {
-  return res.status(501).json({
-    error: "OCR not implemented",
-    code: "NOT_IMPLEMENTED",
-    hint: "OCR will use an external service (e.g. Tesseract.js or cloud OCR). See README for planned integration.",
-  });
+const OCR_MAX_BYTES = 20 * 1024 * 1024; // 20 MB
+const ALLOWED_OCR_TYPES = ["image/png", "image/jpeg", "image/tiff", "image/bmp", "application/pdf"];
+
+const ocrUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: OCR_MAX_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_OCR_TYPES.includes(file.mimetype)) cb(null, true);
+    else cb(new Error("Unsupported file type. Accepted: PNG, JPG, TIFF, BMP, PDF."));
+  },
 });
+
+apiRoute("post", "/ocr",
+  multimodalRateLimiter,
+  (req, res, next) => {
+    ocrUpload.single("file")(req, res, (err) => {
+      if (err) {
+        if (err instanceof multer.MulterError) {
+          if (err.code === "LIMIT_FILE_SIZE")
+            return apiError(res, 400, "FILE_TOO_LARGE", `File exceeds ${OCR_MAX_BYTES / 1024 / 1024}MB limit`, "Reduce file size.");
+          if (err.code === "LIMIT_UNEXPECTED_FILE")
+            return apiError(res, 400, "INVALID_BODY", "Use field name 'file' for multipart upload", null);
+        }
+        if (err.message && err.message.includes("Unsupported file type"))
+          return apiError(res, 415, "UNSUPPORTED_FORMAT", err.message, "Accepted formats: PNG, JPG, TIFF, BMP, PDF.");
+        return apiError(res, 400, "INVALID_FILE", err.message || "Invalid file upload", null);
+      }
+      next();
+    });
+  },
+  logRequest,
+  async (req, res) => {
+    try {
+      if (!req.file?.buffer)
+        return apiError(res, 400, "INVALID_BODY", "file required (multipart/form-data)", "Upload an image or PDF with field name 'file'.");
+      const { extractText } = await import("./lib/ocr.js");
+      const mime = req.file.mimetype || "";
+      const { text, confidence } = await extractText(req.file.buffer, mime);
+      return res.json({ text: sanitizeText(text), pages: 1, confidence });
+    } catch (err) {
+      if (err.code === "UNSUPPORTED_FORMAT")
+        return apiError(res, 415, "UNSUPPORTED_FORMAT", err.message, "Accepted formats: PNG, JPG, TIFF, BMP, PDF.");
+      return apiError(res, 500, "OCR_FAILED", err.message || "OCR processing failed", "See docs/RUNBOOK.md.");
+    }
+  }
+);
 
 // Phase 23: API docs - OpenAPI spec and Swagger UI (not versioned, no deprecation)
 app.get("/api/docs/openapi.json", (req, res) => {
