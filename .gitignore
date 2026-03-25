@@ -1,5 +1,6 @@
 node_modules/
 .env
+.claude/
 *.log
 .vercel
 # Runtime / local data (do not commit)
