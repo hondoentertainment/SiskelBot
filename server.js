@@ -120,6 +120,8 @@ import {
   autoRecordEnabled,
 } from "./lib/trace-recorder.js";
 import { replayTrace, replayAll } from "./lib/trace-replay.js";
+import { workspaceRateLimiter } from "./lib/workspace-rate-limit.js";
+import { getEventsSince } from "./lib/realtime-replay.js";
 
 import {
   createTemplate,
@@ -2131,7 +2133,7 @@ apiRoute("post", "/workspace-templates/:id/apply", storageRateLimiter, userAuth,
 });
 
 // Phase 74: Workspace export (JSON) and owner delete
-apiRoute("get", "/workspaces/:id/export", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
+apiRoute("get", "/workspaces/:id/export", storageRateLimiter, workspaceRateLimiter(), userAuth, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspaceId = sanitizeWorkspace(req.params.id);
     const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
@@ -2148,7 +2150,7 @@ apiRoute("get", "/workspaces/:id/export", storageRateLimiter, userAuth, requireS
   }
 });
 
-apiRoute("delete", "/workspaces/:id", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
+apiRoute("delete", "/workspaces/:id", storageRateLimiter, workspaceRateLimiter(), userAuth, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspaceId = sanitizeWorkspace(req.params.id);
     if (req.body?.confirm !== "DELETE" && req.query?.confirm !== "DELETE") {
@@ -2173,7 +2175,7 @@ apiRoute("delete", "/workspaces/:id", storageRateLimiter, userAuth, requireScope
 });
 
 // Phase 61–62: Per-workspace agent system prompt + approved memory (agent / swarm)
-apiRoute("get", "/workspaces/:id/agent-settings", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
+apiRoute("get", "/workspaces/:id/agent-settings", storageRateLimiter, workspaceRateLimiter(), userAuth, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspaceId = sanitizeWorkspace(req.params.id);
     const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
@@ -2198,6 +2200,7 @@ apiRoute(
   "put",
   "/workspaces/:id/agent-settings",
   storageRateLimiter,
+  workspaceRateLimiter(),
   userAuth,
   requireScope("write"),
   logRequest,
@@ -2255,7 +2258,7 @@ apiRoute("post", "/workspaces/join", storageRateLimiter, userAuth, requireScope(
   }
 });
 
-apiRoute("post", "/workspaces/:id/invite", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
+apiRoute("post", "/workspaces/:id/invite", storageRateLimiter, workspaceRateLimiter(), userAuth, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspaceId = req.params.id;
     const access = await canAccessWorkspace(workspaceId, req.userId);
@@ -2275,7 +2278,7 @@ apiRoute("post", "/workspaces/:id/invite", storageRateLimiter, userAuth, require
   }
 });
 
-apiRoute("get", "/workspaces/:id/members", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
+apiRoute("get", "/workspaces/:id/members", storageRateLimiter, workspaceRateLimiter(), userAuth, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspaceId = req.params.id;
     const access = await canAccessWorkspace(workspaceId, req.userId);
@@ -2289,7 +2292,7 @@ apiRoute("get", "/workspaces/:id/members", storageRateLimiter, userAuth, require
   }
 });
 
-apiRoute("get", "/workspaces/:id/activity", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
+apiRoute("get", "/workspaces/:id/activity", storageRateLimiter, workspaceRateLimiter(), userAuth, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspaceId = req.params.id;
     const access = await canAccessWorkspace(workspaceId, req.userId);
@@ -2987,7 +2990,7 @@ apiRoute("delete", "/marketplace/:packId/install", marketplaceRateLimiter, userA
   }
 });
 
-apiRoute("get", "/workspaces/:id/plugins", marketplaceRateLimiter, userAuth, logRequest, (req, res) => {
+apiRoute("get", "/workspaces/:id/plugins", marketplaceRateLimiter, workspaceRateLimiter(), userAuth, logRequest, (req, res) => {
   try {
     const workspaceId = req.params.id;
     const packs = marketplaceListInstalled(workspaceId);
@@ -3064,7 +3067,21 @@ apiRoute("get", "/ws-token", ...webhooksHandlers, (req, res) => {
   }
 });
 
-apiRoute("get", "/workspaces/:id/presence", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("get", "/ws-replay", ...webhooksHandlers, (req, res) => {
+  try {
+    const workspace = sanitizeWorkspace(req.query?.workspace);
+    const since = parseInt(req.query?.since, 10);
+    if (!since || isNaN(since)) {
+      return apiError(res, 400, "BAD_REQUEST", "Missing or invalid 'since' query parameter (Unix ms timestamp).", null);
+    }
+    const events = getEventsSince(workspace, since);
+    res.json({ _version: 1, events });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("get", "/workspaces/:id/presence", storageRateLimiter, workspaceRateLimiter(), userAuth, logRequest, async (req, res) => {
   try {
     const workspaceId = req.params.id;
     const access = await canAccessWorkspace(workspaceId, req.userId);
