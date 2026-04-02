@@ -10,6 +10,7 @@ const net = require("net");
 const fs = require("fs");
 const { initAutoUpdater } = require("./auto-updater.cjs");
 const { createTray, destroyTray } = require("./tray.cjs");
+const { applySecurity, getCSPHeader } = require("./security.cjs");
 
 /** @type {import('child_process').ChildProcess | null} */
 let serverProcess = null;
@@ -162,12 +163,26 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
+      webviewTag: false,
+      allowRunningInsecureContent: false,
     },
   });
 
   mainWindow.once("ready-to-show", () => mainWindow?.show());
 
   mainWindow.loadURL(`${serverBaseUrl}/`);
+
+  mainWindow.webContents.session.webRequest.onHeadersReceived(
+    (details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          "Content-Security-Policy": [getCSPHeader(serverPort)],
+        },
+      });
+    }
+  );
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
@@ -194,6 +209,7 @@ if (!gotLock) {
     try {
       await startServer();
       Menu.setApplicationMenu(buildAppMenu());
+      applySecurity({ serverPort: serverPort });
       createWindow();
       initAutoUpdater();
       createTray(mainWindow, { serverPort: serverPort });
