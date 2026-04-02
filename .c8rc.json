@@ -1,0 +1,8 @@
+{
+  "all": true,
+  "include": ["lib/**/*.js", "server.js"],
+  "exclude": ["node_modules", "tests", "client", "vendor", "scripts", "electron", "plugins"],
+  "reporter": ["text", "lcov", "html"],
+  "report-dir": "coverage",
+  "check-coverage": false
+}
