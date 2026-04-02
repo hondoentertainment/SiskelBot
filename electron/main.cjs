@@ -2,7 +2,8 @@
  * Siskel Bot desktop shell (Electron).
  * Spawns the Node Express server, stores data under app.getPath("userData"), opens a window.
  */
-const { app, BrowserWindow, shell, dialog } = require("electron");
+const { app, BrowserWindow, shell, dialog, Menu } = require("electron");
+const { buildAppMenu } = require("./menu.cjs");
 const { spawn } = require("child_process");
 const path = require("path");
 const net = require("net");
@@ -191,6 +192,7 @@ if (!gotLock) {
   app.whenReady().then(async () => {
     try {
       await startServer();
+      Menu.setApplicationMenu(buildAppMenu());
       createWindow();
       initAutoUpdater();
     } catch (e) {

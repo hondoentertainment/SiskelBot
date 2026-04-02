@@ -21,6 +21,7 @@
     "desktop:dist:mac": "electron-builder --mac",
     "desktop:dist:linux": "electron-builder --linux",
     "desktop:dist:mac:arm64": "electron-builder --mac --arm64",
+    "icons:generate": "node scripts/generate-icons.mjs",
     "lint": "node scripts/syntax-check.mjs && eslint .",
     "lint:eslint": "eslint .",
     "test": "node scripts/run-tests.mjs",
