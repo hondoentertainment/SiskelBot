@@ -7,6 +7,7 @@ const { spawn } = require("child_process");
 const path = require("path");
 const net = require("net");
 const fs = require("fs");
+const { initAutoUpdater } = require("./auto-updater.cjs");
 
 /** @type {import('child_process').ChildProcess | null} */
 let serverProcess = null;
@@ -191,6 +192,7 @@ if (!gotLock) {
     try {
       await startServer();
       createWindow();
+      initAutoUpdater();
     } catch (e) {
       console.error("[desktop] Startup failed:", e.message);
       dialog.showErrorBox(

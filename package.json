@@ -63,6 +63,7 @@
     "pdf-parse": "^2.4.5",
     "pg": "^8.20.0",
     "undici": "^6.24.1",
+    "electron-updater": "^6.3.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
@@ -125,15 +126,13 @@
         ]
       }
     ],
-    "mac": {
-      "target": ["dmg", "zip"],
-      "category": "public.app-category.productivity",
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist",
-      "afterSign": "scripts/notarize.cjs"
-    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "hondoentertainment",
+        "repo": "siskelbot"
+      }
+    ],
     "win": {
       "target": [
         {
@@ -144,14 +143,18 @@
         }
       ],
       "artifactName": "${productName}-${version}-Windows-${arch}.${ext}",
-      "signingHashAlgorithms": ["sha256"],
-      "sign": null
+      "signingHashAlgorithms": ["sha256"]
     },
     "mac": {
       "target": ["dmg", "zip"],
       "category": "public.app-category.productivity",
       "artifactName": "${productName}-${version}-macOS-${arch}.${ext}",
-      "icon": "build/icon.icns"
+      "icon": "build/icon.icns",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "afterSign": "scripts/notarize.cjs"
     },
     "linux": {
       "target": ["AppImage", "deb"],
