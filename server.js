@@ -25,11 +25,13 @@ import {
 } from "./lib/conversation-tree.js";
 import {
   indexDocument,
+  indexDocumentFromBuffer,
   search as knowledgeSearch,
   semanticSearch as knowledgeSemanticSearch,
   list as knowledgeList,
   reindexKnowledgeEmbeddingsInWorkspace,
 } from "./lib/knowledge-store.js";
+import { getWorkspaceChunkingConfig, setWorkspaceChunkingConfig } from "./lib/knowledge-chunking-config.js";
 import { embed, embedBatch, isAvailable as embeddingsAvailable } from "./lib/embeddings.js";
 import { executeStep, appendAuditLog, getRegisteredActions } from "./lib/action-executor.js";
 import { loadPlugins } from "./lib/plugins-loader.js";
@@ -2235,6 +2237,33 @@ apiRoute(
   }
 );
 
+// --- Per-workspace chunking config ---
+apiRoute("get", "/workspaces/:id/chunking-config", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+  try {
+    const workspaceId = sanitizeWorkspace(req.params.id);
+    const config = await getWorkspaceChunkingConfig(workspaceId);
+    res.json({ workspaceId, ...config });
+  } catch (err) {
+    console.error("Chunking config GET error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("put", "/workspaces/:id/chunking-config", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
+  try {
+    const workspaceId = sanitizeWorkspace(req.params.id);
+    const body = req.body || {};
+    const saved = await setWorkspaceChunkingConfig(workspaceId, body);
+    res.json({ workspaceId, ...saved });
+  } catch (err) {
+    if (err.code === "INVALID_INPUT") {
+      return apiError(res, 400, "INVALID_INPUT", err.message, "Workspace must be alphanumeric, 1-50 chars.");
+    }
+    console.error("Chunking config PUT error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
 // --- Phase 29: Team workspaces - invite, join, members, activity ---
 apiRoute("post", "/workspaces/join", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
   try {
@@ -3219,7 +3248,15 @@ apiRoute("post", "/execute-step",
 const IMAGE_MAX_BYTES = 5 * 1024 * 1024; // 5MB
 const DOC_MAX_BYTES = 2 * 1024 * 1024; // 2MB
 const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
-const ALLOWED_DOC_TYPES = ["application/pdf", "text/plain", "text/markdown", "text/csv"];
+const ALLOWED_DOC_TYPES = [
+  "application/pdf",
+  "text/plain",
+  "text/markdown",
+  "text/csv",
+  "text/html",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+];
 
 const imageUpload = multer({
   storage: multer.memoryStorage(),
@@ -3235,7 +3272,7 @@ const docUpload = multer({
   limits: { fileSize: DOC_MAX_BYTES },
   fileFilter: (req, file, cb) => {
     if (ALLOWED_DOC_TYPES.includes(file.mimetype)) cb(null, true);
-    else cb(new Error(`Invalid document type. Allowed: PDF, plain text`), false);
+    else cb(new Error(`Invalid document type. Allowed: PDF, plain text, Markdown, CSV, HTML, DOCX, XLSX`), false);
   },
 });
 
@@ -3369,6 +3406,17 @@ apiRoute("post", "/documents/extract",
           return res.json({ text: sanitizeText(text), type: "pdf" });
         } catch (e) {
           return apiError(res, 500, "EXTRACT_FAILED", "PDF extraction failed", (e?.message || "See docs/RUNBOOK.md.").slice(0, 300));
+        }
+      }
+
+      // Use parseDocument for DOCX, XLSX, HTML, Markdown, CSV
+      const { SUPPORTED_DOCUMENT_MIMES, parseDocument: parsDoc } = await import("./lib/knowledge-parsers.js");
+      if (SUPPORTED_DOCUMENT_MIMES.includes(mime)) {
+        try {
+          const { text: parsedText, metadata } = await parsDoc(buffer, mime, req.file.originalname);
+          return res.json({ text: sanitizeText(parsedText), type: mime.split("/").pop(), metadata });
+        } catch (e) {
+          return apiError(res, 500, "EXTRACT_FAILED", `Document extraction failed: ${e.message}`, "Check the file format.");
         }
       }
 
