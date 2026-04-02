@@ -68,6 +68,7 @@
     "electron-builder": "^25.1.8",
     "eslint": "^10.1.0",
     "globals": "^17.4.0",
+    "@electron/notarize": "^2.5.0",
     "supertest": "^7.2.2"
   },
   "optionalDependencies": {
@@ -107,6 +108,15 @@
         ]
       }
     ],
+    "mac": {
+      "target": ["dmg", "zip"],
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "afterSign": "scripts/notarize.cjs"
+    },
     "win": {
       "target": [
         {
@@ -116,7 +126,9 @@
           ]
         }
       ],
-      "artifactName": "${productName}-${version}-Windows-${arch}.${ext}"
+      "artifactName": "${productName}-${version}-Windows-${arch}.${ext}",
+      "signingHashAlgorithms": ["sha256"],
+      "sign": null
     },
     "nsis": {
       "oneClick": false,
