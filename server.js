@@ -109,6 +109,21 @@ import {
 import compression from "compression";
 import { otelHttpEnrichmentMiddleware } from "./lib/otel-context.js";
 import { exportWorkspaceBundle, deleteWorkspaceForUser } from "./lib/workspace-lifecycle.js";
+import {
+  storeMemory,
+  getMemories,
+  searchMemories,
+  updateMemory as updateAgentMemory,
+  deleteMemory as deleteAgentMemory,
+  getMemoryStats,
+  extractPotentialMemories,
+} from "./lib/agent-memory.js";
+import {
+  exportWorkspace as exportWorkspaceMigration,
+  importWorkspace as importWorkspaceMigration,
+  validateBundle,
+  diffWorkspaces,
+} from "./lib/workspace-migration.js";
 import { idempotencyLookup, idempotencyStore } from "./lib/idempotency.js";
 import { archiveExecutionAuditToS3, getAuditArchiveStatus } from "./lib/audit-s3-archive.js";
 import { fetchTextFromAllowedUrl } from "./lib/knowledge-url-fetch.js";
@@ -2192,6 +2207,178 @@ apiRoute("delete", "/workspaces/:id", storageRateLimiter, workspaceRateLimiter()
     res.status(204).send();
   } catch (err) {
     console.error("Workspace delete error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+// --- Agent Memory Persistence ---
+
+apiRoute("get", "/workspaces/:id/memories", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
+  try {
+    const workspaceId = sanitizeWorkspace(req.params.id);
+    const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
+    if (!access.allowed) return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+    const su = await resolveStorageUserId(req.userId, workspaceId);
+    const options = {};
+    if (req.query.category) options.category = req.query.category;
+    if (req.query.active !== undefined) options.activeOnly = req.query.active !== "false";
+    if (req.query.limit) options.limit = Number(req.query.limit);
+    if (req.query.offset) options.offset = Number(req.query.offset);
+    const memories = await getMemories(workspaceId, su, options);
+    res.json({ items: memories });
+  } catch (err) {
+    console.error("Agent memories list error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("post", "/workspaces/:id/memories", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
+  try {
+    const workspaceId = sanitizeWorkspace(req.params.id);
+    const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
+    if (!access.allowed) return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+    const su = await resolveStorageUserId(req.userId, workspaceId);
+    const { content, category, source, confidence, consent } = req.body || {};
+    const result = await storeMemory(workspaceId, su, { content, category, source, confidence, consent });
+    if (!result.ok) return apiError(res, 400, "STORE_MEMORY_FAILED", result.error, null);
+    res.status(201).json(result.memory);
+  } catch (err) {
+    console.error("Agent memory store error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("put", "/workspaces/:id/memories/:memoryId", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
+  try {
+    const workspaceId = sanitizeWorkspace(req.params.id);
+    const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
+    if (!access.allowed) return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+    const su = await resolveStorageUserId(req.userId, workspaceId);
+    const result = await updateAgentMemory(req.params.memoryId, req.body || {}, workspaceId, su);
+    if (!result.ok) {
+      const status = result.error === "Memory not found" ? 404 : 400;
+      return apiError(res, status, "UPDATE_MEMORY_FAILED", result.error, null);
+    }
+    res.json(result.memory);
+  } catch (err) {
+    console.error("Agent memory update error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("delete", "/workspaces/:id/memories/:memoryId", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
+  try {
+    const workspaceId = sanitizeWorkspace(req.params.id);
+    const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
+    if (!access.allowed) return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+    const su = await resolveStorageUserId(req.userId, workspaceId);
+    const result = await deleteAgentMemory(req.params.memoryId, workspaceId, su);
+    if (!result.ok) return apiError(res, 404, "DELETE_MEMORY_FAILED", result.error, null);
+    res.status(204).send();
+  } catch (err) {
+    console.error("Agent memory delete error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("get", "/workspaces/:id/memories/search", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
+  try {
+    const workspaceId = sanitizeWorkspace(req.params.id);
+    const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
+    if (!access.allowed) return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+    const su = await resolveStorageUserId(req.userId, workspaceId);
+    const q = req.query.q || "";
+    const results = await searchMemories(workspaceId, su, q);
+    res.json({ items: results });
+  } catch (err) {
+    console.error("Agent memory search error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("post", "/workspaces/:id/memories/extract", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
+  try {
+    const workspaceId = sanitizeWorkspace(req.params.id);
+    const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
+    if (!access.allowed) return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+    const { messages, conversationId } = req.body || {};
+    if (!Array.isArray(messages)) return apiError(res, 400, "INVALID_INPUT", "messages must be an array", null);
+    const suggestions = extractPotentialMemories(messages, { workspaceId, userId: req.userId, conversationId });
+    res.json({ suggestions });
+  } catch (err) {
+    console.error("Agent memory extract error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+// --- Workspace Migration Tooling ---
+
+apiRoute("get", "/workspaces/:id/migrate/export", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
+  try {
+    const workspaceId = sanitizeWorkspace(req.params.id);
+    const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
+    if (!access.allowed) return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+    const options = {
+      userId: req.userId,
+      includeConversations: req.query.conversations !== "false",
+      includeKnowledge: req.query.knowledge !== "false",
+      includeMemories: req.query.memories !== "false",
+      includeWebhooks: req.query.webhooks !== "false",
+    };
+    const bundle = await exportWorkspaceMigration(workspaceId, options);
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Content-Disposition", `attachment; filename="workspace-${workspaceId}-migration.json"`);
+    res.send(JSON.stringify(bundle, null, 2));
+  } catch (err) {
+    console.error("Workspace migration export error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("post", "/workspaces/:id/migrate/import", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
+  try {
+    const workspaceId = sanitizeWorkspace(req.params.id);
+    const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
+    if (!access.allowed) return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+    const bundle = req.body;
+    if (!bundle || typeof bundle !== "object") return apiError(res, 400, "INVALID_INPUT", "Request body must be a JSON workspace bundle", null);
+    const strategy = req.query.strategy || req.body._strategy || "merge";
+    const result = await importWorkspaceMigration(bundle, req.userId, {
+      targetWorkspaceId: workspaceId,
+      strategy,
+    });
+    if (!result.ok) return apiError(res, 400, "IMPORT_FAILED", result.error, null);
+    res.json({ ok: true, stats: result.stats });
+  } catch (err) {
+    console.error("Workspace migration import error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("post", "/workspaces/:id/migrate/validate", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
+  try {
+    const bundle = req.body;
+    if (!bundle || typeof bundle !== "object") return apiError(res, 400, "INVALID_INPUT", "Request body must be a JSON workspace bundle", null);
+    const result = validateBundle(bundle);
+    res.json(result);
+  } catch (err) {
+    console.error("Workspace migration validate error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("post", "/workspaces/:id/migrate/diff", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
+  try {
+    const workspaceId = sanitizeWorkspace(req.params.id);
+    const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
+    if (!access.allowed) return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+    const bundle = req.body;
+    if (!bundle || typeof bundle !== "object") return apiError(res, 400, "INVALID_INPUT", "Request body must be a JSON workspace bundle", null);
+    const currentBundle = await exportWorkspaceMigration(workspaceId, { userId: req.userId });
+    const result = diffWorkspaces(currentBundle, bundle);
+    res.json(result);
+  } catch (err) {
+    console.error("Workspace migration diff error:", err.message);
     return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
   }
 });
