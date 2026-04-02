@@ -148,6 +148,40 @@ import {
   getAgentStats as obsGetAgentStats,
   getTokenUsageByWorkspace as obsGetTokenUsageByWorkspace,
 } from "./lib/observability.js";
+import {
+  PERMISSIONS as RBAC_PERMISSIONS,
+  BUILT_IN_ROLES,
+  createCustomRole,
+  updateCustomRole,
+  deleteCustomRole,
+  listRoles as listRbacRoles,
+  assignRole,
+  getUserPermissions,
+  requirePermission,
+} from "./lib/rbac.js";
+import {
+  getAvailableRegions,
+  setDataResidency,
+  getDataResidency,
+  detectPII,
+  redactPII,
+  setRetentionPolicy,
+  getRetentionPolicy,
+  generateComplianceReport,
+  scanTextForPII,
+} from "./lib/compliance.js";
+import {
+  registerPeer,
+  removePeer,
+  listPeers,
+  healthCheckPeers,
+  discoverFederatedWorkspaces,
+  syncWorkspaceMetadata,
+  handleDiscoverRequest,
+  getInstanceInfo,
+  federationAuth,
+  signPayload,
+} from "./lib/federation.js";
 
 import {
   createTemplate,
@@ -4179,6 +4213,188 @@ app.post("/api/internal/sync", internalAuth, express.json(), async (req, res) =>
     }
   } catch (err) {
     console.error("[replication] Sync receive error:", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// --- Granular RBAC routes ---
+apiRoute("get", "/workspaces/:id/roles", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
+  try {
+    const roles = await listRbacRoles(req.params.id);
+    res.json({ ok: true, roles });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message);
+  }
+});
+
+apiRoute("post", "/workspaces/:id/roles", storageRateLimiter, userAuth, requireScope("admin"), logRequest, async (req, res) => {
+  try {
+    const { name, permissions } = req.body || {};
+    if (!name) return apiError(res, 400, "BAD_REQUEST", "Role name is required");
+    const role = await createCustomRole(req.params.id, name, permissions);
+    res.status(201).json({ ok: true, role });
+  } catch (err) {
+    return apiError(res, 400, "BAD_REQUEST", err.message);
+  }
+});
+
+apiRoute("put", "/workspaces/:id/roles/:roleId", storageRateLimiter, userAuth, requireScope("admin"), logRequest, async (req, res) => {
+  try {
+    const updated = await updateCustomRole(req.params.id, req.params.roleId, req.body || {});
+    if (!updated) return apiError(res, 404, "NOT_FOUND", "Role not found");
+    res.json({ ok: true, role: updated });
+  } catch (err) {
+    return apiError(res, 400, "BAD_REQUEST", err.message);
+  }
+});
+
+apiRoute("delete", "/workspaces/:id/roles/:roleId", storageRateLimiter, userAuth, requireScope("admin"), logRequest, async (req, res) => {
+  try {
+    const deleted = await deleteCustomRole(req.params.id, req.params.roleId);
+    if (!deleted) return apiError(res, 404, "NOT_FOUND", "Role not found");
+    res.json({ ok: true });
+  } catch (err) {
+    return apiError(res, 400, "BAD_REQUEST", err.message);
+  }
+});
+
+apiRoute("post", "/workspaces/:id/members/:userId/role", storageRateLimiter, userAuth, requireScope("admin"), logRequest, async (req, res) => {
+  try {
+    const { roleId } = req.body || {};
+    if (!roleId) return apiError(res, 400, "BAD_REQUEST", "roleId is required");
+    const result = await assignRole(req.params.id, req.params.userId, roleId);
+    res.json({ ok: true, assignment: result });
+  } catch (err) {
+    return apiError(res, 400, "BAD_REQUEST", err.message);
+  }
+});
+
+// --- Compliance & Data Residency routes ---
+apiRoute("get", "/workspaces/:id/compliance/residency", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
+  try {
+    const residency = await getDataResidency(req.params.id);
+    const regions = getAvailableRegions();
+    res.json({ ok: true, residency, availableRegions: regions });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message);
+  }
+});
+
+apiRoute("put", "/workspaces/:id/compliance/residency", storageRateLimiter, userAuth, requireScope("admin"), logRequest, async (req, res) => {
+  try {
+    const { region } = req.body || {};
+    if (!region) return apiError(res, 400, "BAD_REQUEST", "region is required");
+    const result = await setDataResidency(req.params.id, region);
+    res.json({ ok: true, residency: result });
+  } catch (err) {
+    return apiError(res, 400, "BAD_REQUEST", err.message);
+  }
+});
+
+apiRoute("get", "/workspaces/:id/compliance/report", storageRateLimiter, userAuth, requireScope("admin"), logRequest, async (req, res) => {
+  try {
+    const report = await generateComplianceReport(req.params.id, {
+      activityLimit: Number(req.query.activityLimit) || 200,
+    });
+    res.json({ ok: true, report });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message);
+  }
+});
+
+apiRoute("get", "/workspaces/:id/compliance/retention", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
+  try {
+    const policy = await getRetentionPolicy(req.params.id);
+    res.json({ ok: true, policy });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message);
+  }
+});
+
+apiRoute("put", "/workspaces/:id/compliance/retention", storageRateLimiter, userAuth, requireScope("admin"), logRequest, async (req, res) => {
+  try {
+    const policy = await setRetentionPolicy(req.params.id, req.body || {});
+    res.json({ ok: true, policy });
+  } catch (err) {
+    return apiError(res, 400, "BAD_REQUEST", err.message);
+  }
+});
+
+apiRoute("post", "/workspaces/:id/compliance/pii-scan", storageRateLimiter, userAuth, requireScope("admin"), logRequest, async (req, res) => {
+  try {
+    const { texts } = req.body || {};
+    if (!texts) return apiError(res, 400, "BAD_REQUEST", "texts array is required");
+    const result = scanTextForPII(texts);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message);
+  }
+});
+
+// --- Federation routes ---
+apiRoute("get", "/federation/peers", storageRateLimiter, userAuth, requireScope("admin"), logRequest, async (req, res) => {
+  try {
+    const peers = await listPeers();
+    res.json({ ok: true, peers });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message);
+  }
+});
+
+apiRoute("post", "/federation/peers", storageRateLimiter, userAuth, requireScope("admin"), logRequest, async (req, res) => {
+  try {
+    const { url, sharedSecret } = req.body || {};
+    if (!url) return apiError(res, 400, "BAD_REQUEST", "Peer URL is required");
+    const peer = await registerPeer(url, sharedSecret);
+    res.status(201).json({ ok: true, peer });
+  } catch (err) {
+    return apiError(res, 400, "BAD_REQUEST", err.message);
+  }
+});
+
+apiRoute("delete", "/federation/peers/:id", storageRateLimiter, userAuth, requireScope("admin"), logRequest, async (req, res) => {
+  try {
+    const removed = await removePeer(req.params.id);
+    if (!removed) return apiError(res, 404, "NOT_FOUND", "Peer not found");
+    res.json({ ok: true });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message);
+  }
+});
+
+apiRoute("get", "/federation/discover", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
+  try {
+    const query = req.query.q || req.query.query || null;
+    const workspaces = await discoverFederatedWorkspaces(query);
+    res.json({ ok: true, workspaces });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message);
+  }
+});
+
+apiRoute("post", "/federation/sync", storageRateLimiter, userAuth, requireScope("admin"), logRequest, async (req, res) => {
+  try {
+    const { workspaceId, name, description, discoverable } = req.body || {};
+    if (!workspaceId) return apiError(res, 400, "BAD_REQUEST", "workspaceId is required");
+    const result = await syncWorkspaceMetadata(workspaceId, { name, description, discoverable });
+    res.json({ ok: true, workspace: result });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message);
+  }
+});
+
+// Internal federation endpoints (peer-to-peer, HMAC authenticated)
+app.post("/api/internal/federation/ping", express.json(), federationAuth, (req, res) => {
+  const info = getInstanceInfo();
+  res.json({ ok: true, ...info });
+});
+
+app.post("/api/internal/federation/discover", express.json(), federationAuth, async (req, res) => {
+  try {
+    const query = req.body?.query || null;
+    const workspaces = await handleDiscoverRequest(query);
+    res.json({ ok: true, workspaces });
+  } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
