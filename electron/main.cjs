@@ -9,6 +9,7 @@ const path = require("path");
 const net = require("net");
 const fs = require("fs");
 const { initAutoUpdater } = require("./auto-updater.cjs");
+const { createTray, destroyTray } = require("./tray.cjs");
 
 /** @type {import('child_process').ChildProcess | null} */
 let serverProcess = null;
@@ -195,6 +196,7 @@ if (!gotLock) {
       Menu.setApplicationMenu(buildAppMenu());
       createWindow();
       initAutoUpdater();
+      createTray(mainWindow, { serverPort: serverPort });
     } catch (e) {
       console.error("[desktop] Startup failed:", e.message);
       dialog.showErrorBox(
@@ -206,15 +208,13 @@ if (!gotLock) {
   });
 
   app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") {
-      app.isQuitting = true;
-      stopServer();
-      app.quit();
-    }
+    // On macOS, apps stay active. On other platforms, tray keeps app alive.
+    // Quit is handled via tray menu or app.quit().
   });
 
   app.on("before-quit", () => {
     app.isQuitting = true;
+    destroyTray();
     stopServer();
   });
 
