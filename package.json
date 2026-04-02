@@ -18,6 +18,9 @@
     "desktop:dist": "node scripts/ensure-node-vendor.mjs x64 && node scripts/stage-node-vendor.mjs x64 && electron-builder --win --x64",
     "desktop:dist:arm64": "node scripts/ensure-node-vendor.mjs arm64 && node scripts/stage-node-vendor.mjs arm64 && electron-builder --win --arm64",
     "desktop:dist:all": "node scripts/ensure-node-vendor.mjs all && node scripts/stage-node-vendor.mjs x64 && electron-builder --win --x64 && node scripts/stage-node-vendor.mjs arm64 && electron-builder --win --arm64",
+    "desktop:dist:mac": "electron-builder --mac",
+    "desktop:dist:linux": "electron-builder --linux",
+    "desktop:dist:mac:arm64": "electron-builder --mac --arm64",
     "lint": "node scripts/syntax-check.mjs && eslint .",
     "lint:eslint": "eslint .",
     "test": "node scripts/run-tests.mjs",
@@ -106,6 +109,20 @@
         "filter": [
           "node.exe"
         ]
+      },
+      {
+        "from": "vendor/node-darwin-${arch}",
+        "to": "node-darwin-${arch}",
+        "filter": [
+          "node"
+        ]
+      },
+      {
+        "from": "vendor/node-linux-${arch}",
+        "to": "node-linux-${arch}",
+        "filter": [
+          "node"
+        ]
       }
     ],
     "mac": {
@@ -129,6 +146,18 @@
       "artifactName": "${productName}-${version}-Windows-${arch}.${ext}",
       "signingHashAlgorithms": ["sha256"],
       "sign": null
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "category": "public.app-category.productivity",
+      "artifactName": "${productName}-${version}-macOS-${arch}.${ext}",
+      "icon": "build/icon.icns"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Utility",
+      "artifactName": "${productName}-${version}-Linux-${arch}.${ext}",
+      "icon": "build/icon.png"
     },
     "nsis": {
       "oneClick": false,

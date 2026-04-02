@@ -66,8 +66,15 @@ function getProjectPaths() {
 function resolveNodeBinary() {
   if (process.env.NODE_BINARY) return process.env.NODE_BINARY;
   if (app.isPackaged) {
-    const bundled = path.join(process.resourcesPath, "node-win", "node.exe");
-    if (fs.existsSync(bundled)) return bundled;
+    const platform = process.platform;
+    const arch = process.arch;
+    if (platform === "win32") {
+      const bundled = path.join(process.resourcesPath, "node-win", "node.exe");
+      if (fs.existsSync(bundled)) return bundled;
+    } else {
+      const bundled = path.join(process.resourcesPath, `node-${platform}-${arch}`, "node");
+      if (fs.existsSync(bundled)) return bundled;
+    }
   }
   return "node";
 }
