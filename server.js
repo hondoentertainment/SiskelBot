@@ -6,6 +6,7 @@ import rateLimit from "express-rate-limit";
 import cors from "cors";
 import helmet from "helmet";
 import { randomUUID } from "crypto";
+import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import multer from "multer";
@@ -3884,6 +3885,63 @@ const STATIC_CACHE_MAX_AGE_MS =
   process.env.STATIC_CACHE_MAX_AGE === "0"
     ? 0
     : Number(process.env.STATIC_CACHE_MAX_AGE_MS) || (IS_PRODUCTION ? 86_400_000 : 0);
+
+// Serve hashed client/dist/ assets with immutable cache headers (P0.3 code-splitting)
+app.use(
+  "/dist",
+  express.static(join(__dirname, "client", "dist"), {
+    maxAge: 31_536_000_000, // 1 year
+    immutable: true,
+    etag: true,
+    setHeaders(res) {
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    },
+  }),
+);
+
+// Load the client build manifest (maps entry names to hashed filenames).
+// Falls back gracefully when client/dist/ has not been built.
+let _clientManifest = null;
+try {
+  _clientManifest = JSON.parse(readFileSync(join(__dirname, "client", "dist", "manifest.json"), "utf8"));
+  console.log("[static] Client build manifest loaded:", Object.keys(_clientManifest).join(", "));
+} catch {
+  _clientManifest = null;
+  console.log("[static] No client build manifest found — serving inline JS fallback.");
+}
+
+// P0.3: When build manifest exists, serve HTML pages with external JS modules
+// instead of the large inline <script> blocks. Falls back to inline JS when no build.
+const HTML_ENTRY_MAP = { "/": "chat", "/index.html": "chat", "/admin.html": "admin", "/eval.html": "eval", "/marketplace.html": "marketplace" };
+app.use((req, res, next) => {
+  if (req.method !== "GET" && req.method !== "HEAD") return next();
+  const entry = HTML_ENTRY_MAP[req.path];
+  if (!entry || !_clientManifest || !_clientManifest[entry]) return next();
+
+  const htmlFile = entry === "chat" ? "index.html" : `${entry}.html`;
+  const filePath = join(__dirname, "client", htmlFile);
+  let html;
+  try {
+    html = readFileSync(filePath, "utf8");
+  } catch {
+    return next();
+  }
+
+  // Replace the last inline <script> block (the page JS) with a module tag.
+  // Find the last occurrence of a bare <script> (no src=) followed by content until </body>.
+  const moduleUrl = `/dist/${_clientManifest[entry]}`;
+  const lastInlineIdx = html.lastIndexOf("\n  <script>\n");
+  const bodyCloseIdx = html.lastIndexOf("</body>");
+  if (lastInlineIdx !== -1 && bodyCloseIdx !== -1 && lastInlineIdx < bodyCloseIdx) {
+    html = html.slice(0, lastInlineIdx) +
+      `\n  <script type="module" src="${moduleUrl}"></script>\n` +
+      html.slice(bodyCloseIdx);
+  }
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store");
+  res.send(html);
+});
 
 app.use(
   express.static(join(__dirname, "client"), {
