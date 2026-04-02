@@ -124,6 +124,15 @@ import {
 import { replayTrace, replayAll } from "./lib/trace-replay.js";
 import { workspaceRateLimiter } from "./lib/workspace-rate-limit.js";
 import { getEventsSince } from "./lib/realtime-replay.js";
+import { versionDetection } from "./lib/api-versioning.js";
+import {
+  recordLatency as obsRecordLatency,
+  getMetricsSummary,
+  getLatencyPercentiles as obsGetLatencyPercentiles,
+  getErrorRates as obsGetErrorRates,
+  getAgentStats as obsGetAgentStats,
+  getTokenUsageByWorkspace as obsGetTokenUsageByWorkspace,
+} from "./lib/observability.js";
 
 import {
   createTemplate,
@@ -307,6 +316,16 @@ if (ENABLE_COMPRESSION) {
 }
 app.use(express.json());
 app.use(otelHttpEnrichmentMiddleware());
+app.use(versionDetection());
+
+// Observability: record request latency for all requests (lightweight, after response)
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    obsRecordLatency(req.route?.path || req.path, req.method, Date.now() - start, res.statusCode);
+  });
+  next();
+});
 
 // Phase 34: Request ID for all responses (k8s/tracing)
 app.use((req, res, next) => {
@@ -458,9 +477,10 @@ function deprecationApi(req, res, next) {
   next();
 }
 
-// Phase 23: Register route at both /api/v1/path (stable) and /api/path (legacy with deprecation)
+// Phase 23: Register route at /api/v1/path (stable), /api/v2/path (v2), and /api/path (legacy with deprecation)
 function apiRoute(method, path, ...handlers) {
   app[method](`/api/v1${path}`, ...handlers);
+  app[method](`/api/v2${path}`, ...handlers);
   app[method](`/api${path}`, deprecationApi, ...handlers);
 }
 
@@ -3673,6 +3693,36 @@ app.get("/marketplace", (req, res) => {
   res.sendFile(join(__dirname, "client", "marketplace.html"));
 });
 
+// --- Observability Dashboard ---
+app.get("/observability", (req, res) => {
+  res.sendFile(join(__dirname, "client", "observability.html"));
+});
+
+apiRoute("get", "/observability/summary", adminAuth, requireScope("admin"), (req, res) => {
+  const windowMinutes = Math.min(Number(req.query.window) || 60, 60);
+  res.json(getMetricsSummary(windowMinutes));
+});
+
+apiRoute("get", "/observability/latency", adminAuth, requireScope("admin"), (req, res) => {
+  const windowMinutes = Math.min(Number(req.query.window) || 60, 60);
+  res.json(obsGetLatencyPercentiles(windowMinutes));
+});
+
+apiRoute("get", "/observability/errors", adminAuth, requireScope("admin"), (req, res) => {
+  const windowMinutes = Math.min(Number(req.query.window) || 60, 60);
+  res.json(obsGetErrorRates(windowMinutes));
+});
+
+apiRoute("get", "/observability/agents", adminAuth, requireScope("admin"), (req, res) => {
+  const windowMinutes = Math.min(Number(req.query.window) || 60, 60);
+  res.json(obsGetAgentStats(windowMinutes));
+});
+
+apiRoute("get", "/observability/tokens", adminAuth, requireScope("admin"), (req, res) => {
+  const windowMinutes = Math.min(Number(req.query.window) || 60, 60);
+  res.json(obsGetTokenUsageByWorkspace(windowMinutes));
+});
+
 const adminRateLimiter = rateLimit({
   windowMs: 60_000,
   max: 60,
@@ -4014,7 +4064,7 @@ app.use(
     etag: true,
     setHeaders(res, filePath) {
       const norm = filePath.replace(/\\/g, "/");
-      if (/(^|\/)index\.html$/i.test(norm) || /(^|\/)admin\.html$/i.test(norm) || /(^|\/)eval\.html$/i.test(norm)) {
+      if (/(^|\/)index\.html$/i.test(norm) || /(^|\/)admin\.html$/i.test(norm) || /(^|\/)eval\.html$/i.test(norm) || /(^|\/)observability\.html$/i.test(norm)) {
         res.setHeader("Cache-Control", "no-store");
       }
     },
