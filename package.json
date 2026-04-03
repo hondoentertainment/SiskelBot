@@ -30,7 +30,8 @@
     "smoke-test:ci": "node scripts/smoke-test.js --live-only",
     "test:e2e": "npx playwright test",
     "test:e2e:api": "npx playwright test --project=api",
-    "eval:ci": "node scripts/run-eval-ci.mjs"
+    "eval:ci": "node scripts/run-eval-ci.mjs",
+    "openapi:generate": "node scripts/generate-openapi.mjs"
   },
   "engines": {
     "node": ">=18"
