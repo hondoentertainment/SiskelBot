@@ -1,0 +1,77 @@
+# Phase 69: Example OpenTelemetry Collector sidecar configuration with tail sampling.
+#
+# Deploy as a sidecar (e.g. a second container in the same Kubernetes pod)
+# and point SiskelBot at it via:
+#   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
+#
+# Tail sampling evaluates complete traces before deciding whether to export,
+# which lets you keep 100 % of error traces while down-sampling healthy ones.
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: "0.0.0.0:4318"
+      grpc:
+        endpoint: "0.0.0.0:4317"
+
+processors:
+  # Batch before export for efficiency.
+  batch:
+    send_batch_size: 512
+    timeout: 5s
+
+  # Tail-based sampling: keep all errors, sample healthy traces at 10 %.
+  tail_sampling:
+    # How long to wait for a trace to be "complete" before making a decision.
+    decision_wait: 10s
+    # Maximum number of traces held in memory while waiting.
+    num_traces: 50000
+    # Traces older than this are force-flushed.
+    expected_new_traces_per_sec: 100
+
+    policies:
+      # Policy 1: Always keep traces that contain an error span.
+      - name: keep-errors
+        type: status_code
+        status_code:
+          status_codes:
+            - ERROR
+
+      # Policy 2: Always keep traces longer than 5 s (slow requests).
+      - name: keep-slow
+        type: latency
+        latency:
+          threshold_ms: 5000
+
+      # Policy 3: Always keep swarm traces (by span name prefix).
+      - name: keep-swarm
+        type: string_attribute
+        string_attribute:
+          key: "swarm.run_id"
+          values: [".*"]
+          enabled_regex_matching: true
+
+      # Policy 4: Probabilistic 10 % sample for everything else.
+      - name: probabilistic-sample
+        type: probabilistic
+        probabilistic:
+          sampling_percentage: 10
+
+exporters:
+  # Replace with your backend (Jaeger, Tempo, Honeycomb, etc.)
+  otlp/backend:
+    endpoint: "https://otel-backend.example.com:4317"
+    tls:
+      insecure: false
+
+  # Debug exporter for local development.
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [tail_sampling, batch]
+      exporters: [otlp/backend]

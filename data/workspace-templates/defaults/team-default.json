@@ -1,0 +1,19 @@
+{
+  "id": "team-default",
+  "name": "Team Default",
+  "description": "A balanced workspace template with moderate quotas and general-purpose settings suitable for team collaboration.",
+  "defaultSystemPrompt": "You are a helpful team assistant. Provide clear, concise answers. When working on tasks, break them into steps and confirm your understanding before proceeding. Be collaborative and ask clarifying questions when the request is ambiguous.",
+  "memorySnippets": [
+    "Keep responses concise unless detailed analysis is requested.",
+    "When uncertain, ask for clarification rather than guessing."
+  ],
+  "toolAllowlist": [
+    "knowledge_search",
+    "web_search"
+  ],
+  "quotaSettings": {
+    "tokensPerWorkspace": 300000,
+    "periodDays": 30
+  },
+  "tags": ["team", "general", "collaboration"]
+}

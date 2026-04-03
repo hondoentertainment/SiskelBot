@@ -3,7 +3,8 @@ import globals from "globals";
 
 export default [
   {
-    ignores: ["node_modules/**", "release/**", "client/**", "data/**", "coverage/**"],
+    ignores: ["node_modules/**", "release/**", "client/**", "data/**", "coverage/**", ".claude/**"],
+    ignores: ["node_modules/**", "release/**", "data/**", "coverage/**"],
   },
   js.configs.recommended,
   {
@@ -11,10 +12,12 @@ export default [
       "server.js",
       "lib/**/*.js",
       "bin/**/*.js",
+      "routes/**/*.js",
       "tests/**/*.js",
       "scripts/**/*.mjs",
       "scripts/**/*.js",
       "electron/**/*.cjs",
+      "playwright.config.js",
     ],
     languageOptions: {
       ecmaVersion: 2022,
@@ -39,6 +42,26 @@ export default [
     languageOptions: {
       sourceType: "commonjs",
       globals: { ...globals.node },
+    },
+  },
+  {
+    files: ["client/**/*.js"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: { ...globals.browser },
+    },
+    rules: {
+      "no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          caughtErrors: "none",
+        },
+      ],
+      "no-empty": ["warn", { allowEmptyCatch: true }],
+      "no-var": "off",
+      "no-control-regex": "off",
     },
   },
 ];

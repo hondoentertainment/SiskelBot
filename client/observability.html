@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>Siskel Bot - Observability</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    a:focus-visible, button:focus-visible, input:focus-visible {
+      outline: 2px solid #60a5fa;
+      outline-offset: 2px;
+    }
+    header {
+      padding: 0.75rem 1rem;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    header h1 { margin: 0; font-size: 1.125rem; font-weight: 600; }
+    header a { color: #60a5fa; text-decoration: none; }
+    header a:hover { text-decoration: underline; }
+    main { padding: 1rem; max-width: 1400px; margin: 0 auto; }
+
+    /* Login form */
+    .login-form {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+    .login-form input {
+      padding: 0.5rem 0.75rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.875rem;
+    }
+    .login-form button, .btn {
+      padding: 0.5rem 1rem;
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.875rem;
+    }
+    .login-form button:hover, .btn:hover { background: #2563eb; }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid #334155;
+      margin-bottom: 1rem;
+    }
+    .tab {
+      padding: 0.5rem 1rem;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+    .tab:hover { color: #e2e8f0; }
+    .tab.active { color: #60a5fa; border-bottom-color: #60a5fa; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Sections and cards */
+    .section {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .section h2 {
+      margin: 0 0 0.75rem 0;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #94a3b8;
+    }
+    .grid { display: grid; gap: 1rem; }
+    .grid-4 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+    .metric-card {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+    }
+    .metric-card .label { font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+    .metric-card .value { font-size: 1.5rem; font-weight: 700; margin-top: 0.25rem; }
+    .ok { color: #34d399; }
+    .warn { color: #fbbf24; }
+    .err { color: #f87171; }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+    th, td {
+      padding: 0.5rem 0.75rem;
+      text-align: left;
+      border-bottom: 1px solid #334155;
+    }
+    th { color: #94a3b8; font-weight: 500; }
+    tr:last-child td { border-bottom: none; }
+
+    /* Charts */
+    .chart-container {
+      position: relative;
+      width: 100%;
+      height: 200px;
+      margin-top: 0.5rem;
+    }
+    .chart-container canvas {
+      width: 100% !important;
+      height: 100% !important;
+    }
+
+    /* Status bar */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+      color: #64748b;
+      margin-top: 0.5rem;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #34d399;
+      display: inline-block;
+    }
+    .status-dot.error { background: #f87171; }
+
+    /* Bar chart (pure CSS) */
+    .bar-chart { display: flex; align-items: flex-end; gap: 2px; height: 120px; margin-top: 0.5rem; }
+    .bar {
+      flex: 1;
+      background: #3b82f6;
+      min-width: 4px;
+      border-radius: 2px 2px 0 0;
+      position: relative;
+    }
+    .bar.error-bar { background: #f87171; }
+    .bar:hover { opacity: 0.8; }
+    .bar:hover::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #334155;
+      color: #e2e8f0;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Observability</h1>
+    <a href="/">Chat</a>
+    <a href="/admin">Admin</a>
+  </header>
+
+  <main>
+    <div id="auth-section">
+      <div class="section">
+        <h2>Admin Authentication</h2>
+        <p>Enter the admin API key to view metrics.</p>
+        <div class="login-form">
+          <input type="password" id="admin-key" placeholder="Admin API Key" autocomplete="off">
+          <button onclick="authenticate()">Login</button>
+        </div>
+        <p id="auth-error" style="color:#f87171;display:none"></p>
+      </div>
+    </div>
+
+    <div id="dashboard" style="display:none">
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="overview" role="tab" aria-selected="true">Overview</button>
+        <button class="tab" data-tab="latency" role="tab" aria-selected="false">Latency</button>
+        <button class="tab" data-tab="agents" role="tab" aria-selected="false">Agents</button>
+        <button class="tab" data-tab="tokens" role="tab" aria-selected="false">Tokens</button>
+        <button class="tab" data-tab="ratelimits" role="tab" aria-selected="false">Rate Limits</button>
+      </div>
+
+      <!-- Overview Tab -->
+      <div id="tab-overview" class="tab-panel active">
+        <div class="grid grid-4">
+          <div class="metric-card">
+            <div class="label">Requests / sec</div>
+            <div class="value" id="m-rps">--</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Total Requests</div>
+            <div class="value" id="m-total">--</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Error Rate (5xx)</div>
+            <div class="value" id="m-err5xx">--</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">P95 Latency</div>
+            <div class="value" id="m-p95">--</div>
+          </div>
+        </div>
+        <div class="grid grid-3" style="margin-top:1rem">
+          <div class="section">
+            <h2>Error Rate Timeline</h2>
+            <div id="error-timeline" class="bar-chart"></div>
+          </div>
+          <div class="section">
+            <h2>Agent Activity</h2>
+            <div class="grid grid-4" style="grid-template-columns:1fr 1fr">
+              <div class="metric-card">
+                <div class="label">Total Runs</div>
+                <div class="value" id="m-agent-runs">--</div>
+              </div>
+              <div class="metric-card">
+                <div class="label">Stagnation Rate</div>
+                <div class="value" id="m-agent-stag">--</div>
+              </div>
+              <div class="metric-card">
+                <div class="label">Avg Tool Calls</div>
+                <div class="value" id="m-agent-tools">--</div>
+              </div>
+              <div class="metric-card">
+                <div class="label">Avg Duration</div>
+                <div class="value" id="m-agent-dur">--</div>
+              </div>
+            </div>
+          </div>
+          <div class="section">
+            <h2>Token Usage</h2>
+            <div class="metric-card">
+              <div class="label">Total Tokens (1h)</div>
+              <div class="value" id="m-tokens-total">--</div>
+            </div>
+            <div id="token-models" style="margin-top:0.5rem"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Latency Tab -->
+      <div id="tab-latency" class="tab-panel">
+        <div class="grid grid-4">
+          <div class="metric-card">
+            <div class="label">P50</div>
+            <div class="value" id="l-p50">--</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">P95</div>
+            <div class="value" id="l-p95">--</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">P99</div>
+            <div class="value" id="l-p99">--</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Avg</div>
+            <div class="value" id="l-avg">--</div>
+          </div>
+        </div>
+        <div class="section" style="margin-top:1rem">
+          <h2>Latency by Route</h2>
+          <table id="latency-routes">
+            <thead><tr><th>Route</th><th>Count</th><th>Avg</th><th>P50</th><th>P95</th><th>P99</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Agents Tab -->
+      <div id="tab-agents" class="tab-panel">
+        <div class="grid grid-4">
+          <div class="metric-card">
+            <div class="label">Total Runs</div>
+            <div class="value" id="a-runs">--</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Avg Tool Calls / Run</div>
+            <div class="value" id="a-tools">--</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Avg Duration</div>
+            <div class="value" id="a-dur">--</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Stagnation Rate</div>
+            <div class="value" id="a-stag">--</div>
+          </div>
+        </div>
+        <div class="section" style="margin-top:1rem">
+          <h2>Agent Runs Per Minute</h2>
+          <div id="agent-timeline" class="bar-chart"></div>
+        </div>
+      </div>
+
+      <!-- Tokens Tab -->
+      <div id="tab-tokens" class="tab-panel">
+        <div class="grid grid-4" style="grid-template-columns:1fr 1fr">
+          <div class="metric-card">
+            <div class="label">Total Tokens</div>
+            <div class="value" id="t-total">--</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Models Active</div>
+            <div class="value" id="t-models">--</div>
+          </div>
+        </div>
+        <div class="section" style="margin-top:1rem">
+          <h2>By Model</h2>
+          <table id="token-model-table">
+            <thead><tr><th>Model</th><th>Tokens</th><th>Share</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="section">
+          <h2>By Workspace</h2>
+          <table id="token-ws-table">
+            <thead><tr><th>Workspace</th><th>Tokens</th><th>Models</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Rate Limits Tab -->
+      <div id="tab-ratelimits" class="tab-panel">
+        <div class="section">
+          <h2>Rate Limit Utilization</h2>
+          <p style="color:#94a3b8;font-size:0.875rem">
+            Rate limit utilization is derived from 4xx response codes in the current window.
+            A high ratio of 429 responses indicates rate limit pressure.
+          </p>
+          <div class="grid grid-4" style="margin-top:0.5rem">
+            <div class="metric-card">
+              <div class="label">Total 4xx</div>
+              <div class="value" id="r-4xx">--</div>
+            </div>
+            <div class="metric-card">
+              <div class="label">429 (Rate Limited)</div>
+              <div class="value" id="r-429">--</div>
+            </div>
+            <div class="metric-card">
+              <div class="label">4xx Rate</div>
+              <div class="value" id="r-4xxrate">--</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="status-bar">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">Connected</span>
+        <span style="margin-left:auto">Auto-refresh: 30s</span>
+        <span id="last-updated"></span>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    let adminKey = localStorage.getItem("obs_admin_key") || "";
+    let refreshTimer = null;
+
+    function headers() {
+      return { "X-Admin-Key": adminKey, "Accept": "application/json" };
+    }
+
+    async function authenticate() {
+      const input = document.getElementById("admin-key");
+      adminKey = input.value.trim();
+      if (!adminKey) return;
+      try {
+        const res = await fetch("/api/v1/observability/summary", { headers: headers() });
+        if (res.ok) {
+          localStorage.setItem("obs_admin_key", adminKey);
+          document.getElementById("auth-section").style.display = "none";
+          document.getElementById("dashboard").style.display = "block";
+          startRefresh();
+        } else {
+          document.getElementById("auth-error").textContent = "Invalid admin key";
+          document.getElementById("auth-error").style.display = "block";
+        }
+      } catch (e) {
+        document.getElementById("auth-error").textContent = "Connection error: " + e.message;
+        document.getElementById("auth-error").style.display = "block";
+      }
+    }
+
+    // Tab navigation
+    document.querySelectorAll(".tab").forEach(tab => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach(t => { t.classList.remove("active"); t.setAttribute("aria-selected", "false"); });
+        document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+        tab.classList.add("active");
+        tab.setAttribute("aria-selected", "true");
+        document.getElementById("tab-" + tab.dataset.tab).classList.add("active");
+      });
+    });
+
+    function fmt(n) {
+      if (n == null || isNaN(n)) return "--";
+      if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+      if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
+      return String(n);
+    }
+
+    function fmtMs(n) { return n != null ? n + "ms" : "--"; }
+    function fmtPct(n) { return n != null ? (n * 100).toFixed(2) + "%" : "--"; }
+
+    function renderBarChart(container, data, valueFn, tooltipFn, errorFn) {
+      container.innerHTML = "";
+      if (!data || data.length === 0) { container.textContent = "No data"; return; }
+      const max = Math.max(...data.map(valueFn), 1);
+      data.forEach(d => {
+        const bar = document.createElement("div");
+        bar.className = "bar" + (errorFn && errorFn(d) ? " error-bar" : "");
+        const h = Math.max(2, (valueFn(d) / max) * 100);
+        bar.style.height = h + "%";
+        bar.dataset.tooltip = tooltipFn(d);
+        container.appendChild(bar);
+      });
+    }
+
+    async function fetchData(endpoint) {
+      const res = await fetch("/api/v1/observability/" + endpoint, { headers: headers() });
+      if (!res.ok) throw new Error(res.statusText);
+      return res.json();
+    }
+
+    async function refresh() {
+      try {
+        const summary = await fetchData("summary");
+        const dot = document.getElementById("status-dot");
+        dot.classList.remove("error");
+        document.getElementById("status-text").textContent = "Connected";
+        document.getElementById("last-updated").textContent = "Updated: " + new Date().toLocaleTimeString();
+
+        // Overview
+        document.getElementById("m-rps").textContent = summary.requestsPerSec;
+        document.getElementById("m-total").textContent = fmt(summary.totalRequests);
+        const e5 = summary.errors.rate5xx;
+        const e5el = document.getElementById("m-err5xx");
+        e5el.textContent = fmtPct(e5);
+        e5el.className = "value " + (e5 > 0.05 ? "err" : e5 > 0.01 ? "warn" : "ok");
+        document.getElementById("m-p95").textContent = fmtMs(summary.latency.overall.p95);
+
+        // Agent overview
+        document.getElementById("m-agent-runs").textContent = fmt(summary.agents.totalRuns);
+        document.getElementById("m-agent-stag").textContent = fmtPct(summary.agents.stagnationRate);
+        document.getElementById("m-agent-tools").textContent = summary.agents.avgToolCalls;
+        document.getElementById("m-agent-dur").textContent = fmtMs(summary.agents.avgDurationMs);
+
+        // Token overview
+        document.getElementById("m-tokens-total").textContent = fmt(summary.tokens.total);
+        const modelDiv = document.getElementById("token-models");
+        const models = Object.entries(summary.tokens.byModel || {});
+        modelDiv.innerHTML = models.length === 0 ? '<span style="color:#64748b;font-size:0.8rem">No data</span>' :
+          models.map(([m, t]) => `<div style="font-size:0.8rem;color:#94a3b8">${m}: ${fmt(t)}</div>`).join("");
+
+        // Error timeline
+        renderBarChart(
+          document.getElementById("error-timeline"),
+          summary.errors.byMinute,
+          d => d.errors4xx + d.errors5xx,
+          d => `${d.minute.slice(11, 16)} - ${d.errors4xx + d.errors5xx} errors`,
+          d => d.errors5xx > 0
+        );
+
+        // Latency tab
+        const lat = summary.latency;
+        document.getElementById("l-p50").textContent = fmtMs(lat.overall.p50);
+        document.getElementById("l-p95").textContent = fmtMs(lat.overall.p95);
+        document.getElementById("l-p99").textContent = fmtMs(lat.overall.p99);
+        document.getElementById("l-avg").textContent = fmtMs(lat.overall.avg);
+        const tbody = document.querySelector("#latency-routes tbody");
+        tbody.innerHTML = "";
+        Object.entries(lat.byRoute || {}).sort((a, b) => b[1].count - a[1].count).forEach(([route, s]) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `<td>${route}</td><td>${s.count}</td><td>${fmtMs(s.avg)}</td><td>${fmtMs(s.p50)}</td><td>${fmtMs(s.p95)}</td><td>${fmtMs(s.p99)}</td>`;
+          tbody.appendChild(tr);
+        });
+
+        // Agents tab
+        const ag = summary.agents;
+        document.getElementById("a-runs").textContent = fmt(ag.totalRuns);
+        document.getElementById("a-tools").textContent = ag.avgToolCalls;
+        document.getElementById("a-dur").textContent = fmtMs(ag.avgDurationMs);
+        const stagEl = document.getElementById("a-stag");
+        stagEl.textContent = fmtPct(ag.stagnationRate);
+        stagEl.className = "value " + (ag.stagnationRate > 0.2 ? "err" : ag.stagnationRate > 0.1 ? "warn" : "ok");
+        renderBarChart(
+          document.getElementById("agent-timeline"),
+          ag.byMinute,
+          d => d.runs,
+          d => `${d.minute.slice(11, 16)} - ${d.runs} runs`,
+          d => d.stagnated > 0
+        );
+
+        // Tokens tab
+        const tok = summary.tokens;
+        document.getElementById("t-total").textContent = fmt(tok.total);
+        const modelEntries = Object.entries(tok.byModel || {});
+        document.getElementById("t-models").textContent = modelEntries.length;
+        const mtbody = document.querySelector("#token-model-table tbody");
+        mtbody.innerHTML = "";
+        modelEntries.sort((a, b) => b[1] - a[1]).forEach(([model, tokens]) => {
+          const tr = document.createElement("tr");
+          const share = tok.total > 0 ? ((tokens / tok.total) * 100).toFixed(1) + "%" : "0%";
+          tr.innerHTML = `<td>${model}</td><td>${fmt(tokens)}</td><td>${share}</td>`;
+          mtbody.appendChild(tr);
+        });
+        const wtbody = document.querySelector("#token-ws-table tbody");
+        wtbody.innerHTML = "";
+        Object.entries(tok.byWorkspace || {}).sort((a, b) => b[1].total - a[1].total).forEach(([ws, info]) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `<td>${ws}</td><td>${fmt(info.total)}</td><td>${Object.keys(info.byModel || {}).join(", ") || "-"}</td>`;
+          wtbody.appendChild(tr);
+        });
+
+        // Rate limits tab
+        document.getElementById("r-4xx").textContent = fmt(summary.errors.errors4xx);
+        // Derive 429 from byMinute if available, otherwise show N/A
+        document.getElementById("r-429").textContent = "N/A";
+        document.getElementById("r-4xxrate").textContent = fmtPct(summary.errors.rate4xx);
+      } catch (e) {
+        document.getElementById("status-dot").classList.add("error");
+        document.getElementById("status-text").textContent = "Error: " + e.message;
+      }
+    }
+
+    function startRefresh() {
+      refresh();
+      refreshTimer = setInterval(refresh, 30_000);
+    }
+
+    // Auto-login if key stored
+    if (adminKey) {
+      document.getElementById("auth-section").style.display = "none";
+      document.getElementById("dashboard").style.display = "block";
+      startRefresh();
+    }
+
+    // Allow Enter key in input
+    document.getElementById("admin-key").addEventListener("keydown", e => {
+      if (e.key === "Enter") authenticate();
+    });
+  </script>
+</body>
+</html>

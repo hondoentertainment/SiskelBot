@@ -6,21 +6,44 @@ import rateLimit from "express-rate-limit";
 import cors from "cors";
 import helmet from "helmet";
 import { randomUUID } from "crypto";
+import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import multer from "multer";
 import passport from "passport";
 import { initPassport, isOAuthConfigured } from "./lib/oauth.js";
+import { configureSSO, isSSOConfigured } from "./lib/sso.js";
+import { getLeaderElection } from "./lib/leader-election.js";
+import { getRegionHealth } from "./lib/region-health.js";
+import { getReplicationManager, internalAuth } from "./lib/storage-replication.js";
+import {
+  branchConversation,
+  getConversationTree,
+  listBranches as listConversationBranches,
+  getBranch as getConversationBranch,
+  deleteBranch as deleteConversationBranch,
+} from "./lib/conversation-tree.js";
 import {
   indexDocument,
+  indexDocumentFromBuffer,
   search as knowledgeSearch,
   semanticSearch as knowledgeSemanticSearch,
   list as knowledgeList,
   reindexKnowledgeEmbeddingsInWorkspace,
 } from "./lib/knowledge-store.js";
+import { getWorkspaceChunkingConfig, setWorkspaceChunkingConfig } from "./lib/knowledge-chunking-config.js";
 import { embed, embedBatch, isAvailable as embeddingsAvailable } from "./lib/embeddings.js";
 import { executeStep, appendAuditLog, getRegisteredActions } from "./lib/action-executor.js";
 import { loadPlugins } from "./lib/plugins-loader.js";
+import {
+  discoverPacks,
+  registry as marketplaceRegistry,
+  listAvailable as marketplaceListAvailable,
+  listInstalled as marketplaceListInstalled,
+  installPack as marketplaceInstallPack,
+  uninstallPack as marketplaceUninstallPack,
+} from "./lib/plugin-marketplace.js";
+import { loadPlugin as loadJsPlugin, executePlugin as execJsPlugin, listPlugins as listJsPlugins } from "./lib/plugin-sandbox.js";
 import { getToolsSchema, intersectClientToolsWithAllowlist, getAgentToolsAllowlistNames } from "./lib/agent-tools.js";
 import { resolveAgentMaxIterations } from "./lib/agent-iterations.js";
 import * as storage from "./lib/storage.js";
@@ -34,6 +57,7 @@ import { list as listNotifications, markRead as markNotificationRead, markAllRea
 import { isQuotaConfigured, checkQuota, getWorkspaceQuota, getWorkspaceTokensUsed, isQuotaAdmin, setWorkspaceQuotaOverride, getQuotaOverrides } from "./lib/quotas.js";
 import { createBackup, listBackups, restoreBackup } from "./lib/backup.js";
 import { adminAuth } from "./lib/admin-auth.js";
+import { adminIpAllowlist } from "./lib/admin-ip-allowlist.js";
 import { listAllUsers, listAllWorkspaces, getRecentAuditLog } from "./lib/admin-data.js";
 import { requireScope } from "./lib/scope-middleware.js";
 import { logKeyUsage } from "./lib/api-key-audit.js";
@@ -49,10 +73,13 @@ import {
 } from "./lib/teams.js";
 import openApiSpec from "./lib/openapi-spec.js";
 import { runEvalSet } from "./lib/eval-runner.js";
-import { listEvalSets, loadEvalSet } from "./lib/eval-sets.js";
+import { listEvalSets, loadEvalSet } from "./lib/storage-eval.js";
 import { createToken, attachToServer, getOnlineUsers, closeServer } from "./lib/realtime.js";
 import { sanitizeForLog } from "./lib/log-sanitizer.js";
 import { execute as circuitExecute } from "./lib/circuit-breaker.js";
+import { parseRoutingConfig, selectBackend, logRouting, getRoutingStats } from "./lib/ab-router.js";
+import { AuditLifecycle } from "./lib/audit-lifecycle.js";
+import { queryAudit, exportAudit } from "./lib/audit-query.js";
 import { initErrorReporting, reportError } from "./lib/error-reporting.js";
 import {
   runSwarm,
@@ -83,11 +110,107 @@ import {
 import compression from "compression";
 import { otelHttpEnrichmentMiddleware } from "./lib/otel-context.js";
 import { exportWorkspaceBundle, deleteWorkspaceForUser } from "./lib/workspace-lifecycle.js";
+import {
+  storeMemory,
+  getMemories,
+  searchMemories,
+  updateMemory as updateAgentMemory,
+  deleteMemory as deleteAgentMemory,
+  getMemoryStats,
+  extractPotentialMemories,
+} from "./lib/agent-memory.js";
+import {
+  exportWorkspace as exportWorkspaceMigration,
+  importWorkspace as importWorkspaceMigration,
+  validateBundle,
+  diffWorkspaces,
+} from "./lib/workspace-migration.js";
 import { idempotencyLookup, idempotencyStore } from "./lib/idempotency.js";
 import { archiveExecutionAuditToS3, getAuditArchiveStatus } from "./lib/audit-s3-archive.js";
 import { fetchTextFromAllowedUrl } from "./lib/knowledge-url-fetch.js";
 import { pipeLlmChatStreamToSse } from "./lib/llm-stream-sse.js";
 import { runAgentLoop } from "./lib/agent-loop.js";
+import {
+  recordTrace,
+  listTraces as listRecordedTraces,
+  getTrace as getRecordedTrace,
+  deleteTrace as deleteRecordedTrace,
+  autoRecordEnabled,
+} from "./lib/trace-recorder.js";
+import { replayTrace, replayAll } from "./lib/trace-replay.js";
+import { workspaceRateLimiter } from "./lib/workspace-rate-limit.js";
+import { getEventsSince } from "./lib/realtime-replay.js";
+import { versionDetection } from "./lib/api-versioning.js";
+import {
+  recordLatency as obsRecordLatency,
+  getMetricsSummary,
+  getLatencyPercentiles as obsGetLatencyPercentiles,
+  getErrorRates as obsGetErrorRates,
+  getAgentStats as obsGetAgentStats,
+  getTokenUsageByWorkspace as obsGetTokenUsageByWorkspace,
+} from "./lib/observability.js";
+import {
+  PERMISSIONS as RBAC_PERMISSIONS,
+  BUILT_IN_ROLES,
+  createCustomRole,
+  updateCustomRole,
+  deleteCustomRole,
+  listRoles as listRbacRoles,
+  assignRole,
+  getUserPermissions,
+  requirePermission,
+} from "./lib/rbac.js";
+import {
+  getAvailableRegions,
+  setDataResidency,
+  getDataResidency,
+  detectPII,
+  redactPII,
+  setRetentionPolicy,
+  getRetentionPolicy,
+  generateComplianceReport,
+  scanTextForPII,
+} from "./lib/compliance.js";
+import {
+  registerPeer,
+  removePeer,
+  listPeers,
+  healthCheckPeers,
+  discoverFederatedWorkspaces,
+  syncWorkspaceMetadata,
+  handleDiscoverRequest,
+  getInstanceInfo,
+  federationAuth,
+  signPayload,
+} from "./lib/federation.js";
+
+import {
+  createTemplate,
+  listTemplates,
+  getTemplate,
+  updateTemplate,
+  deleteTemplate,
+  applyTemplate,
+  createWorkspaceFromTemplate,
+} from "./lib/workspace-templates.js";
+
+// --- Route modules (P0.1) ---
+import { mountAuthRoutes } from "./routes/auth.js";
+import { mountChatRoutes } from "./routes/chat.js";
+import { mountHealthRoutes } from "./routes/health.js";
+import { mountKnowledgeRoutes } from "./routes/knowledge.js";
+import { mountWorkspaceRoutes } from "./routes/workspaces.js";
+import { mountConversationRoutes } from "./routes/conversations.js";
+import { mountContextRoutes } from "./routes/context.js";
+import { mountRecipeRoutes } from "./routes/recipes.js";
+import { mountBackupRoutes } from "./routes/backup.js";
+import { mountPluginRoutes } from "./routes/plugins.js";
+import { mountWebhookRoutes } from "./routes/webhooks.js";
+import { mountExecuteRoutes } from "./routes/execute.js";
+import { mountEvalRoutes } from "./routes/eval.js";
+import { mountIntegrationRoutes } from "./routes/integrations.js";
+import { mountAdminRoutes } from "./routes/admin.js";
+import { mountFederationRoutes } from "./routes/federation.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -96,6 +219,9 @@ initErrorReporting();
 
 // Phase 17: Load plugins at startup (plugins/config.json or PLUGINS_PATH)
 loadPlugins();
+
+// Phase 49: Discover marketplace plugin packs at startup
+discoverPacks();
 
 // Environment config
 const VLLM_URL = process.env.VLLM_URL || "http://localhost:8000";
@@ -121,6 +247,10 @@ function getBackend() {
   return "ollama"; // default: Ollama (runs on Windows, easy local setup)
 }
 
+// A/B routing: parse MODEL_ROUTING env var (e.g. "ollama:0.8,openai:0.2")
+const MODEL_ROUTING_CONFIG = parseRoutingConfig(process.env.MODEL_ROUTING);
+const AB_ROUTING_ENABLED = MODEL_ROUTING_CONFIG.length > 0;
+
 const BACKEND = getBackend();
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 // Phase 51: Chunk final agent SSE for smoother client rendering (optional)
@@ -130,13 +260,23 @@ const STREAM_SWARM_SYNTH = process.env.STREAM_SWARM_SYNTH === "1";
 const MAX_AGENT_TOOL_CALLS_ENV = Number(process.env.MAX_AGENT_TOOL_CALLS) || 0;
 const AGENT_MAX_WALL_MS_ENV = Number(process.env.AGENT_MAX_WALL_MS) || 0;
 
-// Production security: warn if API_KEY not set (backend may be exposed)
+// Production security: refuse to start if API_KEY not set (unless explicitly bypassed)
 if (IS_PRODUCTION && !API_KEY) {
-  console.warn(
-    "[SECURITY] NODE_ENV=production but API_KEY is not set. " +
-      "The /v1/chat/completions endpoint is publicly accessible. " +
-      "Set API_KEY in Vercel env vars to protect it."
-  );
+  if (process.env.ALLOW_INSECURE_PRODUCTION === "1") {
+    console.warn(
+      "[SECURITY] NODE_ENV=production but API_KEY is not set. " +
+        "The /v1/chat/completions endpoint is publicly accessible. " +
+        "Continuing because ALLOW_INSECURE_PRODUCTION=1."
+    );
+  } else {
+    console.error(
+      "[SECURITY] NODE_ENV=production but API_KEY is not set. " +
+        "The /v1/chat/completions endpoint is publicly accessible. " +
+        "Set API_KEY in Vercel env vars to protect it. " +
+        "Set ALLOW_INSECURE_PRODUCTION=1 to bypass this check."
+    );
+    process.exit(1);
+  }
 }
 
 // Phase 34: Startup config validation
@@ -254,6 +394,16 @@ if (ENABLE_COMPRESSION) {
 }
 app.use(express.json());
 app.use(otelHttpEnrichmentMiddleware());
+app.use(versionDetection());
+
+// Observability: record request latency for all requests (lightweight, after response)
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    obsRecordLatency(req.route?.path || req.path, req.method, Date.now() - start, res.statusCode);
+  });
+  next();
+});
 
 // Phase 106: Desktop model manager routes (Ollama management)
 if (process.env.ELECTRON_DESKTOP === "1") {
@@ -323,12 +473,15 @@ if (SESSION_SECRET) {
   );
 }
 
-// Phase 19: Passport (when OAuth configured)
+// Phase 19: Passport (when OAuth or SSO configured)
 let oauthProviders = { github: false, google: false };
-if (isOAuthConfigured()) {
+let ssoProviders = { oidc: false, saml: false };
+const needsPassport = isOAuthConfigured() || isSSOConfigured();
+if (needsPassport) {
   app.use(passport.initialize());
   app.use(passport.session());
   oauthProviders = initPassport();
+  ssoProviders = configureSSO(app, passport);
 }
 
 // Phase 68: Warm Postgres-backed API key cache before isAuthConfigured / rate limiters.
@@ -398,6 +551,17 @@ const embeddingsRateLimiter = rateLimit({
   },
 });
 
+// Rate limit for read/search operations (configurable via READ_RATE_LIMIT_MAX)
+const readRateLimiter = rateLimit({
+  windowMs: 60_000,
+  max: Number(process.env.READ_RATE_LIMIT_MAX) || 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    apiError(res, 429, "RATE_LIMITED", "Too many read requests", "Reduce request rate or increase READ_RATE_LIMIT_MAX.");
+  },
+});
+
 // Structured error response: { error, code, hint }
 function apiError(res, status, code, message, hint) {
   return res.status(status).json({
@@ -413,9 +577,10 @@ function deprecationApi(req, res, next) {
   next();
 }
 
-// Phase 23: Register route at both /api/v1/path (stable) and /api/path (legacy with deprecation)
+// Phase 23: Register route at /api/v1/path (stable), /api/v2/path (v2), and /api/path (legacy with deprecation)
 function apiRoute(method, path, ...handlers) {
   app[method](`/api/v1${path}`, ...handlers);
+  app[method](`/api/v2${path}`, ...handlers);
   app[method](`/api${path}`, deprecationApi, ...handlers);
 }
 
@@ -528,88 +693,14 @@ function isMonitoringEnabled() {
   return ENABLE_MONITORING && (process.env.GITHUB_TOKEN || process.env.VERCEL_TOKEN);
 }
 
-app.get("/config", (req, res) => {
-  const payload = {
-    backend: BACKEND,
-    modelPresets: MODEL_PRESETS[BACKEND] || [],
-    modelPlaceholder: MODEL_PRESETS[BACKEND]?.[0] || "model",
-    requiresApiKey: Boolean(API_KEY),
-    isProduction: IS_PRODUCTION,
-    defaultGenerationConfig: {
-      temperature: 0.7,
-      top_p: 0.95,
-      max_tokens: 512,
-    },
-    monitoringEnabled: isMonitoringEnabled(),
-    allowRecipeStepExecution: process.env.ALLOW_RECIPE_STEP_EXECUTION === "1",
-    scheduleEnabled: process.env.ENABLE_SCHEDULED_RECIPES === "1",
-    swarmEnabled: process.env.ENABLE_AGENT_SWARM === "1",
-    swarmParallelAgentsDefault: process.env.SWARM_PARALLEL_AGENTS === "1",
-    swarmClientSpecialistsAllowed: process.env.SWARM_CLIENT_SPECIALISTS === "1",
-    swarmMaxSpecialists: Math.min(12, Math.max(1, Number(process.env.SWARM_MAX_SPECIALISTS) || 8)),
-    swarmSelectableSpecialists: getSwarmSelectableSpecialistNames(),
-    swarmSpecialistsAllowlist: getSwarmSpecialistsAllowlistNames(),
-    authRequired: isAuthConfigured(),
-    oauthProviders,
-    storageBackend:
-      process.env.STORAGE_BACKEND === "postgres"
-        ? "postgres"
-        : process.env.STORAGE_BACKEND === "sqlite"
-          ? "sqlite"
-          : "json",
-    streamAgentFinalEnabled: STREAM_AGENT_FINAL,
-    streamAgentFinalChunksWhenAgentMode: true,
-    fallbackBackend: process.env.FALLBACK_BACKEND || null,
-    otelEnabled: process.env.OTEL_ENABLED === "1",
-    otelAutoInstrument: process.env.OTEL_AUTO_INSTRUMENT !== "0",
-    toolValidationEnabled: toolValidationEnabled(),
-    agentStagnationStop: stagnationDetectionEnabled(),
-    agentRequireCitations: process.env.AGENT_REQUIRE_CITATIONS === "1",
-    agentTrajectoryApi: trajectoryApiEnabled(),
-    agentDefaultSystemSet: defaultAgentSystemConfigured(),
-    legacySwarmSpecialists: getSwarmSelectableSpecialistNames(),
-    streamSwarmSynth: STREAM_SWARM_SYNTH,
-    agentPlanReflect: process.env.AGENT_PLAN_REFLECT === "1",
-    agentHooksConfigured: Boolean((process.env.AGENT_HOOKS_MODULE || "").trim()),
-    agentBudgetToolCalls: MAX_AGENT_TOOL_CALLS_ENV || null,
-    agentBudgetWallMs: AGENT_MAX_WALL_MS_ENV || null,
-    agentToolsAllowlist: getAgentToolsAllowlistNames(),
-    agentMaxIterationsCeiling: Math.max(1, Number(process.env.MAX_AGENT_ITERATIONS) || 5),
-    agentMaxIterationsClientTunable: process.env.AGENT_MAX_ITERATIONS_IGNORE_CLIENT !== "1",
-    prometheusEnabled: process.env.ENABLE_METRICS === "1",
-    prometheusPath: "/metrics",
-  };
-  if (IS_PRODUCTION && !API_KEY) {
-    payload.productionHint = "Set API_KEY in Vercel env vars to protect /v1/chat/completions";
-  }
-  res.json(payload);
-});
+// GET /config — mounted via routes/health.js
 
-// Phase 19: OAuth routes (when configured)
+// Phase 19: OAuth routes — mounted via routes/auth.js
 function oauthCallback(req, res) {
   if (!req.session) return res.redirect("/?auth_error=session");
   req.session.userId = req.user?.userId;
   res.redirect("/");
 }
-if (oauthProviders.github) {
-  app.get("/auth/github", passport.authenticate("github", { scope: ["user:email"] }));
-  app.get("/auth/github/callback", passport.authenticate("github", { failureRedirect: "/?auth_error=1" }), oauthCallback);
-}
-if (oauthProviders.google) {
-  app.get("/auth/google", passport.authenticate("google", { scope: ["profile", "email"] }));
-  app.get("/auth/google/callback", passport.authenticate("google", { failureRedirect: "/?auth_error=1" }), oauthCallback);
-}
-app.get("/auth/logout", (req, res) => {
-  req.session?.destroy?.();
-  res.redirect("/");
-});
-app.get("/auth/me", (req, res) => {
-  if (req.session?.userId) {
-    const provider = req.user?.provider || (req.session.userId?.startsWith("github-") ? "github" : req.session.userId?.startsWith("google-") ? "google" : null);
-    return res.json({ userId: req.session.userId, provider });
-  }
-  return res.status(401).json({ error: "Not authenticated", code: "NOT_AUTHENTICATED" });
-});
 
 // Phase 13: Usage tracking env
 const USAGE_ALERT_TOKENS = process.env.USAGE_ALERT_TOKENS ? Number(process.env.USAGE_ALERT_TOKENS) : null;
@@ -618,289 +709,7 @@ const USAGE_ALERT_TOKENS = process.env.USAGE_ALERT_TOKENS ? Number(process.env.U
 const ALLOW_RECIPE_STEP_EXECUTION = process.env.ALLOW_RECIPE_STEP_EXECUTION === "1";
 const ENABLE_AGENT_SWARM = process.env.ENABLE_AGENT_SWARM === "1";
 
-app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRateLimiter, chatRateLimiter, logRequest, async (req, res) => {
-  recordChatRequest();
-  try {
-    const workspace = req.body?.agentOptions?.workspace || "default";
-    const userId = req.userId || null;
-
-    // Phase 21: Per-workspace token quota check
-    if (isQuotaConfigured()) {
-      const inputTokens = estimate.inputFromMessages(req.body?.messages || []);
-      const { allowed, quota } = await checkQuota(workspace, userId, inputTokens + 512);
-      if (!allowed && quota) {
-        res.setHeader("X-Quota-Limit", String(quota.limit));
-        res.setHeader("X-Quota-Remaining", "0");
-        res.setHeader("X-Quota-Reset", String(quota.resetAt));
-        return res.status(429).json({
-          error: "Workspace token quota exceeded",
-          code: "QUOTA_EXCEEDED",
-          hint: "Quota resets at period end. Contact admin or use a different workspace.",
-        });
-      }
-    }
-
-    const config = buildProxyConfig(BACKEND);
-    const url = `${config.baseUrl}${config.path}`;
-    const model = req.body?.model || MODEL_PRESETS[BACKEND]?.[0] || "unknown";
-    const agentMode = req.body?.agentMode === true;
-    const swarmMode = req.body?.swarmMode === true;
-    const hasTools = Array.isArray(req.body?.tools) && req.body.tools.length > 0;
-
-    if (agentMode || swarmMode || hasTools) {
-      const tools = hasTools ? intersectClientToolsWithAllowlist(req.body.tools) : getToolsSchema();
-      const bodyWithTools = { ...req.body, tools, tool_choice: req.body?.tool_choice ?? "auto" };
-      if (!hasTools) req.body = bodyWithTools;
-
-      let content, iteration, toolCalls, swarmSteps;
-      let swarmResult = null;
-      if (agentMode && swarmMode && ENABLE_AGENT_SWARM) {
-        const swarmMaxIter = resolveAgentMaxIterations(req.body?.agentOptions || {}, process.env.MAX_AGENT_ITERATIONS);
-        swarmResult = await runSwarm(req, res, config, model, {
-          backendFetch,
-          maxIterations: swarmMaxIter,
-          allowRecipeExecution: ALLOW_RECIPE_STEP_EXECUTION,
-        });
-        content = swarmResult.content;
-        iteration = swarmResult.iteration;
-        swarmSteps = swarmResult.swarmSteps;
-      } else {
-        const useAgentProgressStream = agentMode && !swarmMode;
-        let presetRunId = null;
-        if (useAgentProgressStream) {
-          presetRunId = randomUUID();
-          res.setHeader("Content-Type", "text/event-stream");
-          res.setHeader("Cache-Control", "no-cache");
-          res.setHeader("Connection", "keep-alive");
-          res.setHeader("X-Agent-Run-Id", presetRunId);
-          await setQuotaHeaders(res, workspace, userId);
-          if (typeof res.flushHeaders === "function") res.flushHeaders();
-        }
-        const agentLoopResult = await runAgentLoop(
-          req,
-          res,
-          config,
-          model,
-          useAgentProgressStream
-            ? {
-                presetRunId,
-                onProgress: (evt) => {
-                  try {
-                    res.write(`data: ${JSON.stringify(evt)}\n\n`);
-                  } catch (_) {}
-                },
-              }
-            : null,
-          backendFetch
-        );
-        content = agentLoopResult.content;
-        iteration = agentLoopResult.iteration;
-        toolCalls = agentLoopResult.toolCalls;
-        req._agentLoopMeta = agentLoopResult;
-      }
-
-      if (!res.headersSent) {
-        res.setHeader("Content-Type", "text/event-stream");
-        res.setHeader("Cache-Control", "no-cache");
-        res.setHeader("Connection", "keep-alive");
-        res.setHeader("X-Agent-Iteration", String(iteration));
-        if (req._agentLoopMeta?.runId) {
-          res.setHeader("X-Agent-Run-Id", req._agentLoopMeta.runId);
-        }
-        await setQuotaHeaders(res, workspace, userId);
-        if (typeof res.flushHeaders === "function") res.flushHeaders();
-      }
-
-      if (toolCalls?.length || swarmSteps?.length || req._agentLoopMeta) {
-        const meta = req._agentLoopMeta || {};
-        const traj = meta.trajectory;
-        const trajectorySummary =
-          traj && Array.isArray(traj.steps)
-            ? {
-                runId: traj.runId,
-                stepCount: traj.stepCount,
-                stopReason: meta.stopReason,
-                steps: traj.steps.slice(0, 40),
-              }
-            : undefined;
-        const activityEvent = JSON.stringify({
-          type: "agent_activity",
-          toolCalls: toolCalls || [],
-          swarmSteps: swarmSteps || [],
-          iteration,
-          runId: meta.runId,
-          stopReason: meta.stopReason,
-          citationWarning: meta.citationWarning,
-          trajectory: trajectorySummary,
-        });
-        res.write(`data: ${activityEvent}\n\n`);
-      }
-
-      const inputTokens = estimate.inputFromMessages(req.body?.messages || []);
-      let outputTokens = estimate.outputFromChars(content?.length || 0);
-
-      if (swarmResult?.synthesisDeferred) {
-        const d = swarmResult.synthesisDeferred;
-        const { fullText, error } = await pipeLlmChatStreamToSse(res, backendFetch, d.url, d.config, d.synthBody);
-        content = fullText || "";
-        if (error && !content.trim()) {
-          content = `Synthesis error: ${error}\n\n${swarmResult.fallbackAggregate || ""}`;
-          res.write(
-            `data: ${JSON.stringify({ choices: [{ delta: { content }, index: 0, finish_reason: "stop" }] })}\n\n`
-          );
-        }
-        outputTokens = estimate.outputFromChars(content?.length || 0);
-      } else if (
-        (STREAM_AGENT_FINAL || (agentMode && !swarmMode)) &&
-        content &&
-        typeof content === "string"
-      ) {
-        for (let i = 0; i < content.length; i += AGENT_STREAM_CHUNK_SIZE) {
-          const part = content.slice(i, i + AGENT_STREAM_CHUNK_SIZE);
-          const isLast = i + AGENT_STREAM_CHUNK_SIZE >= content.length;
-          const chunk = JSON.stringify({
-            choices: [{ delta: { content: part }, index: 0, ...(isLast ? { finish_reason: "stop" } : {}) }],
-          });
-          res.write(`data: ${chunk}\n\n`);
-        }
-      } else {
-        const chunk = JSON.stringify({
-          choices: [{ delta: { content }, index: 0, finish_reason: "stop" }],
-        });
-        res.write(`data: ${chunk}\n\n`);
-      }
-
-      outputTokens = estimate.outputFromChars(content?.length || 0);
-      recordTokensUsed(inputTokens, outputTokens);
-      await recordUsage({ timestamp: new Date().toISOString(), model, inputTokens, outputTokens, backend: BACKEND, workspace, userId }).catch(() => {});
-
-      res.write("data: [DONE]\n\n");
-      res.end();
-      const ws = req.body?.agentOptions?.workspace || "default";
-      await emitEvent("message_sent", { content: content?.slice(0, 500), model, iteration }, { workspaceId: ws, userId: req.userId });
-      return;
-    }
-
-    const inputTokens = estimate.inputFromMessages(req.body?.messages || []);
-
-    let response;
-    try {
-      response = await backendFetch(url, {
-        method: "POST",
-        headers: config.headers,
-        body: JSON.stringify({ ...req.body, stream: true }),
-      });
-    } catch (fetchErr) {
-      if (fetchErr.code === "CIRCUIT_OPEN") {
-        return res.status(503).json({
-          error: "Backend temporarily unavailable",
-          code: "CIRCUIT_OPEN",
-          hint: "Retry after a few seconds.",
-        });
-      }
-      throw fetchErr;
-    }
-
-    if (!response.ok) {
-      const err = await response.text();
-      const code = response.status === 429 ? "RATE_LIMITED" : "BACKEND_ERROR";
-      return res.status(response.status).json({
-        error: `${BACKEND} error`,
-        code,
-        hint: response.status === 429 ? "Backend rate limit exceeded; retry later." : err || "Backend returned an error.",
-      });
-    }
-
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    await setQuotaHeaders(res, workspace, userId);
-    res.flushHeaders();
-
-    let buffer = "";
-    let outputChars = 0;
-    let outputContent = "";
-    let usageFromApi = null;
-
-    for await (const chunk of response.body) {
-      const text = chunk.toString("utf8");
-      buffer += text;
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop() || "";
-      for (const part of parts) {
-        const dataMatch = part.match(/^data: (.+)$/m);
-        if (!dataMatch) continue;
-        const data = dataMatch[1];
-        if (data === "[DONE]") continue;
-        try {
-          const parsed = JSON.parse(data);
-          const delta = parsed.choices?.[0]?.delta?.content;
-          if (typeof delta === "string") {
-            outputChars += delta.length;
-            outputContent += delta;
-          }
-          const usage = parsed.usage || parsed.choices?.[0]?.usage;
-          if (usage && (usage.prompt_tokens != null || usage.completion_tokens != null)) {
-            usageFromApi = { ...usage };
-          }
-        } catch (_) {}
-      }
-      res.write(chunk);
-      if (res.flush) res.flush();
-    }
-
-    await emitEvent(
-      "message_sent",
-      { content: outputContent?.slice(0, 500), model },
-      { workspaceId: workspace, userId }
-    );
-
-    const outputTokens = usageFromApi?.completion_tokens ?? estimate.outputFromChars(outputChars);
-    const finalInputTokens = usageFromApi?.prompt_tokens ?? inputTokens;
-    recordTokensUsed(finalInputTokens, outputTokens);
-    await recordUsage({
-      timestamp: new Date().toISOString(),
-      model,
-      inputTokens: finalInputTokens,
-      outputTokens,
-      backend: BACKEND,
-      workspace,
-      userId,
-    }).catch((e) => console.warn("[usage-tracker] Record failed:", e.message));
-
-    if (USAGE_ALERT_TOKENS) {
-      const totalInWindow = await getTotalTokensInWindow();
-      if (totalInWindow >= USAGE_ALERT_TOKENS) {
-        res.setHeader("X-Usage-Alert", "1");
-        console.warn(`[usage] Budget alert: ${totalInWindow} tokens >= ${USAGE_ALERT_TOKENS}`);
-      }
-    }
-
-    res.end();
-  } catch (err) {
-    if (err.code === "CIRCUIT_OPEN") {
-      return res.status(503).json({
-        error: "Backend temporarily unavailable",
-        code: "CIRCUIT_OPEN",
-        hint: "Retry after a few seconds.",
-      });
-    }
-    console.error("Proxy error:", err.message);
-    const hint =
-      BACKEND === "vllm"
-        ? "Is vLLM running? Try: vllm serve <model> --max-model-len 4096"
-        : BACKEND === "ollama"
-          ? "Is Ollama running? Try: ollama serve"
-          : BACKEND === "openai"
-            ? "Check OPENAI_API_KEY is set and valid"
-            : "Check backend configuration";
-
-    return apiError(res, 502, "BACKEND_UNREACHABLE", err.message, hint);
-  }
-});
-
-// --- Task planning (Phase 3: Action-Oriented Agent) ---
-
+// --- Task plan helpers (used by routes/chat.js) ---
 const TASK_PLAN_SYSTEM_PROMPT = `You are a task planning assistant. Given the user's messages, produce a structured task plan as valid JSON inside a fenced code block.
 
 Output format: a single JSON object in a \`\`\`json ... \`\`\` code block, conforming to this schema:
@@ -927,328 +736,63 @@ function extractTaskJsonFromResponse(text) {
   if (!text || typeof text !== "string") return null;
   const jsonBlock = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   const raw = jsonBlock ? jsonBlock[1].trim() : text.trim();
-  try {
-    return JSON.parse(raw);
-  } catch (_) {
-    return null;
-  }
+  try { return JSON.parse(raw); } catch (_) { return null; }
 }
 
 function validateTaskPlan(plan) {
   if (!plan || typeof plan !== "object") return "Plan must be an object";
   if (plan.type !== "task") return "Plan must have type 'task'";
-  if (!plan.name || typeof plan.name !== "string" || !plan.name.trim())
-    return "Plan must have a non-empty name";
+  if (!plan.name || typeof plan.name !== "string" || !plan.name.trim()) return "Plan must have a non-empty name";
   if (!Array.isArray(plan.steps) || plan.steps.length < 1) return "Plan must have at least one step";
   for (let i = 0; i < plan.steps.length; i++) {
     const s = plan.steps[i];
     if (!s || typeof s !== "object") return `Step ${i + 1}: must be an object`;
-    if (!s.action || typeof s.action !== "string" || !String(s.action).trim())
-      return `Step ${i + 1}: must have non-empty action`;
-    if (s.payload !== undefined) {
-      if (s.payload === null || Array.isArray(s.payload) || typeof s.payload !== "object")
-        return `Step ${i + 1}: payload must be an object`;
-    }
+    if (!s.action || typeof s.action !== "string" || !String(s.action).trim()) return `Step ${i + 1}: must have non-empty action`;
+    if (s.payload !== undefined && (s.payload === null || Array.isArray(s.payload) || typeof s.payload !== "object")) return `Step ${i + 1}: payload must be an object`;
   }
-  if (plan.requiresApproval !== undefined && typeof plan.requiresApproval !== "boolean")
-    return "requiresApproval must be a boolean";
+  if (plan.requiresApproval !== undefined && typeof plan.requiresApproval !== "boolean") return "requiresApproval must be a boolean";
   return null;
 }
 
-const taskPlanRateLimiter = rateLimit({
-  windowMs: RATE_LIMIT_WINDOW_MS,
-  max: RATE_LIMIT_MAX,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+const taskPlanRateLimiter = rateLimit({ windowMs: RATE_LIMIT_WINDOW_MS, max: RATE_LIMIT_MAX, standardHeaders: true, legacyHeaders: false });
 
-// POST /v1/agent/swarm: same as chat completions with agentMode+swarmMode (forces swarm path)
-app.post("/v1/agent/swarm", chatAuth, requireScope("write"), perKeyChatRateLimiter, chatRateLimiter, logRequest, async (req, res) => {
-  recordChatRequest();
-  try {
-    if (!ENABLE_AGENT_SWARM) {
-      return res.status(400).json({
-        error: "Swarm mode is disabled",
-        code: "SWARM_DISABLED",
-        hint: "Set ENABLE_AGENT_SWARM=1 to enable.",
-      });
-    }
-    req.body = req.body || {};
-    req.body.agentMode = true;
-    req.body.swarmMode = true;
-    if (!req.body.agentOptions) req.body.agentOptions = {};
-    const workspace = req.body.agentOptions.workspace || "default";
-    const userId = req.userId || null;
-
-    if (isQuotaConfigured()) {
-      const inputTokens = estimate.inputFromMessages(req.body?.messages || []);
-      const { allowed, quota } = await checkQuota(workspace, userId, inputTokens + 512);
-      if (!allowed && quota) {
-        res.setHeader("X-Quota-Limit", String(quota.limit));
-        res.setHeader("X-Quota-Remaining", "0");
-        res.setHeader("X-Quota-Reset", String(quota.resetAt));
-        return res.status(429).json({
-          error: "Workspace token quota exceeded",
-          code: "QUOTA_EXCEEDED",
-        });
-      }
-    }
-
-    const config = buildProxyConfig(BACKEND);
-    const model = req.body?.model || MODEL_PRESETS[BACKEND]?.[0] || "unknown";
-    const swarmMaxIter = resolveAgentMaxIterations(req.body?.agentOptions || {}, process.env.MAX_AGENT_ITERATIONS);
-    const { content, iteration } = await runSwarm(req, res, config, model, {
-      backendFetch,
-      maxIterations: swarmMaxIter,
-      allowRecipeExecution: ALLOW_RECIPE_STEP_EXECUTION,
-    });
-
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    res.setHeader("X-Agent-Iteration", String(iteration));
-    await setQuotaHeaders(res, workspace, userId);
-    res.flushHeaders();
-
-    const inputTokens = estimate.inputFromMessages(req.body?.messages || []);
-    const outputTokens = estimate.outputFromChars(content?.length || 0);
-    recordTokensUsed(inputTokens, outputTokens);
-    await recordUsage({
-      timestamp: new Date().toISOString(),
-      model,
-      inputTokens,
-      outputTokens,
-      backend: BACKEND,
-      workspace,
-      userId,
-    }).catch(() => {});
-
-    const chunk = JSON.stringify({
-      choices: [{ delta: { content }, index: 0, finish_reason: "stop" }],
-    });
-    res.write(`data: ${chunk}\n\n`);
-    res.write("data: [DONE]\n\n");
-    res.end();
-    await emitEvent("message_sent", { content: content?.slice(0, 500), model, iteration }, { workspaceId: workspace, userId });
-  } catch (err) {
-    reportError(err);
-    res.status(500).json({
-      error: "Swarm execution failed",
-      code: "SWARM_ERROR",
-      hint: err?.message || "Internal error",
-    });
-  }
-});
-
-app.post("/v1/swarm", chatAuth, requireScope("write"), perKeyChatRateLimiter, chatRateLimiter, logRequest, async (req, res) => {
-  try {
-    const query = typeof req.body?.query === "string" ? req.body.query.trim() : "";
-    const specialists = Array.isArray(req.body?.specialists)
-      ? intersectSwarmSpecialistsWithAllowlist(
-          req.body.specialists.filter((s) => typeof s === "string" && s.trim()).map((s) => s.trim())
-        )
-      : getSwarmSelectableSpecialistNames();
-    const workspace = req.body?.workspace || "default";
-    const allowExecution = req.body?.allowExecution === true;
-
-    if (!specialists.length) {
-      return res.status(400).json({ error: "No valid specialists specified", code: "INVALID_SPECIALISTS" });
-    }
-
-    const { aggregation, metrics } = await runSwarmLegacy(specialists, query, {
-      workspace,
-      allowExecution,
-      projectDir: process.env.PROJECT_DIR || process.cwd(),
-      vercelToken: process.env.VERCEL_TOKEN,
-    });
-
-    res.setHeader("X-Swarm-Agents", String(metrics.agentCount));
-    res.setHeader("X-Swarm-Duration-Ms", String(metrics.durationMs));
-    res.json({ aggregation, query, specialists });
-  } catch (err) {
-    reportError(err);
-    res.status(500).json({
-      error: "Swarm execution failed",
-      code: "SWARM_ERROR",
-      hint: err?.message || "Internal error",
-    });
-  }
-});
-
-app.post("/v1/tasks/plan", taskPlanRateLimiter, apiKeyAuth, logRequest, async (req, res) => {
-  try {
-    const { messages, model } = req.body || {};
-    if (!Array.isArray(messages) || messages.length === 0) {
-      return apiError(res, 400, "INVALID_BODY", "messages must be a non-empty array", "Send a non-empty messages array in the request body.");
-    }
-    const modelName = typeof model === "string" && model.trim() ? model.trim() : MODEL_PRESETS[BACKEND]?.[0] || "llama3.2";
-
-    const config = buildProxyConfig(BACKEND);
-    const url = `${config.baseUrl}${config.path}`;
-
-    const llmMessages = [
-      { role: "system", content: TASK_PLAN_SYSTEM_PROMPT },
-      ...messages.map((m) => ({
-        role: m.role || "user",
-        content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
-      })),
-    ];
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: config.headers,
-      body: JSON.stringify({
-        model: modelName,
-        messages: llmMessages,
-        stream: false,
-        temperature: 0.3,
-        max_tokens: 2048,
-      }),
-    });
-
-    if (!response.ok) {
-      const err = await response.text();
-      const code = response.status === 429 ? "RATE_LIMITED" : "BACKEND_ERROR";
-      return res.status(response.status).json({
-        error: `${BACKEND} error`,
-        code,
-        hint: response.status === 429 ? "Backend rate limit exceeded; retry later." : (err || "Backend returned an error.").slice(0, 500),
-      });
-    }
-
-    const data = await response.json();
-    const rawContent = data.choices?.[0]?.message?.content || data.message?.content || "";
-    const parsed = extractTaskJsonFromResponse(rawContent);
-
-    if (!parsed) {
-      return res.status(400).json({
-        error: "Could not parse JSON task plan from LLM response",
-        code: "PARSE_ERROR",
-        hint: "Check that the LLM returns valid JSON in a fenced code block.",
-        raw: rawContent?.slice(0, 500),
-      });
-    }
-
-    const validationError = validateTaskPlan(parsed);
-    if (validationError) {
-      return res.status(400).json({
-        error: validationError,
-        code: "VALIDATION_ERROR",
-        hint: "Ensure plan has type 'task', name, and steps with non-empty action.",
-        raw: rawContent?.slice(0, 500),
-      });
-    }
-
-    const planWorkspace = sanitizeWorkspace(req.body?.workspace || req.query?.workspace);
-    await emitEvent("plan_created", { plan: parsed, raw: rawContent?.slice(0, 500) }, { workspaceId: planWorkspace, userId: req.userId });
-    res.json({ plan: parsed, raw: rawContent });
-  } catch (err) {
-    console.error("Task plan error:", err.message);
-    const hint =
-      BACKEND === "vllm"
-        ? "Is vLLM running? Try: vllm serve <model> --max-model-len 4096"
-        : BACKEND === "ollama"
-          ? "Is Ollama running? Try: ollama serve"
-          : BACKEND === "openai"
-            ? "Check OPENAI_API_KEY is set and valid"
-            : "Check backend configuration";
-
-    return apiError(res, 502, "BACKEND_UNREACHABLE", err.message, hint);
-  }
-});
-
+// --- Health check helpers ---
 const HEALTH_CACHE_TTL_MS = 5000;
-let healthCache = null;
+let _healthCache = null;
 
 function getHealthUrl(backend) {
   switch (backend) {
-    case "ollama":
-      return `${OLLAMA_URL}/api/tags`;
-    case "vllm":
-      return `${VLLM_URL}/v1/models`;
-    case "openai":
-      return "https://api.openai.com/v1/models";
-    default:
-      return null;
+    case "ollama": return `${OLLAMA_URL}/api/tags`;
+    case "vllm": return `${VLLM_URL}/v1/models`;
+    case "openai": return "https://api.openai.com/v1/models";
+    default: return null;
   }
 }
 
 async function probeBackend(name, url, headers = {}) {
   const start = Date.now();
-  try {
-    const r = await fetch(url, {
-      signal: AbortSignal.timeout(3000),
-      headers,
-    });
-    return {
-      reachable: r.ok,
-      latencyMs: Date.now() - start,
-      error: r.ok ? undefined : `HTTP ${r.status}`,
-    };
-  } catch (e) {
-    return {
-      reachable: false,
-      latencyMs: Date.now() - start,
-      error: e.message,
-    };
-  }
+  try { const r = await fetch(url, { signal: AbortSignal.timeout(3000), headers }); return { reachable: r.ok, latencyMs: Date.now() - start, error: r.ok ? undefined : `HTTP ${r.status}` }; }
+  catch (e) { return { reachable: false, latencyMs: Date.now() - start, error: e.message }; }
 }
 
 async function runHealthChecks() {
   const backends = {};
   const checks = [];
-
   const ollamaUrl = getHealthUrl("ollama");
-  if (ollamaUrl) {
-    checks.push(
-      probeBackend("ollama", ollamaUrl).then((r) => {
-        backends.ollama = r;
-      })
-    );
-  }
-
+  if (ollamaUrl) checks.push(probeBackend("ollama", ollamaUrl).then((r) => { backends.ollama = r; }));
   const vllmUrl = getHealthUrl("vllm");
-  if (vllmUrl) {
-    checks.push(
-      probeBackend("vllm", vllmUrl).then((r) => {
-        backends.vllm = r;
-      })
-    );
-  }
-
-  if (OPENAI_API_KEY) {
-    checks.push(
-      probeBackend("openai", "https://api.openai.com/v1/models", {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-      }).then((r) => {
-        backends.openai = r;
-      })
-    );
-  }
-
+  if (vllmUrl) checks.push(probeBackend("vllm", vllmUrl).then((r) => { backends.vllm = r; }));
+  if (OPENAI_API_KEY) checks.push(probeBackend("openai", "https://api.openai.com/v1/models", { Authorization: `Bearer ${OPENAI_API_KEY}` }).then((r) => { backends.openai = r; }));
   await Promise.all(checks);
-
   const active = backends[BACKEND];
-  const reachable = active?.reachable ?? false;
-  const latencyMs = active?.latencyMs ?? null;
-  const lastChecked = new Date().toISOString();
-
-  return {
-    backend: BACKEND,
-    reachable,
-    latencyMs,
-    lastChecked,
-    backends,
-  };
+  return { backend: BACKEND, reachable: active?.reachable ?? false, latencyMs: active?.latencyMs ?? null, lastChecked: new Date().toISOString(), backends };
 }
 
-// Phase 40 / Phase 36: Prometheus metrics (when ENABLE_METRICS=1)
-// METRICS_PATH defaults to /metrics; METRICS_PROTECTED=1 requires METRICS_SECRET or ADMIN_API_KEY
+// --- Metrics auth ---
 const METRICS_PATH = (process.env.METRICS_PATH || "/metrics").replace(/^\/+/, "/").replace(/\/+$/, "") || "/metrics";
 const METRICS_PROTECTED = process.env.METRICS_PROTECTED === "1";
 const METRICS_SECRET = process.env.METRICS_SECRET?.trim() || null;
-
-function metricsAuth(req, res, next) {
+function metricsAuthFn(req, res, next) {
   if (!METRICS_PROTECTED) return next();
   const adminKey = process.env.ADMIN_API_KEY;
   const secret = METRICS_SECRET;
@@ -1258,361 +802,85 @@ function metricsAuth(req, res, next) {
   const key = bearer || xKey;
   if (secret && (querySecret === secret || bearer === secret)) return next();
   if (adminKey && key && key === adminKey) return next();
-  if (secret || adminKey) {
-    return res.status(401).json({ error: "Metrics require authentication", code: "AUTH_REQUIRED", hint: "Use ?secret=<METRICS_SECRET> or Authorization: Bearer <ADMIN_API_KEY>" });
-  }
-  next(); // No protection configured: allow (common for internal Prometheus)
+  if (secret || adminKey) return res.status(401).json({ error: "Metrics require authentication", code: "AUTH_REQUIRED", hint: "Use ?secret=<METRICS_SECRET> or Authorization: Bearer <ADMIN_API_KEY>" });
+  next();
 }
 
-if (metricsEnabled()) {
-  app.get(METRICS_PATH, metricsAuth, (req, res) => {
-    res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.send(renderPrometheus());
-  });
-}
-
-// Phase 34: Liveness probe - process is alive (no external deps). For k8s/container orchestration.
-app.get("/health/live", (req, res) => {
-  res.status(200).json({ ok: true, status: "alive" });
-});
-
-// Phase 34: Readiness probe - app can accept traffic (storage + backend reachable). For k8s/container orchestration.
-app.get("/health/ready", async (req, res) => {
-  try {
-    await storage.listWorkspaces("anonymous");
-  } catch (e) {
-    return res.status(503).json({ ok: false, status: "not_ready", reason: "storage_unavailable", error: e.message });
-  }
-  try {
-    const data = await runHealthChecks();
-    if (!data.reachable) {
-      return res.status(503).json({ ok: false, status: "not_ready", reason: "backend_unreachable", backend: BACKEND });
-    }
-    res.status(200).json({ ok: true, status: "ready", backend: BACKEND });
-  } catch (e) {
-    res.status(503).json({ ok: false, status: "not_ready", reason: "health_check_failed", error: e.message });
-  }
-});
-
-app.get("/health", async (req, res) => {
-  const now = Date.now();
-  const bypass = req.query?.refresh === "1";
-
-  if (!bypass && healthCache && now - healthCache.timestamp < HEALTH_CACHE_TTL_MS) {
-    return res.json({
-      ...healthCache.data,
-      cached: true,
-    });
-  }
-
-  try {
-    const data = await runHealthChecks();
-    healthCache = { data, timestamp: now };
-    return res.json(data);
-  } catch (e) {
-    const hint =
-      BACKEND === "vllm"
-        ? "Start vLLM: vllm serve <model> --max-model-len 4096"
-        : BACKEND === "ollama"
-          ? "Start Ollama: ollama serve"
-          : BACKEND === "openai"
-            ? "Check OPENAI_API_KEY"
-            : "Check backend configuration";
-
-    return res.status(503).json({
-      error: "Health check failed",
-      code: "BACKEND_UNREACHABLE",
-      hint,
-      backend: BACKEND,
-      reachable: false,
-      lastChecked: new Date().toISOString(),
-    });
-  }
-});
-
-// --- Phase 4: Toolchain Integration Hub ---
+// --- Integration helpers ---
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const VERCEL_TOKEN = process.env.VERCEL_TOKEN;
-
-// Validate owner/repo to prevent injection (alphanumeric, hyphen, underscore, dot; 1-100 chars)
 const OWNER_REPO_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/;
-function validateOwnerRepo(owner, repo) {
-  return (
-    typeof owner === "string" &&
-    typeof repo === "string" &&
-    OWNER_REPO_PATTERN.test(owner) &&
-    OWNER_REPO_PATTERN.test(repo) &&
-    owner.length <= 100 &&
-    repo.length <= 100
-  );
-}
+function validateOwnerRepo(owner, repo) { return typeof owner === "string" && typeof repo === "string" && OWNER_REPO_PATTERN.test(owner) && OWNER_REPO_PATTERN.test(repo) && owner.length <= 100 && repo.length <= 100; }
+function requireGitHubToken(req, res, next) { if (!GITHUB_TOKEN) return apiError(res, 503, "INTEGRATION_UNAVAILABLE", "GitHub integration unavailable", "Set GITHUB_TOKEN in server environment variables."); next(); }
+function requireVercelToken(req, res, next) { if (!VERCEL_TOKEN) return apiError(res, 503, "INTEGRATION_UNAVAILABLE", "Vercel integration unavailable", "Set VERCEL_TOKEN in server environment variables."); next(); }
 
-// GET /api/integrations/status - returns { github: boolean, vercel: boolean }
-apiRoute("get", "/integrations/status", (req, res) => {
-  res.json({
-    github: Boolean(GITHUB_TOKEN),
-    vercel: Boolean(VERCEL_TOKEN),
-  });
-});
-
-// --- Phase 13: Usage summary ---
-const usageSummaryRateLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-// Phase 21: Usage summary with quota headers when workspace in query
-apiRoute("get", "/usage/summary", usageSummaryRateLimiter, logRequest, async (req, res) => {
-  try {
-    const days = Math.min(90, Math.max(1, Number(req.query?.days) || 7));
-    const workspace = req.query?.workspace ? String(req.query.workspace).trim() : "default";
-    const summary = await getSummary(days);
-    const userId = req.userId || null;
-
-    if (isQuotaConfigured()) {
-      const quota = await getWorkspaceQuota(workspace, userId);
-      if (quota) {
-        res.setHeader("X-Quota-Limit", String(quota.limit));
-        res.setHeader("X-Quota-Remaining", String(quota.remaining));
-        res.setHeader("X-Quota-Reset", String(quota.resetAt));
-        summary.quota = { limit: quota.limit, used: quota.used, remaining: quota.remaining, resetAt: quota.resetAt };
-      }
-    }
-    res.json(summary);
-  } catch (err) {
-    console.error("Usage summary error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-// --- Phase 18: Analytics dashboard ---
-const analyticsRateLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-const analyticsHandlers = [analyticsRateLimiter, logRequest];
-if (isAuthConfigured()) analyticsHandlers.push(userAuth);
-
-apiRoute("get", "/analytics/dashboard", ...analyticsHandlers, async (req, res) => {
-  try {
-    const days = Math.min(90, Math.max(1, Number(req.query?.days) || 7));
-    const workspace = req.query?.workspace ? String(req.query.workspace).trim() : undefined;
-    const opts = { workspace };
-    if (req.userId) opts.userId = req.userId;
-    const dashboard = await getDashboard(days, opts);
-    if (isQuotaConfigured() && (workspace || "default")) {
-      const quota = await getWorkspaceQuota(workspace || "default", req.userId || null);
-      if (quota) {
-        res.setHeader("X-Quota-Limit", String(quota.limit));
-        res.setHeader("X-Quota-Remaining", String(quota.remaining));
-        res.setHeader("X-Quota-Reset", String(quota.resetAt));
-        dashboard.quota = { limit: quota.limit, used: quota.used, remaining: quota.remaining, resetAt: quota.resetAt };
-      }
-    }
-    res.json(dashboard);
-  } catch (err) {
-    console.error("Analytics dashboard error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-apiRoute("get", "/analytics/export", ...analyticsHandlers, async (req, res) => {
-  try {
-    const days = Math.min(90, Math.max(1, Number(req.query?.days) || 30));
-    const format = (req.query?.format || "json").toLowerCase();
-    const workspace = req.query?.workspace ? String(req.query.workspace).trim() : undefined;
-    const opts = { workspace };
-    if (req.userId) opts.userId = req.userId;
-    const records = await getRecordsForPeriod(days, opts);
-    const dashboard = await getDashboard(days, opts);
-
-    if (format === "csv") {
-      res.setHeader("Content-Type", "text/csv");
-      res.setHeader("Content-Disposition", `attachment; filename="analytics-${days}d.csv"`);
-      return res.send(exportToCsv(records));
-    }
-    res.setHeader("Content-Type", "application/json");
-    res.setHeader("Content-Disposition", `attachment; filename="analytics-${days}d.json"`);
-    res.send(exportToJson({ days, records, summary: dashboard }));
-  } catch (err) {
-    console.error("Analytics export error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-// --- Phase 7: Autonomous Research and Monitoring ---
+// --- Monitoring ---
 const STALE_PR_DAYS = 7;
-let monitoringState = {
-  lastCheck: null,
-  checks: { github: null, vercel: null },
-  summary: "idle",
-  alerts: [],
-};
-let monitoringIntervalId = null;
-
+let monitoringState = { lastCheck: null, checks: { github: null, vercel: null }, summary: "idle", alerts: [] };
 async function runMonitoringChecks() {
-  const alerts = [];
-  const checks = { github: null, vercel: null };
-
+  const alerts = []; const checks = { github: null, vercel: null };
   if (GITHUB_TOKEN && MONITORING_REPO) {
     const [owner, repo] = MONITORING_REPO.split("/").map((s) => s.trim());
     if (owner && repo && validateOwnerRepo(owner, repo)) {
       try {
         const base = GITHUB_API_BASE.replace(/\/$/, "");
         const [commitsRes, prsRes] = await Promise.all([
-          fetch(`${base}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits?per_page=1`, {
-            headers: { Accept: "application/vnd.github.v3+json", Authorization: `Bearer ${GITHUB_TOKEN}` },
-            signal: AbortSignal.timeout(10000),
-          }),
-          fetch(`${base}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls?state=open&per_page=30`, {
-            headers: { Accept: "application/vnd.github.v3+json", Authorization: `Bearer ${GITHUB_TOKEN}` },
-            signal: AbortSignal.timeout(10000),
-          }),
+          fetch(`${base}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits?per_page=1`, { headers: { Accept: "application/vnd.github.v3+json", Authorization: `Bearer ${GITHUB_TOKEN}` }, signal: AbortSignal.timeout(10000) }),
+          fetch(`${base}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls?state=open&per_page=30`, { headers: { Accept: "application/vnd.github.v3+json", Authorization: `Bearer ${GITHUB_TOKEN}` }, signal: AbortSignal.timeout(10000) }),
         ]);
         const lastCommit = commitsRes.ok ? (await commitsRes.json())[0] : null;
         const openPRs = prsRes.ok ? await prsRes.json() : [];
         const now = Date.now();
-        const stalePRs = openPRs.filter((pr) => {
-          const created = pr.created_at ? new Date(pr.created_at).getTime() : 0;
-          return (now - created) / (24 * 60 * 60 * 1000) > STALE_PR_DAYS;
-        });
-        checks.github = {
-          ok: commitsRes.ok && prsRes.ok,
-          lastCommit: lastCommit ? { sha: lastCommit.sha?.slice(0, 7), date: lastCommit.commit?.author?.date, message: lastCommit.commit?.message?.split("\n")[0] } : null,
-          openPRs: openPRs.length,
-          stalePRs: stalePRs.length,
-        };
+        const stalePRs = openPRs.filter((pr) => (now - new Date(pr.created_at || 0).getTime()) / 86400000 > STALE_PR_DAYS);
+        checks.github = { ok: commitsRes.ok && prsRes.ok, lastCommit: lastCommit ? { sha: lastCommit.sha?.slice(0, 7), date: lastCommit.commit?.author?.date, message: lastCommit.commit?.message?.split("\n")[0] } : null, openPRs: openPRs.length, stalePRs: stalePRs.length };
         if (stalePRs.length > 0) alerts.push({ type: "stale_prs", count: stalePRs.length, message: `${stalePRs.length} PR(s) open > ${STALE_PR_DAYS} days` });
-        if (!commitsRes.ok || !prsRes.ok) {
-          checks.github.ok = false;
-          checks.github.error = commitsRes.ok ? (await prsRes.text()).slice(0, 200) : (await commitsRes.text()).slice(0, 200);
-          alerts.push({ type: "github_error", message: "GitHub API error" });
-        }
-      } catch (err) {
-        checks.github = { ok: false, error: err.message };
-        alerts.push({ type: "github_error", message: err.message });
-      }
-    } else {
-      checks.github = { ok: false, error: "Invalid MONITORING_REPO format (use owner/repo)" };
+      } catch (err) { checks.github = { ok: false, error: err.message }; alerts.push({ type: "github_error", message: err.message }); }
     }
-  } else if (GITHUB_TOKEN) {
-    checks.github = { ok: true, configured: false, reason: "MONITORING_REPO not set" };
   }
-
   if (VERCEL_TOKEN) {
     try {
       const base = VERCEL_API_BASE.replace(/\/$/, "");
-      const r = await fetch(`${base}/v6/deployments?limit=1`, {
-        headers: { Authorization: `Bearer ${VERCEL_TOKEN}` },
-        signal: AbortSignal.timeout(10000),
-      });
+      const r = await fetch(`${base}/v6/deployments?limit=1`, { headers: { Authorization: `Bearer ${VERCEL_TOKEN}` }, signal: AbortSignal.timeout(10000) });
       const data = r.ok ? await r.json() : null;
-      const deployments = data?.deployments || (Array.isArray(data) ? data : []);
-      const last = deployments[0];
-      const state = last?.state || null;
-      const failed = state === "ERROR" || state === "CANCELED";
-      checks.vercel = {
-        ok: r.ok,
-        lastDeploy: last ? { state, url: last.url, created: last.created } : null,
-        failed,
-      };
-      if (failed) alerts.push({ type: "deploy_failed", message: `Last deployment: ${state}` });
-      if (!r.ok) {
-        checks.vercel.error = (await r.text()).slice(0, 200);
-        alerts.push({ type: "vercel_error", message: "Vercel API error" });
-      }
-    } catch (err) {
-      checks.vercel = { ok: false, error: err.message };
-      alerts.push({ type: "vercel_error", message: err.message });
-    }
+      const last = (data?.deployments || [])[0];
+      const failed = last?.state === "ERROR" || last?.state === "CANCELED";
+      checks.vercel = { ok: r.ok, lastDeploy: last ? { state: last.state, url: last.url, created: last.created } : null, failed };
+      if (failed) alerts.push({ type: "deploy_failed", message: `Last deployment: ${last.state}` });
+    } catch (err) { checks.vercel = { ok: false, error: err.message }; alerts.push({ type: "vercel_error", message: err.message }); }
   }
-
-  const summary = alerts.length > 0 ? "alerts" : "ok";
-  monitoringState = {
-    lastCheck: new Date().toISOString(),
-    checks,
-    summary,
-    alerts,
-  };
+  monitoringState = { lastCheck: new Date().toISOString(), checks, summary: alerts.length > 0 ? "alerts" : "ok", alerts };
   return monitoringState;
 }
-
-const monitoringRateLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (req, res) => {
-    apiError(res, 429, "RATE_LIMITED", "Too many monitoring requests", "Wait before refreshing again.");
-  },
-});
-
-apiRoute("get", "/monitoring/status", monitoringRateLimiter, async (req, res) => {
-  if (!isMonitoringEnabled()) {
-    return apiError(res, 503, "MONITORING_DISABLED", "Monitoring is disabled", "Set ENABLE_MONITORING=1 and GITHUB_TOKEN or VERCEL_TOKEN.");
-  }
-  const forceRefresh = req.query?.refresh === "1";
-  if (forceRefresh) {
-    try {
-      const data = await runMonitoringChecks();
-      return res.json(data);
-    } catch (err) {
-      return apiError(res, 503, "CHECK_FAILED", err.message, "Monitoring check failed. See docs/RUNBOOK.md.");
-    }
-  }
-  if (monitoringState.lastCheck) {
-    return res.json(monitoringState);
-  }
-  try {
-    const data = await runMonitoringChecks();
-    return res.json(data);
-  } catch (err) {
-    return apiError(res, 503, "CHECK_FAILED", err.message, "Monitoring check failed. See docs/RUNBOOK.md.");
-  }
-});
-
 if (isMonitoringEnabled()) {
   runMonitoringChecks().catch((e) => console.warn("[monitoring] Initial check failed:", e.message));
-  monitoringIntervalId = setInterval(() => {
-    runMonitoringChecks().catch((e) => console.warn("[monitoring] Scheduled check failed:", e.message));
-  }, MONITORING_INTERVAL_MS);
+  setInterval(() => { runMonitoringChecks().catch((e) => console.warn("[monitoring] Scheduled check failed:", e.message)); }, MONITORING_INTERVAL_MS);
 }
 
-// --- Phase 7: Status Report (aggregated health + integrations) ---
-apiRoute("get", "/status/report", async (req, res) => {
-  try {
-    const [health, integrations] = await Promise.all([
-      runHealthChecks(),
-      Promise.resolve({
-        github: Boolean(GITHUB_TOKEN),
-        vercel: Boolean(VERCEL_TOKEN),
-      }),
-    ]);
-    res.json({
-      timestamp: new Date().toISOString(),
-      health,
-      integrations,
-    });
-  } catch (err) {
-    return apiError(
-      res,
-      503,
-      "REPORT_FAILED",
-      err.message,
-      "Health or integration checks failed. See docs/RUNBOOK.md."
-    );
-  }
-});
+// --- Rate limiters shared by route modules ---
+const storageRateLimiter = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false });
+const KNOWLEDGE_MAX_DOC_BYTES = Number(process.env.KNOWLEDGE_MAX_DOC_BYTES) || 1024 * 1024;
+const sanitizeWorkspace = storage.sanitizeWorkspace;
+const multimodalRateLimiter = rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false });
+const pluginsActionsRateLimiter = rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false });
+const marketplaceRateLimiter = rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false });
+const webhooksRateLimiter = rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false });
+const webhooksHandlers = [webhooksRateLimiter, storageRateLimiter, userAuth, logRequest];
+const executeStepRateLimiter = rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false, handler: (req, res) => { apiError(res, 429, "RATE_LIMITED", "Too many execute requests", "Wait before retrying."); } });
+const evalRateLimiter = rateLimit({ windowMs: 60_000, max: 5, standardHeaders: true, legacyHeaders: false, handler: (req, res) => { apiError(res, 429, "RATE_LIMITED", "Too many eval runs", "Limit: 5 runs per minute."); } });
 
-// GitHub proxy - requires GITHUB_TOKEN; 503 with hint if missing
-function requireGitHubToken(req, res, next) {
-  if (!GITHUB_TOKEN) {
-    return apiError(res, 503, "INTEGRATION_UNAVAILABLE", "GitHub integration unavailable", "Set GITHUB_TOKEN in server environment variables.");
-  }
-  next();
+// --- Automation recipe validation ---
+function validateAutomationRecipe(recipe) {
+  const errors = [];
+  if (!recipe || typeof recipe !== "object") return { valid: false, errors: ["Recipe must be an object"] };
+  if (typeof recipe.name !== "string" || !recipe.name.trim()) errors.push("name: required non-empty string");
+  else if (recipe.name.length > 128) errors.push("name: max 128 chars");
+  if (recipe.trigger !== undefined && typeof recipe.trigger !== "string") errors.push("trigger: must be string");
+  if (!Array.isArray(recipe.steps)) errors.push("steps: required array");
+  else recipe.steps.forEach((s, i) => { if (!s || typeof s !== "object") errors.push(`steps[${i}]: must be object`); else if (!s.action || typeof s.action !== "string" || !String(s.action).trim()) errors.push(`steps[${i}]: action required`); if (s?.payload !== undefined && (s.payload === null || Array.isArray(s.payload) || typeof s.payload !== "object")) errors.push(`steps[${i}]: payload must be object`); });
+  if (recipe.inputs !== undefined && (recipe.inputs === null || Array.isArray(recipe.inputs) || typeof recipe.inputs !== "object")) errors.push("inputs: must be object");
+  if (recipe.outputs !== undefined && (recipe.outputs === null || Array.isArray(recipe.outputs) || typeof recipe.outputs !== "object")) errors.push("outputs: must be object");
+  try { if (new TextEncoder().encode(JSON.stringify(recipe)).length > 65536) errors.push("Recipe exceeds max size"); } catch (_) { errors.push("Recipe serialization failed"); }
+  return { valid: errors.length === 0, errors };
 }
 
 apiRoute("get", "/github/repos",
@@ -1790,6 +1058,7 @@ apiRoute("post", "/embeddings", embeddingsRateLimiter, chatAuth, requireScope("e
 
 apiRoute("post", "/knowledge/index",
   knowledgeIndexRateLimiter,
+  requireScope("write"),
   logRequest,
   async (req, res) => {
     try {
@@ -1824,7 +1093,7 @@ apiRoute("post", "/knowledge/index",
   }
 );
 
-apiRoute("get", "/knowledge/search", logRequest, async (req, res) => {
+apiRoute("get", "/knowledge/search", readRateLimiter, requireScope("read"), logRequest, async (req, res) => {
   try {
     const q = (req.query?.q ?? "").toString();
     const workspace = sanitizeWorkspace(req.query?.workspace);
@@ -1843,7 +1112,7 @@ apiRoute("get", "/knowledge/search", logRequest, async (req, res) => {
   }
 });
 
-apiRoute("get", "/knowledge/status", logRequest, (req, res) => {
+apiRoute("get", "/knowledge/status", readRateLimiter, requireScope("read"), logRequest, (req, res) => {
   const workspace = String(req.query.workspace || "default").trim();
   const result = knowledgeList({ workspace });
   if (result.error) {
@@ -1855,7 +1124,7 @@ apiRoute("get", "/knowledge/status", logRequest, (req, res) => {
   });
 });
 
-apiRoute("get", "/knowledge/list", logRequest, (req, res) => {
+apiRoute("get", "/knowledge/list", readRateLimiter, requireScope("read"), logRequest, (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const result = knowledgeList({ workspace });
@@ -1869,7 +1138,7 @@ apiRoute("get", "/knowledge/list", logRequest, (req, res) => {
   }
 });
 
-apiRoute("post", "/knowledge/reindex", embeddingsRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/knowledge/reindex", embeddingsRateLimiter, requireScope("embed"), logRequest, async (req, res) => {
   try {
     if (!embeddingsAvailable()) {
       return apiError(res, 503, "EMBEDDINGS_UNAVAILABLE", "OPENAI_API_KEY required for reindex", "Set OPENAI_API_KEY or skip semantic refresh.");
@@ -1886,7 +1155,7 @@ apiRoute("post", "/knowledge/reindex", embeddingsRateLimiter, logRequest, async 
   }
 });
 
-apiRoute("post", "/knowledge/fetch", knowledgeIndexRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/knowledge/fetch", knowledgeIndexRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const url = typeof req.body?.url === "string" ? req.body.url.trim() : "";
     const workspace = sanitizeWorkspace(req.body?.workspace);
@@ -1936,7 +1205,7 @@ const storageRateLimiter = rateLimit({
 });
 
 // --- Phase 14: Workspaces API ---
-apiRoute("get", "/workspaces", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("get", "/workspaces", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspaces = await storage.listWorkspaces(req.userId);
     res.json({ _version: 1, items: workspaces });
@@ -1946,7 +1215,7 @@ apiRoute("get", "/workspaces", storageRateLimiter, userAuth, logRequest, async (
   }
 });
 
-apiRoute("post", "/workspaces", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("post", "/workspaces", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
   try {
     const idemKey = req.headers["idempotency-key"] || req.headers["x-idempotency-key"];
     if (idemKey) {
@@ -1962,6 +1231,92 @@ apiRoute("post", "/workspaces", storageRateLimiter, userAuth, logRequest, async 
     res.status(201).json(ws);
   } catch (err) {
     console.error("Workspace create error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+// --- Workspace Templates ---
+apiRoute("get", "/workspace-templates", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+  try {
+    const templates = await listTemplates();
+    res.json({ _version: 1, items: templates });
+  } catch (err) {
+    console.error("Workspace templates list error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("post", "/workspace-templates", storageRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const template = await createTemplate(req.body);
+    res.status(201).json(template);
+  } catch (err) {
+    console.error("Workspace template create error:", err.message);
+    if (err.message === "Template name is required") {
+      return apiError(res, 400, "VALIDATION_ERROR", err.message, "Provide a name field.");
+    }
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("get", "/workspace-templates/:id", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+  try {
+    const template = await getTemplate(req.params.id);
+    if (!template) {
+      return apiError(res, 404, "NOT_FOUND", "Template not found", null);
+    }
+    res.json(template);
+  } catch (err) {
+    console.error("Workspace template get error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("put", "/workspace-templates/:id", storageRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const updated = await updateTemplate(req.params.id, req.body);
+    if (!updated) {
+      return apiError(res, 404, "NOT_FOUND", "Template not found", null);
+    }
+    res.json(updated);
+  } catch (err) {
+    console.error("Workspace template update error:", err.message);
+    if (err.message === "Cannot update a default template") {
+      return apiError(res, 403, "FORBIDDEN", err.message, "Default templates cannot be modified.");
+    }
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("delete", "/workspace-templates/:id", storageRateLimiter, adminAuth, logRequest, async (req, res) => {
+  try {
+    const deleted = await deleteTemplate(req.params.id);
+    if (!deleted) {
+      return apiError(res, 404, "NOT_FOUND", "Template not found", null);
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Workspace template delete error:", err.message);
+    if (err.message === "Cannot delete a default template") {
+      return apiError(res, 403, "FORBIDDEN", err.message, "Default templates cannot be deleted.");
+    }
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("post", "/workspace-templates/:id/apply", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+  try {
+    const workspaceId = typeof req.body?.workspaceId === "string" ? req.body.workspaceId.trim() : null;
+    if (!workspaceId) {
+      return apiError(res, 400, "VALIDATION_ERROR", "workspaceId is required", null);
+    }
+    const result = await applyTemplate(req.params.id, workspaceId, req.userId);
+    res.json(result);
+  } catch (err) {
+    console.error("Workspace template apply error:", err.message);
+    if (err.message === "Template not found") {
+      return apiError(res, 404, "NOT_FOUND", err.message, null);
+    }
     return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
   }
 });
@@ -2009,7 +1364,7 @@ apiRoute("delete", "/workspaces/:id", storageRateLimiter, userAuth, requireScope
 });
 
 // Phase 61–62: Per-workspace agent system prompt + approved memory (agent / swarm)
-apiRoute("get", "/workspaces/:id/agent-settings", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("get", "/workspaces/:id/agent-settings", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspaceId = sanitizeWorkspace(req.params.id);
     const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
@@ -2069,7 +1424,7 @@ apiRoute(
 );
 
 // --- Phase 29: Team workspaces - invite, join, members, activity ---
-apiRoute("post", "/workspaces/join", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("post", "/workspaces/join", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
   try {
     const code = req.body?.code?.trim?.();
     if (!code) return apiError(res, 400, "INVALID_INPUT", "code required", "Send { code: string }.");
@@ -2091,7 +1446,7 @@ apiRoute("post", "/workspaces/join", storageRateLimiter, userAuth, logRequest, a
   }
 });
 
-apiRoute("post", "/workspaces/:id/invite", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("post", "/workspaces/:id/invite", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspaceId = req.params.id;
     const access = await canAccessWorkspace(workspaceId, req.userId);
@@ -2111,7 +1466,7 @@ apiRoute("post", "/workspaces/:id/invite", storageRateLimiter, userAuth, logRequ
   }
 });
 
-apiRoute("get", "/workspaces/:id/members", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("get", "/workspaces/:id/members", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspaceId = req.params.id;
     const access = await canAccessWorkspace(workspaceId, req.userId);
@@ -2125,7 +1480,7 @@ apiRoute("get", "/workspaces/:id/members", storageRateLimiter, userAuth, logRequ
   }
 });
 
-apiRoute("get", "/workspaces/:id/activity", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("get", "/workspaces/:id/activity", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspaceId = req.params.id;
     const access = await canAccessWorkspace(workspaceId, req.userId);
@@ -2141,7 +1496,7 @@ apiRoute("get", "/workspaces/:id/activity", storageRateLimiter, userAuth, logReq
 
 // --- Phase 10: Persistent Backend Storage (SiskelBot) ---
 // GET/POST /api/context (userAuth attaches req.userId; anonymous when no auth configured)
-apiRoute("get", "/context", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+apiRoute("get", "/context", storageRateLimiter, readRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const data = await storage.listItems("context", workspace, req.userId);
@@ -2152,7 +1507,7 @@ apiRoute("get", "/context", storageRateLimiter, userAuth, logRequest, async (req
   }
 });
 
-apiRoute("post", "/context", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/context", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const { title, content } = req.body || {};
@@ -2177,7 +1532,7 @@ apiRoute("post", "/context", storageRateLimiter, logRequest, async (req, res) =>
 });
 
 // GET/PUT/DELETE /api/context/:id
-apiRoute("get", "/context/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("get", "/context/:id", storageRateLimiter, readRateLimiter, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const item = await storage.getItem("context", req.params.id, workspace);
@@ -2189,7 +1544,7 @@ apiRoute("get", "/context/:id", storageRateLimiter, logRequest, async (req, res)
   }
 });
 
-apiRoute("put", "/context/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("put", "/context/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const { title, content } = req.body || {};
@@ -2206,7 +1561,7 @@ apiRoute("put", "/context/:id", storageRateLimiter, logRequest, async (req, res)
   }
 });
 
-apiRoute("delete", "/context/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("delete", "/context/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const deleted = await storage.deleteItem("context", req.params.id, workspace);
@@ -2219,7 +1574,7 @@ apiRoute("delete", "/context/:id", storageRateLimiter, logRequest, async (req, r
 });
 
 // POST /api/context/sync - merge client payload, return merged list
-apiRoute("post", "/context/sync", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/context/sync", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
@@ -2233,7 +1588,7 @@ apiRoute("post", "/context/sync", storageRateLimiter, logRequest, async (req, re
 });
 
 // GET/POST /api/recipes
-apiRoute("get", "/recipes", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("get", "/recipes", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const data = await storage.listItems("recipes", workspace);
@@ -2244,7 +1599,7 @@ apiRoute("get", "/recipes", storageRateLimiter, logRequest, async (req, res) => 
   }
 });
 
-apiRoute("post", "/recipes", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/recipes", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const recipe = req.body;
@@ -2270,7 +1625,7 @@ apiRoute("post", "/recipes", storageRateLimiter, logRequest, async (req, res) =>
 });
 
 // GET/PUT/DELETE /api/recipes/:id
-apiRoute("get", "/recipes/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("get", "/recipes/:id", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const item = await storage.getItem("recipes", req.params.id, workspace);
@@ -2282,7 +1637,7 @@ apiRoute("get", "/recipes/:id", storageRateLimiter, logRequest, async (req, res)
   }
 });
 
-apiRoute("put", "/recipes/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("put", "/recipes/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const { name, description, steps } = req.body || {};
@@ -2300,7 +1655,7 @@ apiRoute("put", "/recipes/:id", storageRateLimiter, logRequest, async (req, res)
   }
 });
 
-apiRoute("delete", "/recipes/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("delete", "/recipes/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const deleted = await storage.deleteItem("recipes", req.params.id, workspace);
@@ -2313,7 +1668,7 @@ apiRoute("delete", "/recipes/:id", storageRateLimiter, logRequest, async (req, r
 });
 
 // POST /api/recipes/sync
-apiRoute("post", "/recipes/sync", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/recipes/sync", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
@@ -2328,7 +1683,7 @@ apiRoute("post", "/recipes/sync", storageRateLimiter, logRequest, async (req, re
 
 // --- Phase 16: Scheduled & Automated Recipes ---
 // GET /api/schedules - list scheduled recipes
-apiRoute("get", "/schedules", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("get", "/schedules", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const items = await scheduleStore.list(workspace);
@@ -2346,7 +1701,7 @@ apiRoute("get", "/schedules", storageRateLimiter, logRequest, async (req, res) =
 });
 
 // POST /api/schedules - add/update schedule for recipe
-apiRoute("post", "/schedules", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/schedules", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const { recipeId, cron, timezone, enabled } = req.body || {};
@@ -2370,7 +1725,7 @@ apiRoute("post", "/schedules", storageRateLimiter, logRequest, async (req, res) 
 });
 
 // DELETE /api/schedules/:recipeId - remove schedule
-apiRoute("delete", "/schedules/:recipeId", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("delete", "/schedules/:recipeId", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const removed = await scheduleStore.remove(req.params.recipeId, workspace);
@@ -2384,7 +1739,7 @@ apiRoute("delete", "/schedules/:recipeId", storageRateLimiter, logRequest, async
 });
 
 // POST /api/schedules/run-now/:recipeId - manual trigger
-apiRoute("post", "/schedules/run-now/:recipeId", storageRateLimiter, apiKeyAuth, logRequest, async (req, res) => {
+apiRoute("post", "/schedules/run-now/:recipeId", storageRateLimiter, apiKeyAuth, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace || req.query?.workspace);
     const result = await runRecipeNow(req.params.recipeId, workspace);
@@ -2464,7 +1819,7 @@ app.get("/api/backup/cron", logRequest, async (req, res) => {
 });
 
 // GET/POST /api/conversations
-apiRoute("get", "/conversations", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("get", "/conversations", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const data = await storage.listItems("conversations", workspace);
@@ -2475,7 +1830,7 @@ apiRoute("get", "/conversations", storageRateLimiter, logRequest, async (req, re
   }
 });
 
-apiRoute("post", "/conversations", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("post", "/conversations", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const { id, title, messages, meta } = req.body || {};
@@ -2498,7 +1853,7 @@ apiRoute("post", "/conversations", storageRateLimiter, logRequest, async (req, r
 });
 
 // GET/PUT/DELETE /api/conversations/:id
-apiRoute("get", "/conversations/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("get", "/conversations/:id", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const item = await storage.getItem("conversations", req.params.id, workspace);
@@ -2510,7 +1865,7 @@ apiRoute("get", "/conversations/:id", storageRateLimiter, logRequest, async (req
   }
 });
 
-apiRoute("put", "/conversations/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("put", "/conversations/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.body?.workspace);
     const { title, messages, meta } = req.body || {};
@@ -2528,7 +1883,7 @@ apiRoute("put", "/conversations/:id", storageRateLimiter, logRequest, async (req
   }
 });
 
-apiRoute("delete", "/conversations/:id", storageRateLimiter, logRequest, async (req, res) => {
+apiRoute("delete", "/conversations/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const deleted = await storage.deleteItem("conversations", req.params.id, workspace);
@@ -2536,6 +1891,76 @@ apiRoute("delete", "/conversations/:id", storageRateLimiter, logRequest, async (
     res.status(204).send();
   } catch (err) {
     console.error("Storage conversations delete error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+// --- Conversation branching & forking ---
+apiRoute("post", "/conversations/:id/branch", storageRateLimiter, logRequest, async (req, res) => {
+  try {
+    const workspace = sanitizeWorkspace(req.body?.workspace || req.query?.workspace);
+    const userId = req.userId || "anonymous";
+    const { atMessageIndex, label } = req.body || {};
+    if (typeof atMessageIndex !== "number" || !Number.isInteger(atMessageIndex) || atMessageIndex < 0) {
+      return apiError(res, 400, "INVALID_INPUT", "atMessageIndex must be a non-negative integer.");
+    }
+    const branch = await branchConversation(req.params.id, atMessageIndex, userId, { label, workspace });
+    res.status(201).json(branch);
+  } catch (err) {
+    if (err.message.includes("not found")) return apiError(res, 404, "NOT_FOUND", err.message);
+    if (err.message.includes("Invalid branch point")) return apiError(res, 400, "INVALID_INPUT", err.message);
+    console.error("Branch conversation error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("get", "/conversations/:id/tree", storageRateLimiter, logRequest, async (req, res) => {
+  try {
+    const workspace = sanitizeWorkspace(req.query?.workspace);
+    const userId = req.userId || "anonymous";
+    const tree = await getConversationTree(req.params.id, workspace, userId);
+    if (!tree) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
+    res.json(tree);
+  } catch (err) {
+    console.error("Conversation tree error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("get", "/conversations/:id/branches", storageRateLimiter, logRequest, async (req, res) => {
+  try {
+    const workspace = sanitizeWorkspace(req.query?.workspace);
+    const userId = req.userId || "anonymous";
+    const branches = await listConversationBranches(req.params.id, workspace, userId);
+    res.json({ branches });
+  } catch (err) {
+    console.error("List branches error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("get", "/conversations/branches/:branchId", storageRateLimiter, logRequest, async (req, res) => {
+  try {
+    const workspace = sanitizeWorkspace(req.query?.workspace);
+    const userId = req.userId || "anonymous";
+    const branch = await getConversationBranch(req.params.branchId, workspace, userId);
+    if (!branch) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
+    res.json(branch);
+  } catch (err) {
+    console.error("Get branch error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute("delete", "/conversations/branches/:branchId", storageRateLimiter, logRequest, async (req, res) => {
+  try {
+    const workspace = sanitizeWorkspace(req.query?.workspace);
+    const userId = req.userId || "anonymous";
+    const deleted = await deleteConversationBranch(req.params.branchId, workspace, userId);
+    if (!deleted) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
+    res.status(204).send();
+  } catch (err) {
+    console.error("Delete branch error:", err.message);
     return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
   }
 });
@@ -2648,6 +2073,118 @@ apiRoute("get", "/plugins/actions", pluginsActionsRateLimiter, userAuth, logRequ
     res.json({ actions: [...actions].sort() });
   } catch (err) {
     return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+// --- Phase 17.1: JS Plugin Management API ---
+apiRoute("get", "/plugins", pluginsActionsRateLimiter, userAuth, logRequest, (req, res) => {
+  try {
+    const plugins = listJsPlugins();
+    res.json({ plugins });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGIN_API.md.");
+  }
+});
+
+apiRoute("post", "/plugins/execute", pluginsActionsRateLimiter, userAuth, logRequest, async (req, res) => {
+  try {
+    const { pluginId, input, workspaceId, config } = req.body || {};
+    if (!pluginId || typeof pluginId !== "string") {
+      return apiError(res, 400, "INVALID_INPUT", "pluginId is required", "Send { pluginId, input?, workspaceId?, config? }.");
+    }
+    const result = await execJsPlugin(pluginId.trim(), {
+      input: typeof input === "string" ? input : "",
+      workspaceId: workspaceId || null,
+      userId: req.userId || null,
+      config: config && typeof config === "object" ? config : {},
+    });
+    res.json({ ok: true, output: result.output, metadata: result.metadata });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// --- Phase 49: Plugin Marketplace API ---
+const marketplaceRateLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+apiRoute("get", "/marketplace", marketplaceRateLimiter, logRequest, (req, res) => {
+  try {
+    const packs = marketplaceListAvailable();
+    const category = req.query?.category;
+    const filtered = category ? packs.filter((p) => p.category === category) : packs;
+    res.json({ _version: 1, packs: filtered });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
+  }
+});
+
+apiRoute("get", "/marketplace/:packId", marketplaceRateLimiter, logRequest, (req, res) => {
+  try {
+    const packId = req.params.packId;
+    const manifest = marketplaceRegistry.get(packId);
+    if (!manifest) {
+      return apiError(res, 404, "NOT_FOUND", `Pack not found: ${packId}`, "Use GET /api/marketplace to list available packs.");
+    }
+    res.json({
+      id: manifest.id,
+      name: manifest.name,
+      version: manifest.version,
+      description: manifest.description,
+      author: manifest.author,
+      category: manifest.category || "uncategorized",
+      actions: manifest.actions,
+    });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
+  }
+});
+
+apiRoute("post", "/marketplace/:packId/install", marketplaceRateLimiter, userAuth, logRequest, (req, res) => {
+  try {
+    const packId = req.params.packId;
+    const workspaceId = req.body?.workspaceId;
+    if (!workspaceId || typeof workspaceId !== "string") {
+      return apiError(res, 400, "INVALID_INPUT", "workspaceId required", "Send { workspaceId: string }.");
+    }
+    const result = marketplaceInstallPack(packId, workspaceId);
+    if (!result.ok) {
+      return apiError(res, 400, "INSTALL_FAILED", result.error, "Check that the pack exists.");
+    }
+    res.json({ ok: true, packId, workspaceId, alreadyInstalled: result.alreadyInstalled || false });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
+  }
+});
+
+apiRoute("delete", "/marketplace/:packId/install", marketplaceRateLimiter, userAuth, logRequest, (req, res) => {
+  try {
+    const packId = req.params.packId;
+    const workspaceId = req.body?.workspaceId || req.query?.workspaceId;
+    if (!workspaceId || typeof workspaceId !== "string") {
+      return apiError(res, 400, "INVALID_INPUT", "workspaceId required", "Send { workspaceId: string } or ?workspaceId=.");
+    }
+    const result = marketplaceUninstallPack(packId, workspaceId);
+    if (!result.ok) {
+      return apiError(res, 400, "UNINSTALL_FAILED", result.error, "Check that the pack exists.");
+    }
+    res.json({ ok: true, packId, workspaceId });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
+  }
+});
+
+apiRoute("get", "/workspaces/:id/plugins", marketplaceRateLimiter, userAuth, logRequest, (req, res) => {
+  try {
+    const workspaceId = req.params.id;
+    const packs = marketplaceListInstalled(workspaceId);
+    res.json({ _version: 1, workspaceId, packs });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
   }
 });
 
@@ -2780,6 +2317,7 @@ const executeStepRateLimiter = rateLimit({
 apiRoute("post", "/execute-step",
   executeStepRateLimiter,
   apiKeyAuth,
+  requireScope("write"),
   logRequest,
   async (req, res) => {
     if (!ALLOW_RECIPE_STEP_EXECUTION) {
@@ -3016,13 +2554,52 @@ apiRoute("post", "/documents/extract",
   }
 );
 
-apiRoute("post", "/ocr", multimodalRateLimiter, (req, res) => {
-  return res.status(501).json({
-    error: "OCR not implemented",
-    code: "NOT_IMPLEMENTED",
-    hint: "OCR will use an external service (e.g. Tesseract.js or cloud OCR). See README for planned integration.",
-  });
+const OCR_MAX_BYTES = 20 * 1024 * 1024; // 20 MB
+const ALLOWED_OCR_TYPES = ["image/png", "image/jpeg", "image/tiff", "image/bmp", "application/pdf"];
+
+const ocrUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: OCR_MAX_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_OCR_TYPES.includes(file.mimetype)) cb(null, true);
+    else cb(new Error("Unsupported file type. Accepted: PNG, JPG, TIFF, BMP, PDF."));
+  },
 });
+
+apiRoute("post", "/ocr",
+  multimodalRateLimiter,
+  (req, res, next) => {
+    ocrUpload.single("file")(req, res, (err) => {
+      if (err) {
+        if (err instanceof multer.MulterError) {
+          if (err.code === "LIMIT_FILE_SIZE")
+            return apiError(res, 400, "FILE_TOO_LARGE", `File exceeds ${OCR_MAX_BYTES / 1024 / 1024}MB limit`, "Reduce file size.");
+          if (err.code === "LIMIT_UNEXPECTED_FILE")
+            return apiError(res, 400, "INVALID_BODY", "Use field name 'file' for multipart upload", null);
+        }
+        if (err.message && err.message.includes("Unsupported file type"))
+          return apiError(res, 415, "UNSUPPORTED_FORMAT", err.message, "Accepted formats: PNG, JPG, TIFF, BMP, PDF.");
+        return apiError(res, 400, "INVALID_FILE", err.message || "Invalid file upload", null);
+      }
+      next();
+    });
+  },
+  logRequest,
+  async (req, res) => {
+    try {
+      if (!req.file?.buffer)
+        return apiError(res, 400, "INVALID_BODY", "file required (multipart/form-data)", "Upload an image or PDF with field name 'file'.");
+      const { extractText } = await import("./lib/ocr.js");
+      const mime = req.file.mimetype || "";
+      const { text, confidence } = await extractText(req.file.buffer, mime);
+      return res.json({ text: sanitizeText(text), pages: 1, confidence });
+    } catch (err) {
+      if (err.code === "UNSUPPORTED_FORMAT")
+        return apiError(res, 415, "UNSUPPORTED_FORMAT", err.message, "Accepted formats: PNG, JPG, TIFF, BMP, PDF.");
+      return apiError(res, 500, "OCR_FAILED", err.message || "OCR processing failed", "See docs/RUNBOOK.md.");
+    }
+  }
+);
 
 // Phase 23: API docs - OpenAPI spec and Swagger UI (not versioned, no deprecation)
 app.get("/api/docs/openapi.json", (req, res) => {
@@ -3030,151 +2607,159 @@ app.get("/api/docs/openapi.json", (req, res) => {
   res.json(openApiSpec);
 });
 
+// --- OpenAPI docs ---
+app.get("/api/docs/openapi.json", (req, res) => { res.setHeader("Content-Type", "application/json"); res.json(openApiSpec); });
 app.get("/docs", (req, res) => res.redirect(302, "/api/docs"));
 app.get("/api/docs", (req, res) => {
   const base = req.protocol + "//" + (req.get("host") || "localhost");
   const specUrl = base + "/api/docs/openapi.json";
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Siskel Bot API Docs</title>
-  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui.css">
-</head>
-<body>
-  <div id="swagger-ui"></div>
-  <script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-bundle.js"></script>
-  <script>
-    SwaggerUIBundle({
-      url: "${specUrl}",
-      dom_id: "#swagger-ui",
-      presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
-    });
-  </script>
-</body>
-</html>`);
+<html lang="en"><head><meta charset="UTF-8"><title>Siskel Bot API Docs</title>
+<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui.css"></head>
+<body><div id="swagger-ui"></div>
+<script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-bundle.js"></script>
+<script>SwaggerUIBundle({url:"${specUrl}",dom_id:"#swagger-ui",presets:[SwaggerUIBundle.presets.apis,SwaggerUIBundle.SwaggerUIStandalonePreset]});</script>
+</body></html>`);
 });
 
-// Phases 55–59: Agent trajectory JSON (debug / replay); Phase 71: durable store
-apiRoute("get", "/agent/trajectory/:runId", logRequest, userAuth, async (req, res) => {
-  if (!trajectoryApiEnabled()) {
-    return apiError(
-      res,
-      503,
-      "FEATURE_DISABLED",
-      "Trajectory API disabled",
-      "Unset AGENT_TRAJECTORY_API=0 to enable GET /api/agent/trajectory/:runId."
-    );
-  }
-  const runId = String(req.params.runId || "").trim();
-  const t = await loadTrajectory(runId);
-  if (!t) {
-    return apiError(
-      res,
-      404,
-      "TRAJECTORY_NOT_FOUND",
-      "Trajectory not found or expired",
-      "IDs are short-lived; run agent mode again and use the X-Agent-Run-Id header."
-    );
-  }
-  res.json(t);
-});
+// =====================================================================
+// P0.1: Mount extracted route modules
+// =====================================================================
+const routeDeps = {
+  apiRoute, apiError, deprecationApi,
+  userAuth, adminAuth, chatAuth, apiKeyAuth, evalAuth, backupAdminAuth,
+  requireScope, logRequest,
+  chatRateLimiter, perKeyChatRateLimiter, integrationRateLimiter,
+  knowledgeIndexRateLimiter, embeddingsRateLimiter,
+  storageRateLimiter, multimodalRateLimiter,
+  pluginsActionsRateLimiter, marketplaceRateLimiter,
+  webhooksRateLimiter, webhooksHandlers,
+  executeStepRateLimiter, evalRateLimiter,
+  taskPlanRateLimiter, workspaceRateLimiter,
+  BACKEND, OPENAI_API_KEY, MODEL_PRESETS, API_KEY, IS_PRODUCTION,
+  STREAM_AGENT_FINAL, STREAM_SWARM_SYNTH,
+  MAX_AGENT_TOOL_CALLS_ENV, AGENT_MAX_WALL_MS_ENV, AGENT_STREAM_CHUNK_SIZE,
+  ALLOW_RECIPE_STEP_EXECUTION, ENABLE_AGENT_SWARM,
+  AB_ROUTING_ENABLED, MODEL_ROUTING_CONFIG,
+  USAGE_ALERT_TOKENS, KNOWLEDGE_MAX_DOC_BYTES,
+  GITHUB_TOKEN, VERCEL_TOKEN, GITHUB_API_BASE, VERCEL_API_BASE,
+  buildProxyConfig, backendFetch, setQuotaHeaders,
+  sanitizeWorkspace, oauthCallback, passport, oauthProviders,
+  runHealthChecks,
+  healthCache: () => _healthCache,
+  setHealthCache: (v) => { _healthCache = v; },
+  HEALTH_CACHE_TTL_MS,
+  metricsEnabled, metricsAuth: metricsAuthFn, METRICS_PATH, renderPrometheus,
+  isMonitoringEnabled, isAuthConfigured,
+  validateOwnerRepo, requireGitHubToken, requireVercelToken,
+  monitoringState: () => monitoringState, runMonitoringChecks,
+  isQuotaConfigured, checkQuota, getWorkspaceQuota, getWorkspaceTokensUsed,
+  getQuotaOverrides, setWorkspaceQuotaOverride, isQuotaAdmin,
+  estimate, recordUsage, getSummary, getTotalTokensInWindow, getRecordsForPeriod,
+  getDashboard, exportToCsv, exportToJson,
+  recordChatRequest, recordTokensUsed,
+  resolveAgentMaxIterations, runSwarm, runSwarmLegacy,
+  intersectClientToolsWithAllowlist, getToolsSchema,
+  getSwarmSelectableSpecialistNames, getSwarmSpecialistsAllowlistNames,
+  intersectSwarmSpecialistsWithAllowlist,
+  runAgentLoop, pipeLlmChatStreamToSse,
+  selectBackend, logRouting,
+  TASK_PLAN_SYSTEM_PROMPT, extractTaskJsonFromResponse, validateTaskPlan,
+  emitEvent, listWebhooks, addWebhook, removeWebhook, validateWebhookUrl,
+  createToken, getOnlineUsers, getEventsSince,
+  listNotifications, markNotificationRead, markAllNotificationsRead,
+  storage, scheduleStore, schedulerRefresh, runRecipeNow, runDueJobsVercel,
+  logActivity, idempotencyLookup, idempotencyStore,
+  embeddingsAvailable, embed, embedBatch,
+  indexDocument, indexDocumentFromBuffer,
+  knowledgeSearch, knowledgeSemanticSearch, knowledgeList,
+  reindexKnowledgeEmbeddingsInWorkspace, fetchTextFromAllowedUrl,
+  exportWorkspaceBundle, deleteWorkspaceForUser,
+  loadWorkspaceAgentSettings, saveWorkspaceAgentSettings,
+  getWorkspaceAgentAccess, canEditWorkspaceAgentSettings, resolveStorageUserId,
+  getWorkspaceChunkingConfig, setWorkspaceChunkingConfig,
+  canAccessWorkspace, createInviteCode, joinByInviteCode,
+  getWorkspaceMembers, getWorkspaceActivity,
+  storeMemory, getMemories, searchMemories,
+  updateAgentMemory, deleteAgentMemory, extractPotentialMemories,
+  exportWorkspaceMigration, importWorkspaceMigration, validateBundle, diffWorkspaces,
+  createTemplate, listTemplates, getTemplate, updateTemplate, deleteTemplate, applyTemplate,
+  getRegisteredActions, listJsPlugins, execJsPlugin,
+  marketplaceListAvailable, marketplaceRegistry,
+  marketplaceInstallPack, marketplaceUninstallPack, marketplaceListInstalled,
+  createBackup, listBackups, restoreBackup,
+  branchConversation, getConversationTree,
+  listConversationBranches, getConversationBranch, deleteConversationBranch,
+  executeStep, appendAuditLog, validateAutomationRecipe,
+  trajectoryApiEnabled, loadTrajectory, listTrajectories,
+  listRecordedTraces, getRecordedTrace, recordTrace, replayTrace, deleteRecordedTrace,
+  autoRecordEnabled, listEvalSets, loadEvalSet, runEvalSet,
+  reportError,
+  listAllUsers, listAllWorkspaces, getRecentAuditLog,
+  listKeysForAdmin, addKey, revokeKey,
+  archiveExecutionAuditToS3, getAuditArchiveStatus,
+  AuditLifecycle, queryAudit, exportAudit,
+  getRoutingStats, getRegionHealth, getLeaderElection, getReplicationManager, internalAuth,
+  getMetricsSummary,
+  obsGetLatencyPercentiles, obsGetErrorRates, obsGetAgentStats, obsGetTokenUsageByWorkspace,
+  toolValidationEnabled, stagnationDetectionEnabled,
+  defaultAgentSystemConfigured, getAgentToolsAllowlistNames,
+  listRbacRoles, createCustomRole, updateCustomRole, deleteCustomRole, assignRole,
+  getAvailableRegions, setDataResidency, getDataResidency,
+  generateComplianceReport, getRetentionPolicy, setRetentionPolicy, scanTextForPII,
+  registerPeer, removePeer, listPeers,
+  discoverFederatedWorkspaces, syncWorkspaceMetadata,
+  handleDiscoverRequest, getInstanceInfo, federationAuth,
+};
 
-apiRoute("get", "/agent/trajectories", logRequest, userAuth, async (req, res) => {
-  if (!trajectoryApiEnabled()) {
-    return apiError(
-      res,
-      503,
-      "FEATURE_DISABLED",
-      "Trajectory API disabled",
-      "Unset AGENT_TRAJECTORY_API=0 to enable trajectory listing."
-    );
-  }
-  const workspace = String(req.query.workspace || "default").trim();
-  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 30));
-  const offset = Math.max(0, Number(req.query.offset) || 0);
-  try {
-    const data = await listTrajectories({ workspace, limit, offset });
-    res.json(data);
-  } catch (err) {
-    return apiError(res, 500, "INTERNAL_ERROR", err?.message || "List failed", "See server logs.");
-  }
-});
+mountAuthRoutes(app, routeDeps);
+mountHealthRoutes(app, routeDeps);
+mountChatRoutes(app, routeDeps);
+mountKnowledgeRoutes(app, routeDeps);
+mountWorkspaceRoutes(app, routeDeps);
+mountConversationRoutes(app, routeDeps);
+mountContextRoutes(app, routeDeps);
+mountRecipeRoutes(app, routeDeps);
+mountBackupRoutes(app, routeDeps);
+mountPluginRoutes(app, routeDeps);
+mountWebhookRoutes(app, routeDeps);
+mountExecuteRoutes(app, routeDeps);
+mountEvalRoutes(app, routeDeps);
+mountIntegrationRoutes(app, routeDeps);
+mountAdminRoutes(app, routeDeps);
+mountFederationRoutes(app, routeDeps);
 
-// --- Phase 32: Evaluation Harness ---
-const evalRateLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (req, res) => {
-    apiError(res, 429, "RATE_LIMITED", "Too many eval runs", "Limit: 5 runs per minute. Wait before retrying.");
-  },
-});
+const STATIC_CACHE_MAX_AGE_MS =
+  process.env.STATIC_CACHE_MAX_AGE === "0"
+    ? 0
+    : Number(process.env.STATIC_CACHE_MAX_AGE_MS) || (IS_PRODUCTION ? 86_400_000 : 0);
 
-apiRoute("get", "/eval/sets", evalRateLimiter, evalAuth, logRequest, (req, res) => {
-  try {
-    const sets = listEvalSets();
-    res.json({ sets });
-  } catch (err) {
-    console.error("Eval sets list error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
+// Serve hashed client/dist/ assets with immutable cache headers (P0.3 code-splitting)
+app.use(
+  "/dist",
+  express.static(join(__dirname, "client", "dist"), {
+    maxAge: 31_536_000_000, // 1 year
+    immutable: true,
+    etag: true,
+    setHeaders(res) {
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    },
+  }),
+);
 
-apiRoute("post", "/eval/run", evalRateLimiter, evalAuth, logRequest, async (req, res) => {
-  try {
-    const { evalSetId, evalSet, model } = req.body || {};
-    let set = evalSet;
-    if (!set && evalSetId) {
-      set = loadEvalSet(String(evalSetId).trim());
-      if (!set) return apiError(res, 404, "NOT_FOUND", "Eval set not found", `No eval set with id: ${evalSetId}`);
-    }
-    if (!set || !Array.isArray(set.cases)) {
-      return apiError(res, 400, "INVALID_BODY", "evalSetId, evalSet, or valid evalSet JSON required", "Send { evalSetId: string } or { evalSet: { id, name, cases } }.");
-    }
-    const baseUrl = `${req.protocol}://${req.get("host") || "localhost"}`;
-    const bearer = req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7).trim() : null;
-    const apiKey = bearer || req.headers["x-api-key"] || req.headers["x-admin-api-key"];
-    const result = await runEvalSet(set, {
-      model: model || undefined,
-      baseUrl,
-      apiKey: apiKey || undefined,
-    });
-    res.json(result);
-  } catch (err) {
-    console.error("Eval run error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-app.get("/eval", (req, res) => {
-  res.sendFile(join(__dirname, "client", "eval.html"));
-});
-
-// --- Phase 25: Admin Dashboard ---
-app.get("/admin", (req, res) => {
-  res.sendFile(join(__dirname, "client", "admin.html"));
-});
-
-const adminRateLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 60,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-// Support admin key via query for browser (GET only)
-function adminAuthOrQuery(req, res, next) {
-  const adminKey = process.env.ADMIN_API_KEY;
-  if (adminKey && req.method === "GET" && req.query?.key === adminKey) {
-    return next();
-  }
-  return adminAuth(req, res, next);
+// Load the client build manifest (maps entry names to hashed filenames).
+// Falls back gracefully when client/dist/ has not been built.
+let _clientManifest = null;
+try {
+  _clientManifest = JSON.parse(readFileSync(join(__dirname, "client", "dist", "manifest.json"), "utf8"));
+  console.log("[static] Client build manifest loaded:", Object.keys(_clientManifest).join(", "));
+} catch {
+  _clientManifest = null;
+  console.log("[static] No client build manifest found — serving inline JS fallback.");
 }
 
-app.get("/api/admin/summary", adminRateLimiter, adminAuthOrQuery, logRequest, async (req, res) => {
+app.get("/api/admin/summary", adminRateLimiter, adminIpAllowlist, adminAuthOrQuery, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const users = await listAllUsers();
     const workspaces = await listAllWorkspaces();
@@ -3227,7 +2812,7 @@ app.get("/api/admin/summary", adminRateLimiter, adminAuthOrQuery, logRequest, as
   }
 });
 
-app.post("/api/admin/quotas/override", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.post("/api/admin/quotas/override", adminRateLimiter, adminIpAllowlist, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const { workspace, limit } = req.body || {};
     const ws = sanitizeWorkspace(workspace);
@@ -3243,7 +2828,7 @@ app.post("/api/admin/quotas/override", adminRateLimiter, adminAuth, logRequest, 
 });
 
 // Phase 30: Admin API key management
-app.get("/api/admin/keys", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.get("/api/admin/keys", adminRateLimiter, adminIpAllowlist, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const keys = listKeysForAdmin();
     res.json({ keys });
@@ -3253,7 +2838,7 @@ app.get("/api/admin/keys", adminRateLimiter, adminAuth, logRequest, async (req, 
   }
 });
 
-app.post("/api/admin/keys", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.post("/api/admin/keys", adminRateLimiter, adminIpAllowlist, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const { userId, scopes } = req.body || {};
     const result = await addKey({ userId, scopes: Array.isArray(scopes) ? scopes : undefined });
@@ -3267,7 +2852,7 @@ app.post("/api/admin/keys", adminRateLimiter, adminAuth, logRequest, async (req,
   }
 });
 
-app.delete("/api/admin/keys/:id", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.delete("/api/admin/keys/:id", adminRateLimiter, adminIpAllowlist, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const result = await revokeKey(req.params.id);
     if (!result.ok) {
@@ -3280,7 +2865,7 @@ app.delete("/api/admin/keys/:id", adminRateLimiter, adminAuth, logRequest, async
   }
 });
 
-app.post("/api/admin/audit/archive-s3", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.post("/api/admin/audit/archive-s3", adminRateLimiter, adminIpAllowlist, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const out = await archiveExecutionAuditToS3();
     if (!out.ok) {
@@ -3293,7 +2878,7 @@ app.post("/api/admin/audit/archive-s3", adminRateLimiter, adminAuth, logRequest,
   }
 });
 
-app.get("/api/admin/audit/archive-status", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.get("/api/admin/audit/archive-status", adminRateLimiter, adminIpAllowlist, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const status = await getAuditArchiveStatus();
     res.json(status);
@@ -3303,10 +2888,138 @@ app.get("/api/admin/audit/archive-status", adminRateLimiter, adminAuth, logReque
   }
 });
 
-const STATIC_CACHE_MAX_AGE_MS =
-  process.env.STATIC_CACHE_MAX_AGE === "0"
-    ? 0
-    : Number(process.env.STATIC_CACHE_MAX_AGE_MS) || (IS_PRODUCTION ? 86_400_000 : 0);
+// --- Enhanced audit lifecycle & query routes ---
+const _auditLifecycle = new AuditLifecycle();
+
+app.get("/api/admin/audit/query", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, async (req, res) => {
+  try {
+    const options = {};
+    if (req.query.startDate || req.query.endDate) {
+      options.dateRange = { start: req.query.startDate, end: req.query.endDate };
+    }
+    if (req.query.userId) options.userId = req.query.userId;
+    if (req.query.action) options.action = req.query.action;
+    if (req.query.workspaceId) options.workspaceId = req.query.workspaceId;
+    if (req.query.level) options.level = req.query.level;
+    if (req.query.cursor) options.cursor = Number(req.query.cursor);
+    if (req.query.limit) options.limit = Number(req.query.limit);
+    const result = await queryAudit(options);
+    res.json(result);
+  } catch (err) {
+    console.error("Admin audit query error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+app.get("/api/admin/audit/export", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, async (req, res) => {
+  try {
+    const options = {};
+    if (req.query.startDate || req.query.endDate) {
+      options.dateRange = { start: req.query.startDate, end: req.query.endDate };
+    }
+    if (req.query.userId) options.userId = req.query.userId;
+    if (req.query.action) options.action = req.query.action;
+    if (req.query.workspaceId) options.workspaceId = req.query.workspaceId;
+    if (req.query.level) options.level = req.query.level;
+    if (req.query.limit) options.limit = Number(req.query.limit);
+    const format = req.query.format === "csv" ? "csv" : "json";
+    const result = await exportAudit(options, format);
+    res.setHeader("Content-Type", result.contentType);
+    res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
+    res.send(result.data);
+  } catch (err) {
+    console.error("Admin audit export error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+app.get("/api/admin/audit/retention", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, async (req, res) => {
+  try {
+    res.json(_auditLifecycle.getRetentionPolicy());
+  } catch (err) {
+    console.error("Admin audit retention get error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+app.put("/api/admin/audit/retention", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, async (req, res) => {
+  try {
+    const { retentionDays, archiveAfterDays, deleteAfterDays, bucketName } = req.body || {};
+    _auditLifecycle.configure({ retentionDays, archiveAfterDays, deleteAfterDays, bucketName });
+    res.json(_auditLifecycle.getRetentionPolicy());
+  } catch (err) {
+    console.error("Admin audit retention update error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+app.post("/api/admin/audit/archive-now", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, async (req, res) => {
+  try {
+    const result = await _auditLifecycle.archiveOldEntries();
+    if (result.error) {
+      return res.status(502).json({ error: result.error, code: "ARCHIVE_FAILED" });
+    }
+    res.json(result);
+  } catch (err) {
+    console.error("Admin audit archive-now error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+// A/B routing admin endpoints
+app.get("/api/routing/stats", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, (req, res) => {
+  res.json({ stats: getRoutingStats(), enabled: AB_ROUTING_ENABLED });
+});
+
+app.get("/api/routing/config", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, (req, res) => {
+  const config = AB_ROUTING_ENABLED
+    ? MODEL_ROUTING_CONFIG.map((e) => ({ backend: e.backend, weight: e.weight }))
+    : [];
+  res.json({ enabled: AB_ROUTING_ENABLED, backends: config, raw: process.env.MODEL_ROUTING || "" });
+});
+
+// --- Phase 45-48: Multi-region & HA routes ---
+
+app.get("/api/regions", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, async (req, res) => {
+// P0.3: When build manifest exists, serve HTML pages with external JS modules
+// instead of the large inline <script> blocks. Falls back to inline JS when no build.
+const HTML_ENTRY_MAP = { "/": "chat", "/index.html": "chat", "/admin.html": "admin", "/eval.html": "eval", "/marketplace.html": "marketplace" };
+app.use((req, res, next) => {
+  if (req.method !== "GET" && req.method !== "HEAD") return next();
+  const entry = HTML_ENTRY_MAP[req.path];
+  if (!entry || !_clientManifest || !_clientManifest[entry]) return next();
+
+  const htmlFile = entry === "chat" ? "index.html" : `${entry}.html`;
+  const filePath = join(__dirname, "client", htmlFile);
+  let html;
+  try {
+    html = readFileSync(filePath, "utf8");
+  } catch {
+    return next();
+  }
+
+app.get("/api/regions/leader", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, async (req, res) => {
+  try {
+    const le = getLeaderElection();
+    const leader = await le.getLeader();
+    res.json({ ok: true, leader });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message);
+  // Replace the last inline <script> block (the page JS) with a module tag.
+  // Find the last occurrence of a bare <script> (no src=) followed by content until </body>.
+  const moduleUrl = `/dist/${_clientManifest[entry]}`;
+  const lastInlineIdx = html.lastIndexOf("\n  <script>\n");
+  const bodyCloseIdx = html.lastIndexOf("</body>");
+  if (lastInlineIdx !== -1 && bodyCloseIdx !== -1 && lastInlineIdx < bodyCloseIdx) {
+    html = html.slice(0, lastInlineIdx) +
+      `\n  <script type="module" src="${moduleUrl}"></script>\n` +
+      html.slice(bodyCloseIdx);
+  }
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store");
+  res.send(html);
+});
 
 app.use(
   express.static(join(__dirname, "client"), {
@@ -3314,7 +3027,7 @@ app.use(
     etag: true,
     setHeaders(res, filePath) {
       const norm = filePath.replace(/\\/g, "/");
-      if (/(^|\/)index\.html$/i.test(norm) || /(^|\/)admin\.html$/i.test(norm) || /(^|\/)eval\.html$/i.test(norm)) {
+      if (/(^|\/)index\.html$/i.test(norm) || /(^|\/)admin\.html$/i.test(norm) || /(^|\/)eval\.html$/i.test(norm) || /(^|\/)observability\.html$/i.test(norm)) {
         res.setHeader("Cache-Control", "no-store");
       }
     },

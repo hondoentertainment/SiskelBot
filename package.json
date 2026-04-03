@@ -8,6 +8,8 @@
     "siskelbot": "./bin/siskelbot.js"
   },
   "scripts": {
+    "build:client": "node scripts/build-client.mjs",
+    "prestart": "node scripts/build-client.mjs",
     "start": "node server.js",
     "cli": "node bin/siskelbot.js",
     "dev": "node --watch server.js",
@@ -23,10 +25,13 @@
     "lint": "node scripts/syntax-check.mjs && eslint .",
     "lint:eslint": "eslint .",
     "test": "node scripts/run-tests.mjs",
-    "test:ci": "node scripts/run-tests.mjs --ci",
+    "test:coverage": "c8 node scripts/run-tests.mjs",
+    "test:ci": "c8 --reporter=text --reporter=lcov node scripts/run-tests.mjs --ci",
     "ci": "npm run lint && npm run test:ci",
     "smoke-test": "node scripts/smoke-test.js",
-    "smoke-test:ci": "node scripts/smoke-test.js --live-only"
+    "smoke-test:ci": "node scripts/smoke-test.js --live-only",
+    "test:e2e": "npx playwright test",
+    "test:e2e:api": "npx playwright test --project=api"
   },
   "engines": {
     "node": ">=18"
@@ -67,8 +72,11 @@
     "electron": "^34.0.0",
     "electron-builder": "^25.1.8",
     "electron-updater": "^6.3.9",
+    "esbuild": "^0.24.2",
     "eslint": "^10.1.0",
     "globals": "^17.4.0",
+    "@playwright/test": "^1.52.0",
+    "c8": "^10.1.3",
     "supertest": "^7.2.2"
   },
   "optionalDependencies": {

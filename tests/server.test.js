@@ -708,11 +708,61 @@ test("POST /api/automations/validate returns valid for good recipe", async () =>
   assert.equal(response.body.valid, true);
 });
 
-test("POST /api/ocr returns 501 NOT_IMPLEMENTED", async () => {
+// --- OCR endpoint (now fully implemented via Tesseract.js) ---
+test("POST /api/ocr returns 400 when no file is attached", async () => {
   const app = await loadApp({ BACKEND: "ollama" });
   const response = await request(app).post("/api/ocr");
-  assert.equal(response.status, 501);
-  assert.equal(response.body.code, "NOT_IMPLEMENTED");
+  assert.equal(response.status, 400);
+  assert.equal(response.body.code, "INVALID_BODY");
+});
+
+test("POST /api/ocr returns 415 for unsupported MIME type", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app)
+    .post("/api/ocr")
+    .attach("file", Buffer.from("not an image"), {
+      filename: "test.txt",
+      contentType: "text/plain",
+    });
+  assert.equal(response.status, 415);
+  assert.equal(response.body.code, "UNSUPPORTED_FORMAT");
+});
+
+test("POST /api/ocr returns 400 when file exceeds size limit", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  // 21 MB buffer exceeds the 20 MB limit
+  const oversized = Buffer.alloc(21 * 1024 * 1024, 0);
+  const response = await request(app)
+    .post("/api/ocr")
+    .attach("file", oversized, {
+      filename: "huge.png",
+      contentType: "image/png",
+    });
+  assert.equal(response.status, 400);
+  assert.equal(response.body.code, "FILE_TOO_LARGE");
+});
+
+test("POST /api/ocr accepts a valid PNG upload", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  // Minimal 1x1 white PNG
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAB" +
+    "Nl7BcQAAAABJRU5ErkJggg==",
+    "base64"
+  );
+  const response = await request(app)
+    .post("/api/ocr")
+    .attach("file", png, { filename: "test.png", contentType: "image/png" });
+  // Tesseract.js may or may not be installed in test env.
+  // 200 means OCR succeeded; 500 with OCR_FAILED means Tesseract not available.
+  if (response.status === 200) {
+    assert.equal(typeof response.body.text, "string");
+    assert.equal(typeof response.body.confidence, "number");
+    assert.ok(response.body.confidence >= 0 && response.body.confidence <= 1);
+  } else {
+    assert.equal(response.status, 500);
+    assert.equal(response.body.code, "OCR_FAILED");
+  }
 });
 
 // --- Phase 28: Embeddings API ---

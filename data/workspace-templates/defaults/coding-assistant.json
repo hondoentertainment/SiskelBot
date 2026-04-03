@@ -1,0 +1,21 @@
+{
+  "id": "coding-assistant",
+  "name": "Coding Assistant",
+  "description": "A coding-focused workspace with system prompts optimized for software development, code review, and debugging.",
+  "defaultSystemPrompt": "You are a senior software engineer assistant. Focus on writing clean, well-tested, and maintainable code. Always consider edge cases, error handling, and performance. When reviewing code, provide specific actionable suggestions. Prefer industry best practices and established patterns.",
+  "memorySnippets": [
+    "Follow the project's existing code style and conventions.",
+    "Always suggest adding tests for new functionality.",
+    "Prefer descriptive variable and function names over comments."
+  ],
+  "toolAllowlist": [
+    "knowledge_search",
+    "web_search",
+    "code_interpreter"
+  ],
+  "quotaSettings": {
+    "tokensPerWorkspace": 500000,
+    "periodDays": 30
+  },
+  "tags": ["coding", "development", "engineering"]
+}

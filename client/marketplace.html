@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>Plugin Marketplace - Siskel Bot</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    .skip-link {
+      position: absolute;
+      left: 1rem;
+      top: -3rem;
+      background: #e2e8f0;
+      color: #0f172a;
+      padding: 0.5rem 0.75rem;
+      border-radius: 6px;
+      z-index: 1001;
+    }
+    .skip-link:focus { top: 1rem; }
+    a:focus-visible, button:focus-visible, select:focus-visible {
+      outline: 2px solid #60a5fa;
+      outline-offset: 2px;
+    }
+    header {
+      padding: 0.75rem 1rem;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    header h1 { margin: 0; font-size: 1.125rem; font-weight: 600; }
+    header a { color: #60a5fa; text-decoration: none; }
+    header a:hover { text-decoration: underline; }
+    main { padding: 1rem; max-width: 1200px; margin: 0 auto; }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .toolbar label { font-size: 0.875rem; color: #94a3b8; }
+    .toolbar select {
+      padding: 0.375rem 0.5rem;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.875rem;
+    }
+    .toolbar input {
+      padding: 0.375rem 0.5rem;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.875rem;
+      min-width: 160px;
+    }
+    .pack-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 1rem;
+    }
+    .pack-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .pack-card:hover {
+      border-color: #475569;
+    }
+    .pack-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+    .pack-name {
+      font-size: 1rem;
+      font-weight: 600;
+      margin: 0;
+      color: #f1f5f9;
+    }
+    .pack-version {
+      font-size: 0.75rem;
+      color: #64748b;
+      background: #0f172a;
+      padding: 0.125rem 0.375rem;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+    .pack-description {
+      font-size: 0.875rem;
+      color: #94a3b8;
+      margin: 0;
+      line-height: 1.4;
+    }
+    .pack-meta {
+      display: flex;
+      gap: 0.75rem;
+      font-size: 0.75rem;
+      color: #64748b;
+      flex-wrap: wrap;
+    }
+    .pack-meta span { display: flex; align-items: center; gap: 0.25rem; }
+    .badge {
+      font-size: 0.6875rem;
+      padding: 0.125rem 0.375rem;
+      border-radius: 4px;
+      background: #334155;
+      color: #94a3b8;
+      text-transform: capitalize;
+    }
+    .badge-installed {
+      background: #064e3b;
+      color: #34d399;
+    }
+    .pack-actions {
+      margin-top: auto;
+      padding-top: 0.5rem;
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .btn {
+      padding: 0.375rem 0.75rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      transition: background 0.15s;
+    }
+    .btn-install {
+      background: #2563eb;
+      color: white;
+    }
+    .btn-install:hover { background: #1d4ed8; }
+    .btn-uninstall {
+      background: #7f1d1d;
+      color: #fecaca;
+    }
+    .btn-uninstall:hover { background: #991b1b; }
+    .btn-details {
+      background: #334155;
+      color: #e2e8f0;
+    }
+    .btn-details:hover { background: #475569; }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: #64748b;
+    }
+    .loading { opacity: 0.7; }
+    .error-msg { color: #f87171; margin-top: 0.5rem; font-size: 0.875rem; }
+    /* Detail modal */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1.5rem;
+      max-width: 500px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .modal h2 { margin: 0 0 0.5rem 0; font-size: 1.125rem; }
+    .modal p { margin: 0.25rem 0; font-size: 0.875rem; color: #94a3b8; }
+    .modal .actions-list { margin: 0.75rem 0; padding: 0; list-style: none; }
+    .modal .actions-list li {
+      padding: 0.375rem 0.5rem;
+      background: #0f172a;
+      border-radius: 4px;
+      margin-bottom: 0.25rem;
+      font-size: 0.8125rem;
+      font-family: monospace;
+    }
+    .modal-close {
+      margin-top: 1rem;
+      padding: 0.375rem 0.75rem;
+      background: #334155;
+      color: #e2e8f0;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .modal-close:hover { background: #475569; }
+  </style>
+</head>
+<body>
+  <a href="#main" class="skip-link">Skip to main content</a>
+  <header>
+    <h1>Plugin Marketplace</h1>
+    <a href="/">Home</a>
+    <a href="/admin">Admin</a>
+  </header>
+  <main id="main">
+    <div class="toolbar">
+      <label for="category-filter">Category:</label>
+      <select id="category-filter">
+        <option value="">All</option>
+      </select>
+      <label for="workspace-input">Workspace ID:</label>
+      <input type="text" id="workspace-input" placeholder="e.g. my-workspace" value="default">
+    </div>
+
+    <div id="pack-grid" class="pack-grid"></div>
+    <div id="empty-state" class="empty-state" style="display:none">
+      <p>No plugin packs available.</p>
+    </div>
+    <p id="error-msg" class="error-msg" style="display:none"></p>
+  </main>
+
+  <div id="detail-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Pack details">
+    <div class="modal">
+      <h2 id="modal-name"></h2>
+      <p id="modal-version"></p>
+      <p id="modal-author"></p>
+      <p id="modal-description"></p>
+      <p id="modal-category"></p>
+      <h3 style="font-size:0.875rem;color:#94a3b8;margin:0.75rem 0 0.25rem 0">Actions</h3>
+      <ul id="modal-actions" class="actions-list"></ul>
+      <button class="modal-close" id="modal-close-btn">Close</button>
+    </div>
+  </div>
+
+  <script>
+    let allPacks = [];
+    let installedIds = new Set();
+
+    function getWorkspace() {
+      return (document.getElementById('workspace-input').value || '').trim() || 'default';
+    }
+
+    function escapeHtml(s) {
+      if (s == null) return '';
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    async function fetchPacks() {
+      const r = await fetch('/api/marketplace');
+      if (!r.ok) throw new Error('Failed to load packs');
+      const data = await r.json();
+      return data.packs || [];
+    }
+
+    async function fetchInstalled(workspaceId) {
+      try {
+        const r = await fetch('/api/workspaces/' + encodeURIComponent(workspaceId) + '/plugins');
+        if (!r.ok) return [];
+        const data = await r.json();
+        return (data.packs || []).map(p => p.id);
+      } catch {
+        return [];
+      }
+    }
+
+    async function installPack(packId) {
+      const workspaceId = getWorkspace();
+      const r = await fetch('/api/marketplace/' + encodeURIComponent(packId) + '/install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ workspaceId })
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        throw new Error(data.error || 'Install failed');
+      }
+      return r.json();
+    }
+
+    async function uninstallPack(packId) {
+      const workspaceId = getWorkspace();
+      const r = await fetch('/api/marketplace/' + encodeURIComponent(packId) + '/install?workspaceId=' + encodeURIComponent(workspaceId), {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        throw new Error(data.error || 'Uninstall failed');
+      }
+      return r.json();
+    }
+
+    function renderPacks(packs) {
+      const grid = document.getElementById('pack-grid');
+      const empty = document.getElementById('empty-state');
+      grid.innerHTML = '';
+
+      if (packs.length === 0) {
+        empty.style.display = 'block';
+        return;
+      }
+      empty.style.display = 'none';
+
+      for (const pack of packs) {
+        const isInstalled = installedIds.has(pack.id);
+        const card = document.createElement('div');
+        card.className = 'pack-card';
+        card.innerHTML = `
+          <div class="pack-header">
+            <h3 class="pack-name">${escapeHtml(pack.name)}</h3>
+            <span class="pack-version">v${escapeHtml(pack.version)}</span>
+          </div>
+          <p class="pack-description">${escapeHtml(pack.description)}</p>
+          <div class="pack-meta">
+            <span>By ${escapeHtml(pack.author)}</span>
+            <span class="badge">${escapeHtml(pack.category)}</span>
+            <span>${pack.actionCount} action${pack.actionCount !== 1 ? 's' : ''}</span>
+            ${isInstalled ? '<span class="badge badge-installed">Installed</span>' : ''}
+          </div>
+          <div class="pack-actions">
+            ${isInstalled
+              ? `<button class="btn btn-uninstall" data-pack="${escapeHtml(pack.id)}" data-action="uninstall">Uninstall</button>`
+              : `<button class="btn btn-install" data-pack="${escapeHtml(pack.id)}" data-action="install">Install</button>`
+            }
+            <button class="btn btn-details" data-pack="${escapeHtml(pack.id)}" data-action="details">Details</button>
+          </div>
+        `;
+        grid.appendChild(card);
+      }
+
+      // Bind button handlers
+      grid.querySelectorAll('button[data-action="install"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          btn.textContent = 'Installing...';
+          try {
+            await installPack(btn.dataset.pack);
+            await load();
+          } catch (e) {
+            showError(e.message);
+            btn.disabled = false;
+            btn.textContent = 'Install';
+          }
+        });
+      });
+
+      grid.querySelectorAll('button[data-action="uninstall"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          btn.textContent = 'Removing...';
+          try {
+            await uninstallPack(btn.dataset.pack);
+            await load();
+          } catch (e) {
+            showError(e.message);
+            btn.disabled = false;
+            btn.textContent = 'Uninstall';
+          }
+        });
+      });
+
+      grid.querySelectorAll('button[data-action="details"]').forEach(btn => {
+        btn.addEventListener('click', () => showDetails(btn.dataset.pack));
+      });
+    }
+
+    async function showDetails(packId) {
+      try {
+        const r = await fetch('/api/marketplace/' + encodeURIComponent(packId));
+        if (!r.ok) throw new Error('Not found');
+        const pack = await r.json();
+        document.getElementById('modal-name').textContent = pack.name;
+        document.getElementById('modal-version').textContent = 'Version: ' + pack.version;
+        document.getElementById('modal-author').textContent = 'Author: ' + pack.author;
+        document.getElementById('modal-description').textContent = pack.description;
+        document.getElementById('modal-category').textContent = 'Category: ' + (pack.category || 'uncategorized');
+        const list = document.getElementById('modal-actions');
+        list.innerHTML = '';
+        (pack.actions || []).forEach(a => {
+          const li = document.createElement('li');
+          li.textContent = a.name + ' (' + a.type + ')';
+          list.appendChild(li);
+        });
+        document.getElementById('detail-modal').classList.add('open');
+      } catch (e) {
+        showError(e.message);
+      }
+    }
+
+    document.getElementById('modal-close-btn').addEventListener('click', () => {
+      document.getElementById('detail-modal').classList.remove('open');
+    });
+    document.getElementById('detail-modal').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) {
+        e.currentTarget.classList.remove('open');
+      }
+    });
+
+    function showError(msg) {
+      const el = document.getElementById('error-msg');
+      el.textContent = msg;
+      el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 5000);
+    }
+
+    function populateCategories(packs) {
+      const select = document.getElementById('category-filter');
+      const cats = [...new Set(packs.map(p => p.category).filter(Boolean))].sort();
+      // Keep "All" option, remove old dynamic options
+      while (select.options.length > 1) select.remove(1);
+      for (const cat of cats) {
+        const opt = document.createElement('option');
+        opt.value = cat;
+        opt.textContent = cat.charAt(0).toUpperCase() + cat.slice(1);
+        select.appendChild(opt);
+      }
+    }
+
+    async function load() {
+      const errEl = document.getElementById('error-msg');
+      errEl.style.display = 'none';
+      try {
+        const workspaceId = getWorkspace();
+        const [packs, installed] = await Promise.all([
+          fetchPacks(),
+          fetchInstalled(workspaceId)
+        ]);
+        allPacks = packs;
+        installedIds = new Set(installed);
+        populateCategories(packs);
+        applyFilter();
+      } catch (e) {
+        showError(e.message);
+      }
+    }
+
+    function applyFilter() {
+      const cat = document.getElementById('category-filter').value;
+      const filtered = cat ? allPacks.filter(p => p.category === cat) : allPacks;
+      renderPacks(filtered);
+    }
+
+    document.getElementById('category-filter').addEventListener('change', applyFilter);
+    document.getElementById('workspace-input').addEventListener('change', load);
+
+    load();
+  </script>
+</body>
+</html>

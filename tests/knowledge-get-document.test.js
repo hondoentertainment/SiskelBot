@@ -22,14 +22,14 @@ test("getDocumentById returns content after indexDocument", async () => {
   const body = "Unique marker xyz-123 for retrieval test.";
   const indexed = await indexDocument({ text: body, workspace: "default", title: "T1" });
   assert.ok(indexed.id);
-  const got = getDocumentById({ id: indexed.id, workspace: "default" });
+  const got = await getDocumentById({ id: indexed.id, workspace: "default" });
   assert.equal(got.error, undefined);
   assert.equal(got.content, body);
   assert.equal(got.title, "T1");
 });
 
-test("getDocumentById not found", () => {
-  const got = getDocumentById({ id: "00000000-0000-4000-8000-000000000000", workspace: "default" });
+test("getDocumentById not found", async () => {
+  const got = await getDocumentById({ id: "00000000-0000-4000-8000-000000000000", workspace: "default" });
   assert.ok(got.error);
   assert.equal(got.code, "NOT_FOUND");
 });
