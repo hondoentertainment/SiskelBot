@@ -407,6 +407,27 @@ Evaluation harness for automated testing of chat and task-planning APIs against 
 
 **staging_trace:** Loads a JSON recording (e.g. exported from staging) and applies the same **golden-trace** criteria as `target: trace` (`expectedToolSequence`, `expectedToolNames`, `expectedToolCalls`) plus optional **agent_activity** criteria. Supported record shapes: `goldenTrace` / `trace` arrays, top-level `agentActivity`, top-level `toolCalls`, or trajectory-style `steps` with `type: tool_call`. See `data/eval-sets/traces/example-staging.json`.
 
+### Phase 97: Staging trace file discovery
+
+- **`GET /api/eval/staging-traces`** (same auth and rate limit as other eval routes) returns `{ traces: [{ name, stagingTraceFile, bytes, mtimeMs }] }` for `.json` files under **`EVAL_STAGING_TRACES_DIR`** or, by default, **`{STORAGE_PATH or data}/eval-sets/traces`**. Use `stagingTraceFile` as the `stagingTraceFile` field in eval cases (paths are relative to `process.cwd()` when the server runs from the project root).
+- **`/eval` UI** lists these files for copy-paste when authoring `staging_trace` cases.
+
+**End-to-end example (offline staging replay):**
+
+1. List available trace files:
+   - `curl -s http://localhost:3000/api/eval/staging-traces | jq .`
+2. Pick a returned `stagingTraceFile` path (for example `data/eval-sets/traces/example-staging.json`).
+3. Add a case to an eval set:
+   - `target: "staging_trace"`
+   - `stagingTraceFile: "data/eval-sets/traces/example-staging.json"`
+   - golden criteria (`expectedToolSequence` / `expectedToolNames` / `expectedToolCalls`) and/or `agent_activity` criteria.
+4. Run eval:
+   - `curl -s -X POST http://localhost:3000/api/eval/run -H "content-type: application/json" -d "{\"evalSetId\":\"example\"}" | jq .`
+5. Confirm:
+   - the case appears in `results`,
+   - `pass: true`,
+   - and failures include explicit `reason` when tool order/activity checks do not match.
+
 For **live agent/swarm** checks, the server returns SSE with an `agent_activity` event; the runner collects tool names and swarm step labels from that payload. Use **`skip: true`** on templates that require a real backend so CI does not call the LLM (see `data/eval-sets/example.json` and `data/eval-sets/agent-outcome-examples.json`). Duplicate a case and set `skip: false` in staging to run manually.
 
 ### API
@@ -414,6 +435,7 @@ For **live agent/swarm** checks, the server returns SSE with an `agent_activity`
 | Endpoint | Method | Description |
 |----------|--------|--------------|
 | `GET /api/eval/sets` | GET | List available eval sets (from `data/eval-sets/*.json` or `data/eval-sets.json`). Returns `{ sets: [{ id, name }] }`. |
+| `GET /api/eval/staging-traces` | GET | Phase 97: List `.json` staging trace files for `stagingTraceFile` paths. Returns `{ traces: [{ name, stagingTraceFile, bytes, mtimeMs }] }`. |
 | `POST /api/eval/run` | POST | Run eval set. Body: `{ evalSetId?: string, evalSet?: object, model?: string }`. Returns `{ results, passed, total, skipped, durationMs }`. Each result may include `skipped`, `reason`, `agentActivityHint` (truncated tools/swarm summary when SSE included `agent_activity`). **`passed`** counts only non-skipped cases that passed. |
 
 ### Criteria
@@ -437,6 +459,7 @@ Eval endpoints accept `ADMIN_API_KEY` or `API_KEY` via `Authorization: Bearer <k
 |----------|-------|
 | `ADMIN_API_KEY` | Protects eval when set; also accepts `API_KEY` |
 | `API_KEY` | Alternative to ADMIN_API_KEY for eval |
+| `EVAL_STAGING_TRACES_DIR` | Phase 97: Optional absolute or cwd-relative directory for staging trace JSON (default: `data/eval-sets/traces` under `STORAGE_PATH` or `./data`) |
 
 ### Data
 
@@ -453,6 +476,41 @@ Eval endpoints accept `ADMIN_API_KEY` or `API_KEY` via `Authorization: Bearer <k
 - **401 AUTH_REQUIRED:** Set `ADMIN_API_KEY` or `API_KEY` and pass via Bearer or header.
 - **429 RATE_LIMITED:** Wait 1 minute before retrying eval run.
 - **502 BACKEND_UNREACHABLE:** Ensure Ollama/vLLM/OpenAI backend is running for eval cases that call chat/task API.
+
+## Marketplace packs (signed manifests)
+
+Workspace-scoped marketplace registry supports install, enable/disable, and policy controls for action names used by `execute_step`.
+
+### Trust and signature
+
+- Configure `MARKETPLACE_TRUSTED_KEY_IDS` (comma-separated key IDs).
+- Install expects `manifest.signature = { algorithm: "sha256", keyId, value }`.
+- `value` is sha256 hex of the manifest JSON excluding `signature` (stable key ordering).
+
+### API
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/workspaces/:id/marketplace/packs` | GET | List installed packs in workspace |
+| `/api/v1/workspaces/:id/marketplace/install` | POST | Install/update a pack from `{ manifest }` |
+| `/api/v1/workspaces/:id/marketplace/packs/:packId/enable` | POST | Enable pack |
+| `/api/v1/workspaces/:id/marketplace/packs/:packId/disable` | POST | Disable pack |
+| `/api/v1/workspaces/:id/marketplace/policy` | GET/PUT | Workspace allow/deny policy (`blockedToolNames`, `allowedToolNames`, `allowedPackIds`) |
+
+### Notes
+
+- Marketplace policy is enforced when `execute_step` runs action names.
+- Audit log records `marketplace_install`, `marketplace_enable`, `marketplace_disable`, and policy updates.
+
+## Agent runtime policy budgets
+
+Optional tool governance limits per run (single-agent and swarm specialists):
+
+- `AGENT_TOOL_CATEGORY_CAPS` (e.g. `read:20,write:5,network:3`)
+- `AGENT_MAX_EXTERNAL_FETCHES`
+- `AGENT_MAX_TOTAL_TOOL_MS`
+
+When hit, run metadata includes `stopReason: "policy_blocked"` and headers may include `X-Agent-Policy-Code`.
 
 ## Phase 31: Internationalization (i18n)
 
@@ -1399,6 +1457,19 @@ SQL reference: `docs/migrations/postgres-storage-kv.sql`.
 
 `GET /config` also exposes: `toolValidationEnabled`, `agentStagnationStop`, `agentRequireCitations`, `agentTrajectoryApi`.
 
+## Phase 88: Agent hooks (`AGENT_HOOKS_MODULE`)
+
+Point `AGENT_HOOKS_MODULE` at an **ESM** file relative to the server working directory (e.g. `./data/agent-hooks.mjs`). Loaded once via dynamic `import`; load failures are logged and hooks are disabled.
+
+| Export | Use |
+|--------|-----|
+| `beforeToolCall(name, args, ctx)` | Optional `async`. Return `{}` to continue. Return `{ block: true, reason }` to skip tool execution (model sees a structured error). Return `{ args: patched }` to replace arguments before `runTool`. Throwing is treated as a block. |
+| `afterToolCall(name, args, result, ctx)` | Optional `async` for audit, redaction side channels, or metrics. Errors are logged only. |
+
+`ctx` is the same object passed to tools (`workspace`, `allowExecution`, `workspaceUserId`, etc.). Implementation: [`lib/agent-hooks.js`](../lib/agent-hooks.js).
+
+**Patterns:** deny-list sensitive tools for certain workspaces; strip or hash PII in `afterToolCall` before logs; emit custom metrics. Keep handlers fast to stay within `AGENT_MAX_WALL_MS` / tool latency caps.
+
 ## Phase 60: Default agent system (personalization)
 
 | Variable | Default | Notes |
@@ -1433,5 +1504,6 @@ Merge order for LLM requests: client messages → **Phase 60** `AGENT_DEFAULT_SY
 | **63** | Chat UI Settings: informational banner when `agentDefaultSystemSet` is true (`AGENT_DEFAULT_SYSTEM` configured). |
 | **64** | Same panel: **Workspace agent instructions** — edit workspace system prompt and memory lines; **Reload** / **Save** → `/api/workspaces/:id/agent-settings`. |
 | **65** | `data/eval-sets/example.json` includes golden-trace cases; CI exercises them via `tests/eval-trace.test.js` (no live LLM). |
+| **CI eval** | `npm run eval:ci` runs `data/eval-sets/ci-offline.json` (trace + staging_trace, including swarm/stopReason shapes). Wired in `.github/workflows/ci.yml`. Optional live: `EVAL_LIVE=1 npm run eval:live`. See `docs/AGENT_SLI.md` for agent SLIs. |
 
 See `docs/AGENT_NEXT_STEPS.md` for a short backlog of further agent improvements.

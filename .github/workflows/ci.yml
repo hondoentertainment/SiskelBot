@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 env:
-  NODE_VERSION: "20"
+  NODE_VERSION: "22"
   PORT: "3000"
 
 concurrency:
@@ -48,10 +48,28 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+      - name: Verify package-lock matches package.json
+        run: npm run verify:package-lock
 
       - name: Run tests
         id: tests
         run: npm run test:ci
+
+      - name: Offline eval (trace + staging_trace)
+        id: eval_ci
+        run: npm run eval:ci
+
+      - name: Eval CI troubleshooting (on failure)
+        if: failure() && steps.eval_ci.outcome == 'failure'
+        run: |
+          {
+            echo "## Offline eval failed"
+            echo "Golden trace or staging_trace mismatch. Run locally:"
+            echo '```bash'
+            echo "npm run eval:ci"
+            echo '```'
+            echo "Each line shows \`caseId\` and \`reason\` (expected vs actual tool order)."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Coverage summary
         if: always() && steps.tests.outcome != 'skipped'
@@ -101,6 +119,8 @@ jobs:
           cache: "npm"
       - name: Install dependencies
         run: npm ci
+      - name: Verify package-lock matches package.json
+        run: npm run verify:package-lock
       - name: Start server
         run: |
           set -e

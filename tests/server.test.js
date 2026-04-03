@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
+import { createHash } from "node:crypto";
 
 async function loadApp(env = {}, opts = {}) {
   const original = { ...process.env };
@@ -21,6 +22,13 @@ async function loadAppKeepEnv(env = {}) {
   const moduleUrl = new URL(`../server.js?test=${Date.now()}${Math.random()}`, import.meta.url);
   const { default: app } = await import(moduleUrl.href);
   return { app, restore: () => { process.env = original; } };
+}
+
+function stableStringify(value) {
+  if (value == null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map((v) => stableStringify(v)).join(",")}]`;
+  const keys = Object.keys(value).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(",")}}`;
 }
 
 test("GET /config returns backend defaults", async () => {
@@ -529,6 +537,56 @@ test("PUT /api/workspaces/:id/agent-settings persists for GET", async () => {
   assert.equal(get.status, 200);
   assert.equal(get.body.defaultSystemPrompt, "Use metric units.");
   assert.deepEqual(get.body.memorySnippets, ["Project: Acme"]);
+});
+
+test("GET /api/workspaces/:id/agent-memory/stats returns usage", async () => {
+  const app = await loadApp({ BACKEND: "ollama", USER_API_KEYS: "" });
+  const created = await request(app).post("/api/workspaces").send({ name: "Mem stats WS" });
+  assert.equal(created.status, 201);
+  const id = created.body.id;
+  await request(app)
+    .put(`/api/workspaces/${id}/agent-settings`)
+    .send({ defaultSystemPrompt: "Use metric units.", memorySnippets: ["one", "two"] });
+  const res = await request(app).get(`/api/workspaces/${id}/agent-memory/stats`);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.workspaceId, id);
+  assert.equal(res.body.memory.snippets, 2);
+});
+
+test("marketplace install/list/policy routes work for workspace", async () => {
+  const { app, restore } = await loadAppKeepEnv({
+    BACKEND: "ollama",
+    USER_API_KEYS: "",
+    MARKETPLACE_TRUSTED_KEY_IDS: "trusted-key",
+  });
+  try {
+    const created = await request(app).post("/api/workspaces").send({ name: "Market WS" });
+    assert.equal(created.status, 201);
+    const id = created.body.id;
+    const unsigned = { id: "pack.demo", version: "1.0.0", tools: [{ name: "build" }] };
+    const stable = stableStringify(unsigned);
+    const digest = createHash("sha256").update(stable, "utf8").digest("hex");
+    const manifest = {
+      ...unsigned,
+      signature: { algorithm: "sha256", keyId: "trusted-key", value: digest },
+    };
+    const install = await request(app)
+      .post(`/api/workspaces/${id}/marketplace/install`)
+      .send({ manifest });
+    assert.equal(install.status, 201);
+    const list = await request(app).get(`/api/workspaces/${id}/marketplace/packs`);
+    assert.equal(list.status, 200);
+    assert.ok(Array.isArray(list.body.packs));
+    const policyPut = await request(app)
+      .put(`/api/workspaces/${id}/marketplace/policy`)
+      .send({ blockedToolNames: ["deploy"] });
+    assert.equal(policyPut.status, 200);
+    const policyGet = await request(app).get(`/api/workspaces/${id}/marketplace/policy`);
+    assert.equal(policyGet.status, 200);
+    assert.ok(policyGet.body.policy.blockedToolNames.includes("deploy"));
+  } finally {
+    restore();
+  }
 });
 
 // --- Phase 10: Storage CRUD ---
@@ -1569,6 +1627,17 @@ test("GET /api/eval/sets returns sets from data/eval-sets", async () => {
   const example = sets.find((s) => s.id === "example");
   assert.ok(example, "example eval set should be loaded from data/eval-sets/example.json");
   assert.equal(example.name, "Example Eval Set");
+});
+
+test("GET /api/eval/staging-traces returns traces including shipped example", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).get("/api/eval/staging-traces");
+  assert.equal(response.status, 200);
+  assert.ok(Array.isArray(response.body.traces));
+  assert.ok(
+    response.body.traces.some((t) => t.name === "example-staging.json"),
+    "example-staging.json should be listed from data/eval-sets/traces",
+  );
 });
 
 test("GET /api/eval/sets returns 401 when ADMIN_API_KEY set and no key", async () => {

@@ -74,6 +74,7 @@ import {
 import openApiSpec from "./lib/openapi-spec.js";
 import { runEvalSet } from "./lib/eval-runner.js";
 import { listEvalSets, loadEvalSet } from "./lib/storage-eval.js";
+import { listStagingTraceSummaries } from "./lib/eval-staging-traces.js";
 import { createToken, attachToServer, getOnlineUsers, closeServer } from "./lib/realtime.js";
 import { sanitizeForLog } from "./lib/log-sanitizer.js";
 import { execute as circuitExecute } from "./lib/circuit-breaker.js";
@@ -95,6 +96,7 @@ import {
   recordChatRequest,
   recordTokensUsed,
   isEnabled as metricsEnabled,
+  getAgentRunSummarySnapshot,
 } from "./lib/metrics.js";
 import { fetchWithTimeoutAndRetry } from "./lib/backend-fetch.js";
 import { toolValidationEnabled } from "./lib/tool-validation.js";
@@ -106,7 +108,17 @@ import {
   saveWorkspaceAgentSettings,
   getWorkspaceAgentAccess,
   canEditWorkspaceAgentSettings,
+  getWorkspaceMemoryStats,
 } from "./lib/workspace-agent-settings.js";
+import {
+  installMarketplacePack,
+  listInstalledMarketplacePacks,
+  setMarketplacePackEnabled,
+  getWorkspaceMarketplacePolicy,
+  saveWorkspaceMarketplacePolicy,
+  listInstalledMarketplaceSummary,
+  getTrustedMarketplaceKeyIds,
+} from "./lib/marketplace-registry.js";
 import compression from "compression";
 import { otelHttpEnrichmentMiddleware } from "./lib/otel-context.js";
 import { exportWorkspaceBundle, deleteWorkspaceForUser } from "./lib/workspace-lifecycle.js";
@@ -129,7 +141,8 @@ import { idempotencyLookup, idempotencyStore } from "./lib/idempotency.js";
 import { archiveExecutionAuditToS3, getAuditArchiveStatus } from "./lib/audit-s3-archive.js";
 import { fetchTextFromAllowedUrl } from "./lib/knowledge-url-fetch.js";
 import { pipeLlmChatStreamToSse } from "./lib/llm-stream-sse.js";
-import { runAgentLoop } from "./lib/agent-loop.js";
+import { runAgentLoop, resumeAgentLoopFromHitlToken } from "./lib/agent-loop.js";
+import { takeHitlState } from "./lib/agent-hitl-store.js";
 import {
   recordTrace,
   listTraces as listRecordedTraces,
@@ -253,6 +266,8 @@ const AB_ROUTING_ENABLED = MODEL_ROUTING_CONFIG.length > 0;
 
 const BACKEND = getBackend();
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
+/** Embedded HTTP server (Electron); session cookies must not be Secure on http://127.0.0.1 */
+const IS_ELECTRON_DESKTOP = process.env.ELECTRON_DESKTOP === "1";
 // Phase 51: Chunk final agent SSE for smoother client rendering (optional)
 const STREAM_AGENT_FINAL = process.env.STREAM_AGENT_FINAL === "1";
 const AGENT_STREAM_CHUNK_SIZE = Math.max(64, Number(process.env.AGENT_STREAM_CHUNK_SIZE) || 320);
@@ -389,7 +404,9 @@ app.use(cors(corsOpts));
 const ENABLE_COMPRESSION = process.env.ENABLE_COMPRESSION !== "0" && (IS_PRODUCTION || process.env.ENABLE_COMPRESSION === "1");
 if (ENABLE_COMPRESSION) {
   app.use(
-    compression({ filter: (req, res) => !req.path?.startsWith("/v1/chat/completions") && !req.path?.startsWith("/v1/agent/swarm") })
+    compression({
+      filter: (req, _res) => !req.path?.startsWith("/v1/chat/completions") && !req.path?.startsWith("/v1/agent/swarm"),
+    })
   );
 }
 app.use(express.json());
@@ -430,7 +447,7 @@ const ENABLE_CSP = process.env.ENABLE_CSP === "1" && IS_PRODUCTION;
 if (!DISABLE_SECURITY_HEADERS) {
   const helmetOpts = {
     contentSecurityPolicy: false,
-    strictTransportSecurity: IS_PRODUCTION ? { maxAge: 31536000, includeSubDomains: true } : false,
+    strictTransportSecurity: IS_PRODUCTION && !IS_ELECTRON_DESKTOP ? { maxAge: 31536000, includeSubDomains: true } : false,
   };
   if (ENABLE_CSP) {
     helmetOpts.contentSecurityPolicy = {
@@ -464,9 +481,9 @@ if (SESSION_SECRET) {
       resave: false,
       saveUninitialized: false,
       cookie: {
-        secure: IS_PRODUCTION,
+        secure: IS_PRODUCTION && !IS_ELECTRON_DESKTOP,
         httpOnly: true,
-        sameSite: IS_PRODUCTION ? "lax" : "lax",
+        sameSite: "lax",
         maxAge: 7 * 24 * 60 * 60 * 1000,
       },
     })
@@ -710,6 +727,7 @@ const ALLOW_RECIPE_STEP_EXECUTION = process.env.ALLOW_RECIPE_STEP_EXECUTION === 
 const ENABLE_AGENT_SWARM = process.env.ENABLE_AGENT_SWARM === "1";
 
 // --- Task plan helpers (used by routes/chat.js) ---
+
 const TASK_PLAN_SYSTEM_PROMPT = `You are a task planning assistant. Given the user's messages, produce a structured task plan as valid JSON inside a fenced code block.
 
 Output format: a single JSON object in a \`\`\`json ... \`\`\` code block, conforming to this schema:
@@ -816,7 +834,12 @@ function requireVercelToken(req, res, next) { if (!VERCEL_TOKEN) return apiError
 
 // --- Monitoring ---
 const STALE_PR_DAYS = 7;
-let monitoringState = { lastCheck: null, checks: { github: null, vercel: null }, summary: "idle", alerts: [] };
+let monitoringState = {
+  lastCheck: null,
+  checks: { github: null, vercel: null },
+  summary: "idle",
+  alerts: [],
+};
 async function runMonitoringChecks() {
   const alerts = []; const checks = { github: null, vercel: null };
   if (GITHUB_TOKEN && MONITORING_REPO) {
@@ -853,7 +876,9 @@ async function runMonitoringChecks() {
 }
 if (isMonitoringEnabled()) {
   runMonitoringChecks().catch((e) => console.warn("[monitoring] Initial check failed:", e.message));
-  setInterval(() => { runMonitoringChecks().catch((e) => console.warn("[monitoring] Scheduled check failed:", e.message)); }, MONITORING_INTERVAL_MS);
+  setInterval(() => {
+    runMonitoringChecks().catch((e) => console.warn("[monitoring] Scheduled check failed:", e.message));
+  }, MONITORING_INTERVAL_MS);
 }
 
 // --- Rate limiters shared by route modules ---
@@ -867,21 +892,6 @@ const webhooksRateLimiter = rateLimit({ windowMs: 60_000, max: 60, standardHeade
 const webhooksHandlers = [webhooksRateLimiter, storageRateLimiter, userAuth, logRequest];
 const executeStepRateLimiter = rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false, handler: (req, res) => { apiError(res, 429, "RATE_LIMITED", "Too many execute requests", "Wait before retrying."); } });
 const evalRateLimiter = rateLimit({ windowMs: 60_000, max: 5, standardHeaders: true, legacyHeaders: false, handler: (req, res) => { apiError(res, 429, "RATE_LIMITED", "Too many eval runs", "Limit: 5 runs per minute."); } });
-
-// --- Automation recipe validation ---
-function validateAutomationRecipe(recipe) {
-  const errors = [];
-  if (!recipe || typeof recipe !== "object") return { valid: false, errors: ["Recipe must be an object"] };
-  if (typeof recipe.name !== "string" || !recipe.name.trim()) errors.push("name: required non-empty string");
-  else if (recipe.name.length > 128) errors.push("name: max 128 chars");
-  if (recipe.trigger !== undefined && typeof recipe.trigger !== "string") errors.push("trigger: must be string");
-  if (!Array.isArray(recipe.steps)) errors.push("steps: required array");
-  else recipe.steps.forEach((s, i) => { if (!s || typeof s !== "object") errors.push(`steps[${i}]: must be object`); else if (!s.action || typeof s.action !== "string" || !String(s.action).trim()) errors.push(`steps[${i}]: action required`); if (s?.payload !== undefined && (s.payload === null || Array.isArray(s.payload) || typeof s.payload !== "object")) errors.push(`steps[${i}]: payload must be object`); });
-  if (recipe.inputs !== undefined && (recipe.inputs === null || Array.isArray(recipe.inputs) || typeof recipe.inputs !== "object")) errors.push("inputs: must be object");
-  if (recipe.outputs !== undefined && (recipe.outputs === null || Array.isArray(recipe.outputs) || typeof recipe.outputs !== "object")) errors.push("outputs: must be object");
-  try { if (new TextEncoder().encode(JSON.stringify(recipe)).length > 65536) errors.push("Recipe exceeds max size"); } catch (_) { errors.push("Recipe serialization failed"); }
-  return { valid: errors.length === 0, errors };
-}
 
 apiRoute("get", "/github/repos",
   integrationRateLimiter,
@@ -988,14 +998,6 @@ apiRoute("get", "/github/issues/:owner/:repo",
   }
 );
 
-// Vercel proxy - requires VERCEL_TOKEN; 503 with hint if missing
-function requireVercelToken(req, res, next) {
-  if (!VERCEL_TOKEN) {
-    return apiError(res, 503, "INTEGRATION_UNAVAILABLE", "Vercel integration unavailable", "Set VERCEL_TOKEN in server environment variables.");
-  }
-  next();
-}
-
 apiRoute("get", "/vercel/deployments",
   integrationRateLimiter,
   requireVercelToken,
@@ -1026,8 +1028,6 @@ apiRoute("get", "/vercel/deployments",
 );
 
 // --- Phase 5: Personal Knowledge System ---
-const KNOWLEDGE_MAX_DOC_BYTES = Number(process.env.KNOWLEDGE_MAX_DOC_BYTES) || 1024 * 1024; // 1MB
-const sanitizeWorkspace = storage.sanitizeWorkspace;
 
 // Phase 28: POST /api/embeddings - embed text(s) via OpenAI text-embedding-3-small
 apiRoute("post", "/embeddings", embeddingsRateLimiter, chatAuth, requireScope("embed"), logRequest, async (req, res) => {
@@ -1194,14 +1194,6 @@ apiRoute("post", "/knowledge/fetch", knowledgeIndexRateLimiter, requireScope("wr
     console.error("Knowledge fetch error:", err.message);
     return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RAG_PIPELINE_V2.md.");
   }
-});
-
-// --- Phase 10: Rate limiter for storage/workspace routes ---
-const storageRateLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 120,
-  standardHeaders: true,
-  legacyHeaders: false,
 });
 
 // --- Phase 14: Workspaces API ---
@@ -1378,6 +1370,8 @@ apiRoute("get", "/workspaces/:id/agent-settings", storageRateLimiter, userAuth, 
       defaultSystemPrompt: settings.defaultSystemPrompt,
       memorySnippets: settings.memorySnippets,
       allowedTools: settings.allowedTools || [],
+      agentPolicy: settings.agentPolicy || {},
+      memoryStats: getWorkspaceMemoryStats(settings),
     });
   } catch (err) {
     console.error("Agent settings GET error:", err.message);
@@ -1415,9 +1409,155 @@ apiRoute(
         defaultSystemPrompt: saved.defaultSystemPrompt,
         memorySnippets: saved.memorySnippets,
         allowedTools: saved.allowedTools || [],
+        agentPolicy: saved.agentPolicy || {},
+        memoryStats: getWorkspaceMemoryStats(saved),
       });
     } catch (err) {
       console.error("Agent settings PUT error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  }
+);
+
+apiRoute("get", "/workspaces/:id/agent-memory/stats", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+  try {
+    const workspaceId = sanitizeWorkspace(req.params.id);
+    const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
+    if (!access.allowed) {
+      return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+    }
+    const storageUserId = await resolveStorageUserId(req.userId, workspaceId);
+    const settings = await loadWorkspaceAgentSettings(storageUserId, workspaceId);
+    res.json({ workspaceId, memory: getWorkspaceMemoryStats(settings) });
+  } catch (err) {
+    console.error("Agent memory stats GET error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+// Marketplace packs and workspace policy
+apiRoute("get", "/workspaces/:id/marketplace/packs", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+  try {
+    const workspaceId = sanitizeWorkspace(req.params.id);
+    const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
+    if (!access.allowed) {
+      return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+    }
+    const packs = await listInstalledMarketplacePacks(workspaceId);
+    res.json({ workspaceId, packs });
+  } catch (err) {
+    console.error("Marketplace packs list error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute(
+  "post",
+  "/workspaces/:id/marketplace/install",
+  storageRateLimiter,
+  userAuth,
+  requireScope("write"),
+  logRequest,
+  async (req, res) => {
+    try {
+      const workspaceId = sanitizeWorkspace(req.params.id);
+      const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
+      if (!access.allowed) {
+        return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+      }
+      if (!canEditWorkspaceAgentSettings(access.role)) {
+        return apiError(res, 403, "FORBIDDEN", "Viewers cannot install marketplace packs", null);
+      }
+      const out = await installMarketplacePack(workspaceId, req.body?.manifest);
+      if (!out.ok) {
+        const status = out.code === "INVALID_MANIFEST" ? 400 : 403;
+        return res.status(status).json({ error: out.error || "Install failed", code: out.code, details: out.errors || [] });
+      }
+      appendAuditLog({
+        action: "marketplace_install",
+        payload: { workspaceId, packId: out.pack.id, version: out.pack.version },
+        ok: true,
+      });
+      res.status(201).json({ workspaceId, pack: out.pack });
+    } catch (err) {
+      console.error("Marketplace install error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  }
+);
+
+apiRoute(
+  "post",
+  "/workspaces/:id/marketplace/packs/:packId/:op(enable|disable)",
+  storageRateLimiter,
+  userAuth,
+  requireScope("write"),
+  logRequest,
+  async (req, res) => {
+    try {
+      const workspaceId = sanitizeWorkspace(req.params.id);
+      const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
+      if (!access.allowed) {
+        return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+      }
+      if (!canEditWorkspaceAgentSettings(access.role)) {
+        return apiError(res, 403, "FORBIDDEN", "Viewers cannot modify marketplace packs", null);
+      }
+      const enable = String(req.params.op) === "enable";
+      const out = await setMarketplacePackEnabled(workspaceId, req.params.packId, enable);
+      if (!out.ok) {
+        return res.status(out.code === "NOT_FOUND" ? 404 : 400).json({ error: out.error || "Operation failed", code: out.code });
+      }
+      appendAuditLog({
+        action: enable ? "marketplace_enable" : "marketplace_disable",
+        payload: { workspaceId, packId: out.pack.id, version: out.pack.version },
+        ok: true,
+      });
+      res.json({ workspaceId, pack: out.pack });
+    } catch (err) {
+      console.error("Marketplace enable/disable error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  }
+);
+
+apiRoute("get", "/workspaces/:id/marketplace/policy", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+  try {
+    const workspaceId = sanitizeWorkspace(req.params.id);
+    const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
+    if (!access.allowed) return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+    const policy = await getWorkspaceMarketplacePolicy(workspaceId);
+    res.json({ workspaceId, policy });
+  } catch (err) {
+    console.error("Marketplace policy GET error:", err.message);
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+  }
+});
+
+apiRoute(
+  "put",
+  "/workspaces/:id/marketplace/policy",
+  storageRateLimiter,
+  userAuth,
+  requireScope("write"),
+  logRequest,
+  async (req, res) => {
+    try {
+      const workspaceId = sanitizeWorkspace(req.params.id);
+      const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
+      if (!access.allowed) return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+      if (!canEditWorkspaceAgentSettings(access.role)) {
+        return apiError(res, 403, "FORBIDDEN", "Viewers cannot edit marketplace policy", null);
+      }
+      const policy = await saveWorkspaceMarketplacePolicy(workspaceId, req.body || {});
+      appendAuditLog({
+        action: "marketplace_policy_update",
+        payload: { workspaceId, keys: Object.keys(policy) },
+        ok: true,
+      });
+      res.json({ workspaceId, policy });
+    } catch (err) {
+      console.error("Marketplace policy PUT error:", err.message);
       return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
     }
   }
@@ -1453,7 +1593,6 @@ apiRoute("post", "/workspaces/:id/invite", storageRateLimiter, userAuth, require
     if (!access.allowed || (access.role !== "admin" && access.role !== "member")) {
       return apiError(res, 403, "FORBIDDEN", "Admin or member role required to create invites", null);
     }
-    const ownerId = access.ownerId || req.userId;
     const opts = {};
     if (req.body?.expiresInHours != null) opts.expiresInHours = Number(req.body.expiresInHours);
     if (req.body?.maxUses != null) opts.maxUses = Number(req.body.maxUses);
@@ -2061,12 +2200,6 @@ apiRoute("post", "/automations/validate",
 );
 
 // --- Phase 17: Plugins & Extensions ---
-const pluginsActionsRateLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 60,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
 apiRoute("get", "/plugins/actions", pluginsActionsRateLimiter, userAuth, logRequest, (req, res) => {
   try {
     const actions = getRegisteredActions();
@@ -2105,13 +2238,6 @@ apiRoute("post", "/plugins/execute", pluginsActionsRateLimiter, userAuth, logReq
 });
 
 // --- Phase 49: Plugin Marketplace API ---
-const marketplaceRateLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 60,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
 apiRoute("get", "/marketplace", marketplaceRateLimiter, logRequest, (req, res) => {
   try {
     const packs = marketplaceListAvailable();
@@ -2189,14 +2315,6 @@ apiRoute("get", "/workspaces/:id/plugins", marketplaceRateLimiter, userAuth, log
 });
 
 // --- Phase 22: Event Webhooks & Notifications ---
-const webhooksRateLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 60,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-const webhooksHandlers = [webhooksRateLimiter, storageRateLimiter, userAuth, logRequest];
-
 apiRoute("get", "/webhooks", ...webhooksHandlers, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
@@ -2304,16 +2422,6 @@ apiRoute("patch", "/notifications/:id", ...webhooksHandlers, async (req, res) =>
 });
 
 // --- Phase 9: Recipe Execution & Automation Hooks ---
-const executeStepRateLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (req, res) => {
-    apiError(res, 429, "RATE_LIMITED", "Too many execute requests", "Wait before retrying.");
-  },
-});
-
 apiRoute("post", "/execute-step",
   executeStepRateLimiter,
   apiKeyAuth,
@@ -2411,13 +2519,6 @@ const docUpload = multer({
     if (ALLOWED_DOC_TYPES.includes(file.mimetype)) cb(null, true);
     else cb(new Error(`Invalid document type. Allowed: PDF, plain text`), false);
   },
-});
-
-const multimodalRateLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
 });
 
 function sanitizeText(str, maxLen = 50_000) {
@@ -2628,7 +2729,7 @@ app.get("/api/docs", (req, res) => {
 // =====================================================================
 const routeDeps = {
   apiRoute, apiError, deprecationApi,
-  userAuth, adminAuth, chatAuth, apiKeyAuth, evalAuth, backupAdminAuth,
+  userAuth, adminAuth, adminIpAllowlist, chatAuth, apiKeyAuth, evalAuth, backupAdminAuth,
   requireScope, logRequest,
   chatRateLimiter, perKeyChatRateLimiter, integrationRateLimiter,
   knowledgeIndexRateLimiter, embeddingsRateLimiter,
@@ -2663,7 +2764,7 @@ const routeDeps = {
   intersectClientToolsWithAllowlist, getToolsSchema,
   getSwarmSelectableSpecialistNames, getSwarmSpecialistsAllowlistNames,
   intersectSwarmSpecialistsWithAllowlist,
-  runAgentLoop, pipeLlmChatStreamToSse,
+  runAgentLoop, resumeAgentLoopFromHitlToken, takeHitlState, pipeLlmChatStreamToSse,
   selectBackend, logRouting,
   TASK_PLAN_SYSTEM_PROMPT, extractTaskJsonFromResponse, validateTaskPlan,
   emitEvent, listWebhooks, addWebhook, removeWebhook, validateWebhookUrl,
@@ -2694,17 +2795,18 @@ const routeDeps = {
   executeStep, appendAuditLog, validateAutomationRecipe,
   trajectoryApiEnabled, loadTrajectory, listTrajectories,
   listRecordedTraces, getRecordedTrace, recordTrace, replayTrace, deleteRecordedTrace,
-  autoRecordEnabled, listEvalSets, loadEvalSet, runEvalSet,
+  autoRecordEnabled, listEvalSets, loadEvalSet, runEvalSet, listStagingTraceSummaries,
   reportError,
   listAllUsers, listAllWorkspaces, getRecentAuditLog,
   listKeysForAdmin, addKey, revokeKey,
   archiveExecutionAuditToS3, getAuditArchiveStatus,
   AuditLifecycle, queryAudit, exportAudit,
   getRoutingStats, getRegionHealth, getLeaderElection, getReplicationManager, internalAuth,
-  getMetricsSummary,
+  getMetricsSummary, getAgentRunSummarySnapshot,
   obsGetLatencyPercentiles, obsGetErrorRates, obsGetAgentStats, obsGetTokenUsageByWorkspace,
   toolValidationEnabled, stagnationDetectionEnabled,
   defaultAgentSystemConfigured, getAgentToolsAllowlistNames,
+  getTrustedMarketplaceKeyIds, listInstalledMarketplaceSummary,
   listRbacRoles, createCustomRole, updateCustomRole, deleteCustomRole, assignRole,
   getAvailableRegions, setDataResidency, getDataResidency,
   generateComplianceReport, getRetentionPolicy, setRetentionPolicy, scanTextForPII,
@@ -2759,228 +2861,6 @@ try {
   console.log("[static] No client build manifest found — serving inline JS fallback.");
 }
 
-app.get("/api/admin/summary", adminRateLimiter, adminIpAllowlist, adminAuthOrQuery, requireScope("admin"), logRequest, async (req, res) => {
-  try {
-    const users = await listAllUsers();
-    const workspaces = await listAllWorkspaces();
-    const usageSummary = await getSummary(7);
-    const auditLog = getRecentAuditLog(50);
-    const quotaOverrides = await getQuotaOverrides();
-
-    // Enrich workspaces with quota and usage
-    const workspacesWithQuota = await Promise.all(
-      workspaces.map(async ({ userId, workspace: ws }) => {
-        const wsId = ws?.id || "default";
-        const quota = await getWorkspaceQuota(wsId, null);
-        const used = isQuotaConfigured() ? await getWorkspaceTokensUsed(wsId) : 0;
-        return {
-          userId,
-          workspaceId: wsId,
-          workspaceName: ws?.name || wsId,
-          quota,
-          tokensUsed: used,
-          override: quotaOverrides[wsId],
-        };
-      })
-    );
-
-    const [health] = await Promise.all([runHealthChecks()]);
-    const integrations = {
-      github: Boolean(process.env.GITHUB_TOKEN),
-      vercel: Boolean(process.env.VERCEL_TOKEN),
-    };
-
-    const apiKeys = listKeysForAdmin();
-
-    res.json({
-      users,
-      workspaces: workspacesWithQuota,
-      usage: usageSummary,
-      auditLog,
-      quotaOverrides,
-      apiKeys,
-      system: {
-        health,
-        integrations,
-        quotaConfigured: isQuotaConfigured(),
-        scheduleEnabled: process.env.ENABLE_SCHEDULED_RECIPES === "1",
-      },
-    });
-  } catch (err) {
-    console.error("Admin summary error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-app.post("/api/admin/quotas/override", adminRateLimiter, adminIpAllowlist, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
-  try {
-    const { workspace, limit } = req.body || {};
-    const ws = sanitizeWorkspace(workspace);
-    const result = await setWorkspaceQuotaOverride(ws, limit == null ? null : Number(limit));
-    if (!result.ok) {
-      return res.status(400).json({ error: result.error, code: "INVALID_INPUT" });
-    }
-    res.json(result);
-  } catch (err) {
-    console.error("Quota override error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-// Phase 30: Admin API key management
-app.get("/api/admin/keys", adminRateLimiter, adminIpAllowlist, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
-  try {
-    const keys = listKeysForAdmin();
-    res.json({ keys });
-  } catch (err) {
-    console.error("Admin keys list error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-app.post("/api/admin/keys", adminRateLimiter, adminIpAllowlist, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
-  try {
-    const { userId, scopes } = req.body || {};
-    const result = await addKey({ userId, scopes: Array.isArray(scopes) ? scopes : undefined });
-    if (!result.ok) {
-      return res.status(400).json({ error: result.error, code: "INVALID_INPUT" });
-    }
-    res.status(201).json(result);
-  } catch (err) {
-    console.error("Admin keys add error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-app.delete("/api/admin/keys/:id", adminRateLimiter, adminIpAllowlist, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
-  try {
-    const result = await revokeKey(req.params.id);
-    if (!result.ok) {
-      return res.status(404).json({ error: result.error || "Key not found", code: "NOT_FOUND" });
-    }
-    res.status(204).send();
-  } catch (err) {
-    console.error("Admin keys revoke error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-app.post("/api/admin/audit/archive-s3", adminRateLimiter, adminIpAllowlist, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
-  try {
-    const out = await archiveExecutionAuditToS3();
-    if (!out.ok) {
-      return res.status(out.error?.includes("not set") ? 503 : 502).json({ error: out.error, code: "AUDIT_ARCHIVE_FAILED" });
-    }
-    res.json({ ok: true, key: out.key });
-  } catch (err) {
-    console.error("Admin audit archive error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-app.get("/api/admin/audit/archive-status", adminRateLimiter, adminIpAllowlist, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
-  try {
-    const status = await getAuditArchiveStatus();
-    res.json(status);
-  } catch (err) {
-    console.error("Admin audit archive-status error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-// --- Enhanced audit lifecycle & query routes ---
-const _auditLifecycle = new AuditLifecycle();
-
-app.get("/api/admin/audit/query", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, async (req, res) => {
-  try {
-    const options = {};
-    if (req.query.startDate || req.query.endDate) {
-      options.dateRange = { start: req.query.startDate, end: req.query.endDate };
-    }
-    if (req.query.userId) options.userId = req.query.userId;
-    if (req.query.action) options.action = req.query.action;
-    if (req.query.workspaceId) options.workspaceId = req.query.workspaceId;
-    if (req.query.level) options.level = req.query.level;
-    if (req.query.cursor) options.cursor = Number(req.query.cursor);
-    if (req.query.limit) options.limit = Number(req.query.limit);
-    const result = await queryAudit(options);
-    res.json(result);
-  } catch (err) {
-    console.error("Admin audit query error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-app.get("/api/admin/audit/export", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, async (req, res) => {
-  try {
-    const options = {};
-    if (req.query.startDate || req.query.endDate) {
-      options.dateRange = { start: req.query.startDate, end: req.query.endDate };
-    }
-    if (req.query.userId) options.userId = req.query.userId;
-    if (req.query.action) options.action = req.query.action;
-    if (req.query.workspaceId) options.workspaceId = req.query.workspaceId;
-    if (req.query.level) options.level = req.query.level;
-    if (req.query.limit) options.limit = Number(req.query.limit);
-    const format = req.query.format === "csv" ? "csv" : "json";
-    const result = await exportAudit(options, format);
-    res.setHeader("Content-Type", result.contentType);
-    res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
-    res.send(result.data);
-  } catch (err) {
-    console.error("Admin audit export error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-app.get("/api/admin/audit/retention", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, async (req, res) => {
-  try {
-    res.json(_auditLifecycle.getRetentionPolicy());
-  } catch (err) {
-    console.error("Admin audit retention get error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-app.put("/api/admin/audit/retention", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, async (req, res) => {
-  try {
-    const { retentionDays, archiveAfterDays, deleteAfterDays, bucketName } = req.body || {};
-    _auditLifecycle.configure({ retentionDays, archiveAfterDays, deleteAfterDays, bucketName });
-    res.json(_auditLifecycle.getRetentionPolicy());
-  } catch (err) {
-    console.error("Admin audit retention update error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-app.post("/api/admin/audit/archive-now", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, async (req, res) => {
-  try {
-    const result = await _auditLifecycle.archiveOldEntries();
-    if (result.error) {
-      return res.status(502).json({ error: result.error, code: "ARCHIVE_FAILED" });
-    }
-    res.json(result);
-  } catch (err) {
-    console.error("Admin audit archive-now error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-// A/B routing admin endpoints
-app.get("/api/routing/stats", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, (req, res) => {
-  res.json({ stats: getRoutingStats(), enabled: AB_ROUTING_ENABLED });
-});
-
-app.get("/api/routing/config", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, (req, res) => {
-  const config = AB_ROUTING_ENABLED
-    ? MODEL_ROUTING_CONFIG.map((e) => ({ backend: e.backend, weight: e.weight }))
-    : [];
-  res.json({ enabled: AB_ROUTING_ENABLED, backends: config, raw: process.env.MODEL_ROUTING || "" });
-});
-
-// --- Phase 45-48: Multi-region & HA routes ---
-
-app.get("/api/regions", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, async (req, res) => {
 // P0.3: When build manifest exists, serve HTML pages with external JS modules
 // instead of the large inline <script> blocks. Falls back to inline JS when no build.
 const HTML_ENTRY_MAP = { "/": "chat", "/index.html": "chat", "/admin.html": "admin", "/eval.html": "eval", "/marketplace.html": "marketplace" };
@@ -2998,15 +2878,6 @@ app.use((req, res, next) => {
     return next();
   }
 
-app.get("/api/regions/leader", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, async (req, res) => {
-  try {
-    const le = getLeaderElection();
-    const leader = await le.getLeader();
-    res.json({ ok: true, leader });
-  } catch (err) {
-    return apiError(res, 500, "INTERNAL_ERROR", err.message);
-  // Replace the last inline <script> block (the page JS) with a module tag.
-  // Find the last occurrence of a bare <script> (no src=) followed by content until </body>.
   const moduleUrl = `/dist/${_clientManifest[entry]}`;
   const lastInlineIdx = html.lastIndexOf("\n  <script>\n");
   const bodyCloseIdx = html.lastIndexOf("</body>");

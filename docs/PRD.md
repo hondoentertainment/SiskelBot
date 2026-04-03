@@ -221,6 +221,7 @@ Enable developers and teams to build AI-powered workflows with:
 | 94 | Eval harness schema docs — `docs/RUNBOOK.md` Phase 32 documents agent activity fields, skip cases, and API response shape (`skipped`, per-result `agentActivityHint`) |
 | 95 | Eval example sets — skippable live-agent templates in `data/eval-sets/example.json` and `data/eval-sets/agent-outcome-examples.json` for staging/manual runs |
 | 96 | Eval UI — `/eval` shows skipped cases distinctly; optional **Activity** column from `agentActivityHint`; summary uses `passed` (non-skipped passes) and `skipped` count |
+| 97 | Staging trace discovery — `GET /api/eval/staging-traces` lists `.json` files under `EVAL_STAGING_TRACES_DIR` or default `data/eval-sets/traces`; `/eval` UI surfaces `stagingTraceFile` paths for `target: staging_trace` cases |
 
 ### Planned (Phases 97–116) — Desktop Application
 

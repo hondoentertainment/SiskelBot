@@ -1,11 +1,5 @@
 import { randomUUID } from "crypto";
 
-export default function mountChatRoutes(app, deps) {
-  const {
-    chatAuth,
-// Chat completions, swarm, and task plan routes extracted from server.js
-import { randomUUID } from "crypto";
-
 export function mountChatRoutes(app, deps) {
   const {
     apiError,
@@ -15,7 +9,6 @@ export function mountChatRoutes(app, deps) {
     perKeyChatRateLimiter,
     chatRateLimiter,
     logRequest,
-    apiError,
     backendFetch,
     buildProxyConfig,
     setQuotaHeaders,
@@ -23,11 +16,8 @@ export function mountChatRoutes(app, deps) {
     recordTokensUsed,
     isQuotaConfigured,
     checkQuota,
-    setQuotaHeaders,
     estimate,
     recordUsage,
-    buildProxyConfig,
-    backendFetch,
     BACKEND,
     MODEL_PRESETS,
     AB_ROUTING_ENABLED,
@@ -39,15 +29,6 @@ export function mountChatRoutes(app, deps) {
     STREAM_AGENT_FINAL,
     AGENT_STREAM_CHUNK_SIZE,
     USAGE_ALERT_TOKENS,
-    IS_PRODUCTION,
-    // lib imports
-    recordChatRequest,
-    recordTokensUsed,
-    isQuotaConfigured,
-    checkQuota,
-    estimate,
-    selectBackend,
-    logRouting,
     intersectClientToolsWithAllowlist,
     getToolsSchema,
     resolveAgentMaxIterations,
@@ -56,25 +37,16 @@ export function mountChatRoutes(app, deps) {
     intersectSwarmSpecialistsWithAllowlist,
     getSwarmSelectableSpecialistNames,
     runAgentLoop,
-    pipeLlmChatStreamToSse,
-    recordUsage,
-    getTotalTokensInWindow,
-    resolveAgentMaxIterations,
-    runSwarm,
-    runSwarmLegacy,
-    intersectClientToolsWithAllowlist,
-    getToolsSchema,
-    getSwarmSelectableSpecialistNames,
-    intersectSwarmSpecialistsWithAllowlist,
-    runAgentLoop,
+    resumeAgentLoopFromHitlToken,
+    takeHitlState,
     pipeLlmChatStreamToSse,
     emitEvent,
     reportError,
     autoRecordEnabled,
     recordTrace,
     sanitizeWorkspace,
-    getTotalTokensInWindow,
-    USAGE_ALERT_TOKENS,
+    resolveStorageUserId,
+    storage,
     TASK_PLAN_SYSTEM_PROMPT,
     extractTaskJsonFromResponse,
     validateTaskPlan,
@@ -206,7 +178,9 @@ export function mountChatRoutes(app, deps) {
             iteration,
             runId: meta.runId,
             stopReason: meta.stopReason,
+            stopDetail: meta.stopDetail,
             citationWarning: meta.citationWarning,
+            constraints: meta.constraints,
             trajectory: trajectorySummary,
           });
           res.write(`data: ${activityEvent}\n\n`);
@@ -399,6 +373,149 @@ export function mountChatRoutes(app, deps) {
     }
   });
 
+  app.post("/v1/agent/resume-execute-step", chatAuth, requireScope("write"), perKeyChatRateLimiter, chatRateLimiter, logRequest, async (req, res) => {
+    recordChatRequest();
+    try {
+      const resumeToken = String(req.body?.resumeToken || "").trim();
+      const approved = req.body?.approved === true;
+      if (!resumeToken) {
+        return res.status(400).json({ error: "resumeToken required", code: "INVALID_BODY" });
+      }
+      if (!approved) {
+        takeHitlState(resumeToken);
+        return res.json({ ok: true, cancelled: true });
+      }
+
+      const workspace = req.body?.agentOptions?.workspace || "default";
+      const userId = req.userId || null;
+      if (isQuotaConfigured()) {
+        const inputTokens = estimate.inputFromMessages(req.body?.messages || []);
+        const { allowed, quota } = await checkQuota(workspace, userId, inputTokens + 512);
+        if (!allowed && quota) {
+          res.setHeader("X-Quota-Limit", String(quota.limit));
+          res.setHeader("X-Quota-Remaining", "0");
+          res.setHeader("X-Quota-Reset", String(quota.resetAt));
+          return res.status(429).json({
+            error: "Workspace token quota exceeded",
+            code: "QUOTA_EXCEEDED",
+          });
+        }
+      }
+
+      const config = buildProxyConfig(BACKEND);
+      const model = req.body?.model || MODEL_PRESETS[BACKEND]?.[0] || "unknown";
+      const presetRunId = randomUUID();
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.setHeader("X-Agent-Run-Id", presetRunId);
+      await setQuotaHeaders(res, workspace, userId);
+      if (typeof res.flushHeaders === "function") res.flushHeaders();
+
+      const agentLoopResult = await resumeAgentLoopFromHitlToken(
+        req,
+        res,
+        config,
+        model,
+        {
+          presetRunId,
+          onProgress: (evt) => {
+            try {
+              res.write(`data: ${JSON.stringify(evt)}\n\n`);
+            } catch (_) {}
+          },
+        },
+        backendFetch,
+        resumeToken
+      );
+
+      const content = agentLoopResult.content;
+      const iteration = agentLoopResult.iteration;
+      const toolCalls = agentLoopResult.toolCalls;
+      req._agentLoopMeta = agentLoopResult;
+
+      res.setHeader("X-Agent-Iteration", String(iteration));
+      if (req._agentLoopMeta?.runId) {
+        res.setHeader("X-Agent-Run-Id", req._agentLoopMeta.runId);
+      }
+
+      if (toolCalls?.length || req._agentLoopMeta) {
+        const meta = req._agentLoopMeta || {};
+        const traj = meta.trajectory;
+        const trajectorySummary =
+          traj && Array.isArray(traj.steps)
+            ? {
+                runId: traj.runId,
+                stepCount: traj.stepCount,
+                stopReason: meta.stopReason,
+                steps: traj.steps.slice(0, 40),
+              }
+            : undefined;
+        const activityEvent = JSON.stringify({
+          type: "agent_activity",
+          toolCalls: toolCalls || [],
+          swarmSteps: [],
+          iteration,
+          runId: meta.runId,
+          stopReason: meta.stopReason,
+          stopDetail: meta.stopDetail,
+          citationWarning: meta.citationWarning,
+          constraints: meta.constraints,
+          trajectory: trajectorySummary,
+        });
+        res.write(`data: ${activityEvent}\n\n`);
+      }
+
+      const inputTokens = estimate.inputFromMessages(req.body?.messages || []);
+      let outputTokens = estimate.outputFromChars(content?.length || 0);
+
+      if (content && typeof content === "string") {
+        for (let i = 0; i < content.length; i += AGENT_STREAM_CHUNK_SIZE) {
+          const part = content.slice(i, i + AGENT_STREAM_CHUNK_SIZE);
+          const isLast = i + AGENT_STREAM_CHUNK_SIZE >= content.length;
+          const chunk = JSON.stringify({
+            choices: [{ delta: { content: part }, index: 0, ...(isLast ? { finish_reason: "stop" } : {}) }],
+          });
+          res.write(`data: ${chunk}\n\n`);
+        }
+      } else {
+        const chunk = JSON.stringify({
+          choices: [{ delta: { content }, index: 0, finish_reason: "stop" }],
+        });
+        res.write(`data: ${chunk}\n\n`);
+      }
+
+      outputTokens = estimate.outputFromChars(content?.length || 0);
+      recordTokensUsed(inputTokens, outputTokens);
+      await recordUsage({
+        timestamp: new Date().toISOString(),
+        model,
+        inputTokens,
+        outputTokens,
+        backend: BACKEND,
+        workspace,
+        userId,
+      }).catch(() => {});
+
+      res.write("data: [DONE]\n\n");
+      res.end();
+      await emitEvent("message_sent", { content: content?.slice(0, 500), model, iteration }, { workspaceId: workspace, userId });
+    } catch (err) {
+      reportError(err);
+      if (!res.headersSent) {
+        res.status(500).json({
+          error: "Resume execute-step failed",
+          code: "HITL_RESUME_ERROR",
+          hint: err?.message || "Internal error",
+        });
+      } else {
+        try {
+          res.end();
+        } catch (_) {}
+      }
+    }
+  });
+
   // POST /v1/agent/swarm
   app.post("/v1/agent/swarm", chatAuth, requireScope("write"), perKeyChatRateLimiter, chatRateLimiter, logRequest, async (req, res) => {
     recordChatRequest();
@@ -486,15 +603,17 @@ export function mountChatRoutes(app, deps) {
             req.body.specialists.filter((s) => typeof s === "string" && s.trim()).map((s) => s.trim())
           )
         : getSwarmSelectableSpecialistNames();
-      const workspace = req.body?.workspace || "default";
+      const workspace = storage.sanitizeWorkspace(req.body?.workspace || "default");
       const allowExecution = req.body?.allowExecution === true;
 
       if (!specialists.length) {
         return res.status(400).json({ error: "No valid specialists specified", code: "INVALID_SPECIALISTS" });
       }
 
+      const storageUserId = await resolveStorageUserId(req.userId || "anonymous", workspace);
       const { aggregation, metrics } = await runSwarmLegacy(specialists, query, {
         workspace,
+        workspaceUserId: storageUserId,
         allowExecution,
         projectDir: process.env.PROJECT_DIR || process.cwd(),
         vercelToken: process.env.VERCEL_TOKEN,

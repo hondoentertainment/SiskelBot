@@ -1,0 +1,10 @@
+{
+  "_comment": "Offline regression for swarm-shaped agent_activity (staging_trace eval).",
+  "goldenTrace": [{ "name": "list_context", "arguments": {} }],
+  "agentActivity": {
+    "type": "agent_activity",
+    "toolCalls": [{ "name": "list_context", "args": {} }],
+    "swarmSteps": [{ "specialist": "researcher" }, { "specialist": "synthesizer" }],
+    "stopReason": "model_finished"
+  }
+}

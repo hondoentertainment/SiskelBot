@@ -18,10 +18,15 @@
     "vendor:node-win:x64": "node scripts/vendor-node-win.mjs x64",
     "vendor:node-win:arm64": "node scripts/vendor-node-win.mjs arm64",
     "desktop:dist": "node scripts/ensure-node-vendor.mjs x64 && node scripts/stage-node-vendor.mjs x64 && electron-builder --win --x64",
+    "desktop:dist:portable": "node scripts/ensure-node-vendor.mjs x64 && node scripts/stage-node-vendor.mjs x64 && electron-builder --win portable --x64",
+    "desktop:dist:portable:arm64": "node scripts/ensure-node-vendor.mjs arm64 && node scripts/stage-node-vendor.mjs arm64 && electron-builder --win portable --arm64",
     "desktop:dist:arm64": "node scripts/ensure-node-vendor.mjs arm64 && node scripts/stage-node-vendor.mjs arm64 && electron-builder --win --arm64",
     "desktop:dist:all": "node scripts/ensure-node-vendor.mjs all && node scripts/stage-node-vendor.mjs x64 && electron-builder --win --x64 && node scripts/stage-node-vendor.mjs arm64 && electron-builder --win --arm64",
     "desktop:dist:mac": "electron-builder --mac",
     "desktop:dist:linux": "electron-builder --linux",
+    "desktop:release": "node scripts/desktop-release-win.mjs x64",
+    "desktop:release:arm64": "node scripts/desktop-release-win.mjs arm64",
+    "verify:package-lock": "node scripts/verify-package-sync.mjs",
     "lint": "node scripts/syntax-check.mjs && eslint .",
     "lint:eslint": "eslint .",
     "test": "node scripts/run-tests.mjs",
@@ -31,7 +36,9 @@
     "smoke-test": "node scripts/smoke-test.js",
     "smoke-test:ci": "node scripts/smoke-test.js --live-only",
     "test:e2e": "npx playwright test",
-    "test:e2e:api": "npx playwright test --project=api"
+    "test:e2e:api": "npx playwright test --project=api",
+    "eval:ci": "node scripts/run-eval-ci.mjs",
+    "eval:live": "node scripts/run-eval-live.mjs"
   },
   "engines": {
     "node": ">=18"
@@ -95,6 +102,10 @@
       "**/*",
       "!tests/**",
       "!**/*.test.js",
+      "!**/node_modules/import-in-the-middle/**",
+      "!**/node_modules/**/.editorconfig",
+      "!**/node_modules/**/.eslintrc*",
+      "!**/node_modules/**/.release-please-manifest.json",
       "!docs/**",
       "!scripts/**",
       "!release/**",
@@ -138,6 +149,9 @@
             "siskelbot"
           ]
         }
+      ],
+      "signingHashAlgorithms": [
+        "sha256"
       ]
     },
     "nsis": {

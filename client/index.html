@@ -2493,6 +2493,7 @@
       const saveBtn = document.getElementById('workspace-agent-settings-save');
       const statusEl = document.getElementById('workspace-agent-settings-status');
       const settingsToggle = document.getElementById('settings-toggle');
+      let lastAgentPolicy = {};
 
       function stMsg(key) {
         return (window.SiskelI18n && SiskelI18n.t) ? SiskelI18n.t('settings.' + key) : '';
@@ -2511,7 +2512,12 @@
           const data = await res.json();
           systemTa.value = data.defaultSystemPrompt || '';
           memoryTa.value = (Array.isArray(data.memorySnippets) ? data.memorySnippets : []).join('\n');
-          statusEl.textContent = stMsg('workspaceAgentLoaded');
+          lastAgentPolicy = data.agentPolicy && typeof data.agentPolicy === 'object' ? data.agentPolicy : {};
+          const memStats = data.memoryStats || null;
+          const statsHint = memStats
+            ? ` (${memStats.snippets} lines, ${memStats.totalChars}/${memStats.maxTotalChars} chars)`
+            : '';
+          statusEl.textContent = stMsg('workspaceAgentLoaded') + statsHint;
         } catch (_) {
           statusEl.textContent = stMsg('workspaceAgentLoadError');
         }
@@ -2529,6 +2535,7 @@
             body: JSON.stringify({
               defaultSystemPrompt: systemTa.value.trim(),
               memorySnippets: lines,
+              agentPolicy: lastAgentPolicy || {},
             }),
           });
           let data = {};
@@ -5033,11 +5040,13 @@
       const cite = resHeaders.get('X-Agent-Citations-Missing');
       const maxIter = resHeaders.get('X-Agent-Max-Iterations');
       const runId = resHeaders.get('X-Agent-Run-Id');
+      const policyCode = resHeaders.get('X-Agent-Policy-Code');
       if (trunc) parts.push('Limit: ' + trunc.replace(/_/g, ' '));
-      if (stopped === 'stagnation') parts.push('Stopped: stagnation');
+      if (stopped) parts.push('Stopped: ' + String(stopped).replace(/_/g, ' '));
       if (cite === '1' || (agentActivity && agentActivity.citationWarning)) parts.push('Citations check');
       if (maxIter) parts.push('Max iter ' + maxIter);
       if (runId) parts.push('Run ' + runId.slice(0, 8) + '…');
+      if (policyCode) parts.push('Policy: ' + policyCode);
       const sr = agentActivity && agentActivity.stopReason;
       if (sr && sr !== 'model_finished') parts.push('Reason: ' + String(sr).replace(/_/g, ' '));
       return parts.length ? parts.join(' · ') : '';
@@ -5059,7 +5068,7 @@
       return `<div class="agent-progress-strip" role="status" aria-live="polite"><div class="agent-progress-title">Iteration ${escapeHtml(String(ev.iteration))} · LLM ${escapeHtml(llm)} · Tools wall ${escapeHtml(tw)}</div><ul class="agent-progress-tools">${toolEls}</ul></div>`;
     }
 
-    function renderAgentActivityBlock(toolCalls, swarmSteps, iteration) {
+    function renderAgentActivityBlock(toolCalls, swarmSteps, iteration, constraints, stopDetail) {
       if ((!toolCalls || !toolCalls.length) && (!swarmSteps || !swarmSteps.length)) return '';
       const parts = [];
       if (swarmSteps && swarmSteps.length) {
@@ -5078,6 +5087,18 @@
             const flag = t.validationError ? ' <span class="agent-activity-meta">(validation)</span>' : t.error ? ' <span class="agent-activity-meta">(error)</span>' : '';
             return `<li><code>${escapeHtml(t.name || '')}</code>${dur}${flag}${argsHtml}</li>`;
           }).join('') + '</ul></div>');
+      }
+      if (constraints && constraints.usage) {
+        const u = constraints.usage;
+        const c = u.categoryCounts || {};
+        parts.push(
+          '<div class="agent-activity-tools"><span class="agent-activity-label">Policy usage</span>' +
+          `<div class="agent-activity-meta">read ${Number(c.read || 0)}, write ${Number(c.write || 0)}, network ${Number(c.network || 0)} · fetches ${Number(u.externalFetches || 0)} · tool ms ${Number(u.totalToolMs || 0)}</div></div>`
+        );
+      }
+      if (stopDetail) {
+        parts.push('<div class="agent-activity-tools"><span class="agent-activity-label">Stop detail</span>' +
+          `<div class="agent-activity-meta">${escapeHtml(String(stopDetail))}</div></div>`);
       }
       return `<details class="agent-activity-block" open><summary>Agent activity ${iteration ? '(' + iteration + ' iter)' : ''}</summary>${parts.join('')}</details>`;
     }
@@ -5572,7 +5593,13 @@
                     scheduleDom(function () {
                       const progressEl = assistantEl && assistantEl.querySelector('.agent-progress-strip');
                       if (progressEl) progressEl.remove();
-                      const activityHtml = renderAgentActivityBlock(parsed.toolCalls || [], parsed.swarmSteps || [], parsed.iteration);
+                      const activityHtml = renderAgentActivityBlock(
+                        parsed.toolCalls || [],
+                        parsed.swarmSteps || [],
+                        parsed.iteration,
+                        parsed.constraints || null,
+                        parsed.stopDetail || ''
+                      );
                       if (!assistantEl) {
                         removeTypingIndicator();
                         assistantEl = createAssistantBubble('', null, activityHtml);

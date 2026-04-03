@@ -98,18 +98,31 @@ function resolveNodeBinary() {
   return "node";
 }
 
-async function waitForServer(port, maxMs = 30000) {
+function desktopServerTimeoutMs() {
+  const n = parseInt(process.env.DESKTOP_SERVER_TIMEOUT_MS || "30000", 10);
+  return Number.isFinite(n) && n >= 5000 ? Math.min(n, 300000) : 30000;
+}
+
+async function waitForServer(port, maxMs) {
+  const limit = maxMs ?? desktopServerTimeoutMs();
   const start = Date.now();
-  while (Date.now() - start < maxMs) {
+  let lastErr = "";
+  while (Date.now() - start < limit) {
     try {
       const res = await fetch(`http://127.0.0.1:${port}/health/live`, { signal: AbortSignal.timeout(2000) });
       if (res.ok) return;
-    } catch (_) {
-      /* retry */
+      lastErr = `HTTP ${res.status}`;
+    } catch (e) {
+      lastErr = e?.message || String(e);
+      if (process.env.DESKTOP_DEBUG) {
+        console.error("[desktop] Waiting for /health/live:", lastErr);
+      }
     }
     await new Promise((r) => setTimeout(r, 250));
   }
-  throw new Error("Server did not become ready in time");
+  throw new Error(
+    `Server did not become ready within ${limit}ms (${lastErr || "no response"}). Try DESKTOP_DEBUG=1, confirm port ${port} is free, or increase DESKTOP_SERVER_TIMEOUT_MS.`
+  );
 }
 
 async function startServer() {
@@ -131,6 +144,10 @@ async function startServer() {
     STORAGE_PATH: storagePath,
     VERCEL: "",
   };
+  const packagedEnvPath = path.join(storagePath, ".env");
+  if (app.isPackaged && fs.existsSync(packagedEnvPath)) {
+    env.DOTENV_CONFIG_PATH = packagedEnvPath;
+  }
 
   const nodeBin = resolveNodeBinary();
   serverProcess = spawn(nodeBin, [serverScript], {
@@ -138,6 +155,21 @@ async function startServer() {
     env,
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
+  });
+
+  await new Promise((resolve, reject) => {
+    const onErr = (err) => {
+      reject(
+        new Error(
+          `Could not start Node (${nodeBin}): ${err.message}. Packaged: ensure resources/node-win/node.exe exists. Dev: install Node or set NODE_BINARY.`
+        )
+      );
+    };
+    serverProcess.once("error", onErr);
+    serverProcess.once("spawn", () => {
+      serverProcess.off("error", onErr);
+      resolve();
+    });
   });
 
   serverProcess.stdout?.on("data", (buf) => {
@@ -209,6 +241,10 @@ function createWindow() {
   }
 
   mainWindow.once("ready-to-show", () => mainWindow?.show());
+
+  if (process.env.DESKTOP_TITLE_PORT === "1") {
+    mainWindow.setTitle(`${app.getName()} · ${serverBaseUrl}`);
+  }
 
   mainWindow.loadURL(`${serverBaseUrl}/`);
 

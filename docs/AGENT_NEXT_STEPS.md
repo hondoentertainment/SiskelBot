@@ -4,6 +4,14 @@
 
 ---
 
+## Recent additions (agent quality & desktop)
+
+- **CI offline eval:** `npm run eval:ci` + [`data/eval-sets/ci-offline.json`](data/eval-sets/ci-offline.json) in GitHub Actions; optional `EVAL_LIVE=1 npm run eval:live`. See [`docs/AGENT_SLI.md`](AGENT_SLI.md), [`docs/RUNBOOK.md`](RUNBOOK.md) (CI eval row).
+- **HITL `execute_step`:** `AGENT_EXECUTE_STEP_HITL` / `requireExecuteStepApproval`; `POST /v1/agent/resume-execute-step`; SSE `agent_pending_execution`. See [`docs/AGENT_MODE.md`](AGENT_MODE.md).
+- **`AGENT_VERIFY_PASS`:** Optional post-success verification paragraph in the agent loop.
+- **Marketplace signing helper:** `computeUnsignedManifestDigestHex`, [`scripts/marketplace-manifest-digest.mjs`](scripts/marketplace-manifest-digest.mjs).
+- **SDK:** [`examples/sdk-starter.ts`](examples/sdk-starter.ts) — `chatCompletions` / `agentChatExample`.
+
 ## Previously shipped
 
 All items from the original P0–P3 roadmap have been implemented:
@@ -24,6 +32,7 @@ All items from the original P0–P3 roadmap have been implemented:
 - **P3.14:** S3 audit archival with query/export (9370a5f)
 - **P3.15:** SSO/SAML/OIDC integration (e91fa6d)
 - **Phases 93–96:** Eval harness — live chat eval cases, SSE parsing, criteria matching, offline eval sets.
+- **Phase 60–65:** Default agent system, workspace agent settings, client hints, golden-trace evals in `example.json`.
 
 ---
 
@@ -79,4 +88,4 @@ All items from the original P0–P3 roadmap have been implemented:
 
 ---
 
-See `docs/PRD.md` for the full phase roadmap.
+See `docs/PRD.md` for the full phase roadmap (**Phases 79–97** include `AGENT_TOOLS_ALLOWLIST`, `SWARM_SPECIALISTS_ALLOWLIST`, `agentOptions.maxIterations`, eval agent/swarm harness, and `GET /api/eval/staging-traces` for `staging_trace` cases).
