@@ -42,6 +42,9 @@ import {
   listInstalled as marketplaceListInstalled,
   installPack as marketplaceInstallPack,
   uninstallPack as marketplaceUninstallPack,
+  fetchRemoteRegistry,
+  searchRemotePlugins,
+  installRemotePack,
 } from "./lib/plugin-marketplace.js";
 import { loadPlugin as loadJsPlugin, executePlugin as execJsPlugin, listPlugins as listJsPlugins } from "./lib/plugin-sandbox.js";
 import { getToolsSchema, intersectClientToolsWithAllowlist, getAgentToolsAllowlistNames } from "./lib/agent-tools.js";
@@ -229,6 +232,7 @@ const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.API_KEY; // optional; protects /v1/chat/completions when set
+const API_KEY_PREVIOUS = process.env.API_KEY_PREVIOUS || null; // rotation: previous key accepted during rollover
 const API_KEY_SCOPES = (process.env.API_KEY_SCOPES || "read,write").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
 const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS) || 60_000;
 const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX) || 60;
@@ -446,10 +450,15 @@ const SESSION_SECRET =
 if (isOAuthConfigured() && !SESSION_SECRET) {
   console.warn("[auth] OAuth configured but SESSION_SECRET not set. OAuth login will not persist. Set SESSION_SECRET in production.");
 }
+// Secret rotation: when SESSION_SECRET_PREVIOUS is set, express-session receives an
+// array of secrets. It signs new cookies with the first entry (current secret) and
+// validates existing cookies against all entries, allowing seamless rotation.
+const SESSION_SECRET_PREVIOUS = process.env.SESSION_SECRET_PREVIOUS?.trim() || null;
+const sessionSecretValue = SESSION_SECRET_PREVIOUS ? [SESSION_SECRET, SESSION_SECRET_PREVIOUS] : SESSION_SECRET;
 if (SESSION_SECRET) {
   app.use(
     session({
-      secret: SESSION_SECRET,
+      secret: sessionSecretValue,
       resave: false,
       saveUninitialized: false,
       cookie: {
@@ -585,14 +594,22 @@ async function setQuotaHeaders(res, workspace, userId) {
 
 // Optional API key auth for routes that accept deployment key only (schedules, tasks/plan).
 // Phase 30: When API_KEY matches, sets req.apiKeyScopes (from API_KEY_SCOPES), req.apiKeyId="deployment"
+// Secret rotation: accepts API_KEY_PREVIOUS during key rollover. When the previous key is
+// used, the response includes X-API-Key-Deprecated: true so clients know to update.
 function apiKeyAuth(req, res, next) {
   if (!API_KEY) return next();
   const auth = req.headers.authorization;
   const bearer = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : null;
   const xKey = req.headers["x-api-key"];
   const key = bearer || xKey;
-  if (!key || key !== API_KEY) {
+  const matchesCurrent = key && key === API_KEY;
+  const matchesPrevious = !matchesCurrent && API_KEY_PREVIOUS && key === API_KEY_PREVIOUS;
+  if (!matchesCurrent && !matchesPrevious) {
     return apiError(res, 401, "AUTH_REQUIRED", "Unauthorized", "Use Authorization: Bearer <key> or x-api-key header.");
+  }
+  if (matchesPrevious) {
+    res.setHeader("X-API-Key-Deprecated", "true");
+    console.warn("[auth] Request authenticated with API_KEY_PREVIOUS. Rotate clients to new key.");
   }
   req.authenticatedViaDeploymentKey = true;
   req.apiKeyScopes = API_KEY_SCOPES.length ? API_KEY_SCOPES : ["read", "write"];
@@ -608,7 +625,11 @@ function chatAuth(req, res, next) {
   const xUserKey = req.headers["x-user-api-key"];
   const key = xApiKey || xUserKey || bearer;
   if (!key) return apiError(res, 401, "AUTH_REQUIRED", "Unauthorized", "Use Authorization: Bearer <key>, x-api-key, or x-user-api-key header.");
-  if (key === API_KEY) {
+  if (key === API_KEY || (API_KEY_PREVIOUS && key === API_KEY_PREVIOUS)) {
+    if (key !== API_KEY) {
+      res.setHeader("X-API-Key-Deprecated", "true");
+      console.warn("[auth] Request authenticated with API_KEY_PREVIOUS. Rotate clients to new key.");
+    }
     req.authenticatedViaDeploymentKey = true;
     req.apiKeyScopes = API_KEY_SCOPES.length ? API_KEY_SCOPES : ["read", "write"];
     req.apiKeyId = "deployment";
@@ -627,7 +648,13 @@ function evalAuth(req, res, next) {
   const xKey = req.headers["x-api-key"] || req.headers["x-admin-api-key"];
   const key = bearer || xKey;
   if (!key) return apiError(res, 401, "AUTH_REQUIRED", "Eval endpoints require ADMIN_API_KEY or API_KEY", "Use Authorization: Bearer <key> or x-api-key header.");
+  const adminKeyPrev = process.env.ADMIN_API_KEY_PREVIOUS;
+  const apiKeyPrev = API_KEY_PREVIOUS;
   if ((adminKey && key === adminKey) || (apiKey && key === apiKey)) return next();
+  if ((adminKeyPrev && key === adminKeyPrev) || (apiKeyPrev && key === apiKeyPrev)) {
+    console.warn("[auth] Eval request authenticated with previous key. Rotate clients to new key.");
+    return next();
+  }
   return apiError(res, 401, "AUTH_REQUIRED", "Invalid key", "Use ADMIN_API_KEY or API_KEY.");
 }
 
@@ -2107,6 +2134,49 @@ apiRoute("get", "/marketplace", marketplaceRateLimiter, logRequest, (req, res) =
     const category = req.query?.category;
     const filtered = category ? packs.filter((p) => p.category === category) : packs;
     res.json({ _version: 1, packs: filtered });
+  } catch (err) {
+    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
+  }
+});
+
+// --- Phase 49b: Plugin Marketplace Remote Registry ---
+apiRoute("get", "/marketplace/registry", marketplaceRateLimiter, logRequest, async (req, res) => {
+  try {
+    const registryUrl = req.query?.registryUrl || undefined;
+    const data = await fetchRemoteRegistry(registryUrl);
+    res.json({ _version: 1, ...data });
+  } catch (err) {
+    return apiError(res, 502, "REGISTRY_FETCH_FAILED", err.message, "Check PLUGIN_REGISTRY_URL or pass ?registryUrl=.");
+  }
+});
+
+apiRoute("get", "/marketplace/registry/search", marketplaceRateLimiter, logRequest, async (req, res) => {
+  try {
+    const query = req.query?.q || "";
+    const options = {};
+    if (req.query?.tag) options.tag = req.query.tag;
+    if (req.query?.author) options.author = req.query.author;
+    if (req.query?.minVersion) options.minVersion = req.query.minVersion;
+    if (req.query?.registryUrl) options.registryUrl = req.query.registryUrl;
+    const results = await searchRemotePlugins(query, options);
+    res.json({ _version: 1, query, results });
+  } catch (err) {
+    return apiError(res, 502, "REGISTRY_SEARCH_FAILED", err.message, "Check PLUGIN_REGISTRY_URL or pass ?registryUrl=.");
+  }
+});
+
+apiRoute("post", "/marketplace/registry/install", marketplaceRateLimiter, userAuth, logRequest, async (req, res) => {
+  try {
+    const packId = req.body?.packId;
+    if (!packId || typeof packId !== "string") {
+      return apiError(res, 400, "INVALID_INPUT", "packId required", "Send { packId: string }.");
+    }
+    const registryUrl = req.body?.registryUrl || undefined;
+    const result = await installRemotePack(packId, registryUrl);
+    if (!result.ok) {
+      return apiError(res, 400, "REMOTE_INSTALL_FAILED", result.error, "Check that the pack exists in the remote registry.");
+    }
+    res.json({ ok: true, packId, manifest: result.manifest });
   } catch (err) {
     return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
   }
