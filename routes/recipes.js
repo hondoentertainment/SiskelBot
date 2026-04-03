@@ -1,3 +1,16 @@
+import express from "express";
+import { randomUUID } from "crypto";
+
+export default function mountRecipeRoutes(app, deps) {
+  const {
+    apiRoute,
+    apiError,
+    logRequest,
+    apiKeyAuth,
+    requireScope,
+    storageRateLimiter,
+    sanitizeWorkspace,
+    storage,
 // Recipes, schedules, and cron routes extracted from server.js
 import { randomUUID } from "crypto";
 
@@ -16,6 +29,10 @@ export function mountRecipeRoutes(app, deps) {
     schedulerRefresh,
     runRecipeNow,
     runDueJobsVercel,
+    logActivity,
+  } = deps;
+
+  // Recipes CRUD
   } = deps;
 
   apiRoute("get", "/recipes", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
@@ -109,6 +126,7 @@ export function mountRecipeRoutes(app, deps) {
     }
   });
 
+  // Schedules
   // --- Schedules ---
   apiRoute("get", "/schedules", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
     try {
@@ -177,6 +195,7 @@ export function mountRecipeRoutes(app, deps) {
     }
   });
 
+  // Cron endpoint
   apiRoute("get", "/cron", logRequest, async (req, res) => {
     const secret = process.env.CRON_SECRET;
     if (secret && req.headers["authorization"] !== `Bearer ${secret}` && req.query?.secret !== secret) {

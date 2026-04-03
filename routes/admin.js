@@ -1,3 +1,15 @@
+import express from "express";
+import rateLimit from "express-rate-limit";
+
+export default function mountAdminRoutes(app, deps) {
+  const {
+    apiError,
+    logRequest,
+    adminAuth,
+    requireScope,
+    sanitizeWorkspace,
+    runHealthChecks,
+    // admin-data
 // Admin dashboard, API keys, audit, routing, regions, observability routes extracted from server.js
 import rateLimit from "express-rate-limit";
 import express from "express";
@@ -20,6 +32,17 @@ export function mountAdminRoutes(app, deps) {
     listAllWorkspaces,
     getRecentAuditLog,
     getSummary,
+    // quotas
+    isQuotaConfigured,
+    getWorkspaceQuota,
+    getWorkspaceTokensUsed,
+    setWorkspaceQuotaOverride,
+    getQuotaOverrides,
+    // api-keys
+    listKeysForAdmin,
+    addKey,
+    revokeKey,
+    // audit
     // Quota
     isQuotaConfigured,
     getWorkspaceQuota,
@@ -36,6 +59,16 @@ export function mountAdminRoutes(app, deps) {
     AuditLifecycle,
     queryAudit,
     exportAudit,
+    // routing
+    getRoutingStats,
+    AB_ROUTING_ENABLED,
+    MODEL_ROUTING_CONFIG,
+    // regions
+    getRegionHealth,
+    getLeaderElection,
+    // replication
+    getReplicationManager,
+    internalAuth,
     // Routing
     getRoutingStats,
     AB_ROUTING_ENABLED,
@@ -180,6 +213,7 @@ export function mountAdminRoutes(app, deps) {
     }
   });
 
+  // Admin API key management
   // API key management
   app.get("/api/admin/keys", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
     try {
@@ -242,6 +276,7 @@ export function mountAdminRoutes(app, deps) {
     }
   });
 
+  // Audit lifecycle & query
   // Audit lifecycle
   const _auditLifecycle = new AuditLifecycle();
 
@@ -320,6 +355,7 @@ export function mountAdminRoutes(app, deps) {
     }
   });
 
+  // A/B routing admin endpoints
   // Routing admin endpoints
   app.get("/api/routing/stats", adminRateLimiter, adminAuth, logRequest, (req, res) => {
     res.json({ stats: getRoutingStats(), enabled: AB_ROUTING_ENABLED });
@@ -332,6 +368,7 @@ export function mountAdminRoutes(app, deps) {
     res.json({ enabled: AB_ROUTING_ENABLED, backends: config, raw: process.env.MODEL_ROUTING || "" });
   });
 
+  // Multi-region & HA routes
   // Regions
   app.get("/api/regions", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
     try {
@@ -368,5 +405,10 @@ export function mountAdminRoutes(app, deps) {
       console.error("[replication] Sync receive error:", err.message);
       res.status(500).json({ ok: false, error: err.message });
     }
+  });
+
+  // Admin HTML pages
+  app.get("/admin", (req, res) => {
+    res.sendFile(deps.__dirname + "/client/admin.html");
   });
 }

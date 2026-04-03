@@ -1,3 +1,17 @@
+import express from "express";
+
+export default function mountWorkspaceRoutes(app, deps) {
+  const {
+    apiRoute,
+    apiError,
+    logRequest,
+    userAuth,
+    adminAuth,
+    requireScope,
+    storageRateLimiter,
+    sanitizeWorkspace,
+    storage,
+    // workspace-templates
 // Workspace CRUD, templates, agent settings, members, activity, presence, chunking, memories, migration, roles, compliance routes
 import { randomUUID } from "crypto";
 
@@ -22,6 +36,10 @@ export function mountWorkspaceRoutes(app, deps) {
     updateTemplate,
     deleteTemplate,
     applyTemplate,
+    // workspace lifecycle
+    exportWorkspaceBundle,
+    deleteWorkspaceForUser,
+    // workspace agent settings
     // Workspace lifecycle
     exportWorkspaceBundle,
     deleteWorkspaceForUser,
@@ -30,6 +48,14 @@ export function mountWorkspaceRoutes(app, deps) {
     saveWorkspaceAgentSettings,
     getWorkspaceAgentAccess,
     canEditWorkspaceAgentSettings,
+    // teams
+    resolveStorageUserId,
+    // idempotency
+    idempotencyLookup,
+    idempotencyStore,
+  } = deps;
+
+  // Workspaces CRUD
     resolveStorageUserId,
     // Chunking
     getWorkspaceChunkingConfig,
@@ -105,6 +131,7 @@ export function mountWorkspaceRoutes(app, deps) {
     }
   });
 
+  // Workspace Templates
   // --- Workspace Templates ---
   apiRoute("get", "/workspace-templates", storageRateLimiter, userAuth, logRequest, async (req, res) => {
     try {
@@ -191,6 +218,8 @@ export function mountWorkspaceRoutes(app, deps) {
     }
   });
 
+  // Workspace export and delete
+  apiRoute("get", "/workspaces/:id/export", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
   // --- Workspace export & delete ---
   apiRoute("get", "/workspaces/:id/export", storageRateLimiter, workspaceRateLimiter(), userAuth, requireScope("read"), logRequest, async (req, res) => {
     try {
@@ -209,6 +238,7 @@ export function mountWorkspaceRoutes(app, deps) {
     }
   });
 
+  apiRoute("delete", "/workspaces/:id", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
   apiRoute("delete", "/workspaces/:id", storageRateLimiter, workspaceRateLimiter(), userAuth, requireScope("write"), logRequest, async (req, res) => {
     try {
       const workspaceId = sanitizeWorkspace(req.params.id);
@@ -233,6 +263,8 @@ export function mountWorkspaceRoutes(app, deps) {
     }
   });
 
+  // Workspace agent settings
+  apiRoute("get", "/workspaces/:id/agent-settings", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
   // --- Agent Memory Persistence ---
   apiRoute("get", "/workspaces/:id/memories", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
     try {

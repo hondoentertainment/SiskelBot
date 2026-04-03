@@ -53,6 +53,29 @@ jobs:
         id: tests
         run: npm run test:ci
 
+      - name: Coverage summary
+        if: always() && steps.tests.outcome != 'skipped'
+        run: |
+          if [ -f coverage/lcov.info ]; then
+            {
+              echo "## Test Coverage"
+              echo '```'
+              head -50 coverage/lcov.info | grep -E '^(SF:|DA:|LF:|LH:)' | head -30 || true
+              echo '```'
+              echo ""
+              echo "Full coverage report available in the uploaded artifact."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          # Also print the c8 text summary (already shown in test output)
+
+      - name: Upload coverage report
+        if: always() && steps.tests.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
+
       - name: Troubleshooting (on test failure)
         if: failure() && steps.tests.outcome == 'failure'
         run: |
@@ -99,3 +122,46 @@ jobs:
         run: npm run smoke-test:ci
         env:
           BASE_URL: http://127.0.0.1:${{ env.PORT }}
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: [test]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      - name: Start server
+        run: |
+          set -e
+          BACKEND=ollama PORT="${PORT}" npm start &
+      - name: Wait for /health/live
+        run: |
+          set -e
+          url="http://127.0.0.1:${PORT}/health/live"
+          for i in $(seq 1 45); do
+            if curl -sf "$url" >/dev/null; then
+              echo "Server ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Server did not respond on $url within 45s"
+          exit 1
+      - name: Run E2E tests
+        run: npm run test:e2e
+        env:
+          CI: "true"
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14

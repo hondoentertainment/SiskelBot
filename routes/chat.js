@@ -1,3 +1,8 @@
+import { randomUUID } from "crypto";
+
+export default function mountChatRoutes(app, deps) {
+  const {
+    chatAuth,
 // Chat completions, swarm, and task plan routes extracted from server.js
 import { randomUUID } from "crypto";
 
@@ -10,6 +15,10 @@ export function mountChatRoutes(app, deps) {
     perKeyChatRateLimiter,
     chatRateLimiter,
     logRequest,
+    apiError,
+    backendFetch,
+    buildProxyConfig,
+    setQuotaHeaders,
     recordChatRequest,
     recordTokensUsed,
     isQuotaConfigured,
@@ -29,6 +38,27 @@ export function mountChatRoutes(app, deps) {
     ALLOW_RECIPE_STEP_EXECUTION,
     STREAM_AGENT_FINAL,
     AGENT_STREAM_CHUNK_SIZE,
+    USAGE_ALERT_TOKENS,
+    IS_PRODUCTION,
+    // lib imports
+    recordChatRequest,
+    recordTokensUsed,
+    isQuotaConfigured,
+    checkQuota,
+    estimate,
+    selectBackend,
+    logRouting,
+    intersectClientToolsWithAllowlist,
+    getToolsSchema,
+    resolveAgentMaxIterations,
+    runSwarm,
+    runSwarmLegacy,
+    intersectSwarmSpecialistsWithAllowlist,
+    getSwarmSelectableSpecialistNames,
+    runAgentLoop,
+    pipeLlmChatStreamToSse,
+    recordUsage,
+    getTotalTokensInWindow,
     resolveAgentMaxIterations,
     runSwarm,
     runSwarmLegacy,
@@ -58,6 +88,7 @@ export function mountChatRoutes(app, deps) {
       const workspace = req.body?.agentOptions?.workspace || "default";
       const userId = req.userId || null;
 
+      // Per-workspace token quota check
       if (isQuotaConfigured()) {
         const inputTokens = estimate.inputFromMessages(req.body?.messages || []);
         const { allowed, quota } = await checkQuota(workspace, userId, inputTokens + 512);
@@ -73,6 +104,7 @@ export function mountChatRoutes(app, deps) {
         }
       }
 
+      // A/B routing: select backend per-request when MODEL_ROUTING is configured
       const requestId = randomUUID();
       let activeBackend = BACKEND;
       if (AB_ROUTING_ENABLED) {

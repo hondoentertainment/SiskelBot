@@ -41,6 +41,18 @@ function getFlag(name) {
   return null;
 }
 
+function getAdminKey() {
+  const idx = process.argv.indexOf("--admin-key");
+  if (idx >= 0 && process.argv[idx + 1]) return process.argv[idx + 1];
+  return process.env.SISKELBOT_ADMIN_KEY || process.env.ADMIN_API_KEY || null;
+}
+
+function getBackupKey() {
+  const idx = process.argv.indexOf("--backup-key");
+  if (idx >= 0 && process.argv[idx + 1]) return process.argv[idx + 1];
+  return process.env.SISKELBOT_BACKUP_KEY || process.env.BACKUP_ADMIN_KEY || null;
+}
+
 function getWorkspace() {
   return getFlag("--workspace") || "default";
 }
@@ -106,9 +118,36 @@ Commands:
   config                      Show current config (backend, url, auth status)
     --url, --api-key, --json
 
+  health                      Quick health check (colored status)
+    --url, --json
+
+  admin summary               Show admin dashboard summary
+    --admin-key <key>         Admin key (default: SISKELBOT_ADMIN_KEY or ADMIN_API_KEY)
+    --url, --json
+
+  admin keys list             List API keys
+    --admin-key <key>         Admin key
+    --url, --json
+
+  backup create               Trigger a backup
+    --backup-key <key>        Backup key (default: SISKELBOT_BACKUP_KEY or BACKUP_ADMIN_KEY)
+    --url, --json
+
+  backup list                 List available backups
+    --backup-key <key>        Backup key
+    --url, --json
+
+  schedules list              List scheduled recipes
+    --url, --api-key, --json
+
+  webhooks list               List registered webhooks
+    --url, --api-key, --json
+
 Environment:
   SISKELBOT_URL               Base URL (default: http://localhost:3000)
   SISKELBOT_API_KEY           API key (also API_KEY)
+  SISKELBOT_ADMIN_KEY         Admin API key (also ADMIN_API_KEY)
+  SISKELBOT_BACKUP_KEY        Backup admin key (also BACKUP_ADMIN_KEY)
   .env                        Loaded from project root if dotenv available
 `);
 }
@@ -367,6 +406,233 @@ async function cmdRecipesRun(baseUrl, apiKey, name, workspace, json) {
   }
 }
 
+function adminHeaders(adminKey) {
+  const h = { "Content-Type": "application/json" };
+  if (adminKey) h["x-admin-key"] = adminKey;
+  return h;
+}
+
+function backupHeaders(backupKey) {
+  const h = { "Content-Type": "application/json" };
+  if (backupKey) h["x-admin-key"] = backupKey;
+  return h;
+}
+
+async function cmdAdminSummary(baseUrl, json) {
+  const adminKey = getAdminKey();
+  if (!adminKey) err("Admin key required. Set SISKELBOT_ADMIN_KEY, ADMIN_API_KEY, or use --admin-key.");
+  try {
+    const r = await fetchJson(`${baseUrl}/api/admin/summary`, { headers: adminHeaders(adminKey) });
+    if (!r.ok) {
+      if (r.status === 401 || r.status === 403) err("Unauthorized. Check your admin key.");
+      err(r.body?.error || `GET /api/admin/summary failed: ${r.status}`);
+    }
+    const data = r.body;
+    if (json) {
+      console.log(JSON.stringify(data, null, 2));
+      return;
+    }
+    console.log("Admin Dashboard Summary");
+    console.log("-----------------------");
+    console.log("Users:", data.userCount ?? data.users ?? "N/A");
+    console.log("Workspaces:", data.workspaceCount ?? data.workspaces ?? "N/A");
+    const audits = data.recentAudit || data.recentAuditEntries || [];
+    if (audits.length > 0) {
+      console.log("\nRecent Audit Entries:");
+      for (const entry of audits) {
+        console.log(`  - ${entry.action || entry.type || "unknown"} ${entry.timestamp || entry.createdAt || ""}`);
+      }
+    }
+  } catch (e) {
+    if (e.code === "ECONNREFUSED" || e.cause?.code === "ECONNREFUSED") err(`Connection refused: ${baseUrl}. Is the server running?`, 1);
+    err(e.message || String(e), 1);
+  }
+}
+
+async function cmdAdminKeysList(baseUrl, json) {
+  const adminKey = getAdminKey();
+  if (!adminKey) err("Admin key required. Set SISKELBOT_ADMIN_KEY, ADMIN_API_KEY, or use --admin-key.");
+  try {
+    const r = await fetchJson(`${baseUrl}/api/admin/keys`, { headers: adminHeaders(adminKey) });
+    if (!r.ok) {
+      if (r.status === 401 || r.status === 403) err("Unauthorized. Check your admin key.");
+      err(r.body?.error || `GET /api/admin/keys failed: ${r.status}`);
+    }
+    const data = r.body;
+    if (json) {
+      console.log(JSON.stringify(data, null, 2));
+      return;
+    }
+    const keys = data.keys || data.items || (Array.isArray(data) ? data : []);
+    if (keys.length === 0) {
+      console.log("No API keys found.");
+      return;
+    }
+    for (const k of keys) {
+      const scopes = Array.isArray(k.scopes) ? k.scopes.join(", ") : k.scopes || "all";
+      const created = k.createdAt || k.created || "unknown";
+      console.log(`- ${k.id || k.keyId}: scopes=[${scopes}] created=${created}`);
+    }
+  } catch (e) {
+    if (e.code === "ECONNREFUSED" || e.cause?.code === "ECONNREFUSED") err(`Connection refused: ${baseUrl}. Is the server running?`, 1);
+    err(e.message || String(e), 1);
+  }
+}
+
+async function cmdBackupCreate(baseUrl, json) {
+  const backupKey = getBackupKey();
+  if (!backupKey) err("Backup key required. Set SISKELBOT_BACKUP_KEY, BACKUP_ADMIN_KEY, or use --backup-key.");
+  try {
+    const r = await fetchJson(`${baseUrl}/api/backup`, {
+      method: "POST",
+      headers: backupHeaders(backupKey),
+      body: JSON.stringify({}),
+    });
+    if (!r.ok) {
+      if (r.status === 401 || r.status === 403) err("Unauthorized. Check your backup key.");
+      err(r.body?.error || `POST /api/backup failed: ${r.status}`);
+    }
+    const data = r.body;
+    if (json) {
+      console.log(JSON.stringify(data, null, 2));
+      return;
+    }
+    console.log("Backup created:", data.filename || data.file || data.name || "success");
+  } catch (e) {
+    if (e.code === "ECONNREFUSED" || e.cause?.code === "ECONNREFUSED") err(`Connection refused: ${baseUrl}. Is the server running?`, 1);
+    err(e.message || String(e), 1);
+  }
+}
+
+async function cmdBackupList(baseUrl, json) {
+  const backupKey = getBackupKey();
+  if (!backupKey) err("Backup key required. Set SISKELBOT_BACKUP_KEY, BACKUP_ADMIN_KEY, or use --backup-key.");
+  try {
+    const r = await fetchJson(`${baseUrl}/api/backup/list`, { headers: backupHeaders(backupKey) });
+    if (!r.ok) {
+      if (r.status === 401 || r.status === 403) err("Unauthorized. Check your backup key.");
+      err(r.body?.error || `GET /api/backup/list failed: ${r.status}`);
+    }
+    const data = r.body;
+    if (json) {
+      console.log(JSON.stringify(data, null, 2));
+      return;
+    }
+    const backups = data.backups || data.items || (Array.isArray(data) ? data : []);
+    if (backups.length === 0) {
+      console.log("No backups found.");
+      return;
+    }
+    for (const b of backups) {
+      const name = b.filename || b.file || b.name || "unknown";
+      const size = b.size != null ? ` (${b.size} bytes)` : "";
+      console.log(`- ${name}${size}`);
+    }
+  } catch (e) {
+    if (e.code === "ECONNREFUSED" || e.cause?.code === "ECONNREFUSED") err(`Connection refused: ${baseUrl}. Is the server running?`, 1);
+    err(e.message || String(e), 1);
+  }
+}
+
+async function cmdHealth(baseUrl, json) {
+  const GREEN = "\x1b[32m";
+  const RED = "\x1b[31m";
+  const RESET = "\x1b[0m";
+  try {
+    const r = await fetchJson(`${baseUrl}/health/ready`);
+    if (json) {
+      console.log(JSON.stringify({ status: r.status, ...r.body }, null, 2));
+      return;
+    }
+    if (!r.ok) {
+      console.log(`${RED}Health check failed: ${r.status}${RESET}`);
+      process.exit(1);
+    }
+    const data = r.body || {};
+    const status = data.status || "ok";
+    const color = status === "ok" || status === "ready" || status === "healthy" ? GREEN : RED;
+    console.log(`Status: ${color}${status}${RESET}`);
+    if (data.backend != null) {
+      const bColor = data.backend === "ok" || data.backend === "connected" || data.backend === true ? GREEN : RED;
+      console.log(`Backend: ${bColor}${data.backend}${RESET}`);
+    }
+    if (data.storage != null) {
+      const sColor = data.storage === "ok" || data.storage === "connected" || data.storage === true ? GREEN : RED;
+      console.log(`Storage: ${sColor}${data.storage}${RESET}`);
+    }
+    // Show any additional fields
+    for (const [key, val] of Object.entries(data)) {
+      if (key === "status" || key === "backend" || key === "storage") continue;
+      console.log(`${key}: ${val}`);
+    }
+  } catch (e) {
+    if (e.code === "ECONNREFUSED" || e.cause?.code === "ECONNREFUSED") {
+      console.log(`${RED}Connection refused: ${baseUrl}. Is the server running?${RESET}`);
+      process.exit(1);
+    }
+    err(e.message || String(e), 1);
+  }
+}
+
+async function cmdSchedulesList(baseUrl, apiKey, json) {
+  try {
+    const r = await fetchJson(`${baseUrl}/api/schedules`, { headers: headers(apiKey) });
+    if (!r.ok) {
+      if (r.status === 401) err("Unauthorized. Set SISKELBOT_API_KEY or --api-key.");
+      err(r.body?.error || `GET /api/schedules failed: ${r.status}`);
+    }
+    const data = r.body;
+    if (json) {
+      console.log(JSON.stringify(data, null, 2));
+      return;
+    }
+    const items = data.schedules || data.items || (Array.isArray(data) ? data : []);
+    if (items.length === 0) {
+      console.log("No schedules found.");
+      return;
+    }
+    for (const s of items) {
+      const name = s.name || s.recipeName || s.id || "unnamed";
+      const cron = s.cron || s.cronExpression || "N/A";
+      const next = s.nextRun || s.nextRunAt || "N/A";
+      const enabled = s.enabled != null ? (s.enabled ? "enabled" : "disabled") : "unknown";
+      console.log(`- ${name}: cron="${cron}" next=${next} [${enabled}]`);
+    }
+  } catch (e) {
+    if (e.code === "ECONNREFUSED" || e.cause?.code === "ECONNREFUSED") err(`Connection refused: ${baseUrl}. Is the server running?`, 1);
+    err(e.message || String(e), 1);
+  }
+}
+
+async function cmdWebhooksList(baseUrl, apiKey, json) {
+  try {
+    const r = await fetchJson(`${baseUrl}/api/webhooks`, { headers: headers(apiKey) });
+    if (!r.ok) {
+      if (r.status === 401) err("Unauthorized. Set SISKELBOT_API_KEY or --api-key.");
+      err(r.body?.error || `GET /api/webhooks failed: ${r.status}`);
+    }
+    const data = r.body;
+    if (json) {
+      console.log(JSON.stringify(data, null, 2));
+      return;
+    }
+    const items = data.webhooks || data.items || (Array.isArray(data) ? data : []);
+    if (items.length === 0) {
+      console.log("No webhooks found.");
+      return;
+    }
+    for (const w of items) {
+      const url = w.url || w.endpoint || "unknown";
+      const events = Array.isArray(w.events) ? w.events.join(", ") : w.events || "all";
+      const active = w.active != null ? (w.active ? "active" : "inactive") : "unknown";
+      console.log(`- ${url}: events=[${events}] [${active}]`);
+    }
+  } catch (e) {
+    if (e.code === "ECONNREFUSED" || e.cause?.code === "ECONNREFUSED") err(`Connection refused: ${baseUrl}. Is the server running?`, 1);
+    err(e.message || String(e), 1);
+  }
+}
+
 async function main() {
   const { args, json } = parseArgs();
   const baseUrl = getUrl();
@@ -394,6 +660,22 @@ async function main() {
       if (sub === "list") await cmdRecipesList(baseUrl, apiKey, workspace, json);
       else if (sub === "run") await cmdRecipesRun(baseUrl, apiKey, args[2], workspace, json);
       else err('Usage: siskelbot recipes list | recipes run <name>');
+    } else if (cmd === "health") {
+      await cmdHealth(baseUrl, json);
+    } else if (cmd === "admin") {
+      if (sub === "summary") await cmdAdminSummary(baseUrl, json);
+      else if (sub === "keys" && args[2] === "list") await cmdAdminKeysList(baseUrl, json);
+      else err("Usage: siskelbot admin summary | admin keys list");
+    } else if (cmd === "backup") {
+      if (sub === "create") await cmdBackupCreate(baseUrl, json);
+      else if (sub === "list") await cmdBackupList(baseUrl, json);
+      else err("Usage: siskelbot backup create | backup list");
+    } else if (cmd === "schedules") {
+      if (sub === "list") await cmdSchedulesList(baseUrl, apiKey, json);
+      else err("Usage: siskelbot schedules list");
+    } else if (cmd === "webhooks") {
+      if (sub === "list") await cmdWebhooksList(baseUrl, apiKey, json);
+      else err("Usage: siskelbot webhooks list");
     } else {
       err(`Unknown command: ${cmd}. Run with --help for usage.`);
     }

@@ -30,6 +30,11 @@ class FakeObjectStore {
     queueMicrotask(() => req.onsuccess?.());
     return req;
   }
+  put(value) {
+    const key = value[this.keyPath];
+    this._data.set(key, structuredClone(value));
+    return { onsuccess: null, onerror: null };
+  }
   delete(key) {
     this._data.delete(key);
     return { onsuccess: null, onerror: null };
@@ -176,27 +181,26 @@ test("replayQueue returns 0 when queue is empty", async () => {
   assert.equal(count, 0);
 });
 
-test("replayQueue stops on sendFn error and preserves remaining messages", async () => {
+test("replayQueue retries on sendFn error and preserves failed messages", async () => {
   await queueMessage("one");
   await queueMessage("two");
   await queueMessage("three");
 
   const sent = [];
-  await assert.rejects(async () => {
-    await replayQueue(async (text) => {
-      if (text === "two") throw new Error("send failed");
-      sent.push(text);
-    });
-  }, { message: "send failed" });
+  const result = await replayQueue(async (text) => {
+    if (text === "two") throw new Error("send failed");
+    sent.push(text);
+  });
 
-  // Only "one" should have been sent and cleared
-  assert.deepEqual(sent, ["one"]);
+  // "one" and "three" should have been sent and cleared
+  assert.deepEqual(sent, ["one", "three"]);
+  assert.equal(result, 2);
 
-  // "two" and "three" remain in the queue
+  // "two" remains in the queue with incremented retryCount
   const remaining = await getQueuedMessages();
-  assert.equal(remaining.length, 2);
+  assert.equal(remaining.length, 1);
   assert.equal(remaining[0].text, "two");
-  assert.equal(remaining[1].text, "three");
+  assert.equal(remaining[0].retryCount, 1);
 });
 
 test("queueMessage coerces non-string input to string", async () => {
