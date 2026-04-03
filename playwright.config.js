@@ -15,7 +15,7 @@ export default defineConfig({
   projects: [
     {
       name: "api",
-      testMatch: /\b(health|chat|knowledge)\.spec\.js$/,
+      testMatch: /\b(health|chat|knowledge|branching|marketplace|workspace-templates|admin-crud)\.spec\.js$/,
       use: {
         // API-only tests — no browser needed
       },

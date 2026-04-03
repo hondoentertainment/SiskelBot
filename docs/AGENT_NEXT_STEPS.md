@@ -1,15 +1,29 @@
 # Siskel Bot — recommended next steps
 
-**Last updated:** March 2026
+**Last updated:** April 2026
 
 ---
 
 ## Previously shipped
 
-- **Phases 93–96:** Eval harness — live `chat` eval cases, SSE parsing for `agent_activity`, criteria matching, skip support, Activity column in `/eval` UI.
-- **Phase 60:** `AGENT_DEFAULT_SYSTEM` — deployment-wide default system text for agent/swarm LLM calls.
-- **Phases 61–64:** Per-workspace `defaultSystemPrompt` + `memorySnippets[]`, settings panel with Reload/Save, client hint when deployment default is set.
-- **Phase 65:** Offline `target: “trace”` eval cases in `data/eval-sets/example.json`.
+All items from the original P0–P3 roadmap have been implemented:
+
+- **P0.1:** OCR endpoint with Tesseract.js (ddba245)
+- **P0.2:** E2E Playwright test suite (145d69f)
+- **P0.3:** Staging trace replay system (0f617a3)
+- **P0.4:** API key scopes enforcement (6cc5f25)
+- **P1.5:** Postgres coverage expansion (2f8308d)
+- **P1.6:** Offline message queue for PWA (6fade9b)
+- **P1.7:** Deeper OpenTelemetry instrumentation (5157779)
+- **P1.8:** Custom JS plugin sandbox runtime (f4fa189)
+- **P2.9:** Plugin marketplace with discovery UI (7b3f7d0)
+- **P2.10:** Conversation branching & forking (088bf30)
+- **P2.11:** Multi-model A/B routing (1398af1)
+- **P2.12:** Workspace templates system (11d0403)
+- **P3.13:** Multi-region HA with leader election (e76bed9)
+- **P3.14:** S3 audit archival with query/export (9370a5f)
+- **P3.15:** SSO/SAML/OIDC integration (e91fa6d)
+- **Phases 93–96:** Eval harness — live chat eval cases, SSE parsing, criteria matching, offline eval sets.
 
 ---
 
@@ -17,50 +31,52 @@
 
 ### P0 — Immediate / high leverage
 
-1. **Implement OCR endpoint** — `POST /api/ocr` currently returns 501. Integrate Tesseract.js (local) or a cloud OCR provider to unlock document-image ingestion in the knowledge pipeline. This is the only shipped route that returns “Not Implemented” and is a gap for users uploading scanned documents.
+1. **Extract route handlers from `server.js`** — At 3,954 lines, `server.js` is the largest maintainability bottleneck. Extract route groups into `routes/chat.js`, `routes/admin.js`, `routes/knowledge.js`, `routes/eval.js`, `routes/ocr.js`, and `routes/agents.js`. Keep `server.js` as the composition root that mounts sub-routers. This unblocks parallel development and simplifies code review.
 
-2. **E2E test automation** — The test suite (29 files) covers unit and integration well, but E2E flows are manual. Add Playwright tests for critical paths: login → chat → agent tool call → response, admin dashboard CRUD, eval harness run. This protects against UI regressions as the client SPA grows.
+2. **Fix stale OCR test** — `tests/server.test.js:711` still asserts that `POST /api/ocr` returns 501, but the endpoint is now implemented (Tesseract.js). Update the test to validate actual OCR functionality (upload an image, assert extracted text).
 
-3. **Staging trace replay (Phase 65 follow-up)** — Record agent/swarm trajectories from staging and feed them into the eval harness as golden traces. This closes the loop between production behavior and regression testing without needing live LLM calls in CI.
+3. **Client SPA code splitting** — The main `client/index.html` is ~276KB of inline HTML/JS. Introduce esbuild or a lightweight bundler to split JS into cacheable modules. This improves load times, enables browser caching, and makes the frontend easier to develop and test.
 
-4. **API key scopes enforcement** — The env var syntax supports `key:userId:scopes` but scope checking is not enforced at runtime. Wire up scope validation (`read`, `write`, `admin`, `embed`) in the auth middleware to enable least-privilege API keys for integrators.
+4. **Increase E2E test coverage** — The Playwright suite exists but covers only foundational paths. Add tests for: conversation branching, plugin marketplace install flow, eval harness execution, workspace template cloning, and admin dashboard CRUD operations.
 
 ### P1 — Near-term (next 1–2 iterations)
 
-5. **Postgres coverage expansion (Phase 68)** — Several storage paths still fall back to JSON files (e.g., eval sets, workspace agent settings, webhook subscriptions). Migrate remaining file-only paths to `json-path-store` for production durability and multi-instance deployments.
+5. **Add TypeScript to critical modules** — Migrate `lib/agent-loop.js`, `lib/swarm.js`, `lib/storage.js`, and `lib/auth.js` to TypeScript (or add comprehensive JSDoc type annotations with `// @ts-check`). These are the highest-churn, highest-risk modules. Start with JSDoc + tsconfig `checkJs` for zero-build-step adoption.
 
-6. **Offline message queue** — The PWA disables the send button when offline. Implement a client-side IndexedDB queue that stores messages offline and replays them on reconnect, improving the mobile experience.
+6. **Rate limiting improvements** — Add per-workspace rate limits (not just per-user) and sliding window support. Expose rate limit headers (`X-RateLimit-Remaining`, `X-RateLimit-Reset`) consistently across all API endpoints.
 
-7. **Deeper OpenTelemetry instrumentation (Phase 69)** — Add spans for agent tool execution, swarm specialist dispatch, knowledge search, and recipe step execution. Enable tail sampling via an OpenTelemetry Collector sidecar config (document in `docs/RUNBOOK.md`).
+7. **Knowledge pipeline V2 enhancements** — Add support for additional document formats (DOCX, XLSX, HTML) in the RAG pipeline. Implement chunking strategy configuration per workspace (chunk size, overlap, metadata extraction).
 
-8. **Custom JS plugins (Phase 17.1)** — Currently only config-based plugins are supported. Add a sandboxed JS plugin runtime (e.g., isolated-vm or Node.js worker threads) so integrators can write custom action handlers beyond webhook and builtin types.
+8. **WebSocket reconnection hardening** — Implement exponential backoff with jitter for WebSocket reconnections. Add connection state indicators in the client UI and queue missed events for replay on reconnect.
 
 ### P2 — Medium-term
 
-9. **Plugin marketplace (PRD Phase 49)** — Curated action packs with signed manifests, a discovery UI in the admin dashboard, and one-click install into workspaces.
+9. **API versioning enforcement** — The OpenAPI spec and versioning infrastructure exist but response formats aren't locked to versions. Add version-aware response serialization so v1 clients aren't broken by v2 schema changes.
 
-10. **Conversation branching & forking** — Allow users to branch a conversation at any message to explore alternative agent paths. Store branches as linked conversation trees. This is high value for AI engineers comparing model behaviors.
+10. **Observability dashboard** — Create a built-in `/admin/observability` page that surfaces key OpenTelemetry metrics (p50/p95 latency, error rates, active agents, token usage) without requiring an external Grafana/Prometheus stack.
 
-11. **Multi-model A/B routing** — Extend the backend config to support weighted routing across multiple models (e.g., 80% gpt-4o / 20% local Ollama). Log which model served each request for eval comparison. Builds on the existing fallback backend mechanism.
+11. **Agent memory persistence** — Extend conversation memory beyond the session. Allow agents to store and retrieve long-term facts about users/projects across conversations, with explicit user consent and a management UI.
 
-12. **Workspace templates** — Allow admins to create workspace templates (pre-configured system prompts, memory snippets, tool allowlists, quota settings) that new workspaces can clone from. Reduces onboarding friction for teams.
+12. **Workspace migration tooling** — Add export/import for complete workspace state (conversations, settings, templates, knowledge base) to enable workspace portability between deployments.
 
 ### P3 — Longer-term / enterprise
 
-13. **Multi-region & HA (PRD Phases 45–48)** — Active-active deployment with cross-region storage replication, leader election for scheduled recipes, and geo-routed health probes. See `docs/MULTI_REGION_HA.md` for the existing design.
+13. **RBAC granularity** — Extend team roles beyond basic admin/member. Add custom role definitions with fine-grained permissions (e.g., can manage knowledge base but not billing, can view but not execute agents).
 
-14. **Audit archival to S3** — Currently supported but needs automated lifecycle policies, Athena/BigQuery integration for querying archived audit logs, and a retention configuration UI in the admin dashboard.
+14. **Federated deployment** — Support connecting multiple SiskelBot instances into a federation where users can discover and interact with workspaces across instances. Builds on the multi-region HA foundation.
 
-15. **SSO / SAML integration** — Extend OAuth beyond GitHub/Google to support enterprise SAML/OIDC providers for organizations that require centralized identity management.
+15. **Compliance & data residency** — Add data residency controls (per-workspace region pinning), automated PII detection/redaction in conversations, and compliance audit report generation for SOC 2 / GDPR.
 
 ---
 
 ## Technical debt & quality
 
-- **`server.js` is 3,300+ lines** — Extract route handlers into dedicated route files (e.g., `routes/chat.js`, `routes/admin.js`, `routes/knowledge.js`) to improve maintainability and code review ergonomics.
-- **Client SPA is ~275KB inline HTML** — Consider splitting into modules with a lightweight bundler (esbuild) for better cacheability and developer experience.
-- **No TypeScript** — The codebase is pure JS with ES modules. Adding JSDoc type annotations or migrating critical modules (agent-loop, swarm, storage) to TypeScript would catch bugs earlier.
+- **`server.js` is 3,954 lines** — See P0.1 above. This is the single highest-impact refactor.
+- **82 lib files with no barrel exports** — Add `lib/index.js` barrel files per domain (e.g., `lib/agent/index.js`) to simplify imports and establish module boundaries.
+- **44 test files, no coverage tracking** — Add `c8` or `istanbul` for code coverage reporting in CI. Set a coverage floor (e.g., 70%) and ratchet up over time.
+- **No linting for client JS** — ESLint only covers server-side code. Extend to `client/` with browser-appropriate rules.
+- **Docker image size** — Audit and reduce the Alpine image layers. Consider multi-stage build optimization and `.dockerignore` review.
 
 ---
 
-See `docs/PRD.md` for the full phase roadmap (Phases 79–96 implemented).
+See `docs/PRD.md` for the full phase roadmap.
