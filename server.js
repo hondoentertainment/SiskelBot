@@ -54,6 +54,7 @@ import { list as listNotifications, markRead as markNotificationRead, markAllRea
 import { isQuotaConfigured, checkQuota, getWorkspaceQuota, getWorkspaceTokensUsed, isQuotaAdmin, setWorkspaceQuotaOverride, getQuotaOverrides } from "./lib/quotas.js";
 import { createBackup, listBackups, restoreBackup } from "./lib/backup.js";
 import { adminAuth } from "./lib/admin-auth.js";
+import { adminIpAllowlist } from "./lib/admin-ip-allowlist.js";
 import { listAllUsers, listAllWorkspaces, getRecentAuditLog } from "./lib/admin-data.js";
 import { requireScope } from "./lib/scope-middleware.js";
 import { logKeyUsage } from "./lib/api-key-audit.js";
@@ -178,13 +179,23 @@ const STREAM_SWARM_SYNTH = process.env.STREAM_SWARM_SYNTH === "1";
 const MAX_AGENT_TOOL_CALLS_ENV = Number(process.env.MAX_AGENT_TOOL_CALLS) || 0;
 const AGENT_MAX_WALL_MS_ENV = Number(process.env.AGENT_MAX_WALL_MS) || 0;
 
-// Production security: warn if API_KEY not set (backend may be exposed)
+// Production security: refuse to start if API_KEY not set (unless explicitly bypassed)
 if (IS_PRODUCTION && !API_KEY) {
-  console.warn(
-    "[SECURITY] NODE_ENV=production but API_KEY is not set. " +
-      "The /v1/chat/completions endpoint is publicly accessible. " +
-      "Set API_KEY in Vercel env vars to protect it."
-  );
+  if (process.env.ALLOW_INSECURE_PRODUCTION === "1") {
+    console.warn(
+      "[SECURITY] NODE_ENV=production but API_KEY is not set. " +
+        "The /v1/chat/completions endpoint is publicly accessible. " +
+        "Continuing because ALLOW_INSECURE_PRODUCTION=1."
+    );
+  } else {
+    console.error(
+      "[SECURITY] NODE_ENV=production but API_KEY is not set. " +
+        "The /v1/chat/completions endpoint is publicly accessible. " +
+        "Set API_KEY in Vercel env vars to protect it. " +
+        "Set ALLOW_INSECURE_PRODUCTION=1 to bypass this check."
+    );
+    process.exit(1);
+  }
 }
 
 // Phase 34: Startup config validation
@@ -435,6 +446,17 @@ const embeddingsRateLimiter = rateLimit({
   legacyHeaders: false,
   handler: (req, res) => {
     apiError(res, 429, "RATE_LIMITED", "Too many embeddings requests", "Reduce request rate or increase EMBEDDINGS_RATE_LIMIT_MAX.");
+  },
+});
+
+// Rate limit for read/search operations (configurable via READ_RATE_LIMIT_MAX)
+const readRateLimiter = rateLimit({
+  windowMs: 60_000,
+  max: Number(process.env.READ_RATE_LIMIT_MAX) || 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    apiError(res, 429, "RATE_LIMITED", "Too many read requests", "Reduce request rate or increase READ_RATE_LIMIT_MAX.");
   },
 });
 
@@ -1901,7 +1923,7 @@ apiRoute("post", "/knowledge/index",
   }
 );
 
-apiRoute("get", "/knowledge/search", requireScope("read"), logRequest, async (req, res) => {
+apiRoute("get", "/knowledge/search", readRateLimiter, requireScope("read"), logRequest, async (req, res) => {
   try {
     const q = (req.query?.q ?? "").toString();
     const workspace = sanitizeWorkspace(req.query?.workspace);
@@ -1920,7 +1942,7 @@ apiRoute("get", "/knowledge/search", requireScope("read"), logRequest, async (re
   }
 });
 
-apiRoute("get", "/knowledge/status", requireScope("read"), logRequest, (req, res) => {
+apiRoute("get", "/knowledge/status", readRateLimiter, requireScope("read"), logRequest, (req, res) => {
   const workspace = String(req.query.workspace || "default").trim();
   const result = knowledgeList({ workspace });
   if (result.error) {
@@ -1932,7 +1954,7 @@ apiRoute("get", "/knowledge/status", requireScope("read"), logRequest, (req, res
   });
 });
 
-apiRoute("get", "/knowledge/list", requireScope("read"), logRequest, (req, res) => {
+apiRoute("get", "/knowledge/list", readRateLimiter, requireScope("read"), logRequest, (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const result = knowledgeList({ workspace });
@@ -2304,7 +2326,7 @@ apiRoute("get", "/workspaces/:id/activity", storageRateLimiter, userAuth, requir
 
 // --- Phase 10: Persistent Backend Storage (SiskelBot) ---
 // GET/POST /api/context (userAuth attaches req.userId; anonymous when no auth configured)
-apiRoute("get", "/context", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
+apiRoute("get", "/context", storageRateLimiter, readRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const data = await storage.listItems("context", workspace, req.userId);
@@ -2340,7 +2362,7 @@ apiRoute("post", "/context", storageRateLimiter, requireScope("write"), logReque
 });
 
 // GET/PUT/DELETE /api/context/:id
-apiRoute("get", "/context/:id", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+apiRoute("get", "/context/:id", storageRateLimiter, readRateLimiter, requireScope("read"), logRequest, async (req, res) => {
   try {
     const workspace = sanitizeWorkspace(req.query?.workspace);
     const item = await storage.getItem("context", req.params.id, workspace);
@@ -3623,7 +3645,7 @@ function adminAuthOrQuery(req, res, next) {
   return adminAuth(req, res, next);
 }
 
-app.get("/api/admin/summary", adminRateLimiter, adminAuthOrQuery, requireScope("admin"), logRequest, async (req, res) => {
+app.get("/api/admin/summary", adminRateLimiter, adminIpAllowlist, adminAuthOrQuery, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const users = await listAllUsers();
     const workspaces = await listAllWorkspaces();
@@ -3676,7 +3698,7 @@ app.get("/api/admin/summary", adminRateLimiter, adminAuthOrQuery, requireScope("
   }
 });
 
-app.post("/api/admin/quotas/override", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
+app.post("/api/admin/quotas/override", adminRateLimiter, adminIpAllowlist, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const { workspace, limit } = req.body || {};
     const ws = sanitizeWorkspace(workspace);
@@ -3692,7 +3714,7 @@ app.post("/api/admin/quotas/override", adminRateLimiter, adminAuth, requireScope
 });
 
 // Phase 30: Admin API key management
-app.get("/api/admin/keys", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
+app.get("/api/admin/keys", adminRateLimiter, adminIpAllowlist, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const keys = listKeysForAdmin();
     res.json({ keys });
@@ -3702,7 +3724,7 @@ app.get("/api/admin/keys", adminRateLimiter, adminAuth, requireScope("admin"), l
   }
 });
 
-app.post("/api/admin/keys", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
+app.post("/api/admin/keys", adminRateLimiter, adminIpAllowlist, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const { userId, scopes } = req.body || {};
     const result = await addKey({ userId, scopes: Array.isArray(scopes) ? scopes : undefined });
@@ -3716,7 +3738,7 @@ app.post("/api/admin/keys", adminRateLimiter, adminAuth, requireScope("admin"), 
   }
 });
 
-app.delete("/api/admin/keys/:id", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
+app.delete("/api/admin/keys/:id", adminRateLimiter, adminIpAllowlist, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const result = await revokeKey(req.params.id);
     if (!result.ok) {
@@ -3729,7 +3751,7 @@ app.delete("/api/admin/keys/:id", adminRateLimiter, adminAuth, requireScope("adm
   }
 });
 
-app.post("/api/admin/audit/archive-s3", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
+app.post("/api/admin/audit/archive-s3", adminRateLimiter, adminIpAllowlist, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const out = await archiveExecutionAuditToS3();
     if (!out.ok) {
@@ -3742,7 +3764,7 @@ app.post("/api/admin/audit/archive-s3", adminRateLimiter, adminAuth, requireScop
   }
 });
 
-app.get("/api/admin/audit/archive-status", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
+app.get("/api/admin/audit/archive-status", adminRateLimiter, adminIpAllowlist, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   try {
     const status = await getAuditArchiveStatus();
     res.json(status);
@@ -3755,7 +3777,7 @@ app.get("/api/admin/audit/archive-status", adminRateLimiter, adminAuth, requireS
 // --- Enhanced audit lifecycle & query routes ---
 const _auditLifecycle = new AuditLifecycle();
 
-app.get("/api/admin/audit/query", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.get("/api/admin/audit/query", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, async (req, res) => {
   try {
     const options = {};
     if (req.query.startDate || req.query.endDate) {
@@ -3775,7 +3797,7 @@ app.get("/api/admin/audit/query", adminRateLimiter, adminAuth, logRequest, async
   }
 });
 
-app.get("/api/admin/audit/export", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.get("/api/admin/audit/export", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, async (req, res) => {
   try {
     const options = {};
     if (req.query.startDate || req.query.endDate) {
@@ -3797,7 +3819,7 @@ app.get("/api/admin/audit/export", adminRateLimiter, adminAuth, logRequest, asyn
   }
 });
 
-app.get("/api/admin/audit/retention", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.get("/api/admin/audit/retention", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, async (req, res) => {
   try {
     res.json(_auditLifecycle.getRetentionPolicy());
   } catch (err) {
@@ -3806,7 +3828,7 @@ app.get("/api/admin/audit/retention", adminRateLimiter, adminAuth, logRequest, a
   }
 });
 
-app.put("/api/admin/audit/retention", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.put("/api/admin/audit/retention", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, async (req, res) => {
   try {
     const { retentionDays, archiveAfterDays, deleteAfterDays, bucketName } = req.body || {};
     _auditLifecycle.configure({ retentionDays, archiveAfterDays, deleteAfterDays, bucketName });
@@ -3817,7 +3839,7 @@ app.put("/api/admin/audit/retention", adminRateLimiter, adminAuth, logRequest, a
   }
 });
 
-app.post("/api/admin/audit/archive-now", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.post("/api/admin/audit/archive-now", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, async (req, res) => {
   try {
     const result = await _auditLifecycle.archiveOldEntries();
     if (result.error) {
@@ -3831,11 +3853,11 @@ app.post("/api/admin/audit/archive-now", adminRateLimiter, adminAuth, logRequest
 });
 
 // A/B routing admin endpoints
-app.get("/api/routing/stats", adminRateLimiter, adminAuth, logRequest, (req, res) => {
+app.get("/api/routing/stats", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, (req, res) => {
   res.json({ stats: getRoutingStats(), enabled: AB_ROUTING_ENABLED });
 });
 
-app.get("/api/routing/config", adminRateLimiter, adminAuth, logRequest, (req, res) => {
+app.get("/api/routing/config", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, (req, res) => {
   const config = AB_ROUTING_ENABLED
     ? MODEL_ROUTING_CONFIG.map((e) => ({ backend: e.backend, weight: e.weight }))
     : [];
@@ -3844,7 +3866,7 @@ app.get("/api/routing/config", adminRateLimiter, adminAuth, logRequest, (req, re
 
 // --- Phase 45-48: Multi-region & HA routes ---
 
-app.get("/api/regions", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.get("/api/regions", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, async (req, res) => {
   try {
     const rh = getRegionHealth();
     await rh.checkRegions();
@@ -3855,7 +3877,7 @@ app.get("/api/regions", adminRateLimiter, adminAuth, logRequest, async (req, res
   }
 });
 
-app.get("/api/regions/leader", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
+app.get("/api/regions/leader", adminRateLimiter, adminIpAllowlist, adminAuth, logRequest, async (req, res) => {
   try {
     const le = getLeaderElection();
     const leader = await le.getLeader();
