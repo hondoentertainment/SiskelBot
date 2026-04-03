@@ -8,7 +8,6 @@ import helmet from "helmet";
 import { randomUUID } from "crypto";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
-import multer from "multer";
 import passport from "passport";
 import { initPassport, isOAuthConfigured } from "./lib/oauth.js";
 import { configureSSO, isSSOConfigured } from "./lib/sso.js";
@@ -120,6 +119,17 @@ import {
   autoRecordEnabled,
 } from "./lib/trace-recorder.js";
 import { replayTrace, replayAll } from "./lib/trace-replay.js";
+import { getEventsSince } from "./lib/realtime-replay.js";
+import {
+  registerPeer,
+  removePeer,
+  listPeers,
+  discoverFederatedWorkspaces,
+  syncWorkspaceMetadata,
+  handleDiscoverRequest,
+  getInstanceInfo,
+  federationAuth,
+} from "./lib/federation.js";
 
 import {
   createTemplate,
@@ -477,6 +487,8 @@ function apiError(res, status, code, message, hint) {
 // Phase 23: API versioning - deprecation header for legacy /api/*
 function deprecationApi(req, res, next) {
   res.setHeader("X-API-Deprecated", "use /api/v1/");
+  res.setHeader("Sunset", "2027-01-01T00:00:00Z");
+  res.setHeader("Deprecation", "true");
   next();
 }
 
@@ -609,6 +621,100 @@ const sanitizeWorkspace = storage.sanitizeWorkspace;
 
 function isMonitoringEnabled() {
   return ENABLE_MONITORING && (GITHUB_TOKEN || VERCEL_TOKEN);
+}
+
+// Rate limiters for route modules
+const pluginsActionsRateLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const marketplaceRateLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const webhooksRateLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+const webhooksHandlers = [webhooksRateLimiter, storageRateLimiter, userAuth, logRequest];
+
+const executeStepRateLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    apiError(res, 429, "RATE_LIMITED", "Too many execute requests", "Wait before retrying.");
+  },
+});
+
+const evalRateLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    apiError(res, 429, "RATE_LIMITED", "Too many eval runs", "Limit: 5 runs per minute. Wait before retrying.");
+  },
+});
+
+// Automation recipe validation helper
+const AUTOMATION_MAX_RECIPE_BYTES = 64 * 1024;
+const AUTOMATION_MAX_NAME_LENGTH = 128;
+const AUTOMATION_MAX_STEP_ACTION_LENGTH = 512;
+
+function validateAutomationRecipe(recipe) {
+  const errors = [];
+  if (!recipe || typeof recipe !== "object") {
+    return { valid: false, errors: ["Recipe must be an object"] };
+  }
+  if (typeof recipe.name !== "string" || !recipe.name.trim()) {
+    errors.push("name: required non-empty string");
+  } else if (recipe.name.length > AUTOMATION_MAX_NAME_LENGTH) {
+    errors.push(`name: max ${AUTOMATION_MAX_NAME_LENGTH} chars`);
+  }
+  if (recipe.trigger !== undefined && typeof recipe.trigger !== "string") {
+    errors.push("trigger: must be string");
+  }
+  if (!Array.isArray(recipe.steps)) {
+    errors.push("steps: required array");
+  } else {
+    recipe.steps.forEach((s, i) => {
+      if (!s || typeof s !== "object") {
+        errors.push(`steps[${i}]: must be object`);
+      } else if (!s.action || typeof s.action !== "string" || !String(s.action).trim()) {
+        errors.push(`steps[${i}]: action required non-empty string`);
+      } else if (String(s.action).length > AUTOMATION_MAX_STEP_ACTION_LENGTH) {
+        errors.push(`steps[${i}]: action max ${AUTOMATION_MAX_STEP_ACTION_LENGTH} chars`);
+      }
+      if (s.payload !== undefined && (s.payload === null || Array.isArray(s.payload) || typeof s.payload !== "object")) {
+        errors.push(`steps[${i}]: payload must be object`);
+      }
+    });
+  }
+  if (recipe.inputs !== undefined && (recipe.inputs === null || Array.isArray(recipe.inputs) || typeof recipe.inputs !== "object")) {
+    errors.push("inputs: must be object");
+  }
+  if (recipe.outputs !== undefined && (recipe.outputs === null || Array.isArray(recipe.outputs) || typeof recipe.outputs !== "object")) {
+    errors.push("outputs: must be object");
+  }
+  try {
+    const bytes = new TextEncoder().encode(JSON.stringify(recipe)).length;
+    if (bytes > AUTOMATION_MAX_RECIPE_BYTES) {
+      errors.push(`Recipe exceeds max size (${AUTOMATION_MAX_RECIPE_BYTES} bytes)`);
+    }
+  } catch (_) {
+    errors.push("Recipe serialization failed");
+  }
+  return { valid: errors.length === 0, errors };
 }
 
 // ─── Mount all route modules ────────────────────────────────────────────────
@@ -820,882 +926,73 @@ const deps = {
   stagnationDetectionEnabled,
   trajectoryApiEnabled,
   defaultAgentSystemConfigured,
+
+  // Lib: backup
+  createBackup,
+  listBackups,
+  restoreBackup,
+
+  // Lib: conversations
+  branchConversation,
+  getConversationTree,
+  listConversationBranches,
+  getConversationBranch,
+  deleteConversationBranch,
+
+  // Lib: plugins
+  getRegisteredActions,
+  listJsPlugins,
+  execJsPlugin,
+  marketplaceListAvailable,
+  marketplaceRegistry,
+  marketplaceInstallPack,
+  marketplaceUninstallPack,
+  marketplaceListInstalled,
+  join,
+
+  // Lib: execute / automations
+  executeStep,
+  appendAuditLog,
+
+  // Lib: eval / trajectory / traces
+  loadTrajectory,
+  listTrajectories,
+  listRecordedTraces,
+  getRecordedTrace,
+  replayTrace,
+  deleteRecordedTrace,
+  listEvalSets,
+  loadEvalSet,
+  runEvalSet,
+
+  // Lib: realtime replay
+  getEventsSince,
+
+  // Lib: federation
+  registerPeer,
+  removePeer,
+  listPeers,
+  discoverFederatedWorkspaces,
+  syncWorkspaceMetadata,
+  handleDiscoverRequest,
+  getInstanceInfo,
+  federationAuth,
+
+  // Lib: rateLimit factory (for route modules that create their own limiters)
+  rateLimit,
+
+  // Route-specific rate limiters and helpers
+  pluginsActionsRateLimiter,
+  marketplaceRateLimiter,
+  webhooksHandlers,
+  executeStepRateLimiter,
+  evalRateLimiter,
+  validateAutomationRecipe,
 };
 
 mountAllRoutes(app, deps);
 
-// ─── Remaining inline routes (not yet extracted to route modules) ──────────
-
-// Phase 24: Backup & Restore
-apiRoute("post", "/backup", storageRateLimiter, backupAdminAuth, logRequest, async (req, res) => {
-  try {
-    const result = await createBackup();
-    res.status(201).json(result);
-  } catch (err) {
-    console.error("Backup create error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-apiRoute("get", "/backup", storageRateLimiter, backupAdminAuth, logRequest, async (req, res) => {
-  try {
-    const items = listBackups();
-    res.json({ items });
-  } catch (err) {
-    console.error("Backup list error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-apiRoute("post", "/backup/restore/:id", storageRateLimiter, backupAdminAuth, logRequest, async (req, res) => {
-  try {
-    await restoreBackup(req.params.id);
-    res.json({ ok: true });
-  } catch (err) {
-    if (err.message?.includes("not found") || err.message?.includes("Backup id required")) {
-      return res.status(404).json({ error: err.message, code: "NOT_FOUND" });
-    }
-    console.error("Backup restore error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-app.get("/api/backup/cron", logRequest, async (req, res) => {
-  const secret = process.env.BACKUP_ADMIN_KEY || process.env.CRON_SECRET;
-  if (secret && req.query?.secret !== secret && req.headers["authorization"] !== `Bearer ${secret}`) {
-    return apiError(res, 401, "UNAUTHORIZED", "Backup cron secret required", "Set BACKUP_ADMIN_KEY and pass via ?secret= or Authorization: Bearer.");
-  }
-  try {
-    const result = await createBackup();
-    res.json({ ok: true, id: result.id, createdAt: result.createdAt });
-  } catch (err) {
-    console.error("Backup cron error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-// Conversations CRUD
-apiRoute("get", "/conversations", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
-  try {
-    const workspace = sanitizeWorkspace(req.query?.workspace);
-    const data = await storage.listItems("conversations", workspace);
-    res.json({ _version: 1, items: data });
-  } catch (err) {
-    console.error("Storage conversations list error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-apiRoute("post", "/conversations", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
-  try {
-    const workspace = sanitizeWorkspace(req.body?.workspace);
-    const { id, title, messages, meta } = req.body || {};
-    const convId = (id && String(id).trim()) || randomUUID();
-    const item = {
-      id: convId,
-      title: typeof title === "string" ? title.trim().slice(0, 200) : "Untitled",
-      messages: Array.isArray(messages) ? messages : [],
-      meta: meta && typeof meta === "object" ? meta : {},
-      createdAt: new Date().toISOString(),
-    };
-    const merged = await storage.mergeItems("conversations", workspace, [item]);
-    const out = merged.find((x) => x.id === convId) || item;
-    await logActivity(workspace, "conversation_created", req.userId || "anonymous", { title: item.title, id: out.id });
-    res.status(201).json(out);
-  } catch (err) {
-    console.error("Storage conversations add error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-apiRoute("get", "/conversations/:id", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
-  try {
-    const workspace = sanitizeWorkspace(req.query?.workspace);
-    const item = await storage.getItem("conversations", req.params.id, workspace);
-    if (!item) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
-    res.json(item);
-  } catch (err) {
-    console.error("Storage conversations get error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-apiRoute("put", "/conversations/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
-  try {
-    const workspace = sanitizeWorkspace(req.body?.workspace);
-    const { title, messages, meta } = req.body || {};
-    const updated = await storage.updateItem("conversations", req.params.id, workspace, (existing) => {
-      if (typeof title === "string") existing.title = title.trim().slice(0, 200);
-      if (Array.isArray(messages)) existing.messages = messages;
-      if (meta && typeof meta === "object") existing.meta = meta;
-      return existing;
-    });
-    if (!updated) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
-    res.json(updated);
-  } catch (err) {
-    console.error("Storage conversations update error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-apiRoute("delete", "/conversations/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
-  try {
-    const workspace = sanitizeWorkspace(req.query?.workspace);
-    const deleted = await storage.deleteItem("conversations", req.params.id, workspace);
-    if (!deleted) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
-    res.status(204).send();
-  } catch (err) {
-    console.error("Storage conversations delete error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-// Conversation branching
-apiRoute("post", "/conversations/:id/branch", storageRateLimiter, logRequest, async (req, res) => {
-  try {
-    const workspace = sanitizeWorkspace(req.body?.workspace || req.query?.workspace);
-    const userId = req.userId || "anonymous";
-    const { atMessageIndex, label } = req.body || {};
-    if (typeof atMessageIndex !== "number" || !Number.isInteger(atMessageIndex) || atMessageIndex < 0) {
-      return apiError(res, 400, "INVALID_INPUT", "atMessageIndex must be a non-negative integer.");
-    }
-    const branch = await branchConversation(req.params.id, atMessageIndex, userId, { label, workspace });
-    res.status(201).json(branch);
-  } catch (err) {
-    if (err.message.includes("not found")) return apiError(res, 404, "NOT_FOUND", err.message);
-    if (err.message.includes("Invalid branch point")) return apiError(res, 400, "INVALID_INPUT", err.message);
-    console.error("Branch conversation error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-apiRoute("get", "/conversations/:id/tree", storageRateLimiter, logRequest, async (req, res) => {
-  try {
-    const workspace = sanitizeWorkspace(req.query?.workspace);
-    const userId = req.userId || "anonymous";
-    const tree = await getConversationTree(req.params.id, workspace, userId);
-    if (!tree) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
-    res.json(tree);
-  } catch (err) {
-    console.error("Conversation tree error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-apiRoute("get", "/conversations/:id/branches", storageRateLimiter, logRequest, async (req, res) => {
-  try {
-    const workspace = sanitizeWorkspace(req.query?.workspace);
-    const userId = req.userId || "anonymous";
-    const branches = await listConversationBranches(req.params.id, workspace, userId);
-    res.json({ branches });
-  } catch (err) {
-    console.error("List branches error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-apiRoute("get", "/conversations/branches/:branchId", storageRateLimiter, logRequest, async (req, res) => {
-  try {
-    const workspace = sanitizeWorkspace(req.query?.workspace);
-    const userId = req.userId || "anonymous";
-    const branch = await getConversationBranch(req.params.branchId, workspace, userId);
-    if (!branch) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
-    res.json(branch);
-  } catch (err) {
-    console.error("Get branch error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-apiRoute("delete", "/conversations/branches/:branchId", storageRateLimiter, logRequest, async (req, res) => {
-  try {
-    const workspace = sanitizeWorkspace(req.query?.workspace);
-    const userId = req.userId || "anonymous";
-    const deleted = await deleteConversationBranch(req.params.branchId, workspace, userId);
-    if (!deleted) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
-    res.status(204).send();
-  } catch (err) {
-    console.error("Delete branch error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-// Automations validate
-const AUTOMATION_MAX_RECIPE_BYTES = 64 * 1024;
-const AUTOMATION_MAX_NAME_LENGTH = 128;
-const AUTOMATION_MAX_STEP_ACTION_LENGTH = 512;
-
-function validateAutomationRecipe(recipe) {
-  const errors = [];
-  if (!recipe || typeof recipe !== "object") {
-    return { valid: false, errors: ["Recipe must be an object"] };
-  }
-  if (typeof recipe.name !== "string" || !recipe.name.trim()) {
-    errors.push("name: required non-empty string");
-  } else if (recipe.name.length > AUTOMATION_MAX_NAME_LENGTH) {
-    errors.push(`name: max ${AUTOMATION_MAX_NAME_LENGTH} chars`);
-  }
-  if (recipe.trigger !== undefined && typeof recipe.trigger !== "string") {
-    errors.push("trigger: must be string");
-  }
-  if (!Array.isArray(recipe.steps)) {
-    errors.push("steps: required array");
-  } else {
-    recipe.steps.forEach((s, i) => {
-      if (!s || typeof s !== "object") {
-        errors.push(`steps[${i}]: must be object`);
-      } else if (!s.action || typeof s.action !== "string" || !String(s.action).trim()) {
-        errors.push(`steps[${i}]: action required non-empty string`);
-      } else if (String(s.action).length > AUTOMATION_MAX_STEP_ACTION_LENGTH) {
-        errors.push(`steps[${i}]: action max ${AUTOMATION_MAX_STEP_ACTION_LENGTH} chars`);
-      }
-      if (s.payload !== undefined && (s.payload === null || Array.isArray(s.payload) || typeof s.payload !== "object")) {
-        errors.push(`steps[${i}]: payload must be object`);
-      }
-    });
-  }
-  if (recipe.inputs !== undefined && (recipe.inputs === null || Array.isArray(recipe.inputs) || typeof recipe.inputs !== "object")) {
-    errors.push("inputs: must be object");
-  }
-  if (recipe.outputs !== undefined && (recipe.outputs === null || Array.isArray(recipe.outputs) || typeof recipe.outputs !== "object")) {
-    errors.push("outputs: must be object");
-  }
-  try {
-    const bytes = new TextEncoder().encode(JSON.stringify(recipe)).length;
-    if (bytes > AUTOMATION_MAX_RECIPE_BYTES) {
-      errors.push(`Recipe exceeds max size (${AUTOMATION_MAX_RECIPE_BYTES} bytes)`);
-    }
-  } catch (_) {
-    errors.push("Recipe serialization failed");
-  }
-  return { valid: errors.length === 0, errors };
-}
-
-apiRoute("post", "/automations/validate", integrationRateLimiter, logRequest, (req, res) => {
-  try {
-    const recipe = req.body;
-    const result = validateAutomationRecipe(recipe);
-    return res.json({ valid: result.valid, errors: result.errors });
-  } catch (err) {
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-// Plugins & Extensions
-const pluginsActionsRateLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 60,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-apiRoute("get", "/plugins/actions", pluginsActionsRateLimiter, userAuth, logRequest, (req, res) => {
-  try {
-    const actions = getRegisteredActions();
-    res.json({ actions: [...actions].sort() });
-  } catch (err) {
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-apiRoute("get", "/plugins", pluginsActionsRateLimiter, userAuth, logRequest, (req, res) => {
-  try {
-    const plugins = listJsPlugins();
-    res.json({ plugins });
-  } catch (err) {
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGIN_API.md.");
-  }
-});
-
-apiRoute("post", "/plugins/execute", pluginsActionsRateLimiter, userAuth, logRequest, async (req, res) => {
-  try {
-    const { pluginId, input, workspaceId, config } = req.body || {};
-    if (!pluginId || typeof pluginId !== "string") {
-      return apiError(res, 400, "INVALID_INPUT", "pluginId is required", "Send { pluginId, input?, workspaceId?, config? }.");
-    }
-    const result = await execJsPlugin(pluginId.trim(), {
-      input: typeof input === "string" ? input : "",
-      workspaceId: workspaceId || null,
-      userId: req.userId || null,
-      config: config && typeof config === "object" ? config : {},
-    });
-    res.json({ ok: true, output: result.output, metadata: result.metadata });
-  } catch (err) {
-    res.json({ ok: false, error: err.message });
-  }
-});
-
-// Plugin Marketplace
-const marketplaceRateLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 60,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-apiRoute("get", "/marketplace", marketplaceRateLimiter, logRequest, (req, res) => {
-  try {
-    const packs = marketplaceListAvailable();
-    const category = req.query?.category;
-    const filtered = category ? packs.filter((p) => p.category === category) : packs;
-    res.json({ _version: 1, packs: filtered });
-  } catch (err) {
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
-  }
-});
-
-apiRoute("get", "/marketplace/:packId", marketplaceRateLimiter, logRequest, (req, res) => {
-  try {
-    const packId = req.params.packId;
-    const manifest = marketplaceRegistry.get(packId);
-    if (!manifest) {
-      return apiError(res, 404, "NOT_FOUND", `Pack not found: ${packId}`, "Use GET /api/marketplace to list available packs.");
-    }
-    res.json({
-      id: manifest.id,
-      name: manifest.name,
-      version: manifest.version,
-      description: manifest.description,
-      author: manifest.author,
-      category: manifest.category || "uncategorized",
-      actions: manifest.actions,
-    });
-  } catch (err) {
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
-  }
-});
-
-apiRoute("post", "/marketplace/:packId/install", marketplaceRateLimiter, userAuth, logRequest, (req, res) => {
-  try {
-    const packId = req.params.packId;
-    const workspaceId = req.body?.workspaceId;
-    if (!workspaceId || typeof workspaceId !== "string") {
-      return apiError(res, 400, "INVALID_INPUT", "workspaceId required", "Send { workspaceId: string }.");
-    }
-    const result = marketplaceInstallPack(packId, workspaceId);
-    if (!result.ok) {
-      return apiError(res, 400, "INSTALL_FAILED", result.error, "Check that the pack exists.");
-    }
-    res.json({ ok: true, packId, workspaceId, alreadyInstalled: result.alreadyInstalled || false });
-  } catch (err) {
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
-  }
-});
-
-apiRoute("delete", "/marketplace/:packId/install", marketplaceRateLimiter, userAuth, logRequest, (req, res) => {
-  try {
-    const packId = req.params.packId;
-    const workspaceId = req.body?.workspaceId || req.query?.workspaceId;
-    if (!workspaceId || typeof workspaceId !== "string") {
-      return apiError(res, 400, "INVALID_INPUT", "workspaceId required", "Send { workspaceId: string } or ?workspaceId=.");
-    }
-    const result = marketplaceUninstallPack(packId, workspaceId);
-    if (!result.ok) {
-      return apiError(res, 400, "UNINSTALL_FAILED", result.error, "Check that the pack exists.");
-    }
-    res.json({ ok: true, packId, workspaceId });
-  } catch (err) {
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
-  }
-});
-
-apiRoute("get", "/workspaces/:id/plugins", marketplaceRateLimiter, userAuth, logRequest, (req, res) => {
-  try {
-    const workspaceId = req.params.id;
-    const packs = marketplaceListInstalled(workspaceId);
-    res.json({ _version: 1, workspaceId, packs });
-  } catch (err) {
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
-  }
-});
-
-// Webhooks & Notifications
-const webhooksRateLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 60,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-const webhooksHandlers = [webhooksRateLimiter, storageRateLimiter, userAuth, logRequest];
-
-apiRoute("get", "/webhooks", ...webhooksHandlers, async (req, res) => {
-  try {
-    const workspace = sanitizeWorkspace(req.query?.workspace);
-    const items = await listWebhooks(workspace);
-    res.json({ _version: 1, items });
-  } catch (err) {
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/WEBHOOKS.md.");
-  }
-});
-
-apiRoute("post", "/webhooks", ...webhooksHandlers, async (req, res) => {
-  try {
-    const workspace = sanitizeWorkspace(req.body?.workspace);
-    const { url, events, secret } = req.body || {};
-    if (!url || typeof url !== "string" || !url.trim()) {
-      return apiError(res, 400, "INVALID_INPUT", "url required", "Send { url: string, events: string[], secret?: string }.");
-    }
-    const v = validateWebhookUrl(url.trim());
-    if (!v.valid) {
-      return apiError(res, 400, "INVALID_URL", v.reason, "Use HTTPS URL. Set ALLOW_WEBHOOK_LOCALHOST=1 for localhost.");
-    }
-    const ev = Array.isArray(events) ? events : [];
-    if (ev.length === 0) {
-      return apiError(res, 400, "INVALID_INPUT", "At least one event required", "Events: message_sent, plan_created, recipe_executed, schedule_completed.");
-    }
-    const webhook = await addWebhook({ url: url.trim(), events: ev, secret }, workspace);
-    res.status(201).json(webhook);
-  } catch (err) {
-    if (err.message?.includes("At least one event") || err.message?.includes("URL")) {
-      return apiError(res, 400, "INVALID_INPUT", err.message, "See docs/WEBHOOKS.md.");
-    }
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/WEBHOOKS.md.");
-  }
-});
-
-apiRoute("delete", "/webhooks/:id", ...webhooksHandlers, async (req, res) => {
-  try {
-    const workspace = sanitizeWorkspace(req.query?.workspace);
-    const removed = await removeWebhook(req.params.id, workspace);
-    if (!removed) return res.status(404).json({ error: "Webhook not found", code: "NOT_FOUND" });
-    res.status(204).send();
-  } catch (err) {
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/WEBHOOKS.md.");
-  }
-});
-
-// WebSocket token & presence
-apiRoute("get", "/ws-token", ...webhooksHandlers, (req, res) => {
-  try {
-    const workspace = sanitizeWorkspace(req.query?.workspace);
-    const userId = req.userId ?? "anonymous";
-    const { token, url } = createToken(userId, workspace);
-    res.json({ token, url });
-  } catch (err) {
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-apiRoute("get", "/workspaces/:id/presence", storageRateLimiter, userAuth, logRequest, async (req, res) => {
-  try {
-    const workspaceId = req.params.id;
-    const access = await canAccessWorkspace(workspaceId, req.userId);
-    const isTeamWorkspace = !!(await getWorkspaceMembers(workspaceId));
-    if (!access.allowed && isTeamWorkspace) return apiError(res, 403, "FORBIDDEN", "Access denied", null);
-    const online = getOnlineUsers(workspaceId);
-    res.json({ online });
-  } catch (err) {
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-// Notifications
-apiRoute("get", "/notifications", ...webhooksHandlers, async (req, res) => {
-  try {
-    const workspace = sanitizeWorkspace(req.query?.workspace);
-    const userId = req.userId ?? "anonymous";
-    const items = await listNotifications(workspace, userId);
-    res.json({ _version: 1, items });
-  } catch (err) {
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-apiRoute("patch", "/notifications/mark-all-read", ...webhooksHandlers, async (req, res) => {
-  try {
-    const workspace = sanitizeWorkspace(req.query?.workspace || req.body?.workspace);
-    const userId = req.userId ?? "anonymous";
-    await markAllNotificationsRead(workspace, userId);
-    res.json({ ok: true });
-  } catch (err) {
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-apiRoute("patch", "/notifications/:id", ...webhooksHandlers, async (req, res) => {
-  try {
-    const workspace = sanitizeWorkspace(req.query?.workspace);
-    const userId = req.userId ?? "anonymous";
-    const ok = await markNotificationRead(req.params.id, workspace, userId);
-    if (!ok) return res.status(404).json({ error: "Notification not found", code: "NOT_FOUND" });
-    res.json({ ok: true });
-  } catch (err) {
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-// Recipe Execution
-const executeStepRateLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (req, res) => {
-    apiError(res, 429, "RATE_LIMITED", "Too many execute requests", "Wait before retrying.");
-  },
-});
-
-apiRoute("post", "/execute-step",
-  executeStepRateLimiter,
-  apiKeyAuth,
-  requireScope("write"),
-  logRequest,
-  async (req, res) => {
-    if (!ALLOW_RECIPE_STEP_EXECUTION) {
-      return apiError(res, 503, "EXECUTION_DISABLED", "Recipe step execution is disabled", "Set ALLOW_RECIPE_STEP_EXECUTION=1 to enable. See docs/RUNBOOK.md.");
-    }
-    const { step, allowExecution } = req.body || {};
-    if (!allowExecution) {
-      return apiError(res, 403, "EXECUTION_NOT_ALLOWED", "Client must have Allow recipe step execution enabled", "Enable the toggle in Settings to run steps.");
-    }
-    if (!step || typeof step !== "object" || !step.action) {
-      return apiError(res, 400, "INVALID_BODY", "step with action required", "Send { step: { action, payload? }, allowExecution: true }.");
-    }
-    const execWorkspace = sanitizeWorkspace(req.body?.workspace || req.query?.workspace);
-    try {
-      const ctx = {
-        projectDir: process.env.PROJECT_DIR || process.cwd(),
-        vercelToken: process.env.VERCEL_TOKEN,
-      };
-      const result = await executeStep(step, ctx);
-      appendAuditLog({ action: step.action, payload: step.payload, ok: result.ok, error: result.error });
-      await emitEvent("recipe_executed", { step: { action: step.action, payload: step.payload }, ok: result.ok, error: result.error }, { workspaceId: execWorkspace, userId: req.userId });
-      if (result.ok) {
-        return res.json({ ok: true, stdout: result.stdout, stderr: result.stderr });
-      }
-      return res.status(400).json({ ok: false, error: result.error, stdout: result.stdout, stderr: result.stderr });
-    } catch (err) {
-      console.error("Execute step error:", err.message);
-      appendAuditLog({ action: step?.action, payload: step?.payload, ok: false, error: err.message });
-      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-    }
-  }
-);
-
-// Multimodal: Vision, Document Extract, OCR
-const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
-const DOC_MAX_BYTES = 2 * 1024 * 1024;
-const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
-const ALLOWED_DOC_TYPES = ["application/pdf", "text/plain", "text/markdown", "text/csv"];
-
-const imageUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: IMAGE_MAX_BYTES },
-  fileFilter: (req, file, cb) => {
-    if (ALLOWED_IMAGE_TYPES.includes(file.mimetype)) cb(null, true);
-    else cb(new Error(`Invalid image type. Allowed: ${ALLOWED_IMAGE_TYPES.join(", ")}`), false);
-  },
-});
-
-const docUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: DOC_MAX_BYTES },
-  fileFilter: (req, file, cb) => {
-    if (ALLOWED_DOC_TYPES.includes(file.mimetype)) cb(null, true);
-    else cb(new Error(`Invalid document type. Allowed: PDF, plain text`), false);
-  },
-});
-
-const multimodalRateLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-function sanitizeText(str, maxLen = 50_000) {
-  if (typeof str !== "string") return "";
-  return str.slice(0, maxLen).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
-}
-
-apiRoute("post", "/vision/describe",
-  multimodalRateLimiter,
-  (req, res, next) => {
-    const ct = req.headers["content-type"] || "";
-    if (ct.includes("application/json")) {
-      const { image } = req.body || {};
-      if (!image) return apiError(res, 400, "INVALID_BODY", "image required (base64 or multipart)", "Send image as base64 in JSON body or multipart/form-data.");
-      const match = /^data:([^;]+);base64,(.+)$/.exec(image);
-      const base64 = match ? match[2] : image;
-      try {
-        req.visionBuffer = Buffer.from(base64, "base64");
-        if (req.visionBuffer.length > IMAGE_MAX_BYTES)
-          return apiError(res, 400, "FILE_TOO_LARGE", `Image exceeds ${IMAGE_MAX_BYTES / 1024 / 1024}MB limit`, "Reduce image size.");
-        next();
-      } catch (e) {
-        return apiError(res, 400, "INVALID_BASE64", "Invalid base64 image", "Provide valid base64-encoded image data.");
-      }
-      return;
-    }
-    imageUpload.single("image")(req, res, (err) => {
-      if (err) {
-        if (err instanceof multer.MulterError) {
-          if (err.code === "LIMIT_FILE_SIZE")
-            return apiError(res, 400, "FILE_TOO_LARGE", `Image exceeds ${IMAGE_MAX_BYTES / 1024 / 1024}MB limit`, "Reduce image size.");
-          if (err.code === "LIMIT_UNEXPECTED_FILE")
-            return apiError(res, 400, "INVALID_BODY", "Use field name 'image' for multipart upload", null);
-        }
-        return apiError(res, 400, "INVALID_FILE", err.message || "Invalid image upload", null);
-      }
-      if (!req.file?.buffer)
-        return apiError(res, 400, "INVALID_BODY", "image required (base64 or multipart)", null);
-      req.visionBuffer = req.file.buffer;
-      next();
-    });
-  },
-  logRequest,
-  async (req, res) => {
-    try {
-      if (!OPENAI_API_KEY) {
-        return res.status(200).json({ description: "Vision requires OpenAI backend.", hint: "Set OPENAI_API_KEY to use image description." });
-      }
-      const buffer = req.visionBuffer;
-      const base64 = buffer.toString("base64");
-      const mime = buffer[0] === 0x89 ? "image/png" : buffer[1] === 0xff && buffer[2] === 0xd8 ? "image/jpeg" : "image/webp";
-      const dataUrl = `data:${mime};base64,${base64}`;
-      const r = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [{ role: "user", content: [{ type: "text", text: "Describe this image in detail. Be concise." }, { type: "image_url", image_url: { url: dataUrl } }] }],
-          max_tokens: 500,
-        }),
-      });
-      if (!r.ok) {
-        const err = await r.text();
-        return res.status(r.status).json({ error: "Vision API error", code: "BACKEND_ERROR", hint: (err || `HTTP ${r.status}`).slice(0, 500) });
-      }
-      const data = await r.json();
-      const description = data.choices?.[0]?.message?.content || "No description.";
-      return res.json({ description: sanitizeText(description) });
-    } catch (err) {
-      return apiError(res, 502, "BACKEND_UNREACHABLE", err.message, "Check OPENAI_API_KEY and network.");
-    }
-  }
-);
-
-apiRoute("post", "/documents/extract",
-  multimodalRateLimiter,
-  (req, res, next) => {
-    docUpload.single("file")(req, res, (err) => {
-      if (err) {
-        if (err instanceof multer.MulterError) {
-          if (err.code === "LIMIT_FILE_SIZE")
-            return apiError(res, 400, "FILE_TOO_LARGE", `Document exceeds ${DOC_MAX_BYTES / 1024 / 1024}MB limit`, "Reduce file size.");
-          if (err.code === "LIMIT_UNEXPECTED_FILE")
-            return apiError(res, 400, "INVALID_BODY", "Use field name 'file' for multipart upload", null);
-        }
-        return apiError(res, 400, "INVALID_FILE", err.message || "Invalid file upload", null);
-      }
-      next();
-    });
-  },
-  logRequest,
-  async (req, res) => {
-    try {
-      if (!req.file?.buffer)
-        return apiError(res, 400, "INVALID_BODY", "file required (multipart/form-data)", "Upload a PDF or plain text file with field name 'file'.");
-      const mime = req.file.mimetype || "";
-      const buffer = req.file.buffer;
-      if (mime === "application/pdf") {
-        try {
-          const { PDFParse } = await import("pdf-parse");
-          const parser = new PDFParse({ data: buffer });
-          const result = await parser.getText();
-          await parser.destroy?.();
-          const text = (result?.text ?? result?.pages?.map((p) => p?.text).filter(Boolean).join("\n\n") ?? "").trim();
-          return res.json({ text: sanitizeText(text), type: "pdf" });
-        } catch (e) {
-          return apiError(res, 500, "EXTRACT_FAILED", "PDF extraction failed", (e?.message || "See docs/RUNBOOK.md.").slice(0, 300));
-        }
-      }
-      const text = buffer.toString("utf8");
-      return res.json({ text: sanitizeText(text), type: "text" });
-    } catch (err) {
-      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-    }
-  }
-);
-
-const OCR_MAX_BYTES = 20 * 1024 * 1024;
-const ALLOWED_OCR_TYPES = ["image/png", "image/jpeg", "image/tiff", "image/bmp", "application/pdf"];
-
-const ocrUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: OCR_MAX_BYTES },
-  fileFilter: (_req, file, cb) => {
-    if (ALLOWED_OCR_TYPES.includes(file.mimetype)) cb(null, true);
-    else cb(new Error("Unsupported file type. Accepted: PNG, JPG, TIFF, BMP, PDF."));
-  },
-});
-
-apiRoute("post", "/ocr",
-  multimodalRateLimiter,
-  (req, res, next) => {
-    ocrUpload.single("file")(req, res, (err) => {
-      if (err) {
-        if (err instanceof multer.MulterError) {
-          if (err.code === "LIMIT_FILE_SIZE")
-            return apiError(res, 400, "FILE_TOO_LARGE", `File exceeds ${OCR_MAX_BYTES / 1024 / 1024}MB limit`, "Reduce file size.");
-          if (err.code === "LIMIT_UNEXPECTED_FILE")
-            return apiError(res, 400, "INVALID_BODY", "Use field name 'file' for multipart upload", null);
-        }
-        if (err.message && err.message.includes("Unsupported file type"))
-          return apiError(res, 415, "UNSUPPORTED_FORMAT", err.message, "Accepted formats: PNG, JPG, TIFF, BMP, PDF.");
-        return apiError(res, 400, "INVALID_FILE", err.message || "Invalid file upload", null);
-      }
-      next();
-    });
-  },
-  logRequest,
-  async (req, res) => {
-    try {
-      if (!req.file?.buffer)
-        return apiError(res, 400, "INVALID_BODY", "file required (multipart/form-data)", "Upload an image or PDF with field name 'file'.");
-      const { extractText } = await import("./lib/ocr.js");
-      const mime = req.file.mimetype || "";
-      const { text, confidence } = await extractText(req.file.buffer, mime);
-      return res.json({ text: sanitizeText(text), pages: 1, confidence });
-    } catch (err) {
-      if (err.code === "UNSUPPORTED_FORMAT")
-        return apiError(res, 415, "UNSUPPORTED_FORMAT", err.message, "Accepted formats: PNG, JPG, TIFF, BMP, PDF.");
-      return apiError(res, 500, "OCR_FAILED", err.message || "OCR processing failed", "See docs/RUNBOOK.md.");
-    }
-  }
-);
-
-// Agent trajectory
-apiRoute("get", "/agent/trajectory/:runId", logRequest, userAuth, async (req, res) => {
-  if (!trajectoryApiEnabled()) {
-    return apiError(res, 503, "FEATURE_DISABLED", "Trajectory API disabled", "Unset AGENT_TRAJECTORY_API=0 to enable GET /api/agent/trajectory/:runId.");
-  }
-  const runId = String(req.params.runId || "").trim();
-  const t = await loadTrajectory(runId);
-  if (!t) {
-    return apiError(res, 404, "TRAJECTORY_NOT_FOUND", "Trajectory not found or expired", "IDs are short-lived; run agent mode again and use the X-Agent-Run-Id header.");
-  }
-  res.json(t);
-});
-
-apiRoute("get", "/agent/trajectories", logRequest, userAuth, async (req, res) => {
-  if (!trajectoryApiEnabled()) {
-    return apiError(res, 503, "FEATURE_DISABLED", "Trajectory API disabled", "Unset AGENT_TRAJECTORY_API=0 to enable trajectory listing.");
-  }
-  const workspace = String(req.query.workspace || "default").trim();
-  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 30));
-  const offset = Math.max(0, Number(req.query.offset) || 0);
-  try {
-    const data = await listTrajectories({ workspace, limit, offset });
-    res.json(data);
-  } catch (err) {
-    return apiError(res, 500, "INTERNAL_ERROR", err?.message || "List failed", "See server logs.");
-  }
-});
-
-// Trace replay
-apiRoute("get", "/traces", logRequest, evalAuth, async (req, res) => {
-  try {
-    const opts = { type: req.query.type || undefined, workspace: req.query.workspace || undefined, limit: Number(req.query.limit) || 50, offset: Number(req.query.offset) || 0 };
-    const data = await listRecordedTraces(opts);
-    res.json(data);
-  } catch (err) {
-    return apiError(res, 500, "INTERNAL_ERROR", err?.message || "List traces failed", "See server logs.");
-  }
-});
-
-apiRoute("get", "/traces/:id", logRequest, evalAuth, async (req, res) => {
-  const id = String(req.params.id || "").trim();
-  if (!id) return apiError(res, 400, "INVALID_ID", "Trace ID required", "Provide a valid trace ID.");
-  const trace = await getRecordedTrace(id);
-  if (!trace) return apiError(res, 404, "NOT_FOUND", "Trace not found", `No trace with id: ${id}`);
-  res.json(trace);
-});
-
-apiRoute("post", "/traces/record", logRequest, evalAuth, async (req, res) => {
-  try {
-    const traceData = req.body;
-    if (!traceData || typeof traceData !== "object") {
-      return apiError(res, 400, "INVALID_BODY", "Request body must be a trace object", "Send JSON with steps, toolCalls, or goldenTrace.");
-    }
-    const result = await recordTrace(traceData);
-    res.status(201).json(result);
-  } catch (err) {
-    return apiError(res, 500, "INTERNAL_ERROR", err?.message || "Record failed", "See server logs.");
-  }
-});
-
-apiRoute("post", "/traces/:id/replay", logRequest, evalAuth, async (req, res) => {
-  const id = String(req.params.id || "").trim();
-  if (!id) return apiError(res, 400, "INVALID_ID", "Trace ID required", "Provide a valid trace ID.");
-  try {
-    const expectations = req.body && typeof req.body === "object" && Object.keys(req.body).length > 0 ? req.body : null;
-    const result = await replayTrace(id, expectations);
-    res.json(result);
-  } catch (err) {
-    return apiError(res, 500, "INTERNAL_ERROR", err?.message || "Replay failed", "See server logs.");
-  }
-});
-
-apiRoute("delete", "/traces/:id", logRequest, evalAuth, async (req, res) => {
-  const id = String(req.params.id || "").trim();
-  if (!id) return apiError(res, 400, "INVALID_ID", "Trace ID required", "Provide a valid trace ID.");
-  const deleted = await deleteRecordedTrace(id);
-  if (!deleted) return apiError(res, 404, "NOT_FOUND", "Trace not found", `No trace with id: ${id}`);
-  res.json({ ok: true, traceId: id });
-});
-
-// Eval harness
-const evalRateLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (req, res) => {
-    apiError(res, 429, "RATE_LIMITED", "Too many eval runs", "Limit: 5 runs per minute. Wait before retrying.");
-  },
-});
-
-apiRoute("get", "/eval/sets", evalRateLimiter, evalAuth, logRequest, async (req, res) => {
-  try {
-    const sets = await listEvalSets();
-    res.json({ sets });
-  } catch (err) {
-    console.error("Eval sets list error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-apiRoute("post", "/eval/run", evalRateLimiter, evalAuth, logRequest, async (req, res) => {
-  try {
-    const { evalSetId, evalSet, model } = req.body || {};
-    let set = evalSet;
-    if (!set && evalSetId) {
-      set = await loadEvalSet(String(evalSetId).trim());
-      if (!set) return apiError(res, 404, "NOT_FOUND", "Eval set not found", `No eval set with id: ${evalSetId}`);
-    }
-    if (!set || !Array.isArray(set.cases)) {
-      return apiError(res, 400, "INVALID_BODY", "evalSetId, evalSet, or valid evalSet JSON required", "Send { evalSetId: string } or { evalSet: { id, name, cases } }.");
-    }
-    const baseUrl = `${req.protocol}://${req.get("host") || "localhost"}`;
-    const bearer = req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7).trim() : null;
-    const apiKey = bearer || req.headers["x-api-key"] || req.headers["x-admin-api-key"];
-    const result = await runEvalSet(set, { model: model || undefined, baseUrl, apiKey: apiKey || undefined });
-    res.json(result);
-  } catch (err) {
-    console.error("Eval run error:", err.message);
-    return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-  }
-});
-
-// HTML pages
-app.get("/eval", (req, res) => {
-  res.sendFile(join(__dirname, "client", "eval.html"));
-});
-
-app.get("/marketplace", (req, res) => {
-  res.sendFile(join(__dirname, "client", "marketplace.html"));
-});
+// All routes are now in route modules under routes/
 
 // Static file serving
 const STATIC_CACHE_MAX_AGE_MS =

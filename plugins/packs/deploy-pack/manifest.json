@@ -1,0 +1,13 @@
+{
+  "id": "deploy-pack",
+  "name": "Deploy Pack",
+  "version": "2.0.0",
+  "description": "Deployment automation tools",
+  "author": "siskelbot",
+  "actions": [
+    {
+      "name": "deploy",
+      "type": "webhook"
+    }
+  ]
+}

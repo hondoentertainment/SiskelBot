@@ -383,6 +383,196 @@ export function renderConnectionIndicator(containerEl, wsManager, opts = {}) {
   };
 }
 
+// --- Legacy backward-compatible exports ---
+// The previous version of this module exported a ResilientWebSocket class
+// and a State enum. These are preserved so existing tests and consumers
+// continue to work.
+
+export const State = Object.freeze({
+  CONNECTING: 'CONNECTING',
+  CONNECTED: 'CONNECTED',
+  DISCONNECTED: 'DISCONNECTED',
+  RECONNECTING: 'RECONNECTING',
+  FAILED: 'FAILED',
+});
+
+export class ResilientWebSocket {
+  constructor(url, options = {}) {
+    this._url = url;
+    this.maxRetries = options.maxRetries ?? 10;
+    this.baseDelay = options.baseDelay ?? 1000;
+    this.maxDelay = options.maxDelay ?? 30000;
+    this.jitterFactor = options.jitterFactor ?? 0.3;
+    this.heartbeatInterval = options.heartbeatInterval ?? 25000;
+
+    this._ws = null;
+    this._state = State.DISCONNECTED;
+    this._retryCount = 0;
+    this._retryTimer = null;
+    this._heartbeatTimer = null;
+    this._closed = false;
+    this._lastEventTimestamp = options.lastEventTimestamp
+      ? new Date(options.lastEventTimestamp).getTime()
+      : null;
+    this._queue = [];
+
+    this.onopen = null;
+    this.onclose = null;
+    this.onmessage = null;
+    this.onstatechange = null;
+  }
+
+  get state() {
+    return this._state;
+  }
+
+  _calcDelay(attempt) {
+    const exponential = this.baseDelay * Math.pow(2, attempt);
+    const jitter = 1 + Math.random() * this.jitterFactor;
+    return Math.min(exponential * jitter, this.maxDelay);
+  }
+
+  _setState(newState) {
+    if (this._state === newState) return;
+    this._state = newState;
+    if (typeof this.onstatechange === 'function') {
+      try { this.onstatechange(newState); } catch (_) { /* ignore */ }
+    }
+  }
+
+  async connect() {
+    if (this._closed) return;
+    if (this._ws && (this._ws.readyState === 0 || this._ws.readyState === 1)) return;
+
+    this._setState(this._retryCount === 0 ? State.CONNECTING : State.RECONNECTING);
+
+    let url;
+    try {
+      url = typeof this._url === 'function' ? await this._url() : this._url;
+    } catch (_) {
+      this._scheduleRetry();
+      return;
+    }
+
+    let ws;
+    try {
+      ws = new WebSocket(url);
+    } catch (_) {
+      this._scheduleRetry();
+      return;
+    }
+
+    ws.onopen = () => {
+      this._retryCount = 0;
+      this._setState(State.CONNECTED);
+      this._startHeartbeat();
+      this._flushQueue();
+      this._requestReplay();
+      if (typeof this.onopen === 'function') {
+        try { this.onopen(); } catch (_) { /* ignore */ }
+      }
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        this._lastEventTimestamp = data.timestamp
+          ? new Date(data.timestamp).getTime()
+          : Date.now();
+      } catch (_) {
+        this._lastEventTimestamp = Date.now();
+      }
+      if (typeof this.onmessage === 'function') {
+        try { this.onmessage(event); } catch (_) { /* ignore */ }
+      }
+    };
+
+    ws.onclose = () => {
+      this._stopHeartbeat();
+      this._ws = null;
+      if (!this._closed) {
+        this._setState(State.DISCONNECTED);
+        this._scheduleRetry();
+      }
+      if (typeof this.onclose === 'function') {
+        try { this.onclose(); } catch (_) { /* ignore */ }
+      }
+    };
+
+    ws.onerror = () => { ws.close(); };
+    this._ws = ws;
+  }
+
+  _scheduleRetry() {
+    if (this._closed) return;
+    if (this._retryCount >= this.maxRetries) {
+      this._setState(State.FAILED);
+      return;
+    }
+    const delay = this._calcDelay(this._retryCount);
+    this._retryCount++;
+    this._setState(State.RECONNECTING);
+    this._retryTimer = setTimeout(() => {
+      this._retryTimer = null;
+      this.connect();
+    }, delay);
+  }
+
+  send(data) {
+    const msg = typeof data === 'string' ? data : JSON.stringify(data);
+    if (this._ws && this._ws.readyState === 1) {
+      this._ws.send(msg);
+    } else {
+      this._queue.push(msg);
+    }
+  }
+
+  _flushQueue() {
+    while (this._queue.length > 0 && this._ws && this._ws.readyState === 1) {
+      this._ws.send(this._queue.shift());
+    }
+  }
+
+  _requestReplay() {
+    if (!this._lastEventTimestamp) return;
+    if (this._ws && this._ws.readyState === 1) {
+      this._ws.send(JSON.stringify({ type: 'replay_request', since: this._lastEventTimestamp }));
+    }
+  }
+
+  _startHeartbeat() {
+    this._stopHeartbeat();
+    this._heartbeatTimer = setInterval(() => {
+      if (this._ws && this._ws.readyState === 1) {
+        try { this._ws.send(JSON.stringify({ type: 'heartbeat' })); } catch (_) { /* ignore */ }
+      }
+    }, this.heartbeatInterval);
+  }
+
+  _stopHeartbeat() {
+    if (this._heartbeatTimer) {
+      clearInterval(this._heartbeatTimer);
+      this._heartbeatTimer = null;
+    }
+  }
+
+  close() {
+    this._closed = true;
+    this._stopHeartbeat();
+    if (this._retryTimer) {
+      clearTimeout(this._retryTimer);
+      this._retryTimer = null;
+    }
+    if (this._ws) {
+      this._ws.onclose = null;
+      this._ws.onerror = null;
+      this._ws.close();
+      this._ws = null;
+    }
+    this._setState(State.DISCONNECTED);
+  }
+}
+
 // Expose on window for non-module usage (the SPA loads scripts directly)
 if (typeof window !== 'undefined') {
   window.SiskelWSReconnect = { createReconnectingWebSocket, renderConnectionIndicator };
