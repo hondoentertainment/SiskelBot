@@ -405,6 +405,17 @@ app.use((req, res, next) => {
   next();
 });
 
+// Phase 106: Desktop model manager routes (Ollama management)
+if (process.env.ELECTRON_DESKTOP === "1") {
+  try {
+    const mod = await import("./electron/model-manager.cjs");
+    const registerModelRoutes = mod.registerModelRoutes || mod.default?.registerModelRoutes;
+    if (registerModelRoutes) registerModelRoutes(app);
+  } catch (_) {
+    /* model-manager only needed in desktop builds */
+  }
+}
+
 // Phase 34: Request ID for all responses (k8s/tracing)
 app.use((req, res, next) => {
   req.requestId = req.headers["x-request-id"] || randomUUID();
