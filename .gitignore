@@ -23,3 +23,4 @@ vendor/node-win-x64/
 vendor/node-win-arm64/
 vendor/node-download.zip
 vendor/node-extract/
+coverage/
