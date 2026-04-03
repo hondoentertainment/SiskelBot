@@ -91,10 +91,6 @@ export default function mountAuthRoutes(app, deps) {
     req.session.userId = req.user?.userId;
     res.redirect("/");
   }
-// OAuth routes extracted from server.js
-
-export function mountAuthRoutes(app, deps) {
-  const { oauthProviders, passport, oauthCallback } = deps;
 
   if (oauthProviders.github) {
     app.get("/auth/github", passport.authenticate("github", { scope: ["user:email"] }));

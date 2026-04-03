@@ -10,24 +10,6 @@ export default function mountAdminRoutes(app, deps) {
     sanitizeWorkspace,
     runHealthChecks,
     // admin-data
-// Admin dashboard, API keys, audit, routing, regions, observability routes extracted from server.js
-import rateLimit from "express-rate-limit";
-import express from "express";
-import { dirname, join } from "path";
-import { fileURLToPath } from "url";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const rootDir = join(__dirname, "..");
-
-export function mountAdminRoutes(app, deps) {
-  const {
-    apiRoute,
-    apiError,
-    adminAuth,
-    requireScope,
-    logRequest,
-    sanitizeWorkspace,
-    // Admin data
     listAllUsers,
     listAllWorkspaces,
     getRecentAuditLog,
@@ -43,17 +25,6 @@ export function mountAdminRoutes(app, deps) {
     addKey,
     revokeKey,
     // audit
-    // Quota
-    isQuotaConfigured,
-    getWorkspaceQuota,
-    getWorkspaceTokensUsed,
-    getQuotaOverrides,
-    setWorkspaceQuotaOverride,
-    // API keys
-    listKeysForAdmin,
-    addKey,
-    revokeKey,
-    // Audit
     archiveExecutionAuditToS3,
     getAuditArchiveStatus,
     AuditLifecycle,
@@ -69,23 +40,6 @@ export function mountAdminRoutes(app, deps) {
     // replication
     getReplicationManager,
     internalAuth,
-    // Routing
-    getRoutingStats,
-    AB_ROUTING_ENABLED,
-    MODEL_ROUTING_CONFIG,
-    // Regions
-    getRegionHealth,
-    getLeaderElection,
-    getReplicationManager,
-    internalAuth,
-    // Observability
-    getMetricsSummary,
-    obsGetLatencyPercentiles,
-    obsGetErrorRates,
-    obsGetAgentStats,
-    obsGetTokenUsageByWorkspace,
-    // Health
-    runHealthChecks,
   } = deps;
 
   const adminRateLimiter = rateLimit({
@@ -103,48 +57,6 @@ export function mountAdminRoutes(app, deps) {
     return adminAuth(req, res, next);
   }
 
-  // Admin page
-  app.get("/admin", (req, res) => {
-    res.sendFile(join(rootDir, "client", "admin.html"));
-  });
-
-  // Marketplace page
-  app.get("/marketplace", (req, res) => {
-    res.sendFile(join(rootDir, "client", "marketplace.html"));
-  });
-
-  // Observability page
-  app.get("/observability", (req, res) => {
-    res.sendFile(join(rootDir, "client", "observability.html"));
-  });
-
-  // Observability API
-  apiRoute("get", "/observability/summary", adminAuth, requireScope("admin"), (req, res) => {
-    const windowMinutes = Math.min(Number(req.query.window) || 60, 60);
-    res.json(getMetricsSummary(windowMinutes));
-  });
-
-  apiRoute("get", "/observability/latency", adminAuth, requireScope("admin"), (req, res) => {
-    const windowMinutes = Math.min(Number(req.query.window) || 60, 60);
-    res.json(obsGetLatencyPercentiles(windowMinutes));
-  });
-
-  apiRoute("get", "/observability/errors", adminAuth, requireScope("admin"), (req, res) => {
-    const windowMinutes = Math.min(Number(req.query.window) || 60, 60);
-    res.json(obsGetErrorRates(windowMinutes));
-  });
-
-  apiRoute("get", "/observability/agents", adminAuth, requireScope("admin"), (req, res) => {
-    const windowMinutes = Math.min(Number(req.query.window) || 60, 60);
-    res.json(obsGetAgentStats(windowMinutes));
-  });
-
-  apiRoute("get", "/observability/tokens", adminAuth, requireScope("admin"), (req, res) => {
-    const windowMinutes = Math.min(Number(req.query.window) || 60, 60);
-    res.json(obsGetTokenUsageByWorkspace(windowMinutes));
-  });
-
-  // Admin summary
   app.get("/api/admin/summary", adminRateLimiter, adminAuthOrQuery, requireScope("admin"), logRequest, async (req, res) => {
     try {
       const users = await listAllUsers();
@@ -197,7 +109,6 @@ export function mountAdminRoutes(app, deps) {
     }
   });
 
-  // Quota override
   app.post("/api/admin/quotas/override", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
     try {
       const { workspace, limit } = req.body || {};
@@ -214,7 +125,6 @@ export function mountAdminRoutes(app, deps) {
   });
 
   // Admin API key management
-  // API key management
   app.get("/api/admin/keys", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
     try {
       const keys = listKeysForAdmin();
@@ -252,7 +162,6 @@ export function mountAdminRoutes(app, deps) {
     }
   });
 
-  // Audit S3 archive
   app.post("/api/admin/audit/archive-s3", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
     try {
       const out = await archiveExecutionAuditToS3();
@@ -277,7 +186,6 @@ export function mountAdminRoutes(app, deps) {
   });
 
   // Audit lifecycle & query
-  // Audit lifecycle
   const _auditLifecycle = new AuditLifecycle();
 
   app.get("/api/admin/audit/query", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
@@ -356,7 +264,6 @@ export function mountAdminRoutes(app, deps) {
   });
 
   // A/B routing admin endpoints
-  // Routing admin endpoints
   app.get("/api/routing/stats", adminRateLimiter, adminAuth, logRequest, (req, res) => {
     res.json({ stats: getRoutingStats(), enabled: AB_ROUTING_ENABLED });
   });
@@ -369,7 +276,6 @@ export function mountAdminRoutes(app, deps) {
   });
 
   // Multi-region & HA routes
-  // Regions
   app.get("/api/regions", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
     try {
       const rh = getRegionHealth();
@@ -391,7 +297,6 @@ export function mountAdminRoutes(app, deps) {
     }
   });
 
-  // Internal sync
   app.post("/api/internal/sync", internalAuth, express.json(), async (req, res) => {
     try {
       const rm = getReplicationManager();
