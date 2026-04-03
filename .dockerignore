@@ -11,6 +11,12 @@ backups/
 .vercel/
 .DS_Store
 
-# Optional: exclude tests and docs for smaller image
+# Dev / CI artifacts
 tests/
 docs/
+.github/
+coverage/
+*.md
+release/
+vendor/
+electron/

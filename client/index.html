@@ -3357,7 +3357,7 @@
           }
           const data = await summaryRes.json();
           const req = data.totalRequests ?? 0;
-          const total = (data.totalInputTokens ?? 0) + (data.totalOutputTokens ?? 0) || data.totalTokens ?? 0;
+          const total = ((data.totalInputTokens ?? 0) + (data.totalOutputTokens ?? 0)) || (data.totalTokens ?? 0);
           let html = '<strong>' + req + '</strong> requests · ~<strong>' + (total).toLocaleString() + '</strong> tokens (last ' + days + ' days)';
           if (data.quota != null && data.quota.remaining != null) {
             html += ' · Quota: <strong>' + (data.quota.remaining).toLocaleString() + '</strong> / ' + (data.quota.limit).toLocaleString() + ' remaining';

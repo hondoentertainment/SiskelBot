@@ -121,6 +121,100 @@ export default function mountHealthRoutes(app, deps) {
     next();
   }
 
+// Health, metrics, and config routes extracted from server.js
+
+export function mountHealthRoutes(app, deps) {
+  const {
+    apiRoute,
+    apiError,
+    BACKEND,
+    OPENAI_API_KEY,
+    MODEL_PRESETS,
+    API_KEY,
+    IS_PRODUCTION,
+    runHealthChecks,
+    healthCache,
+    setHealthCache,
+    HEALTH_CACHE_TTL_MS,
+    metricsEnabled,
+    metricsAuth,
+    METRICS_PATH,
+    renderPrometheus,
+    isMonitoringEnabled,
+    getSwarmSelectableSpecialistNames,
+    getSwarmSpecialistsAllowlistNames,
+    isAuthConfigured,
+    oauthProviders,
+    toolValidationEnabled,
+    stagnationDetectionEnabled,
+    trajectoryApiEnabled,
+    defaultAgentSystemConfigured,
+    getAgentToolsAllowlistNames,
+    STREAM_AGENT_FINAL,
+    STREAM_SWARM_SYNTH,
+    MAX_AGENT_TOOL_CALLS_ENV,
+    AGENT_MAX_WALL_MS_ENV,
+  } = deps;
+
+  // GET /config
+  app.get("/config", (req, res) => {
+    const payload = {
+      backend: BACKEND,
+      modelPresets: MODEL_PRESETS[BACKEND] || [],
+      modelPlaceholder: MODEL_PRESETS[BACKEND]?.[0] || "model",
+      requiresApiKey: Boolean(API_KEY),
+      isProduction: IS_PRODUCTION,
+      defaultGenerationConfig: {
+        temperature: 0.7,
+        top_p: 0.95,
+        max_tokens: 512,
+      },
+      monitoringEnabled: isMonitoringEnabled(),
+      allowRecipeStepExecution: process.env.ALLOW_RECIPE_STEP_EXECUTION === "1",
+      scheduleEnabled: process.env.ENABLE_SCHEDULED_RECIPES === "1",
+      swarmEnabled: process.env.ENABLE_AGENT_SWARM === "1",
+      swarmParallelAgentsDefault: process.env.SWARM_PARALLEL_AGENTS === "1",
+      swarmClientSpecialistsAllowed: process.env.SWARM_CLIENT_SPECIALISTS === "1",
+      swarmMaxSpecialists: Math.min(12, Math.max(1, Number(process.env.SWARM_MAX_SPECIALISTS) || 8)),
+      swarmSelectableSpecialists: getSwarmSelectableSpecialistNames(),
+      swarmSpecialistsAllowlist: getSwarmSpecialistsAllowlistNames(),
+      authRequired: isAuthConfigured(),
+      oauthProviders,
+      storageBackend:
+        process.env.STORAGE_BACKEND === "postgres"
+          ? "postgres"
+          : process.env.STORAGE_BACKEND === "sqlite"
+            ? "sqlite"
+            : "json",
+      streamAgentFinalEnabled: STREAM_AGENT_FINAL,
+      streamAgentFinalChunksWhenAgentMode: true,
+      fallbackBackend: process.env.FALLBACK_BACKEND || null,
+      otelEnabled: process.env.OTEL_ENABLED === "1",
+      otelAutoInstrument: process.env.OTEL_AUTO_INSTRUMENT !== "0",
+      toolValidationEnabled: toolValidationEnabled(),
+      agentStagnationStop: stagnationDetectionEnabled(),
+      agentRequireCitations: process.env.AGENT_REQUIRE_CITATIONS === "1",
+      agentTrajectoryApi: trajectoryApiEnabled(),
+      agentDefaultSystemSet: defaultAgentSystemConfigured(),
+      legacySwarmSpecialists: getSwarmSelectableSpecialistNames(),
+      streamSwarmSynth: STREAM_SWARM_SYNTH,
+      agentPlanReflect: process.env.AGENT_PLAN_REFLECT === "1",
+      agentHooksConfigured: Boolean((process.env.AGENT_HOOKS_MODULE || "").trim()),
+      agentBudgetToolCalls: MAX_AGENT_TOOL_CALLS_ENV || null,
+      agentBudgetWallMs: AGENT_MAX_WALL_MS_ENV || null,
+      agentToolsAllowlist: getAgentToolsAllowlistNames(),
+      agentMaxIterationsCeiling: Math.max(1, Number(process.env.MAX_AGENT_ITERATIONS) || 5),
+      agentMaxIterationsClientTunable: process.env.AGENT_MAX_ITERATIONS_IGNORE_CLIENT !== "1",
+      prometheusEnabled: process.env.ENABLE_METRICS === "1",
+      prometheusPath: "/metrics",
+    };
+    if (IS_PRODUCTION && !API_KEY) {
+      payload.productionHint = "Set API_KEY in Vercel env vars to protect /v1/chat/completions";
+    }
+    res.json(payload);
+  });
+
+  // Metrics endpoint
   if (metricsEnabled()) {
     app.get(METRICS_PATH, metricsAuth, (req, res) => {
       res.setHeader("Content-Type", "text/plain; charset=utf-8");
@@ -135,6 +229,7 @@ export default function mountHealthRoutes(app, deps) {
 
   // Readiness probe
   app.get("/health/ready", async (req, res) => {
+    const { storage } = deps;
     try {
       await storage.listWorkspaces("anonymous");
     } catch (e) {
@@ -158,6 +253,15 @@ export default function mountHealthRoutes(app, deps) {
     if (!bypass && healthCache && now - healthCache.timestamp < HEALTH_CACHE_TTL_MS) {
       return res.json({
         ...healthCache.data,
+  // Full health check
+  app.get("/health", async (req, res) => {
+    const now = Date.now();
+    const bypass = req.query?.refresh === "1";
+    const cached = healthCache();
+
+    if (!bypass && cached && now - cached.timestamp < HEALTH_CACHE_TTL_MS) {
+      return res.json({
+        ...cached.data,
         cached: true,
       });
     }
@@ -165,6 +269,7 @@ export default function mountHealthRoutes(app, deps) {
     try {
       const data = await runHealthChecks();
       healthCache = { data, timestamp: now };
+      setHealthCache({ data, timestamp: now });
       return res.json(data);
     } catch (e) {
       const hint =

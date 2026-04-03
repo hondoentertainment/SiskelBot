@@ -30,6 +30,66 @@ export default function mountIntegrationRoutes(app, deps) {
       repo.length <= 100
     );
   }
+// Integrations, usage, analytics, monitoring, status, GitHub, and Vercel routes extracted from server.js
+import rateLimit from "express-rate-limit";
+
+export function mountIntegrationRoutes(app, deps) {
+  const {
+    apiRoute,
+    apiError,
+    userAuth,
+    logRequest,
+    integrationRateLimiter,
+    sanitizeWorkspace,
+    isAuthConfigured,
+    isQuotaConfigured,
+    getWorkspaceQuota,
+    getSummary,
+    getRecordsForPeriod,
+    getDashboard,
+    exportToCsv,
+    exportToJson,
+    runMonitoringChecks,
+    monitoringState,
+    isMonitoringEnabled,
+    runHealthChecks,
+    GITHUB_TOKEN,
+    VERCEL_TOKEN,
+    validateOwnerRepo,
+    requireGitHubToken,
+    requireVercelToken,
+    GITHUB_API_BASE,
+    VERCEL_API_BASE,
+  } = deps;
+
+  // Usage summary
+  const usageSummaryRateLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
+  // Analytics
+  const analyticsRateLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  const analyticsHandlers = [analyticsRateLimiter, logRequest];
+  if (isAuthConfigured()) analyticsHandlers.push(userAuth);
+
+  // Monitoring
+  const monitoringRateLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (req, res) => {
+      apiError(res, 429, "RATE_LIMITED", "Too many monitoring requests", "Wait before refreshing again.");
+    },
+  });
 
   // GET /api/integrations/status
   apiRoute("get", "/integrations/status", (req, res) => {
@@ -145,6 +205,80 @@ export default function mountIntegrationRoutes(app, deps) {
     },
   });
 
+  // GET /api/usage/summary
+  apiRoute("get", "/usage/summary", usageSummaryRateLimiter, logRequest, async (req, res) => {
+    try {
+      const days = Math.min(90, Math.max(1, Number(req.query?.days) || 7));
+      const workspace = req.query?.workspace ? String(req.query.workspace).trim() : "default";
+      const summary = await getSummary(days);
+      const userId = req.userId || null;
+
+      if (isQuotaConfigured()) {
+        const quota = await getWorkspaceQuota(workspace, userId);
+        if (quota) {
+          res.setHeader("X-Quota-Limit", String(quota.limit));
+          res.setHeader("X-Quota-Remaining", String(quota.remaining));
+          res.setHeader("X-Quota-Reset", String(quota.resetAt));
+          summary.quota = { limit: quota.limit, used: quota.used, remaining: quota.remaining, resetAt: quota.resetAt };
+        }
+      }
+      res.json(summary);
+    } catch (err) {
+      console.error("Usage summary error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  // GET /api/analytics/dashboard
+  apiRoute("get", "/analytics/dashboard", ...analyticsHandlers, async (req, res) => {
+    try {
+      const days = Math.min(90, Math.max(1, Number(req.query?.days) || 7));
+      const workspace = req.query?.workspace ? String(req.query.workspace).trim() : undefined;
+      const opts = { workspace };
+      if (req.userId) opts.userId = req.userId;
+      const dashboard = await getDashboard(days, opts);
+      if (isQuotaConfigured() && (workspace || "default")) {
+        const quota = await getWorkspaceQuota(workspace || "default", req.userId || null);
+        if (quota) {
+          res.setHeader("X-Quota-Limit", String(quota.limit));
+          res.setHeader("X-Quota-Remaining", String(quota.remaining));
+          res.setHeader("X-Quota-Reset", String(quota.resetAt));
+          dashboard.quota = { limit: quota.limit, used: quota.used, remaining: quota.remaining, resetAt: quota.resetAt };
+        }
+      }
+      res.json(dashboard);
+    } catch (err) {
+      console.error("Analytics dashboard error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  // GET /api/analytics/export
+  apiRoute("get", "/analytics/export", ...analyticsHandlers, async (req, res) => {
+    try {
+      const days = Math.min(90, Math.max(1, Number(req.query?.days) || 30));
+      const format = (req.query?.format || "json").toLowerCase();
+      const workspace = req.query?.workspace ? String(req.query.workspace).trim() : undefined;
+      const opts = { workspace };
+      if (req.userId) opts.userId = req.userId;
+      const records = await getRecordsForPeriod(days, opts);
+      const dashboard = await getDashboard(days, opts);
+
+      if (format === "csv") {
+        res.setHeader("Content-Type", "text/csv");
+        res.setHeader("Content-Disposition", `attachment; filename="analytics-${days}d.csv"`);
+        return res.send(exportToCsv(records));
+      }
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader("Content-Disposition", `attachment; filename="analytics-${days}d.json"`);
+      res.send(exportToJson({ days, records, summary: dashboard }));
+    } catch (err) {
+      console.error("Analytics export error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  // GET /api/monitoring/status
   apiRoute("get", "/monitoring/status", monitoringRateLimiter, async (req, res) => {
     if (!isMonitoringEnabled()) {
       return apiError(res, 503, "MONITORING_DISABLED", "Monitoring is disabled", "Set ENABLE_MONITORING=1 and GITHUB_TOKEN or VERCEL_TOKEN.");
@@ -160,6 +294,9 @@ export default function mountIntegrationRoutes(app, deps) {
     }
     if (monitoringState.lastCheck) {
       return res.json(monitoringState);
+    const state = monitoringState();
+    if (state.lastCheck) {
+      return res.json(state);
     }
     try {
       const data = await runMonitoringChecks();
@@ -177,6 +314,7 @@ export default function mountIntegrationRoutes(app, deps) {
   }
 
   // Status report
+  // GET /api/status/report
   apiRoute("get", "/status/report", async (req, res) => {
     try {
       const [health, integrations] = await Promise.all([
@@ -210,6 +348,7 @@ export default function mountIntegrationRoutes(app, deps) {
     next();
   }
 
+  // --- GitHub proxy ---
   apiRoute("get", "/github/repos",
     integrationRateLimiter,
     requireGitHubToken,
@@ -323,6 +462,7 @@ export default function mountIntegrationRoutes(app, deps) {
     next();
   }
 
+  // --- Vercel proxy ---
   apiRoute("get", "/vercel/deployments",
     integrationRateLimiter,
     requireVercelToken,

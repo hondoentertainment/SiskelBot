@@ -14,19 +14,31 @@ RUN npm ci --omit=dev
 
 # --- Production stage ---
 FROM node:20-alpine
+
+LABEL org.opencontainers.image.title="SiskelBot" \
+      org.opencontainers.image.description="Realtime streaming assistant proxy for Ollama, vLLM, or OpenAI" \
+      org.opencontainers.image.source="https://github.com/hondoentertainment/SiskelBot" \
+      org.opencontainers.image.vendor="hondoentertainment"
+
 WORKDIR /app
 
-# Official node:alpine already defines user `node` (uid/gid 1000). Do not addgroup -g 1000 — it conflicts on current base images.
+# Install curl for health check and create data dir in one layer
+RUN apk add --no-cache curl && mkdir -p data
 
 # Copy dependencies from builder
 COPY --from=builder /app/node_modules ./node_modules
-COPY . .
 
-# Create data directory and set ownership
-RUN mkdir -p data && chown -R node:node data
+# Copy application source
+COPY package.json ./
+COPY server.js ./
+COPY lib/ ./lib/
+COPY client/ ./client/
+COPY bin/ ./bin/
+COPY scripts/ ./scripts/
+COPY plugins/ ./plugins/
 
-# Install curl for health check (lightweight)
-RUN apk add --no-cache curl
+# Set ownership for data directory
+RUN chown -R node:node data
 
 USER node
 

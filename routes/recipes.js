@@ -11,6 +11,20 @@ export default function mountRecipeRoutes(app, deps) {
     storageRateLimiter,
     sanitizeWorkspace,
     storage,
+// Recipes, schedules, and cron routes extracted from server.js
+import { randomUUID } from "crypto";
+
+export function mountRecipeRoutes(app, deps) {
+  const {
+    apiRoute,
+    apiError,
+    apiKeyAuth,
+    requireScope,
+    logRequest,
+    storageRateLimiter,
+    sanitizeWorkspace,
+    storage,
+    logActivity,
     scheduleStore,
     schedulerRefresh,
     runRecipeNow,
@@ -19,6 +33,8 @@ export default function mountRecipeRoutes(app, deps) {
   } = deps;
 
   // Recipes CRUD
+  } = deps;
+
   apiRoute("get", "/recipes", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
@@ -111,6 +127,7 @@ export default function mountRecipeRoutes(app, deps) {
   });
 
   // Schedules
+  // --- Schedules ---
   apiRoute("get", "/schedules", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
