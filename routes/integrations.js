@@ -21,6 +21,16 @@ export default function mountIntegrationRoutes(app, deps) {
     adminAuth,
   } = deps;
 
+  const adminIntegrationRateLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (req, res) => {
+      apiError(res, 429, "RATE_LIMITED", "Too many integration admin requests", "Email/Jira/Linear endpoints are limited to 10 per minute.");
+    },
+  });
+
   const STALE_PR_DAYS = 7;
   const OWNER_REPO_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/;
 
@@ -394,7 +404,7 @@ export default function mountIntegrationRoutes(app, deps) {
 
   // POST /api/integrations/email/test - send a test email
   apiRoute("post", "/integrations/email/test",
-    integrationRateLimiter,
+    adminIntegrationRateLimiter,
     adminAuth,
     async (req, res) => {
       if (!isEmailConfigured()) {
@@ -415,7 +425,7 @@ export default function mountIntegrationRoutes(app, deps) {
 
   // POST /api/integrations/email/digest - trigger manual digest
   apiRoute("post", "/integrations/email/digest",
-    integrationRateLimiter,
+    adminIntegrationRateLimiter,
     adminAuth,
     async (req, res) => {
       if (!isEmailConfigured()) {
@@ -447,7 +457,7 @@ export default function mountIntegrationRoutes(app, deps) {
 
   // GET /api/integrations/jira/search?jql=...
   apiRoute("get", "/integrations/jira/search",
-    integrationRateLimiter,
+    adminIntegrationRateLimiter,
     requireJiraConfigured,
     async (req, res) => {
       const jql = req.query.jql;
