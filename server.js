@@ -157,6 +157,7 @@ import {
 
 import { mountAllRoutes } from "./routes/index.js";
 import { errorMiddleware, errorHandler } from "./lib/error-middleware.js";
+import { runStartupChecks } from "./lib/startup-checks.js";
 // --- Route modules (P0.1) ---
 import { mountAuthRoutes } from "./routes/auth.js";
 import { mountChatRoutes } from "./routes/chat.js";
@@ -1156,6 +1157,9 @@ const deps = {
 };
 
 mountAllRoutes(app, deps);
+
+console.log("[startup] Running integration checks...");
+await runStartupChecks().catch(e => console.warn("[startup] Check failed:", e.message));
 
 // All routes are now in route modules under routes/
 

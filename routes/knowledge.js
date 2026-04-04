@@ -1,4 +1,5 @@
 import express from "express";
+import { validate } from "../lib/validate.js";
 
 export default function mountKnowledgeRoutes(app, deps) {
   const {
@@ -223,7 +224,9 @@ export function mountKnowledgeRoutes(app, deps) {
 
   // Context CRUD lives in routes/context.js (mountContextRoutes).
 
-  apiRoute("post", "/context", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
+  const validateCreateContext = validate({ body: { title: "string", content: "string" } });
+
+  apiRoute("post", "/context", storageRateLimiter, requireScope("write"), logRequest, validateCreateContext, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.body?.workspace);
       const { title, content } = req.body || {};

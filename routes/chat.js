@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { validate } from "../lib/validate.js";
 
 export default function mountChatRoutes(app, deps) {
   const {
@@ -57,8 +58,10 @@ export function mountChatRoutes(app, deps) {
     taskPlanRateLimiter,
   } = deps;
 
+  const validateChat = validate({ body: { messages: "array", model: "?string", stream: "?boolean" } });
+
   // POST /v1/chat/completions
-  app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRateLimiter, chatRateLimiter, logRequest, async (req, res) => {
+  app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRateLimiter, chatRateLimiter, logRequest, validateChat, async (req, res) => {
     recordChatRequest();
     try {
       const workspace = req.body?.agentOptions?.workspace || "default";

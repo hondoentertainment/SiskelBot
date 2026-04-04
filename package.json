@@ -31,7 +31,7 @@
     "lint:eslint": "eslint .",
     "test": "node scripts/run-tests.mjs",
     "test:coverage": "c8 node scripts/run-tests.mjs",
-    "test:ci": "c8 --reporter=text --reporter=lcov node scripts/run-tests.mjs --ci",
+    "test:ci": "c8 node scripts/run-tests.mjs --ci",
     "ci": "npm run lint && npm run test:ci",
     "smoke-test": "node scripts/smoke-test.js",
     "smoke-test:ci": "node scripts/smoke-test.js --live-only",

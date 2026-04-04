@@ -4,6 +4,7 @@
  * GET /mcp/sse — SSE transport for streaming MCP
  */
 import { handleMcpRequest, getMcpCapabilities } from "../lib/mcp-server.js";
+import { validate } from "../lib/validate.js";
 
 export function mountMcpRoutes(app, deps) {
   const {
@@ -15,7 +16,18 @@ export function mountMcpRoutes(app, deps) {
     buildProxyConfig,
     BACKEND,
     MODEL_PRESETS,
+    rateLimit,
   } = deps;
+
+  const mcpRateLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (req, res) => {
+      apiError(res, 429, "RATE_LIMITED", "Too many MCP requests", "MCP calls are limited to 30 per minute.");
+    },
+  });
 
   /**
    * Build an MCP execution context from the Express request and deps.
@@ -31,8 +43,10 @@ export function mountMcpRoutes(app, deps) {
     };
   }
 
+  const validateMcp = validate({ body: { method: "string", id: "?string" } });
+
   // POST /mcp — JSON-RPC endpoint
-  app.post("/mcp", apiKeyAuth, requireScope("write"), logRequest, async (req, res) => {
+  app.post("/mcp", mcpRateLimiter, apiKeyAuth, requireScope("write"), logRequest, validateMcp, async (req, res) => {
     try {
       const body = req.body;
 
@@ -80,7 +94,7 @@ export function mountMcpRoutes(app, deps) {
   });
 
   // GET /mcp/sse — SSE transport for streaming MCP
-  app.get("/mcp/sse", apiKeyAuth, requireScope("read"), (req, res) => {
+  app.get("/mcp/sse", mcpRateLimiter, apiKeyAuth, requireScope("read"), (req, res) => {
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");

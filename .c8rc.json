@@ -1,8 +1,21 @@
 {
-  "all": true,
-  "include": ["lib/**/*.js", "server.js"],
-  "exclude": ["node_modules", "tests", "client", "vendor", "scripts", "electron", "plugins"],
-  "reporter": ["text", "lcov", "html"],
-  "report-dir": "coverage",
-  "check-coverage": false
+  "check-coverage": true,
+  "lines": 50,
+  "functions": 45,
+  "branches": 40,
+  "statements": 50,
+  "reporter": ["text", "lcov", "json-summary"],
+  "exclude": [
+    "tests/**",
+    "scripts/**",
+    "vscode-extension/**",
+    "sdk/**",
+    "client/**",
+    "electron/**",
+    "plugins/**",
+    ".claude/**",
+    "data/**",
+    "grafana/**",
+    "docs/**"
+  ]
 }

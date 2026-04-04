@@ -20,11 +20,21 @@ const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET || "";
 const DISCORD_PUBLIC_KEY = process.env.DISCORD_PUBLIC_KEY || "";
 
 export function mountSlackDiscordRoutes(app, deps) {
-  const { apiRoute, apiError, integrationRateLimiter } = deps;
+  const { apiRoute, apiError, rateLimit } = deps;
+
+  const slackDiscordRateLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (req, res) => {
+      apiError(res, 429, "RATE_LIMITED", "Too many webhook requests", "Slack/Discord webhooks are limited to 60 per minute.");
+    },
+  });
 
   // ─── Slack Events API ──────────────────────────────────────────────────────
 
-  apiRoute("post", "/integrations/slack/events", integrationRateLimiter, async (req, res) => {
+  apiRoute("post", "/integrations/slack/events", slackDiscordRateLimiter, async (req, res) => {
     // Slack sends raw body — we need it for signature verification.
     // Express json() middleware already parsed it, but we stored rawBody via middleware.
     const rawBody = req.rawBody || JSON.stringify(req.body);
@@ -50,7 +60,7 @@ export function mountSlackDiscordRoutes(app, deps) {
 
   // ─── Discord Interactions endpoint ─────────────────────────────────────────
 
-  apiRoute("post", "/integrations/discord/interactions", integrationRateLimiter, async (req, res) => {
+  apiRoute("post", "/integrations/discord/interactions", slackDiscordRateLimiter, async (req, res) => {
     const rawBody = req.rawBody || JSON.stringify(req.body);
     const timestamp = req.headers["x-signature-timestamp"];
     const signature = req.headers["x-signature-ed25519"];
