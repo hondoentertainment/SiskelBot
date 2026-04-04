@@ -1626,7 +1626,7 @@
         if (!file) return;
         const title = (file.name || 'Uploaded').replace(/\.[^.]+$/, '') || 'Uploaded';
         const isPdf = (file.name || '').toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
-        let content = '';
+        let content;
         if (isPdf) {
           try {
             const fd = new FormData();
@@ -3502,7 +3502,7 @@
       }
       const payload = JSON.stringify(payloadObj);
 
-      let lastError = null;
+      let lastError;
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         try {
           assistantSseStreaming = false;
@@ -3921,7 +3921,7 @@
         if (!byId.has(n.id)) byId.set(n.id, { ...n });
       });
       return Array.from(byId.values()).sort((a, b) =>
-        (new Date(b.createdAt) || 0) - (new Date(a.createdAt) || 0)
+        (new Date(b.createdAt).getTime() || 0) - (new Date(a.createdAt).getTime() || 0)
       ).slice(0, NOTIFICATIONS_MAX);
     }
 
