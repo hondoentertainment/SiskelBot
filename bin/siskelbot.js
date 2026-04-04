@@ -5,8 +5,8 @@
  * Commands: chat, context list, context add, recipes list, recipes run <name>, config
  */
 
-import { readFileSync } from "fs";
-import { resolve, dirname } from "path";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
+import { resolve, dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 // Load .env if dotenv available (project has it)
@@ -83,6 +83,8 @@ Usage:
   npm run cli -- <command> [options]
 
 Commands:
+  init                         Scaffold a new SiskelBot project (.env, data/, sample recipe)
+
   migrate                      Migrate data between storage backends
     --from=<backend>          Source backend (json, sqlite, postgres)
     --to=<backend>            Target backend (json, sqlite, postgres)
@@ -108,6 +110,20 @@ Commands:
 
   recipes list                List recipes
   recipes run <name>          Run a recipe by name
+    --url, --api-key, --workspace, --json
+
+  plugin create <name>        Scaffold a new plugin in plugins/packs/<name>/
+
+  workspace list              List workspaces
+  workspace create <name>     Create a new workspace
+    --url, --api-key, --json
+
+  search "query"              Search conversations
+    --url, --api-key, --workspace, --json
+
+  export <conversationId>     Export a conversation
+    --format <fmt>            Format: markdown, json, or html (default: markdown)
+    --output <file>           Write to file instead of stdout
     --url, --api-key, --workspace, --json
 
   config                      Show current config (backend, url, auth status)
@@ -397,6 +413,192 @@ async function cmdMigrate() {
   });
 }
 
+async function cmdInit(json) {
+  const created = [];
+  if (!existsSync(".env")) {
+    writeFileSync(
+      ".env",
+      `# SiskelBot Configuration\n# Backend: ollama, vllm, or openai\nBACKEND=ollama\n# OPENAI_API_KEY=sk-...\n# API_KEY=your-secret-key\nPORT=3000\n`
+    );
+    created.push(".env");
+  }
+  mkdirSync("data/users/anonymous/workspaces/default", { recursive: true });
+  created.push("data/");
+
+  const recipesPath = "data/users/anonymous/workspaces/default/recipes.json";
+  if (!existsSync(recipesPath)) {
+    writeFileSync(
+      recipesPath,
+      JSON.stringify(
+        [
+          {
+            id: "sample-recipe",
+            name: "hello-world",
+            description: "A sample recipe to get started",
+            steps: [
+              {
+                action: "prompt",
+                config: { message: "Say hello and introduce yourself briefly." },
+              },
+            ],
+          },
+        ],
+        null,
+        2
+      )
+    );
+    created.push("sample recipe");
+  }
+
+  const contextPath = "data/users/anonymous/workspaces/default/context.json";
+  if (!existsSync(contextPath)) {
+    writeFileSync(
+      contextPath,
+      JSON.stringify(
+        [
+          {
+            id: "sample-context",
+            title: "Getting Started",
+            content: "Welcome to SiskelBot! Add your own context documents to help the assistant understand your project.",
+          },
+        ],
+        null,
+        2
+      )
+    );
+    created.push("sample context");
+  }
+
+  if (json) {
+    console.log(JSON.stringify({ initialized: true, created }));
+  } else {
+    for (const item of created) console.log(`Created ${item}`);
+    console.log("\nSiskelBot initialized! Run `npm start` to begin.");
+  }
+}
+
+async function cmdPluginCreate(name, json) {
+  if (!name) err("Usage: siskelbot plugin create <name>");
+  const dir = join("plugins", "packs", name);
+  mkdirSync(dir, { recursive: true });
+  const manifestPath = join(dir, "manifest.json");
+  const displayName = name.charAt(0).toUpperCase() + name.slice(1);
+  const manifest = {
+    id: name,
+    name: displayName,
+    version: "1.0.0",
+    description: "A custom SiskelBot plugin",
+    author: "you",
+    actions: [
+      {
+        name: "example_action",
+        type: "webhook",
+        config: {
+          url: "https://example.com/hook",
+          method: "POST",
+        },
+      },
+    ],
+  };
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+  if (json) {
+    console.log(JSON.stringify({ created: manifestPath, manifest }));
+  } else {
+    console.log(`Plugin created at ${manifestPath}`);
+  }
+}
+
+async function cmdWorkspaceList(baseUrl, apiKey, json) {
+  try {
+    const data = await apiGet(baseUrl, apiKey, "/api/v1/workspaces", "default");
+    if (json) {
+      console.log(JSON.stringify(data, null, 2));
+      return;
+    }
+    const items = data?.items || data?.workspaces || (Array.isArray(data) ? data : []);
+    if (items.length === 0) {
+      console.log("No workspaces.");
+      return;
+    }
+    for (const ws of items) {
+      const type = ws.type || "personal";
+      console.log(`- ${ws.name || ws.id} (${ws.id}) [${type}]`);
+    }
+  } catch (e) {
+    if (e.message?.includes("Connection refused")) err(e.message, 1);
+    err(e.message || String(e), 1);
+  }
+}
+
+async function cmdWorkspaceCreate(baseUrl, apiKey, name, json) {
+  if (!name) err("Usage: siskelbot workspace create <name>");
+  try {
+    const data = await apiPost(baseUrl, apiKey, "/api/v1/workspaces", { name });
+    if (json) {
+      console.log(JSON.stringify(data, null, 2));
+      return;
+    }
+    const ws = data?.workspace || data;
+    console.log(`Workspace created: ${ws.name || name} (${ws.id || "unknown"})`);
+  } catch (e) {
+    if (e.message?.includes("Connection refused")) err(e.message, 1);
+    err(e.message || String(e), 1);
+  }
+}
+
+async function cmdSearch(baseUrl, apiKey, query, workspace, json) {
+  if (!query) err('Usage: siskelbot search "query"');
+  try {
+    const encoded = encodeURIComponent(query);
+    const data = await apiGet(baseUrl, apiKey, `/api/v1/conversations/search?q=${encoded}`, workspace);
+    if (json) {
+      console.log(JSON.stringify(data, null, 2));
+      return;
+    }
+    const items = data?.items || data?.results || (Array.isArray(data) ? data : []);
+    if (items.length === 0) {
+      console.log("No results.");
+      return;
+    }
+    for (const item of items) {
+      const title = item.title || item.id || "untitled";
+      const snippet = item.snippet || item.preview || "";
+      console.log(`- ${title}${snippet ? ": " + snippet.slice(0, 80) : ""}`);
+    }
+  } catch (e) {
+    if (e.message?.includes("Connection refused")) err(e.message, 1);
+    err(e.message || String(e), 1);
+  }
+}
+
+async function cmdExport(baseUrl, apiKey, conversationId, workspace, json) {
+  if (!conversationId) err("Usage: siskelbot export <conversationId> [--format markdown|json|html] [--output file]");
+  const format = getFlag("--format") || "markdown";
+  const output = getFlag("--output");
+  try {
+    const encoded = encodeURIComponent(format);
+    const url = `${baseUrl}/api/v1/conversations/${encodeURIComponent(conversationId)}/export?format=${encoded}&workspace=${encodeURIComponent(workspace)}`;
+    const res = await fetch(url, { headers: headers(apiKey) });
+    if (!res.ok) {
+      if (res.status === 401) err("Unauthorized. Set SISKELBOT_API_KEY or --api-key.");
+      if (res.status === 404) err(`Conversation not found: ${conversationId}`);
+      const body = await res.json().catch(() => ({}));
+      err(body?.error || `Export failed: ${res.status}`);
+    }
+    const content = await res.text();
+    if (output) {
+      writeFileSync(output, content);
+      if (!json) console.log(`Exported to ${output}`);
+      else console.log(JSON.stringify({ exported: output, format }));
+    } else {
+      process.stdout.write(content);
+    }
+  } catch (e) {
+    if (e.code === "ECONNREFUSED" || e.cause?.code === "ECONNREFUSED") err(`Connection refused: ${baseUrl}. Is the server running?`, 1);
+    err(e.message || String(e), 1);
+  }
+}
+
 async function main() {
   const { args, json } = parseArgs();
   const baseUrl = getUrl();
@@ -412,7 +614,9 @@ async function main() {
   const sub = args[1];
 
   try {
-    if (cmd === "migrate") {
+    if (cmd === "init") {
+      await cmdInit(json);
+    } else if (cmd === "migrate") {
       await cmdMigrate();
     } else if (cmd === "config") {
       await cmdConfig(baseUrl, apiKey, json);
@@ -426,6 +630,17 @@ async function main() {
       if (sub === "list") await cmdRecipesList(baseUrl, apiKey, workspace, json);
       else if (sub === "run") await cmdRecipesRun(baseUrl, apiKey, args[2], workspace, json);
       else err('Usage: siskelbot recipes list | recipes run <name>');
+    } else if (cmd === "plugin") {
+      if (sub === "create") await cmdPluginCreate(args[2], json);
+      else err("Usage: siskelbot plugin create <name>");
+    } else if (cmd === "workspace") {
+      if (sub === "list") await cmdWorkspaceList(baseUrl, apiKey, json);
+      else if (sub === "create") await cmdWorkspaceCreate(baseUrl, apiKey, args[2], json);
+      else err("Usage: siskelbot workspace list | workspace create <name>");
+    } else if (cmd === "search") {
+      await cmdSearch(baseUrl, apiKey, args[1], workspace, json);
+    } else if (cmd === "export") {
+      await cmdExport(baseUrl, apiKey, args[1], workspace, json);
     } else {
       err(`Unknown command: ${cmd}. Run with --help for usage.`);
     }

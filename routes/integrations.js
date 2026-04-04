@@ -1,5 +1,8 @@
 import express from "express";
 import rateLimit from "express-rate-limit";
+import { isEmailConfigured, sendEmail, sendDigest, getDigestRecipients, isDigestEnabled } from "../lib/email-notifications.js";
+import { isJiraConfigured, createJiraIssue, searchJiraIssues } from "../lib/jira-integration.js";
+import { isLinearConfigured, createLinearIssue, searchLinearIssues } from "../lib/linear-integration.js";
 
 export default function mountIntegrationRoutes(app, deps) {
   const {
@@ -15,6 +18,7 @@ export default function mountIntegrationRoutes(app, deps) {
     MONITORING_REPO,
     MONITORING_INTERVAL_MS,
     runHealthChecks,
+    adminAuth,
   } = deps;
 
   const STALE_PR_DAYS = 7;
@@ -36,6 +40,9 @@ export default function mountIntegrationRoutes(app, deps) {
     res.json({
       github: Boolean(GITHUB_TOKEN),
       vercel: Boolean(VERCEL_TOKEN),
+      email: isEmailConfigured(),
+      jira: isJiraConfigured(),
+      linear: isLinearConfigured(),
     });
   });
 
@@ -377,6 +384,144 @@ export default function mountIntegrationRoutes(app, deps) {
         res.json(data);
       } catch (err) {
         return apiError(res, 502, "BACKEND_UNREACHABLE", err.message, "Check VERCEL_TOKEN and network connectivity to api.vercel.com.");
+      }
+    }
+  );
+
+  // ─── Email integration routes ────────────────────────────────────────────
+
+  // POST /api/integrations/email/test - send a test email
+  apiRoute("post", "/integrations/email/test",
+    integrationRateLimiter,
+    adminAuth,
+    async (req, res) => {
+      if (!isEmailConfigured()) {
+        return apiError(res, 503, "INTEGRATION_UNAVAILABLE", "Email not configured", "Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS environment variables.");
+      }
+      const { to } = req.body || {};
+      if (!to || typeof to !== "string") {
+        return apiError(res, 400, "INVALID_INPUT", "Recipient email (to) is required");
+      }
+      try {
+        const result = await sendEmail(to, "SiskelBot Test Email", "<h1>Test</h1><p>This is a test email from SiskelBot.</p>", { html: true });
+        res.json({ ok: true, ...result });
+      } catch (err) {
+        return apiError(res, 502, "EMAIL_SEND_FAILED", err.message, "Check SMTP configuration.");
+      }
+    }
+  );
+
+  // POST /api/integrations/email/digest - trigger manual digest
+  apiRoute("post", "/integrations/email/digest",
+    integrationRateLimiter,
+    adminAuth,
+    async (req, res) => {
+      if (!isEmailConfigured()) {
+        return apiError(res, 503, "INTEGRATION_UNAVAILABLE", "Email not configured", "Set SMTP_HOST environment variables.");
+      }
+      const recipients = (req.body && req.body.recipients) || getDigestRecipients();
+      if (!recipients || recipients.length === 0) {
+        return apiError(res, 400, "INVALID_INPUT", "No recipients specified", "Pass recipients in body or set EMAIL_DIGEST_RECIPIENTS.");
+      }
+      const events = (req.body && req.body.events) || [];
+      const period = (req.body && req.body.period) || "daily";
+      try {
+        const results = await sendDigest(recipients, events, period);
+        res.json({ ok: true, results });
+      } catch (err) {
+        return apiError(res, 502, "EMAIL_SEND_FAILED", err.message, "Check SMTP configuration.");
+      }
+    }
+  );
+
+  // ─── Jira integration routes ─────────────────────────────────────────────
+
+  function requireJiraConfigured(req, res, next) {
+    if (!isJiraConfigured()) {
+      return apiError(res, 503, "INTEGRATION_UNAVAILABLE", "Jira integration unavailable", "Set JIRA_URL, JIRA_EMAIL, and JIRA_API_TOKEN environment variables.");
+    }
+    next();
+  }
+
+  // GET /api/integrations/jira/search?jql=...
+  apiRoute("get", "/integrations/jira/search",
+    integrationRateLimiter,
+    requireJiraConfigured,
+    async (req, res) => {
+      const jql = req.query.jql;
+      if (!jql || typeof jql !== "string") {
+        return apiError(res, 400, "INVALID_INPUT", "JQL query parameter is required");
+      }
+      try {
+        const data = await searchJiraIssues(jql);
+        res.json(data);
+      } catch (err) {
+        return apiError(res, 502, "BACKEND_UNREACHABLE", err.message, "Check Jira configuration and connectivity.");
+      }
+    }
+  );
+
+  // POST /api/integrations/jira/issues
+  apiRoute("post", "/integrations/jira/issues",
+    integrationRateLimiter,
+    requireJiraConfigured,
+    async (req, res) => {
+      const { projectKey, summary, description, issueType, priority, labels, assignee } = req.body || {};
+      if (!summary || typeof summary !== "string") {
+        return apiError(res, 400, "INVALID_INPUT", "Summary is required");
+      }
+      try {
+        const data = await createJiraIssue(projectKey, summary, description || "", { issueType, priority, labels, assignee });
+        res.status(201).json(data);
+      } catch (err) {
+        const status = err.status || 502;
+        return apiError(res, status, "JIRA_ERROR", err.message, "Check Jira configuration.");
+      }
+    }
+  );
+
+  // ─── Linear integration routes ───────────────────────────────────────────
+
+  function requireLinearConfigured(req, res, next) {
+    if (!isLinearConfigured()) {
+      return apiError(res, 503, "INTEGRATION_UNAVAILABLE", "Linear integration unavailable", "Set LINEAR_API_KEY environment variable.");
+    }
+    next();
+  }
+
+  // GET /api/integrations/linear/issues?q=...
+  apiRoute("get", "/integrations/linear/issues",
+    integrationRateLimiter,
+    requireLinearConfigured,
+    async (req, res) => {
+      const q = req.query.q;
+      if (!q || typeof q !== "string") {
+        return apiError(res, 400, "INVALID_INPUT", "Query parameter (q) is required");
+      }
+      try {
+        const data = await searchLinearIssues(q);
+        res.json(data);
+      } catch (err) {
+        return apiError(res, 502, "BACKEND_UNREACHABLE", err.message, "Check Linear configuration and connectivity.");
+      }
+    }
+  );
+
+  // POST /api/integrations/linear/issues
+  apiRoute("post", "/integrations/linear/issues",
+    integrationRateLimiter,
+    requireLinearConfigured,
+    async (req, res) => {
+      const { teamId, title, description, priority, labels, assigneeId, stateId } = req.body || {};
+      if (!title || typeof title !== "string") {
+        return apiError(res, 400, "INVALID_INPUT", "Title is required");
+      }
+      try {
+        const data = await createLinearIssue(teamId, title, description || "", { priority, labels, assigneeId, stateId });
+        res.status(201).json(data);
+      } catch (err) {
+        const status = err.status || 502;
+        return apiError(res, status, "LINEAR_ERROR", err.message, "Check Linear configuration.");
       }
     }
   );

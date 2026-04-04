@@ -7,7 +7,10 @@ const APP_ASSETS = [
   "/app.webmanifest",
   "/icon.svg",
   "/icon-maskable.svg",
-  "/js/offline-queue.js"
+  "/js/offline-queue.js",
+  "/js/agent-traces.js",
+  "/js/stream-metrics.js",
+  "/js/ws-reconnect.js"
 ];
 const CDN_ASSETS = [
   "https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js",
