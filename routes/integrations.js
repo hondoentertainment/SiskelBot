@@ -475,7 +475,7 @@ export default function mountIntegrationRoutes(app, deps) {
 
   // POST /api/integrations/jira/issues
   apiRoute("post", "/integrations/jira/issues",
-    integrationRateLimiter,
+    adminIntegrationRateLimiter,
     requireJiraConfigured,
     async (req, res) => {
       const { projectKey, summary, description, issueType, priority, labels, assignee } = req.body || {};
@@ -503,7 +503,7 @@ export default function mountIntegrationRoutes(app, deps) {
 
   // GET /api/integrations/linear/issues?q=...
   apiRoute("get", "/integrations/linear/issues",
-    integrationRateLimiter,
+    adminIntegrationRateLimiter,
     requireLinearConfigured,
     async (req, res) => {
       const q = req.query.q;
@@ -521,7 +521,7 @@ export default function mountIntegrationRoutes(app, deps) {
 
   // POST /api/integrations/linear/issues
   apiRoute("post", "/integrations/linear/issues",
-    integrationRateLimiter,
+    adminIntegrationRateLimiter,
     requireLinearConfigured,
     async (req, res) => {
       const { teamId, title, description, priority, labels, assigneeId, stateId } = req.body || {};
