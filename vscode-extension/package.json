@@ -1,0 +1,38 @@
+{
+  "name": "siskelbot-vscode",
+  "displayName": "SiskelBot",
+  "description": "SiskelBot assistant integration for VS Code",
+  "version": "0.1.0",
+  "publisher": "siskelbot",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [{ "id": "siskelbot", "title": "SiskelBot", "icon": "icon.svg" }]
+    },
+    "views": {
+      "siskelbot": [
+        { "id": "siskelbot.chat", "name": "Chat", "type": "webview" },
+        { "id": "siskelbot.knowledge", "name": "Knowledge Base" },
+        { "id": "siskelbot.recipes", "name": "Recipes" }
+      ]
+    },
+    "commands": [
+      { "command": "siskelbot.chat", "title": "SiskelBot: Chat" },
+      { "command": "siskelbot.searchKnowledge", "title": "SiskelBot: Search Knowledge" },
+      { "command": "siskelbot.runRecipe", "title": "SiskelBot: Run Recipe" },
+      { "command": "siskelbot.indexFile", "title": "SiskelBot: Index Current File" },
+      { "command": "siskelbot.configure", "title": "SiskelBot: Configure" }
+    ],
+    "configuration": {
+      "title": "SiskelBot",
+      "properties": {
+        "siskelbot.serverUrl": { "type": "string", "default": "http://localhost:3000", "description": "SiskelBot server URL" },
+        "siskelbot.apiKey": { "type": "string", "default": "", "description": "API key for authentication" },
+        "siskelbot.workspace": { "type": "string", "default": "default", "description": "Default workspace" }
+      }
+    }
+  }
+}
