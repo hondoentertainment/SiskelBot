@@ -4,6 +4,7 @@
  * GET /mcp/sse — SSE transport for streaming MCP
  */
 import { handleMcpRequest, getMcpCapabilities } from "../lib/mcp-server.js";
+import { validate } from "../lib/validate.js";
 
 export function mountMcpRoutes(app, deps) {
   const {
@@ -31,8 +32,10 @@ export function mountMcpRoutes(app, deps) {
     };
   }
 
+  const validateMcp = validate({ body: { method: "string", id: "?string" } });
+
   // POST /mcp — JSON-RPC endpoint
-  app.post("/mcp", apiKeyAuth, requireScope("write"), logRequest, async (req, res) => {
+  app.post("/mcp", apiKeyAuth, requireScope("write"), logRequest, validateMcp, async (req, res) => {
     try {
       const body = req.body;
 
