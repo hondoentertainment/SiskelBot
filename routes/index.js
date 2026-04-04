@@ -31,6 +31,7 @@
  *   multimodal.js    - /api/vision/describe, /api/documents/extract, /api/ocr
  *   federation.js    - /api/federation/*
  *   mcp.js           - /mcp, /mcp/sse
+ *   slack-discord.js - /api/integrations/slack/*, /api/integrations/discord/*, /api/integrations/bots/*
  */
 
 import mountAuthRoutes from "./auth.js";
@@ -54,6 +55,7 @@ import { mountExecuteRoutes } from "./execute.js";
 import mountMultimodalRoutes from "./multimodal.js";
 import { mountFederationRoutes } from "./federation.js";
 import { mountMcpRoutes } from "./mcp.js";
+import { mountSlackDiscordRoutes } from "./slack-discord.js";
 
 const mountFunctions = [
   mountAuthRoutes,
@@ -77,6 +79,7 @@ const mountFunctions = [
   mountMultimodalRoutes,
   mountFederationRoutes,
   mountMcpRoutes,
+  mountSlackDiscordRoutes,
 ];
 
 /**

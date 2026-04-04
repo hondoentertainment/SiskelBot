@@ -322,7 +322,14 @@ if (ENABLE_COMPRESSION) {
     compression({ filter: (req, res) => !req.path?.startsWith("/v1/chat/completions") && !req.path?.startsWith("/v1/agent/swarm") })
   );
 }
-app.use(express.json());
+app.use(express.json({
+  verify: (req, _res, buf) => {
+    // Store raw body for webhook signature verification (Slack, Discord)
+    if (req.url?.includes("/integrations/slack/") || req.url?.includes("/integrations/discord/")) {
+      req.rawBody = buf.toString("utf8");
+    }
+  },
+}));
 app.use(otelHttpEnrichmentMiddleware());
 
 // Phase 34: Request ID for all responses (k8s/tracing)
@@ -1006,7 +1013,7 @@ app.use(
     etag: true,
     setHeaders(res, filePath) {
       const norm = filePath.replace(/\\/g, "/");
-      if (/(^|\/)index\.html$/i.test(norm) || /(^|\/)admin\.html$/i.test(norm) || /(^|\/)eval\.html$/i.test(norm)) {
+      if (/(^|\/)index\.html$/i.test(norm) || /(^|\/)admin\.html$/i.test(norm) || /(^|\/)eval\.html$/i.test(norm) || /(^|\/)shared\.html$/i.test(norm)) {
         res.setHeader("Cache-Control", "no-store");
       }
     },

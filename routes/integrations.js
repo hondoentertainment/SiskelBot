@@ -43,6 +43,8 @@ export default function mountIntegrationRoutes(app, deps) {
       email: isEmailConfigured(),
       jira: isJiraConfigured(),
       linear: isLinearConfigured(),
+      slack: Boolean(process.env.SLACK_BOT_TOKEN || process.env.SLACK_WEBHOOK_URL),
+      discord: Boolean(process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_WEBHOOK_URL),
     });
   });
 

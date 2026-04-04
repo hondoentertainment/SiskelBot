@@ -81,6 +81,7 @@
   },
   "optionalDependencies": {
     "better-sqlite3": "^11.8.1",
+    "nodemailer": "^6.9.0",
     "redis": "^4.7.0"
   },
   "build": {
