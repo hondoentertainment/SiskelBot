@@ -1,18 +1,3 @@
-import express from "express";
-
-export default function mountWorkspaceRoutes(app, deps) {
-  const {
-    apiRoute,
-    apiError,
-    logRequest,
-    userAuth,
-    adminAuth,
-    requireScope,
-    storageRateLimiter,
-    sanitizeWorkspace,
-    storage,
-    // workspace-templates
-// Workspace CRUD, templates, agent settings, members, activity, presence, chunking, memories, migration, roles, compliance routes
 import { randomUUID } from "crypto";
 
 export function mountWorkspaceRoutes(app, deps) {
@@ -29,68 +14,45 @@ export function mountWorkspaceRoutes(app, deps) {
     storage,
     idempotencyLookup,
     idempotencyStore,
-    // Templates
     createTemplate,
     listTemplates,
     getTemplate,
     updateTemplate,
     deleteTemplate,
     applyTemplate,
-    // workspace lifecycle
     exportWorkspaceBundle,
     deleteWorkspaceForUser,
-    // workspace agent settings
-    // Workspace lifecycle
-    exportWorkspaceBundle,
-    deleteWorkspaceForUser,
-    // Agent settings
     loadWorkspaceAgentSettings,
     saveWorkspaceAgentSettings,
     getWorkspaceAgentAccess,
     canEditWorkspaceAgentSettings,
-    // teams
     resolveStorageUserId,
-    // idempotency
-    idempotencyLookup,
-    idempotencyStore,
-  } = deps;
-
-  // Workspaces CRUD
-    resolveStorageUserId,
-    // Chunking
     getWorkspaceChunkingConfig,
     setWorkspaceChunkingConfig,
-    // Teams
     canAccessWorkspace,
     createInviteCode,
     joinByInviteCode,
     getWorkspaceMembers,
     getWorkspaceActivity,
     logActivity,
-    // Presence
     getOnlineUsers,
-    // Memories
     storeMemory,
     getMemories,
     searchMemories,
     updateAgentMemory,
     deleteAgentMemory,
     extractPotentialMemories,
-    // Migration
     exportWorkspaceMigration,
     importWorkspaceMigration,
     validateBundle,
     diffWorkspaces,
-    // Plugins per workspace
     marketplaceListInstalled,
     marketplaceRateLimiter,
-    // RBAC
     listRbacRoles,
     createCustomRole,
     updateCustomRole,
     deleteCustomRole,
     assignRole,
-    // Compliance
     getAvailableRegions,
     setDataResidency,
     getDataResidency,
@@ -98,6 +60,13 @@ export function mountWorkspaceRoutes(app, deps) {
     getRetentionPolicy,
     setRetentionPolicy,
     scanTextForPII,
+    getWorkspaceMemoryStats,
+    listInstalledMarketplacePacks,
+    installMarketplacePack,
+    setMarketplacePackEnabled,
+    getWorkspaceMarketplacePolicy,
+    saveWorkspaceMarketplacePolicy,
+    appendAuditLog,
   } = deps;
 
   // --- Workspaces CRUD ---
@@ -218,8 +187,6 @@ export function mountWorkspaceRoutes(app, deps) {
     }
   });
 
-  // Workspace export and delete
-  apiRoute("get", "/workspaces/:id/export", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
   // --- Workspace export & delete ---
   apiRoute("get", "/workspaces/:id/export", storageRateLimiter, workspaceRateLimiter(), userAuth, requireScope("read"), logRequest, async (req, res) => {
     try {
@@ -238,7 +205,6 @@ export function mountWorkspaceRoutes(app, deps) {
     }
   });
 
-  apiRoute("delete", "/workspaces/:id", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
   apiRoute("delete", "/workspaces/:id", storageRateLimiter, workspaceRateLimiter(), userAuth, requireScope("write"), logRequest, async (req, res) => {
     try {
       const workspaceId = sanitizeWorkspace(req.params.id);
@@ -263,8 +229,6 @@ export function mountWorkspaceRoutes(app, deps) {
     }
   });
 
-  // Workspace agent settings
-  apiRoute("get", "/workspaces/:id/agent-settings", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
   // --- Agent Memory Persistence ---
   apiRoute("get", "/workspaces/:id/memories", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
     try {
@@ -450,6 +414,8 @@ export function mountWorkspaceRoutes(app, deps) {
         defaultSystemPrompt: settings.defaultSystemPrompt,
         memorySnippets: settings.memorySnippets,
         allowedTools: settings.allowedTools || [],
+        agentPolicy: settings.agentPolicy || {},
+        memoryStats: getWorkspaceMemoryStats(settings),
       });
     } catch (err) {
       console.error("Agent settings GET error:", err.message);
@@ -488,9 +454,154 @@ export function mountWorkspaceRoutes(app, deps) {
           defaultSystemPrompt: saved.defaultSystemPrompt,
           memorySnippets: saved.memorySnippets,
           allowedTools: saved.allowedTools || [],
+          agentPolicy: saved.agentPolicy || {},
+          memoryStats: getWorkspaceMemoryStats(saved),
         });
       } catch (err) {
         console.error("Agent settings PUT error:", err.message);
+        return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+      }
+    }
+  );
+
+  apiRoute("get", "/workspaces/:id/agent-memory/stats", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+    try {
+      const workspaceId = sanitizeWorkspace(req.params.id);
+      const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
+      if (!access.allowed) {
+        return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+      }
+      const storageUserId = await resolveStorageUserId(req.userId, workspaceId);
+      const settings = await loadWorkspaceAgentSettings(storageUserId, workspaceId);
+      res.json({ workspaceId, memory: getWorkspaceMemoryStats(settings) });
+    } catch (err) {
+      console.error("Agent memory stats GET error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  apiRoute("get", "/workspaces/:id/marketplace/packs", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+    try {
+      const workspaceId = sanitizeWorkspace(req.params.id);
+      const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
+      if (!access.allowed) {
+        return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+      }
+      const packs = await listInstalledMarketplacePacks(workspaceId);
+      res.json({ workspaceId, packs });
+    } catch (err) {
+      console.error("Marketplace packs list error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  apiRoute(
+    "post",
+    "/workspaces/:id/marketplace/install",
+    storageRateLimiter,
+    userAuth,
+    requireScope("write"),
+    logRequest,
+    async (req, res) => {
+      try {
+        const workspaceId = sanitizeWorkspace(req.params.id);
+        const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
+        if (!access.allowed) {
+          return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+        }
+        if (!canEditWorkspaceAgentSettings(access.role)) {
+          return apiError(res, 403, "FORBIDDEN", "Viewers cannot install marketplace packs", null);
+        }
+        const out = await installMarketplacePack(workspaceId, req.body?.manifest);
+        if (!out.ok) {
+          const status = out.code === "INVALID_MANIFEST" ? 400 : 403;
+          return res.status(status).json({ error: out.error || "Install failed", code: out.code, details: out.errors || [] });
+        }
+        appendAuditLog({
+          action: "marketplace_install",
+          payload: { workspaceId, packId: out.pack.id, version: out.pack.version },
+          ok: true,
+        });
+        res.status(201).json({ workspaceId, pack: out.pack });
+      } catch (err) {
+        console.error("Marketplace install error:", err.message);
+        return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+      }
+    }
+  );
+
+  apiRoute(
+    "post",
+    "/workspaces/:id/marketplace/packs/:packId/:op(enable|disable)",
+    storageRateLimiter,
+    userAuth,
+    requireScope("write"),
+    logRequest,
+    async (req, res) => {
+      try {
+        const workspaceId = sanitizeWorkspace(req.params.id);
+        const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
+        if (!access.allowed) {
+          return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+        }
+        if (!canEditWorkspaceAgentSettings(access.role)) {
+          return apiError(res, 403, "FORBIDDEN", "Viewers cannot modify marketplace packs", null);
+        }
+        const enable = String(req.params.op) === "enable";
+        const out = await setMarketplacePackEnabled(workspaceId, req.params.packId, enable);
+        if (!out.ok) {
+          return res.status(out.code === "NOT_FOUND" ? 404 : 400).json({ error: out.error || "Operation failed", code: out.code });
+        }
+        appendAuditLog({
+          action: enable ? "marketplace_enable" : "marketplace_disable",
+          payload: { workspaceId, packId: out.pack.id, version: out.pack.version },
+          ok: true,
+        });
+        res.json({ workspaceId, pack: out.pack });
+      } catch (err) {
+        console.error("Marketplace enable/disable error:", err.message);
+        return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+      }
+    }
+  );
+
+  apiRoute("get", "/workspaces/:id/marketplace/policy", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+    try {
+      const workspaceId = sanitizeWorkspace(req.params.id);
+      const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
+      if (!access.allowed) return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+      const policy = await getWorkspaceMarketplacePolicy(workspaceId);
+      res.json({ workspaceId, policy });
+    } catch (err) {
+      console.error("Marketplace policy GET error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  apiRoute(
+    "put",
+    "/workspaces/:id/marketplace/policy",
+    storageRateLimiter,
+    userAuth,
+    requireScope("write"),
+    logRequest,
+    async (req, res) => {
+      try {
+        const workspaceId = sanitizeWorkspace(req.params.id);
+        const access = await getWorkspaceAgentAccess(req.userId, workspaceId);
+        if (!access.allowed) return apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied", null);
+        if (!canEditWorkspaceAgentSettings(access.role)) {
+          return apiError(res, 403, "FORBIDDEN", "Viewers cannot edit marketplace policy", null);
+        }
+        const policy = await saveWorkspaceMarketplacePolicy(workspaceId, req.body || {});
+        appendAuditLog({
+          action: "marketplace_policy_update",
+          payload: { workspaceId, keys: Object.keys(policy) },
+          ok: true,
+        });
+        res.json({ workspaceId, policy });
+      } catch (err) {
+        console.error("Marketplace policy PUT error:", err.message);
         return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
       }
     }

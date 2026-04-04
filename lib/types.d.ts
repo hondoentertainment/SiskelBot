@@ -112,6 +112,8 @@ export interface ToolContext {
   workspaceUserId?: string;
   workspaceAllowedTools?: Set<string> | null;
   workspaceAllowedToolNames?: string[];
+  workspaceDeniedTools?: Set<string>;
+  workspaceFilesystemRoot?: string;
 }
 
 export interface ProxyConfig {
@@ -123,6 +125,9 @@ export interface ProxyConfig {
 export interface StreamOptions {
   presetRunId?: string;
   onProgress?: (event: AgentProgressEvent) => void;
+  resumeAfterHitl?: boolean;
+  abortSignal?: AbortSignal;
+  hitlContinue?: unknown;
 }
 
 // ─── Swarm types ───────────────────────────────────────────────────

@@ -1,20 +1,3 @@
-import express from "express";
-
-export default function mountKnowledgeRoutes(app, deps) {
-  const {
-    apiRoute,
-    apiError,
-    logRequest,
-    chatAuth,
-    requireScope,
-    embeddingsRateLimiter,
-    knowledgeIndexRateLimiter,
-    storageRateLimiter,
-    userAuth,
-    sanitizeWorkspace,
-    storage,
-    // knowledge-store
-// Knowledge, embeddings, vision, documents, and OCR routes extracted from server.js
 import multer from "multer";
 
 export function mountKnowledgeRoutes(app, deps) {
@@ -26,6 +9,9 @@ export function mountKnowledgeRoutes(app, deps) {
     logRequest,
     embeddingsRateLimiter,
     knowledgeIndexRateLimiter,
+    readRateLimiter,
+    storageRateLimiter,
+    multimodalRateLimiter,
     sanitizeWorkspace,
     embeddingsAvailable,
     embed,
@@ -35,20 +21,7 @@ export function mountKnowledgeRoutes(app, deps) {
     knowledgeSemanticSearch,
     knowledgeList,
     reindexKnowledgeEmbeddingsInWorkspace,
-    // embeddings
-    embed,
-    embedBatch,
-    embeddingsAvailable,
-    // knowledge-url-fetch
     fetchTextFromAllowedUrl,
-    // teams
-    logActivity,
-  } = deps;
-
-  const KNOWLEDGE_MAX_DOC_BYTES = Number(process.env.KNOWLEDGE_MAX_DOC_BYTES) || 1024 * 1024;
-
-    fetchTextFromAllowedUrl,
-    indexDocumentFromBuffer,
     OPENAI_API_KEY,
     KNOWLEDGE_MAX_DOC_BYTES,
   } = deps;
@@ -119,7 +92,7 @@ export function mountKnowledgeRoutes(app, deps) {
   );
 
   // GET /api/knowledge/search
-  apiRoute("get", "/knowledge/search", requireScope("read"), logRequest, async (req, res) => {
+  apiRoute("get", "/knowledge/search", readRateLimiter, requireScope("read"), logRequest, async (req, res) => {
     try {
       const q = (req.query?.q ?? "").toString();
       const workspace = sanitizeWorkspace(req.query?.workspace);
@@ -139,7 +112,7 @@ export function mountKnowledgeRoutes(app, deps) {
   });
 
   // GET /api/knowledge/status
-  apiRoute("get", "/knowledge/status", requireScope("read"), logRequest, (req, res) => {
+  apiRoute("get", "/knowledge/status", readRateLimiter, requireScope("read"), logRequest, (req, res) => {
     const workspace = String(req.query.workspace || "default").trim();
     const result = knowledgeList({ workspace });
     if (result.error) {
@@ -152,7 +125,7 @@ export function mountKnowledgeRoutes(app, deps) {
   });
 
   // GET /api/knowledge/list
-  apiRoute("get", "/knowledge/list", requireScope("read"), logRequest, (req, res) => {
+  apiRoute("get", "/knowledge/list", readRateLimiter, requireScope("read"), logRequest, (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
       const result = knowledgeList({ workspace });
@@ -226,96 +199,8 @@ export function mountKnowledgeRoutes(app, deps) {
     }
   });
 
-  // Context CRUD
-  apiRoute("get", "/context", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
-    try {
-      const workspace = sanitizeWorkspace(req.query?.workspace);
-      const data = await storage.listItems("context", workspace, req.userId);
-      res.json({ _version: 1, items: data });
-    } catch (err) {
-      console.error("Storage context list error:", err.message);
-      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-    }
-  });
+  // Context CRUD lives in routes/context.js (mountContextRoutes).
 
-  apiRoute("post", "/context", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
-    try {
-      const workspace = sanitizeWorkspace(req.body?.workspace);
-      const { title, content } = req.body || {};
-      if (typeof title !== "string" || !title.trim()) {
-        return apiError(res, 400, "INVALID_INPUT", "title required", "Send { title: string, content?: string }.");
-      }
-      const { randomUUID } = await import("crypto");
-      const id = (req.body?.id && String(req.body.id).trim()) || randomUUID();
-      const doc = {
-        id,
-        title: title.trim().slice(0, 500),
-        content: typeof content === "string" ? content : "",
-        createdAt: new Date().toISOString(),
-      };
-      const merged = await storage.mergeItems("context", workspace, [doc]);
-      const item = merged.find((x) => x.id === id) || doc;
-      await logActivity(workspace, "context_added", req.userId || "anonymous", { title: doc.title, id: doc.id });
-      res.status(201).json(item);
-    } catch (err) {
-      console.error("Storage context add error:", err.message);
-      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-    }
-  });
-
-  apiRoute("get", "/context/:id", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
-    try {
-      const workspace = sanitizeWorkspace(req.query?.workspace);
-      const item = await storage.getItem("context", req.params.id, workspace);
-      if (!item) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
-      res.json(item);
-    } catch (err) {
-      console.error("Storage context get error:", err.message);
-      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-    }
-  });
-
-  apiRoute("put", "/context/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
-    try {
-      const workspace = sanitizeWorkspace(req.body?.workspace);
-      const { title, content } = req.body || {};
-      const updated = await storage.updateItem("context", req.params.id, workspace, (existing) => {
-        if (typeof title === "string" && title.trim()) existing.title = title.trim().slice(0, 500);
-        if (content !== undefined) existing.content = typeof content === "string" ? content : "";
-        return existing;
-      });
-      if (!updated) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
-      res.json(updated);
-    } catch (err) {
-      console.error("Storage context update error:", err.message);
-      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-    }
-  });
-
-  apiRoute("delete", "/context/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
-    try {
-      const workspace = sanitizeWorkspace(req.query?.workspace);
-      const deleted = await storage.deleteItem("context", req.params.id, workspace);
-      if (!deleted) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
-      res.status(204).send();
-    } catch (err) {
-      console.error("Storage context delete error:", err.message);
-      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-    }
-  });
-
-  apiRoute("post", "/context/sync", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
-    try {
-      const workspace = sanitizeWorkspace(req.body?.workspace);
-      const items = Array.isArray(req.body?.items) ? req.body.items : [];
-      const valid = items.filter((x) => x && x.id && typeof x.title === "string");
-      const merged = await storage.mergeItems("context", workspace, valid);
-      res.json({ _version: 1, items: merged });
-    } catch (err) {
-      console.error("Storage context sync error:", err.message);
-      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-    }
-  });
   // --- Multimodal: Vision, Documents, OCR ---
   const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
   const DOC_MAX_BYTES = 2 * 1024 * 1024;
@@ -347,8 +232,6 @@ export function mountKnowledgeRoutes(app, deps) {
       else cb(new Error(`Invalid document type. Allowed: PDF, plain text, Markdown, CSV, HTML, DOCX, XLSX`), false);
     },
   });
-
-  const multimodalRateLimiter = deps.multimodalRateLimiter;
 
   function sanitizeText(str, maxLen = 50_000) {
     if (typeof str !== "string") return "";

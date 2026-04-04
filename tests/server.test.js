@@ -49,6 +49,14 @@ test("GET /config returns backend defaults", async () => {
   assert.equal(response.body.agentStagnationStop, true);
   assert.equal(response.body.agentRequireCitations, false);
   assert.equal(response.body.agentTrajectoryApi, true);
+  assert.equal(response.body.agentSessionApi, true);
+  assert.equal(response.body.workspaceFileToolsEnabled, false);
+  assert.equal(response.body.workspaceRootConfigured, false);
+  assert.equal(response.body.workspaceFileWriteToolsEnabled, false);
+  assert.equal(response.body.workspaceGitToolsEnabled, false);
+  assert.equal(response.body.workspaceGitWriteEnabled, false);
+  assert.equal(response.body.workspaceCommandRunnerConfigured, false);
+  assert.equal(response.body.agentBrowserToolsEnabled, false);
   assert.equal(response.body.agentDefaultSystemSet, false);
   assert.equal(response.body.streamSwarmSynth, false);
   assert.equal(response.body.agentPlanReflect, false);
@@ -537,6 +545,39 @@ test("PUT /api/workspaces/:id/agent-settings persists for GET", async () => {
   assert.equal(get.status, 200);
   assert.equal(get.body.defaultSystemPrompt, "Use metric units.");
   assert.deepEqual(get.body.memorySnippets, ["Project: Acme"]);
+});
+
+test("PUT /api/workspaces/:id/agent-settings persists deniedTools", async () => {
+  const app = await loadApp({ BACKEND: "ollama", USER_API_KEYS: "" });
+  const created = await request(app).post("/api/workspaces").send({ name: "Denied tools WS" });
+  assert.equal(created.status, 201);
+  const id = created.body.id;
+  const put = await request(app)
+    .put(`/api/workspaces/${id}/agent-settings`)
+    .send({
+      agentPolicy: { deniedTools: ["execute_step", "unknown_future_tool"] },
+    });
+  assert.equal(put.status, 200);
+  assert.ok(Array.isArray(put.body.agentPolicy?.deniedTools));
+  assert.ok(put.body.agentPolicy.deniedTools.includes("execute_step"));
+  const get = await request(app).get(`/api/workspaces/${id}/agent-settings`);
+  assert.equal(get.status, 200);
+  assert.ok(get.body.agentPolicy.deniedTools.includes("execute_step"));
+});
+
+test("POST /api/agent/sessions creates session for workspace", async () => {
+  const app = await loadApp({ BACKEND: "ollama", USER_API_KEYS: "" });
+  const created = await request(app).post("/api/workspaces").send({ name: "Session holder" });
+  assert.equal(created.status, 201);
+  const wid = created.body.id;
+  const res = await request(app).post("/api/agent/sessions").send({ workspace: wid, title: "T1" });
+  assert.equal(res.status, 201);
+  assert.ok(res.body.id);
+  assert.equal(res.body.workspace, wid);
+  assert.equal(res.body.status, "running");
+  const list = await request(app).get("/api/agent/sessions").query({ workspace: wid });
+  assert.equal(list.status, 200);
+  assert.ok(list.body.items.length >= 1);
 });
 
 test("GET /api/workspaces/:id/agent-memory/stats returns usage", async () => {
