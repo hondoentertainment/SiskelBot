@@ -53,20 +53,21 @@ jobs:
         id: tests
         run: npm run test:ci
 
+      - name: Check coverage thresholds
+        if: always() && steps.tests.outcome == 'success'
+        run: npx c8 check-coverage
+
       - name: Coverage summary
         if: always() && steps.tests.outcome != 'skipped'
         run: |
-          if [ -f coverage/lcov.info ]; then
-            {
-              echo "## Test Coverage"
-              echo '```'
-              head -50 coverage/lcov.info | grep -E '^(SF:|DA:|LF:|LH:)' | head -30 || true
-              echo '```'
-              echo ""
-              echo "Full coverage report available in the uploaded artifact."
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-          # Also print the c8 text summary (already shown in test output)
+          {
+            echo "## Test Coverage"
+            echo '```'
+            npx c8 report --reporter=text 2>/dev/null | tail -5 || true
+            echo '```'
+            echo ""
+            echo "Full coverage report available in the uploaded artifact."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage report
         if: always() && steps.tests.outcome != 'skipped'

@@ -58,6 +58,27 @@ Run with spec reporter:
 node --test tests/**/*.test.js --test-reporter=spec
 ```
 
+## Coverage
+
+Coverage is enforced in CI via `c8` with thresholds defined in `.c8rc.json`:
+
+| Metric | Minimum |
+|--------|---------|
+| Lines | 50% |
+| Functions | 45% |
+| Branches | 40% |
+| Statements | 50% |
+
+Check coverage locally:
+```bash
+npm run test:coverage
+```
+
+View the HTML report after running coverage:
+```
+open coverage/lcov-report/index.html
+```
+
 ## Storage backends
 
 | Backend | Config | Notes |

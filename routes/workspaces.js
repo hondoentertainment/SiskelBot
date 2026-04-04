@@ -1,4 +1,5 @@
 import express from "express";
+import { validate } from "../lib/validate.js";
 
 export default function mountWorkspaceRoutes(app, deps) {
   const {
@@ -44,7 +45,9 @@ export default function mountWorkspaceRoutes(app, deps) {
     }
   });
 
-  apiRoute("post", "/workspaces", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
+  const validateCreateWs = validate({ body: { name: "string" } });
+
+  apiRoute("post", "/workspaces", storageRateLimiter, userAuth, requireScope("write"), logRequest, validateCreateWs, async (req, res) => {
     try {
       const idemKey = req.headers["idempotency-key"] || req.headers["x-idempotency-key"];
       if (idemKey) {

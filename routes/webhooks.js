@@ -1,4 +1,5 @@
 // Webhooks, ws-token, ws-replay, and notifications routes extracted from server.js
+import { validate } from "../lib/validate.js";
 
 export function mountWebhookRoutes(app, deps) {
   const {
@@ -33,7 +34,9 @@ export function mountWebhookRoutes(app, deps) {
     }
   });
 
-  apiRoute("post", "/webhooks", ...webhooksHandlers, async (req, res) => {
+  const validateCreateWebhook = validate({ body: { url: "string", events: "array" } });
+
+  apiRoute("post", "/webhooks", ...webhooksHandlers, validateCreateWebhook, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.body?.workspace);
       const { url, events, secret } = req.body || {};

@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { exportConversation } from "../lib/conversation-export.js";
 import { createShareLink, getSharedConversation, revokeShareLink, listShareLinks } from "../lib/conversation-sharing.js";
 import { searchConversations } from "../lib/conversation-search.js";
+import { validate } from "../lib/validate.js";
 
 export function mountConversationRoutes(app, deps) {
   const {
@@ -32,7 +33,9 @@ export function mountConversationRoutes(app, deps) {
     }
   });
 
-  apiRoute("post", "/conversations", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
+  const validateCreateConv = validate({ body: { title: "?string", messages: "array" } });
+
+  apiRoute("post", "/conversations", storageRateLimiter, requireScope("write"), logRequest, validateCreateConv, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.body?.workspace);
       const { id, title, messages, meta } = req.body || {};
