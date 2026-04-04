@@ -1,6 +1,5 @@
-import express from "express";
 import rateLimit from "express-rate-limit";
-import { isEmailConfigured, sendEmail, sendDigest, getDigestRecipients, isDigestEnabled } from "../lib/email-notifications.js";
+import { isEmailConfigured, sendEmail, sendDigest, getDigestRecipients } from "../lib/email-notifications.js";
 import { isJiraConfigured, createJiraIssue, searchJiraIssues } from "../lib/jira-integration.js";
 import { isLinearConfigured, createLinearIssue, searchLinearIssues } from "../lib/linear-integration.js";
 
@@ -9,7 +8,6 @@ export default function mountIntegrationRoutes(app, deps) {
     apiRoute,
     apiError,
     integrationRateLimiter,
-    logRequest,
     isMonitoringEnabled,
     GITHUB_TOKEN,
     VERCEL_TOKEN,
@@ -65,7 +63,7 @@ export default function mountIntegrationRoutes(app, deps) {
     summary: "idle",
     alerts: [],
   };
-  let monitoringIntervalId = null;
+  // let monitoringIntervalId = null;
 
   async function runMonitoringChecks() {
     const alerts = [];
@@ -190,7 +188,7 @@ export default function mountIntegrationRoutes(app, deps) {
 
   if (isMonitoringEnabled()) {
     runMonitoringChecks().catch((e) => console.warn("[monitoring] Initial check failed:", e.message));
-    monitoringIntervalId = setInterval(() => {
+    /* monitoringIntervalId = */ setInterval(() => {
       runMonitoringChecks().catch((e) => console.warn("[monitoring] Scheduled check failed:", e.message));
     }, MONITORING_INTERVAL_MS);
   }

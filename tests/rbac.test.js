@@ -205,11 +205,11 @@ test("requirePermission denies unauthenticated user", async () => {
 
 test("requirePermission denies missing workspace", async () => {
   const middleware = requirePermission("workspace:read");
-  let statusCode, jsonBody;
+  let statusCode;
   const req = { userId: "user1", params: {}, query: {} };
   const res = {
     status(code) { statusCode = code; return this; },
-    json(body) { jsonBody = body; },
+    json() {},
   };
   await middleware(req, res, () => {});
   assert.equal(statusCode, 400);

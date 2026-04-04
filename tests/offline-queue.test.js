@@ -126,9 +126,9 @@ test("getQueuedMessages returns empty array when nothing is queued", async () =>
 });
 
 test("getQueuedMessages returns queued messages sorted by timestamp", async () => {
-  const a = await queueMessage("first");
-  const b = await queueMessage("second");
-  const c = await queueMessage("third");
+  await queueMessage("first");
+  await queueMessage("second");
+  await queueMessage("third");
 
   const msgs = await getQueuedMessages();
   assert.equal(msgs.length, 3);

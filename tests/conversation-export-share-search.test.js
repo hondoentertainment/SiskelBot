@@ -1,7 +1,7 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { createServer } from "http";
-import express from "express";
+// import { createServer } from "http";
+// import express from "express";
 
 // Set test storage path before importing modules
 const TEST_DIR = `/tmp/siskelbot-test-export-${Date.now()}`;

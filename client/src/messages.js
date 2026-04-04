@@ -7,8 +7,6 @@ import {
   escapeHtml,
   scheduleDom,
   announce,
-  showNotice,
-  clearNotice,
   MAX_CHAT_DOM_MESSAGES,
 } from './common.js';
 
@@ -58,7 +56,7 @@ export function pruneChatDom(maxKeep) {
 /* ------------------------------------------------------------------ */
 
 const synth = window.speechSynthesis;
-let currentUtterance = null;
+// let currentUtterance = null;
 
 export function speakText(text, onEnd) {
   if (!synth || !text || !text.trim()) return;
@@ -71,7 +69,7 @@ export function speakText(text, onEnd) {
     if (onEnd) onEnd();
   };
   u.onerror = () => document.querySelectorAll('.btn-speaker.speaking').forEach(b => b.classList.remove('speaking'));
-  currentUtterance = u;
+  // currentUtterance = u;
   synth.speak(u);
 }
 
@@ -158,7 +156,7 @@ export function renderAgentActivityBlock(toolCalls, swarmSteps, iteration) {
 /*  Message DOM creation                                               */
 /* ------------------------------------------------------------------ */
 
-export function addMessage(role, content, meta, { chatState } = {}) {
+export function addMessage(role, content, meta, { chatState: _chatState } = {}) {
   const chatContainer = document.getElementById('chat-container');
   if (!chatContainer) return null;
   const el = document.createElement('div');

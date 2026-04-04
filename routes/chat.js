@@ -21,7 +21,6 @@ export default function mountChatRoutes(app, deps) {
     STREAM_AGENT_FINAL,
     AGENT_STREAM_CHUNK_SIZE,
     USAGE_ALERT_TOKENS,
-    IS_PRODUCTION,
     // lib imports
     recordChatRequest,
     recordTokensUsed,

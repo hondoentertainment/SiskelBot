@@ -20,13 +20,13 @@ try {
 const BASE_URL = process.env.SISKELBOT_URL || "http://localhost:3000";
 const API_KEY = process.env.SISKELBOT_API_KEY || process.env.API_KEY;
 
-function getUrl(flagIndex) {
+function getUrl(_flagIndex) {
   const idx = process.argv.indexOf("--url");
   if (idx >= 0 && process.argv[idx + 1]) return process.argv[idx + 1].replace(/\/$/, "");
   return BASE_URL.replace(/\/$/, "");
 }
 
-function getApiKey(flagIndex) {
+function getApiKey(_flagIndex) {
   const idx = process.argv.indexOf("--api-key");
   if (idx >= 0 && process.argv[idx + 1]) return process.argv[idx + 1];
   return API_KEY;
@@ -402,7 +402,7 @@ async function cmdMigrate() {
     env: process.env,
   });
 
-  return new Promise((resolveP) => {
+  return new Promise((_resolveP) => {
     child.on("close", (code) => {
       process.exit(code || 0);
     });

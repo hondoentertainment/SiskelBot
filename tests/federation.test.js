@@ -75,14 +75,14 @@ test("federationAuth rejects missing signature", () => {
 });
 
 test("federationAuth rejects invalid signature", () => {
-  let statusCode, jsonBody;
+  let statusCode;
   const req = {
     headers: { "x-federation-signature": "invalid" },
     body: { test: true },
   };
   const res = {
     status(code) { statusCode = code; return this; },
-    json(body) { jsonBody = body; },
+    json() {},
   };
   federationAuth(req, res, () => {});
   assert.equal(statusCode, 403);

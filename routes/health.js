@@ -1,9 +1,7 @@
-import express from "express";
 import { runStartupChecks, getCachedResults } from "../lib/startup-checks.js";
 
 export default function mountHealthRoutes(app, deps) {
   const {
-    apiError,
     BACKEND,
     OPENAI_API_KEY,
     OLLAMA_URL,

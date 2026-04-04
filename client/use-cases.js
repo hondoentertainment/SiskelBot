@@ -27,7 +27,7 @@
     return DEFAULTS_FALLBACK;
   }
 
-  function migratePayload(payload, key) {
+  function migratePayload(payload, _key) {
     if (!payload || typeof payload !== 'object') return null;
     const version = payload._version;
     if (version === STORAGE_VERSION) return payload;

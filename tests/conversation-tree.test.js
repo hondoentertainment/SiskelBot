@@ -49,7 +49,7 @@ async function createConversation(id, messageCount = 5) {
 }
 
 test("branchConversation creates a branch at a given message index", async () => {
-  const conv = await createConversation("conv-1", 6);
+  await createConversation("conv-1", 6);
   const branch = await branchConversation("conv-1", 2, "anonymous", {
     label: "Try alternative",
     workspace: "default",

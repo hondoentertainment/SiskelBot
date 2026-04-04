@@ -1,4 +1,3 @@
-import express from "express";
 import { randomUUID } from "crypto";
 
 export default function mountRecipeRoutes(app, deps) {

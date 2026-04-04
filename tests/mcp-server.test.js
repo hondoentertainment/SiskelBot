@@ -2,16 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 // Mock knowledge-store and storage before importing
-const mockStorage = {
-  listItems: async () => [],
-  listWorkspaces: async () => [{ id: "default", name: "Default" }],
-};
+// const mockStorage = {
+//   listItems: async () => [],
+//   listWorkspaces: async () => [{ id: "default", name: "Default" }],
+// };
 
-const mockKnowledge = {
-  search: async ({ query }) => ({ items: [], query }),
-  list: async () => ({ items: [] }),
-  getDocumentById: async ({ id }) => ({ id, content: "doc content" }),
-};
+// const mockKnowledge = {
+//   search: async ({ query }) => ({ items: [], query }),
+//   list: async () => ({ items: [] }),
+//   getDocumentById: async ({ id }) => ({ id, content: "doc content" }),
+// };
 
 // We import the module directly — it depends on storage and knowledge-store
 // but we test via handleMcpRequest which accepts a ctx for backend calls.

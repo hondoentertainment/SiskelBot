@@ -12,7 +12,7 @@ test("backend-fetch: successful fetch returns response", async (t) => {
   const mod = await import("../lib/backend-fetch.js");
   const { fetchWithTimeoutAndRetry } = mod;
 
-  globalThis.fetch = async (url, opts) => {
+  globalThis.fetch = async (_url, _opts) => {
     return { ok: true, status: 200, text: async () => "ok" };
   };
 

@@ -219,7 +219,7 @@ function buildResponses(method, middleware) {
 
 /** Determine if a route should be included (skip static file serving, HTML pages, OAuth callbacks) */
 function shouldIncludeRoute(route) {
-  const { path, method } = route;
+  const { path } = route;
   // Skip HTML pages
   if (path === "/admin" || path === "/eval" || path === "/marketplace" || path === "/docs") return false;
   // Skip OAuth callback routes

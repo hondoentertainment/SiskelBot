@@ -1,4 +1,4 @@
-function getChatHtml(nonce, cspSource) {
+function getChatHtml(nonce, _cspSource) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>

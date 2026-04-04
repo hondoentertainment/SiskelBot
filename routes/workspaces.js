@@ -1,4 +1,3 @@
-import express from "express";
 import { validate } from "../lib/validate.js";
 
 export default function mountWorkspaceRoutes(app, deps) {

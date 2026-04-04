@@ -39,7 +39,7 @@ import {
   installPack as marketplaceInstallPack,
   uninstallPack as marketplaceUninstallPack,
 } from "./lib/plugin-marketplace.js";
-import { loadPlugin as loadJsPlugin, executePlugin as execJsPlugin, listPlugins as listJsPlugins } from "./lib/plugin-sandbox.js";
+import { executePlugin as execJsPlugin, listPlugins as listJsPlugins } from "./lib/plugin-sandbox.js";
 import { getToolsSchema, intersectClientToolsWithAllowlist, getAgentToolsAllowlistNames } from "./lib/agent-tools.js";
 import { resolveAgentMaxIterations } from "./lib/agent-iterations.js";
 import * as storage from "./lib/storage.js";
@@ -53,7 +53,7 @@ import { list as listNotifications, markRead as markNotificationRead, markAllRea
 import { isQuotaConfigured, checkQuota, getWorkspaceQuota, getWorkspaceTokensUsed, isQuotaAdmin, setWorkspaceQuotaOverride, getQuotaOverrides } from "./lib/quotas.js";
 import { createBackup, listBackups, restoreBackup } from "./lib/backup.js";
 import { adminAuth } from "./lib/admin-auth.js";
-import { adminIpAllowlist } from "./lib/admin-ip-allowlist.js";
+// import { adminIpAllowlist } from "./lib/admin-ip-allowlist.js";
 import { listAllUsers, listAllWorkspaces, getRecentAuditLog } from "./lib/admin-data.js";
 import { requireScope } from "./lib/scope-middleware.js";
 import { logKeyUsage } from "./lib/api-key-audit.js";
@@ -118,7 +118,7 @@ import {
   deleteTrace as deleteRecordedTrace,
   autoRecordEnabled,
 } from "./lib/trace-recorder.js";
-import { replayTrace, replayAll } from "./lib/trace-replay.js";
+import { replayTrace } from "./lib/trace-replay.js";
 import { getEventsSince } from "./lib/realtime-replay.js";
 import {
   registerPeer,
@@ -138,7 +138,6 @@ import {
   updateTemplate,
   deleteTemplate,
   applyTemplate,
-  createWorkspaceFromTemplate,
 } from "./lib/workspace-templates.js";
 
 import { mountAllRoutes } from "./routes/index.js";
@@ -320,7 +319,7 @@ app.use(cors(corsOpts));
 const ENABLE_COMPRESSION = process.env.ENABLE_COMPRESSION !== "0" && (IS_PRODUCTION || process.env.ENABLE_COMPRESSION === "1");
 if (ENABLE_COMPRESSION) {
   app.use(
-    compression({ filter: (req, res) => !req.path?.startsWith("/v1/chat/completions") && !req.path?.startsWith("/v1/agent/swarm") })
+    compression({ filter: (req, _res) => !req.path?.startsWith("/v1/chat/completions") && !req.path?.startsWith("/v1/agent/swarm") })
   );
 }
 app.use(express.json({
@@ -466,15 +465,15 @@ const embeddingsRateLimiter = rateLimit({
   },
 });
 
-const readRateLimiter = rateLimit({
-  windowMs: 60_000,
-  max: Number(process.env.READ_RATE_LIMIT_MAX) || 60,
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (req, res) => {
-    apiError(res, 429, "RATE_LIMITED", "Too many read requests", "Reduce request rate or increase READ_RATE_LIMIT_MAX.");
-  },
-});
+// const readRateLimiter = rateLimit({
+//   windowMs: 60_000,
+//   max: Number(process.env.READ_RATE_LIMIT_MAX) || 60,
+//   standardHeaders: true,
+//   legacyHeaders: false,
+//   handler: (req, res) => {
+//     apiError(res, 429, "RATE_LIMITED", "Too many read requests", "Reduce request rate or increase READ_RATE_LIMIT_MAX.");
+//   },
+// });
 
 const storageRateLimiter = rateLimit({
   windowMs: 60_000,

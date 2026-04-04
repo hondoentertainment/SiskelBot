@@ -1,5 +1,3 @@
-import express from "express";
-
 export default function mountTeamRoutes(app, deps) {
   const {
     apiRoute,
@@ -45,7 +43,7 @@ export default function mountTeamRoutes(app, deps) {
       if (!access.allowed || (access.role !== "admin" && access.role !== "member")) {
         return apiError(res, 403, "FORBIDDEN", "Admin or member role required to create invites", null);
       }
-      const ownerId = access.ownerId || req.userId;
+      // const ownerId = access.ownerId || req.userId;
       const opts = {};
       if (req.body?.expiresInHours != null) opts.expiresInHours = Number(req.body.expiresInHours);
       if (req.body?.maxUses != null) opts.maxUses = Number(req.body.maxUses);
