@@ -95,6 +95,16 @@ Reuses `POST /v1/chat/completions`:
   - Same `agentOptions` and `messages`; optional `agentOptions.parallelAgents: boolean`.
 - **Response**: SSE stream of final content; same format as non-agent chat.
 
+## Human-in-the-loop for `execute_step` (HITL)
+
+When `AGENT_EXECUTE_STEP_HITL=1` **or** the client sends `agentOptions.requireExecuteStepApproval: true`, the server **pauses** before running `execute_step` (only when execution is already allowed via `allowExecution` + `ALLOW_RECIPE_STEP_EXECUTION=1`). Parallel non-execute tools in the same batch still run; pending steps are held until approval.
+
+- **SSE**: `agent_pending_execution` with `{ resumeToken, pendingSteps, iteration }`. Header: `X-Agent-Pending-Execute-Step: 1`.
+- **Resume**: `POST /v1/agent/resume-execute-step` with JSON `{ "resumeToken": "<token>", "approved": true }` (same auth as chat). Streams the rest of the agent run like `POST /v1/chat/completions` with agent mode.
+- **Deny**: Same endpoint with `"approved": false` discards the token and returns `{ ok: true, cancelled: true }`.
+
+Tokens are one-time and expire after a short TTL (in-memory).
+
 ## Backend support
 
 Tool-calling support depends on the LLM backend:

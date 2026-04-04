@@ -18,8 +18,15 @@
     "vendor:node-win:x64": "node scripts/vendor-node-win.mjs x64",
     "vendor:node-win:arm64": "node scripts/vendor-node-win.mjs arm64",
     "desktop:dist": "node scripts/ensure-node-vendor.mjs x64 && node scripts/stage-node-vendor.mjs x64 && electron-builder --win --x64",
+    "desktop:dist:portable": "node scripts/ensure-node-vendor.mjs x64 && node scripts/stage-node-vendor.mjs x64 && electron-builder --win portable --x64",
+    "desktop:dist:portable:arm64": "node scripts/ensure-node-vendor.mjs arm64 && node scripts/stage-node-vendor.mjs arm64 && electron-builder --win portable --arm64",
     "desktop:dist:arm64": "node scripts/ensure-node-vendor.mjs arm64 && node scripts/stage-node-vendor.mjs arm64 && electron-builder --win --arm64",
     "desktop:dist:all": "node scripts/ensure-node-vendor.mjs all && node scripts/stage-node-vendor.mjs x64 && electron-builder --win --x64 && node scripts/stage-node-vendor.mjs arm64 && electron-builder --win --arm64",
+    "desktop:dist:mac": "electron-builder --mac",
+    "desktop:dist:linux": "electron-builder --linux",
+    "desktop:release": "node scripts/desktop-release-win.mjs x64",
+    "desktop:release:arm64": "node scripts/desktop-release-win.mjs arm64",
+    "verify:package-lock": "node scripts/verify-package-sync.mjs",
     "lint": "node scripts/syntax-check.mjs && eslint .",
     "lint:eslint": "eslint .",
     "test": "node scripts/run-tests.mjs",
@@ -33,6 +40,7 @@
     "eval:ci": "node scripts/run-eval-ci.mjs",
     "test:load": "node scripts/load-test.mjs",
     "openapi:generate": "node scripts/generate-openapi.mjs"
+    "eval:live": "node scripts/run-eval-live.mjs"
   },
   "engines": {
     "node": ">=18"
@@ -72,6 +80,7 @@
     "@eslint/js": "^10.0.1",
     "electron": "^34.0.0",
     "electron-builder": "^25.1.8",
+    "electron-updater": "^6.3.9",
     "esbuild": "^0.24.2",
     "eslint": "^10.1.0",
     "globals": "^17.4.0",
@@ -83,6 +92,7 @@
     "better-sqlite3": "^11.8.1",
     "nodemailer": "^6.9.0",
     "redis": "^4.7.0"
+    "playwright": "^1.52.0"
   },
   "build": {
     "appId": "com.hondoentertainment.siskelbot",
@@ -97,6 +107,10 @@
       "**/*",
       "!tests/**",
       "!**/*.test.js",
+      "!**/node_modules/import-in-the-middle/**",
+      "!**/node_modules/**/.editorconfig",
+      "!**/node_modules/**/.eslintrc*",
+      "!**/node_modules/**/.release-please-manifest.json",
       "!docs/**",
       "!scripts/**",
       "!release/**",
@@ -118,6 +132,11 @@
         ]
       }
     ],
+    "publish": {
+      "provider": "github",
+      "owner": "hondoentertainment",
+      "repo": "SiskelBot"
+    },
     "win": {
       "target": [
         {
@@ -127,12 +146,86 @@
           ]
         }
       ],
-      "artifactName": "${productName}-${version}-Windows-${arch}.${ext}"
+      "artifactName": "${productName}-${version}-Windows-${arch}.${ext}",
+      "protocols": [
+        {
+          "name": "Siskel Bot",
+          "schemes": [
+            "siskelbot"
+          ]
+        }
+      ],
+      "signingHashAlgorithms": [
+        "sha256"
+      ]
     },
     "nsis": {
       "oneClick": false,
       "allowElevation": true,
       "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.developer-tools",
+      "artifactName": "${productName}-${version}-macOS-${arch}.${ext}",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "protocols": [
+        {
+          "name": "Siskel Bot",
+          "schemes": [
+            "siskelbot"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "rpm",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Development",
+      "artifactName": "${productName}-${version}-Linux-${arch}.${ext}",
+      "desktop": {
+        "Name": "Siskel Bot",
+        "Comment": "AI streaming assistant",
+        "Categories": "Development;Utility;",
+        "MimeType": "x-scheme-handler/siskelbot;"
+      }
     }
   }
 }

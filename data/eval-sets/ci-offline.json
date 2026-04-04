@@ -1,0 +1,40 @@
+{
+  "id": "ci-offline",
+  "name": "CI offline (trace + staging_trace)",
+  "description": "Golden-trace and staging replay cases run in CI without a live LLM.",
+  "cases": [
+    {
+      "id": "ci-trace-sequence",
+      "target": "trace",
+      "trace": [
+        { "name": "list_context", "arguments": {} },
+        { "name": "search_context", "arguments": { "query": "ci" } }
+      ],
+      "expectedToolSequence": ["list_context", "search_context"]
+    },
+    {
+      "id": "ci-staging-replay",
+      "target": "staging_trace",
+      "stagingTraceFile": "data/eval-sets/traces/example-staging.json",
+      "expectedToolSequence": ["list_context", "search_context"],
+      "expectedMinAgentActivityToolCalls": 2,
+      "expectedAgentActivityToolNames": ["search_context"]
+    },
+    {
+      "id": "ci-swarm-staging-shape",
+      "target": "staging_trace",
+      "stagingTraceFile": "data/eval-sets/traces/swarm-staging-example.json",
+      "expectedToolSequence": ["list_context"],
+      "expectedSwarmStepNames": ["researcher", "synthesizer"],
+      "expectedMinSwarmSteps": 2,
+      "expectedStopReason": "model_finished"
+    },
+    {
+      "id": "ci-agent-stop-stagnation-shape",
+      "target": "staging_trace",
+      "stagingTraceFile": "data/eval-sets/traces/agent-stop-stagnation-example.json",
+      "expectedToolSequence": ["list_context"],
+      "expectedStopReason": "stagnation"
+    }
+  ]
+}

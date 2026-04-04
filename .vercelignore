@@ -1,0 +1,14 @@
+node_modules
+.git
+.github
+.cursor
+*.log
+coverage
+.nyc_output
+release
+vendor
+dist
+client/dist
+**/.env
+**/.env.*
+!**/.env.example

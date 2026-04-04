@@ -38,3 +38,35 @@ export async function listContext(workspace = "default") {
   const q = new URLSearchParams({ workspace });
   return api(`/context?${q}`);
 }
+
+/** Agent chat (OpenAI-compatible path on server root, not under /api/v1) */
+export async function chatCompletions(body: Record<string, unknown>) {
+  const headers: Record<string, string> = {
+    Accept: "text/event-stream",
+    "Content-Type": "application/json",
+    ...(TOKEN ? { Authorization: `Bearer ${TOKEN}`, "x-api-key": TOKEN } : {}),
+  };
+  const res = await fetch(`${BASE.replace(/\/$/, "")}/v1/chat/completions`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+  return res;
+}
+
+/** Example: single-agent with budgets and allowlists (merge with your messages/model) */
+export async function agentChatExample() {
+  return chatCompletions({
+    model: process.env.SISKELBOT_MODEL || "gpt-4o-mini",
+    stream: true,
+    agentMode: true,
+    messages: [{ role: "user", content: "List context titles only, one line." }],
+    agentOptions: {
+      workspace: "default",
+      allowExecution: false,
+      maxIterations: 4,
+      toolChoice: "auto",
+    },
+  });
+}

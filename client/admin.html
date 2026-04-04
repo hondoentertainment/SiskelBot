@@ -230,6 +230,23 @@
         const audit = (d.auditLog || []).slice(0, 20);
         const usage = d.usage || {};
         const health = d.system?.health || {};
+      // System health
+      const health = data.system?.health || {};
+      const integrations = data.system?.integrations || {};
+      const agentRuns = data.system?.agentRuns || {};
+      const singleRuns = agentRuns.single || {};
+      const swarmRuns = agentRuns.swarm || {};
+      const truncSingle = Number(singleRuns.max_iterations || 0) + Number(singleRuns.tool_budget || 0) + Number(singleRuns.wall_clock || 0);
+      const stagnationSingle = Number(singleRuns.stagnation || 0);
+      const sysEl = document.getElementById('system-health');
+      sysEl.innerHTML = `
+        <p>Backend: <strong>${escapeHtml(health.backend || '-')}</strong> ${health.reachable ? '<span class="ok">reachable</span>' : '<span class="err">unreachable</span>'}</p>
+        <p>Latency: ${health.latencyMs != null ? health.latencyMs + ' ms' : '-'}</p>
+        <p>Integrations: GitHub ${integrations.github ? '✓' : '-'}, Vercel ${integrations.vercel ? '✓' : '-'}</p>
+        <p>Scheduler: ${data.system?.scheduleEnabled ? '<span class="ok">enabled</span>' : 'disabled'}</p>
+        <p>Agent truncations (single): ${truncSingle.toLocaleString()} · stagnation stops: ${stagnationSingle.toLocaleString()}</p>
+        <p>Swarm runs by reason: ${escapeHtml(JSON.stringify(swarmRuns))}</p>
+      `;
 
         c.innerHTML = `
           <div class="cards">
