@@ -28,6 +28,13 @@
       "swarmMode": true,
       "expectedContains": "1",
       "expectedMinSwarmSteps": 1
+    },
+    {
+      "id": "live-policy-stop-reason",
+      "skip": true,
+      "skipReason": "Requires a host with strict AGENT_TOOL_CATEGORY_CAPS or workspace agentPolicy; set skip:false in staging",
+      "prompt": "Use fetch_allowed_url twice and summarize both pages.",
+      "expectedStopReasonOneOf": ["policy_blocked", "tool_budget", "wall_clock"]
     }
   ]
 }

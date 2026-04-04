@@ -9,12 +9,13 @@ export function mountContextRoutes(app, deps) {
     requireScope,
     logRequest,
     storageRateLimiter,
+    readRateLimiter,
     sanitizeWorkspace,
     storage,
     logActivity,
   } = deps;
 
-  apiRoute("get", "/context", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
+  apiRoute("get", "/context", storageRateLimiter, readRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
       const data = await storage.listItems("context", workspace, req.userId);
@@ -49,7 +50,7 @@ export function mountContextRoutes(app, deps) {
     }
   });
 
-  apiRoute("get", "/context/:id", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+  apiRoute("get", "/context/:id", storageRateLimiter, readRateLimiter, requireScope("read"), logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
       const item = await storage.getItem("context", req.params.id, workspace);
