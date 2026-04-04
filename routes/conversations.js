@@ -1,5 +1,8 @@
 // Conversations CRUD + branching routes extracted from server.js
 import { randomUUID } from "crypto";
+import { exportConversation } from "../lib/conversation-export.js";
+import { createShareLink, getSharedConversation, revokeShareLink, listShareLinks } from "../lib/conversation-sharing.js";
+import { searchConversations } from "../lib/conversation-search.js";
 
 export function mountConversationRoutes(app, deps) {
   const {
@@ -160,6 +163,110 @@ export function mountConversationRoutes(app, deps) {
     } catch (err) {
       console.error("Delete branch error:", err.message);
       return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  // --- Conversation search ---
+  apiRoute("get", "/conversations/search", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const userId = req.userId || "anonymous";
+      const q = req.query.q || "";
+      const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+      const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+      const { dateFrom, dateTo } = req.query;
+      const result = await searchConversations(q, userId, workspace, { limit, offset, dateFrom, dateTo });
+      res.json(result);
+    } catch (err) {
+      console.error("Conversation search error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  // --- Conversation export ---
+  apiRoute("get", "/conversations/:id/export", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const userId = req.userId || "anonymous";
+      const format = req.query.format || "json";
+      if (!["markdown", "json", "html"].includes(format)) {
+        return apiError(res, 400, "INVALID_FORMAT", "format must be markdown, json, or html");
+      }
+      const result = await exportConversation(req.params.id, format, userId, workspace);
+      res.setHeader("Content-Type", result.contentType);
+      res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
+      res.send(result.content);
+    } catch (err) {
+      if (err.message === "Conversation not found") return apiError(res, 404, "NOT_FOUND", err.message);
+      console.error("Conversation export error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  // --- Conversation sharing ---
+  apiRoute("post", "/conversations/:id/share", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.body?.workspace || req.query?.workspace);
+      const userId = req.userId || "anonymous";
+      const { expiresIn, password } = req.body || {};
+      const item = await storage.getItem("conversations", req.params.id, workspace, userId);
+      if (!item) return apiError(res, 404, "NOT_FOUND", "Conversation not found");
+      const result = await createShareLink(req.params.id, userId, workspace, { expiresIn, password });
+      res.status(201).json(result);
+    } catch (err) {
+      console.error("Create share link error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  apiRoute("get", "/conversations/:id/shares", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const userId = req.userId || "anonymous";
+      const shares = await listShareLinks(userId, workspace);
+      const filtered = shares.filter((s) => s.conversationId === req.params.id);
+      res.json({ shares: filtered });
+    } catch (err) {
+      console.error("List share links error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  apiRoute("delete", "/conversations/:id/share/:shareId", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
+    try {
+      const userId = req.userId || "anonymous";
+      const revoked = await revokeShareLink(req.params.shareId, userId);
+      if (!revoked) return apiError(res, 404, "NOT_FOUND", "Share link not found or already revoked");
+      res.status(204).send();
+    } catch (err) {
+      console.error("Revoke share link error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  // --- Public shared conversation endpoint (no auth required) ---
+  app.get("/api/v1/shared/:shareId", async (req, res) => {
+    try {
+      const password = req.query.password || req.headers["x-share-password"] || null;
+      const result = await getSharedConversation(req.params.shareId, password);
+      if (!result) return res.status(404).json({ error: "Not found or expired", code: "NOT_FOUND" });
+      if (result.needsPassword) return res.status(401).json({ error: "Password required", code: "PASSWORD_REQUIRED", shareId: result.share.shareId });
+      res.json(result);
+    } catch (err) {
+      console.error("Get shared conversation error:", err.message);
+      return res.status(500).json({ error: "Internal error", code: "INTERNAL_ERROR" });
+    }
+  });
+  app.get("/api/shared/:shareId", async (req, res) => {
+    try {
+      const password = req.query.password || req.headers["x-share-password"] || null;
+      const result = await getSharedConversation(req.params.shareId, password);
+      if (!result) return res.status(404).json({ error: "Not found or expired", code: "NOT_FOUND" });
+      if (result.needsPassword) return res.status(401).json({ error: "Password required", code: "PASSWORD_REQUIRED", shareId: result.share.shareId });
+      res.json(result);
+    } catch (err) {
+      console.error("Get shared conversation error:", err.message);
+      return res.status(500).json({ error: "Internal error", code: "INTERNAL_ERROR" });
     }
   });
 }

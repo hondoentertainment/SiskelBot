@@ -22,6 +22,16 @@
  *   teams.js         - /api/teams/*
  *   admin.js         - /api/admin/*, /api/routing/*, /api/regions/*
  *   docs.js          - /api/docs*, /docs
+ *   backup.js        - /api/backup*
+ *   conversations.js - /api/conversations*
+ *   plugins.js       - /api/plugins*, /api/marketplace*, /api/workspaces/:id/plugins
+ *   webhooks.js      - /api/webhooks*, /api/ws-token, /api/ws-replay, /api/notifications*, /api/workspaces/:id/presence
+ *   eval.js          - /api/eval*, /api/traces*, /api/agent/trajectory*
+ *   execute.js       - /api/execute-step, /api/automations/validate
+ *   multimodal.js    - /api/vision/describe, /api/documents/extract, /api/ocr
+ *   federation.js    - /api/federation/*
+ *   mcp.js           - /mcp, /mcp/sse
+ *   slack-discord.js - /api/integrations/slack/*, /api/integrations/discord/*, /api/integrations/bots/*
  */
 
 import mountAuthRoutes from "./auth.js";
@@ -36,6 +46,16 @@ import mountRecipesRoutes from "./recipes.js";
 import mountTeamsRoutes from "./teams.js";
 import mountAdminRoutes from "./admin.js";
 import mountDocsRoutes from "./docs.js";
+import { mountBackupRoutes } from "./backup.js";
+import { mountConversationRoutes } from "./conversations.js";
+import { mountPluginRoutes } from "./plugins.js";
+import { mountWebhookRoutes } from "./webhooks.js";
+import { mountEvalRoutes } from "./eval.js";
+import { mountExecuteRoutes } from "./execute.js";
+import mountMultimodalRoutes from "./multimodal.js";
+import { mountFederationRoutes } from "./federation.js";
+import { mountMcpRoutes } from "./mcp.js";
+import { mountSlackDiscordRoutes } from "./slack-discord.js";
 
 const mountFunctions = [
   mountAuthRoutes,
@@ -50,6 +70,16 @@ const mountFunctions = [
   mountTeamsRoutes,
   mountAdminRoutes,
   mountDocsRoutes,
+  mountBackupRoutes,
+  mountConversationRoutes,
+  mountPluginRoutes,
+  mountWebhookRoutes,
+  mountEvalRoutes,
+  mountExecuteRoutes,
+  mountMultimodalRoutes,
+  mountFederationRoutes,
+  mountMcpRoutes,
+  mountSlackDiscordRoutes,
 ];
 
 /**

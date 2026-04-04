@@ -1,5 +1,15 @@
 import express from "express";
 import rateLimit from "express-rate-limit";
+
+export default function mountAdminRoutes(app, deps) {
+  const {
+    apiError,
+    logRequest,
+    adminAuth,
+    requireScope,
+    sanitizeWorkspace,
+    runHealthChecks,
+    // admin-data
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
@@ -24,6 +34,11 @@ export function mountAdminRoutes(app, deps) {
     getWorkspaceTokensUsed,
     setWorkspaceQuotaOverride,
     getQuotaOverrides,
+    // api-keys
+    listKeysForAdmin,
+    addKey,
+    revokeKey,
+    // audit
     listKeysForAdmin,
     addKey,
     revokeKey,
@@ -32,6 +47,16 @@ export function mountAdminRoutes(app, deps) {
     AuditLifecycle,
     queryAudit,
     exportAudit,
+    // routing
+    getRoutingStats,
+    AB_ROUTING_ENABLED,
+    MODEL_ROUTING_CONFIG,
+    // regions
+    getRegionHealth,
+    getLeaderElection,
+    // replication
+    getReplicationManager,
+    internalAuth,
     getRoutingStats,
     AB_ROUTING_ENABLED,
     MODEL_ROUTING_CONFIG,
@@ -63,6 +88,7 @@ export function mountAdminRoutes(app, deps) {
     return adminAuth(req, res, next);
   }
 
+  app.get("/api/admin/summary", adminRateLimiter, adminAuthOrQuery, requireScope("admin"), logRequest, async (req, res) => {
   // Admin page
   app.get("/admin", (req, res) => {
     res.sendFile(join(rootDir, "client", "admin.html"));
@@ -160,6 +186,7 @@ export function mountAdminRoutes(app, deps) {
     }
   });
 
+  app.post("/api/admin/quotas/override", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   // Quota override
   app.post("/api/admin/quotas/override", ...adminStack, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
     try {
@@ -177,6 +204,7 @@ export function mountAdminRoutes(app, deps) {
   });
 
   // Admin API key management
+  app.get("/api/admin/keys", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   // API key management
   app.get("/api/admin/keys", ...adminStack, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
     try {
@@ -215,6 +243,7 @@ export function mountAdminRoutes(app, deps) {
     }
   });
 
+  app.post("/api/admin/audit/archive-s3", adminRateLimiter, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
   // Audit S3 archive
   app.post("/api/admin/audit/archive-s3", ...adminStack, adminAuth, requireScope("admin"), logRequest, async (req, res) => {
     try {
@@ -240,7 +269,6 @@ export function mountAdminRoutes(app, deps) {
   });
 
   // Audit lifecycle & query
-  // Audit lifecycle
   const _auditLifecycle = new AuditLifecycle();
 
   app.get("/api/admin/audit/query", ...adminStack, adminAuth, logRequest, async (req, res) => {
@@ -319,6 +347,7 @@ export function mountAdminRoutes(app, deps) {
   });
 
   // A/B routing admin endpoints
+  app.get("/api/routing/stats", adminRateLimiter, adminAuth, logRequest, (req, res) => {
   // Routing admin endpoints
   app.get("/api/routing/stats", ...adminStack, adminAuth, logRequest, (req, res) => {
     res.json({ stats: getRoutingStats(), enabled: AB_ROUTING_ENABLED });
@@ -332,6 +361,7 @@ export function mountAdminRoutes(app, deps) {
   });
 
   // Multi-region & HA routes
+  app.get("/api/regions", adminRateLimiter, adminAuth, logRequest, async (req, res) => {
   // Regions
   app.get("/api/regions", ...adminStack, adminAuth, logRequest, async (req, res) => {
     try {
@@ -354,7 +384,6 @@ export function mountAdminRoutes(app, deps) {
     }
   });
 
-  // Internal sync
   app.post("/api/internal/sync", internalAuth, express.json(), async (req, res) => {
     try {
       const rm = getReplicationManager();

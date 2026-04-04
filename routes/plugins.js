@@ -118,4 +118,20 @@ export function mountPluginRoutes(app, deps) {
       return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
     }
   });
+
+  apiRoute("get", "/workspaces/:id/plugins", marketplaceRateLimiter, userAuth, logRequest, (req, res) => {
+    try {
+      const workspaceId = req.params.id;
+      const packs = deps.marketplaceListInstalled(workspaceId);
+      res.json({ _version: 1, workspaceId, packs });
+    } catch (err) {
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/PLUGINS.md.");
+    }
+  });
+
+  // Marketplace HTML page
+  app.get("/marketplace", (req, res) => {
+    const { join } = deps;
+    res.sendFile(join(deps.__dirname, "client", "marketplace.html"));
+  });
 }

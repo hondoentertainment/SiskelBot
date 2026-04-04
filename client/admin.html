@@ -4,295 +4,232 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0f172a">
-  <title>Siskel Bot Admin</title>
+  <title>SiskelBot Admin</title>
   <style>
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     html { color-scheme: dark; }
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      margin: 0;
-      min-height: 100vh;
-      background: #0f172a;
-      color: #e2e8f0;
-    }
-    .skip-link {
-      position: absolute;
-      left: 1rem;
-      top: -3rem;
-      background: #e2e8f0;
-      color: #0f172a;
-      padding: 0.5rem 0.75rem;
-      border-radius: 6px;
-      z-index: 1001;
-    }
-    .skip-link:focus { top: 1rem; }
-    a:focus-visible, button:focus-visible, input:focus-visible {
-      outline: 2px solid #60a5fa;
-      outline-offset: 2px;
-    }
-    header {
-      padding: 0.75rem 1rem;
-      background: #1e293b;
-      border-bottom: 1px solid #334155;
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-    }
-    header h1 { margin: 0; font-size: 1.125rem; font-weight: 600; }
-    header a { color: #60a5fa; text-decoration: none; }
-    header a:hover { text-decoration: underline; }
-    main { padding: 1rem; max-width: 1200px; margin: 0 auto; }
-    .section {
-      background: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 8px;
-      padding: 1rem;
-      margin-bottom: 1rem;
-    }
-    .section h2 {
-      margin: 0 0 0.75rem 0;
-      font-size: 1rem;
-      font-weight: 600;
-      color: #94a3b8;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.875rem;
-    }
-    th, td {
-      padding: 0.5rem 0.75rem;
-      text-align: left;
-      border-bottom: 1px solid #334155;
-    }
-    th { color: #94a3b8; font-weight: 500; }
+    body { font-family: system-ui, -apple-system, sans-serif; min-height: 100vh; background: #0f172a; color: #e2e8f0; display: flex; }
+    a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+
+    /* Sidebar */
+    .sidebar { width: 220px; background: #1e293b; border-right: 1px solid #334155; display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; transition: transform 0.2s; }
+    .sidebar-header { padding: 1rem; border-bottom: 1px solid #334155; }
+    .sidebar-header h1 { font-size: 1rem; font-weight: 700; }
+    .sidebar-header .subtitle { font-size: 0.75rem; color: #64748b; }
+    .sidebar nav { flex: 1; padding: 0.5rem 0; }
+    .sidebar nav button { display: flex; align-items: center; gap: 0.5rem; width: 100%; padding: 0.625rem 1rem; background: none; border: none; color: #94a3b8; font-size: 0.875rem; cursor: pointer; text-align: left; }
+    .sidebar nav button:hover { background: #334155; color: #e2e8f0; }
+    .sidebar nav button.active { background: #2563eb22; color: #60a5fa; border-right: 3px solid #2563eb; }
+    .sidebar-footer { padding: 0.75rem 1rem; border-top: 1px solid #334155; font-size: 0.75rem; }
+    .sidebar-footer a { color: #60a5fa; text-decoration: none; }
+    .sidebar-footer a:hover { text-decoration: underline; }
+    .conn-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 0.25rem; }
+    .conn-dot.green { background: #34d399; }
+    .conn-dot.red { background: #f87171; }
+
+    /* Main */
+    .main { margin-left: 220px; flex: 1; min-height: 100vh; }
+    .topbar { padding: 0.75rem 1.5rem; background: #1e293b; border-bottom: 1px solid #334155; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
+    .topbar h2 { font-size: 1rem; font-weight: 600; }
+    .topbar-actions { display: flex; gap: 0.5rem; align-items: center; }
+    .content { padding: 1.5rem; max-width: 1200px; }
+    .hamburger { display: none; background: none; border: none; color: #e2e8f0; font-size: 1.25rem; cursor: pointer; padding: 0.25rem; }
+
+    /* Cards */
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1rem; }
+    .card .label { font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+    .card .value { font-size: 1.5rem; font-weight: 700; margin-top: 0.25rem; }
+
+    /* Sections */
+    .section { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+    .section h3 { font-size: 0.875rem; font-weight: 600; color: #94a3b8; margin-bottom: 0.75rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+    th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid #334155; }
+    th { color: #64748b; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
     tr:last-child td { border-bottom: none; }
-    .ok { color: #34d399; }
-    .warn { color: #fbbf24; }
-    .err { color: #f87171; }
-    .login-form {
-      display: flex;
-      gap: 0.5rem;
-      margin-top: 1rem;
+    .ok { color: #34d399; } .warn { color: #fbbf24; } .err { color: #f87171; }
+    .badge { font-size: 0.6875rem; padding: 0.125rem 0.375rem; border-radius: 4px; background: #334155; }
+
+    /* Buttons */
+    .btn { padding: 0.375rem 0.75rem; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8125rem; font-weight: 500; }
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-danger { background: #7f1d1d; color: #fecaca; }
+    .btn-danger:hover { background: #991b1b; }
+    .btn-ghost { background: #334155; color: #e2e8f0; }
+    .btn-ghost:hover { background: #475569; }
+    .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
+
+    /* Forms */
+    .input { padding: 0.375rem 0.5rem; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; font-size: 0.8125rem; }
+    .form-row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.75rem; }
+    select.input { cursor: pointer; }
+
+    /* Toast */
+    .toast-container { position: fixed; top: 1rem; right: 1rem; z-index: 1000; display: flex; flex-direction: column; gap: 0.5rem; }
+    .toast { padding: 0.75rem 1rem; border-radius: 8px; font-size: 0.8125rem; animation: fadeIn 0.2s; max-width: 350px; }
+    .toast-success { background: #065f46; color: #d1fae5; border: 1px solid #10b981; }
+    .toast-error { background: #7f1d1d; color: #fecaca; border: 1px solid #f87171; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-0.5rem); } to { opacity: 1; } }
+
+    /* Login */
+    .login-container { display: flex; align-items: center; justify-content: center; min-height: 100vh; width: 100%; }
+    .login-box { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 2rem; width: 360px; text-align: center; }
+    .login-box h1 { font-size: 1.25rem; margin-bottom: 0.5rem; }
+    .login-box p { font-size: 0.8125rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    .login-box input { width: 100%; margin-bottom: 0.75rem; padding: 0.5rem 0.75rem; }
+    .login-box button { width: 100%; padding: 0.5rem; }
+
+    /* Pagination */
+    .pagination { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.75rem; font-size: 0.8125rem; color: #94a3b8; }
+
+    /* Quota bar */
+    .quota-bar { height: 6px; border-radius: 3px; background: #334155; overflow: hidden; margin-top: 0.25rem; }
+    .quota-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .sidebar { transform: translateX(-100%); }
+      .sidebar.open { transform: translateX(0); }
+      .main { margin-left: 0; }
+      .hamburger { display: block; }
+      .cards { grid-template-columns: 1fr 1fr; }
     }
-    .login-form input {
-      padding: 0.5rem 0.75rem;
-      background: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 6px;
-      color: #e2e8f0;
-      font-size: 0.875rem;
-      min-width: 200px;
-    }
-    .login-form button {
-      padding: 0.5rem 1rem;
-      background: #2563eb;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-weight: 500;
-    }
-    .login-form button:hover { background: #1d4ed8; }
-    .override-form {
-      display: flex;
-      gap: 0.5rem;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-    .override-form input {
-      padding: 0.375rem 0.5rem;
-      background: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 4px;
-      color: #e2e8f0;
-      font-size: 0.8125rem;
-      width: 100px;
-    }
-    .override-form button {
-      padding: 0.375rem 0.75rem;
-      background: #334155;
-      color: #e2e8f0;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 0.8125rem;
-    }
-    .override-form button:hover { background: #475569; }
-    .override-form button.danger { background: #7f1d1d; color: #fecaca; }
-    .override-form button.danger:hover { background: #991b1b; }
-    .badge { font-size: 0.75rem; padding: 0.125rem 0.375rem; border-radius: 4px; background: #334155; }
-    .error-msg { color: #f87171; margin-top: 0.5rem; }
-    .loading { opacity: 0.7; }
   </style>
 </head>
 <body>
-  <a href="#main" class="skip-link">Skip to main content</a>
-  <header>
-    <h1>Siskel Bot Admin</h1>
-    <a href="/">← Back to app</a>
-    <a href="/eval">Eval</a>
-    <a href="/marketplace">Marketplace</a>
-    <span id="auth-status"></span>
-  </header>
-  <main id="main">
-    <div id="login-section" class="section" style="display:none">
-      <h2>Admin access required</h2>
-      <p>Sign in via OAuth as a user in QUOTA_ADMIN_USER_IDS, or enter your ADMIN_API_KEY:</p>
-      <div class="login-form">
-        <input type="password" id="admin-key" placeholder="ADMIN_API_KEY" autocomplete="off">
-        <button id="unlock-btn">Unlock</button>
-      </div>
-      <p id="login-error" class="error-msg" style="display:none"></p>
+  <div class="toast-container" id="toasts"></div>
+
+  <!-- Login Screen -->
+  <div id="login-screen" class="login-container" style="display:none">
+    <div class="login-box">
+      <h1>SiskelBot Admin</h1>
+      <p>Enter your admin API key to continue</p>
+      <input type="password" id="admin-key-input" class="input" placeholder="ADMIN_API_KEY" autocomplete="off">
+      <button class="btn btn-primary" id="login-btn">Sign In</button>
+      <p id="login-error" class="err" style="margin-top:0.75rem;display:none"></p>
     </div>
+  </div>
 
-    <div id="dashboard" style="display:none">
-      <div class="section">
-        <h2>Users</h2>
-        <table id="users-table">
-          <thead><tr><th>User ID</th><th>Source</th><th>Provider</th></tr></thead>
-          <tbody></tbody>
-        </table>
+  <!-- Dashboard -->
+  <div id="app" style="display:none;width:100%">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <h1>SiskelBot</h1>
+        <div class="subtitle">Admin Dashboard</div>
       </div>
-
-      <div class="section">
-        <h2>Workspaces</h2>
-        <table id="workspaces-table">
-          <thead><tr><th>User</th><th>Workspace</th><th>Tokens used</th><th>Quota</th><th>Override</th><th>Actions</th></tr></thead>
-          <tbody></tbody>
-        </table>
+      <nav id="nav">
+        <button data-tab="dashboard" class="active">Dashboard</button>
+        <button data-tab="keys">API Keys</button>
+        <button data-tab="audit">Audit Log</button>
+        <button data-tab="quotas">Quotas</button>
+        <button data-tab="system">System</button>
+      </nav>
+      <div class="sidebar-footer">
+        <span id="conn-status"><span class="conn-dot green"></span> Connected</span><br>
+        <a href="/">Back to app</a> &middot; <a href="/eval">Eval</a> &middot; <a href="/marketplace">Marketplace</a>
       </div>
+    </aside>
 
-      <div class="section">
-        <h2>Usage summary (7 days)</h2>
-        <table id="usage-table">
-          <thead><tr><th>Metric</th><th>Value</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <div class="section">
-        <h2>Quota status</h2>
-        <div id="quota-status"></div>
-      </div>
-
-      <div class="section">
-        <h2>System health</h2>
-        <div id="system-health"></div>
-      </div>
-
-      <div class="section">
-        <h2>Recent audit log</h2>
-        <table id="audit-table">
-          <thead><tr><th>Time</th><th>Action</th><th>OK</th><th>Error</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <div class="section">
-        <h2>API Keys (Phase 30)</h2>
-        <p style="font-size:0.875rem;color:#94a3b8;margin:0 0 0.75rem 0">Keys stored in data/api-keys.json. Scopes: read, write, admin, embed.</p>
-        <div class="override-form" style="margin-bottom:0.75rem">
-          <input type="text" id="key-user-id" placeholder="User ID" style="width:120px">
-          <input type="text" id="key-scopes" placeholder="Scopes: read,write" style="width:140px" title="Comma-separated: read, write, admin, embed">
-          <button id="add-key-btn">Add key</button>
+    <div class="main">
+      <div class="topbar">
+        <div style="display:flex;align-items:center;gap:0.75rem">
+          <button class="hamburger" id="hamburger-btn">&#9776;</button>
+          <h2 id="page-title">Dashboard</h2>
         </div>
-        <p id="key-add-msg" class="error-msg" style="display:none"></p>
-        <table id="keys-table">
-          <thead><tr><th>Masked</th><th>User</th><th>Scopes</th><th>Created</th><th>Actions</th></tr></thead>
-          <tbody></tbody>
-        </table>
+        <div class="topbar-actions">
+          <span id="last-refresh" style="font-size:0.75rem;color:#64748b"></span>
+          <button class="btn btn-ghost btn-sm" id="refresh-btn">Refresh</button>
+          <button class="btn btn-ghost btn-sm" id="logout-btn">Logout</button>
+        </div>
       </div>
+      <div class="content" id="content"></div>
     </div>
+  </div>
 
-    <div id="loading" class="section">
-      <p>Loading...</p>
-    </div>
-  </main>
   <script>
-    const ADMIN_KEY_STORAGE = 'siskelbot_admin_key';
-    let adminKey = sessionStorage.getItem(ADMIN_KEY_STORAGE);
+    const STORAGE_KEY = 'siskelbot_admin_key';
+    let adminKey = sessionStorage.getItem(STORAGE_KEY);
+    let currentTab = 'dashboard';
+    let summaryData = null;
+    let refreshTimer = null;
 
-    function headers() {
-      const h = { 'Content-Type': 'application/json' };
-      if (adminKey) h['Authorization'] = 'Bearer ' + adminKey;
-      return h;
+    // ─── Helpers ─────────────────────────────────────
+    function esc(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
+    function h() { const hd = { 'Content-Type': 'application/json' }; if (adminKey) hd['Authorization'] = 'Bearer ' + adminKey; return hd; }
+    function toast(msg, type = 'success') {
+      const el = document.createElement('div');
+      el.className = 'toast toast-' + type;
+      el.textContent = msg;
+      document.getElementById('toasts').appendChild(el);
+      setTimeout(() => el.remove(), 4000);
     }
-
-    async function fetchSummary() {
-      const opts = { credentials: 'include', headers: headers() };
-      const r = await fetch('/api/admin/summary', opts);
-      if (!r.ok) {
-        if (r.status === 401) return null;
-        throw new Error(await r.text());
-      }
+    async function api(path, opts = {}) {
+      const r = await fetch(path, { credentials: 'include', headers: h(), ...opts });
+      if (r.status === 401) { logout(); throw new Error('Unauthorized'); }
+      if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error(t || r.statusText); }
       return r.json();
     }
 
+    // ─── Auth ─────────────────────────────────────────
     function showLogin(err) {
-      document.getElementById('login-section').style.display = 'block';
-      document.getElementById('dashboard').style.display = 'none';
-      document.getElementById('loading').style.display = 'none';
+      document.getElementById('login-screen').style.display = 'flex';
+      document.getElementById('app').style.display = 'none';
       const errEl = document.getElementById('login-error');
-      errEl.style.display = err ? 'block' : 'none';
-      errEl.textContent = err || '';
+      if (err) { errEl.textContent = err; errEl.style.display = 'block'; } else { errEl.style.display = 'none'; }
+    }
+    function logout() {
+      adminKey = null;
+      sessionStorage.removeItem(STORAGE_KEY);
+      clearInterval(refreshTimer);
+      showLogin();
+    }
+    document.getElementById('login-btn').addEventListener('click', tryLogin);
+    document.getElementById('admin-key-input').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
+    async function tryLogin() {
+      const key = document.getElementById('admin-key-input').value.trim();
+      if (!key) return;
+      adminKey = key;
+      try {
+        await api('/api/admin/summary');
+        sessionStorage.setItem(STORAGE_KEY, key);
+        showApp();
+      } catch (e) { adminKey = null; showLogin('Invalid admin key'); }
     }
 
-    function showDashboard(data) {
-      document.getElementById('login-section').style.display = 'none';
-      document.getElementById('loading').style.display = 'none';
-      document.getElementById('dashboard').style.display = 'block';
-      document.getElementById('auth-status').textContent = '✓ Authenticated';
+    // ─── Navigation ──────────────────────────────────
+    document.getElementById('nav').addEventListener('click', e => {
+      const btn = e.target.closest('[data-tab]');
+      if (!btn) return;
+      switchTab(btn.dataset.tab);
+    });
+    document.getElementById('hamburger-btn').addEventListener('click', () => {
+      document.getElementById('sidebar').classList.toggle('open');
+    });
+    document.getElementById('refresh-btn').addEventListener('click', () => loadTab(currentTab));
+    document.getElementById('logout-btn').addEventListener('click', logout);
 
-      // Users
-      const usersTbody = document.querySelector('#users-table tbody');
-      usersTbody.innerHTML = '';
-      (data.users || []).forEach(u => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${escapeHtml(u.userId)}</td><td><span class="badge">${escapeHtml(u.source)}</span></td><td>${escapeHtml(u.provider || '-')}</td>`;
-        usersTbody.appendChild(tr);
-      });
+    function switchTab(tab) {
+      currentTab = tab;
+      document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+      document.getElementById('page-title').textContent = { dashboard: 'Dashboard', keys: 'API Keys', audit: 'Audit Log', quotas: 'Quotas', system: 'System' }[tab] || tab;
+      document.getElementById('sidebar').classList.remove('open');
+      loadTab(tab);
+    }
 
-      // Workspaces
-      const wsTbody = document.querySelector('#workspaces-table tbody');
-      wsTbody.innerHTML = '';
-      (data.workspaces || []).forEach(({ userId, workspaceId, workspaceName, quota, tokensUsed, override }) => {
-        const tr = document.createElement('tr');
-        const quotaStr = quota ? `${quota.used.toLocaleString()} / ${quota.limit.toLocaleString}` : '-';
-        const overrideStr = override != null ? override.toLocaleString() : '-';
-        tr.innerHTML = `
-          <td>${escapeHtml(userId)}</td>
-          <td>${escapeHtml(workspaceName || workspaceId)}</td>
-          <td>${(tokensUsed || 0).toLocaleString()}</td>
-          <td>${quotaStr}</td>
-          <td>${overrideStr}</td>
-          <td>
-            <div class="override-form">
-              <input type="number" placeholder="Limit" data-ws="${escapeAttr(workspaceId)}" min="1">
-              <button data-ws="${escapeAttr(workspaceId)}" data-action="set">Set</button>
-              <button class="danger" data-ws="${escapeAttr(workspaceId)}" data-action="clear">Clear</button>
-            </div>
-          </td>
-        `;
-        wsTbody.appendChild(tr);
-      });
-
-      // Usage
-      const usage = data.usage || {};
-      const usageTbody = document.querySelector('#usage-table tbody');
-      usageTbody.innerHTML = `
-        <tr><td>Total requests</td><td>${(usage.totalRequests || 0).toLocaleString()}</td></tr>
-        <tr><td>Total input tokens</td><td>${(usage.totalInputTokens || 0).toLocaleString()}</td></tr>
-        <tr><td>Total output tokens</td><td>${(usage.totalOutputTokens || 0).toLocaleString()}</td></tr>
-        <tr><td>Total tokens</td><td>${(usage.totalTokens || 0).toLocaleString()}</td></tr>
-      `;
-
-      // Quota status
-      const quotaStatusEl = document.getElementById('quota-status');
-      quotaStatusEl.innerHTML = data.system?.quotaConfigured
-        ? `<span class="ok">Quota configured</span>`
-        : `<span class="warn">Quota not configured</span>`;
-
+    // ─── Dashboard Tab ───────────────────────────────
+    async function loadDashboard() {
+      const c = document.getElementById('content');
+      c.innerHTML = '<p style="color:#64748b">Loading...</p>';
+      try {
+        summaryData = await api('/api/admin/summary');
+        const d = summaryData;
+        const users = d.users || [];
+        const workspaces = d.workspaces || [];
+        const audit = (d.auditLog || []).slice(0, 20);
+        const usage = d.usage || {};
+        const health = d.system?.health || {};
       // System health
       const health = data.system?.health || {};
       const integrations = data.system?.integrations || {};
@@ -311,146 +248,288 @@
         <p>Swarm runs by reason: ${escapeHtml(JSON.stringify(swarmRuns))}</p>
       `;
 
-      // Audit
-      const auditTbody = document.querySelector('#audit-table tbody');
-      auditTbody.innerHTML = '';
-      (data.auditLog || []).slice(0, 20).forEach(e => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${escapeHtml((e.timestamp || '').slice(0, 19))}</td>
-          <td>${escapeHtml(e.action || '-')}</td>
-          <td>${e.ok ? '<span class="ok">✓</span>' : '<span class="err">✗</span>'}</td>
-          <td>${escapeHtml(e.error || '-')}</td>
-        `;
-        auditTbody.appendChild(tr);
-      });
-
-      // API Keys (Phase 30)
-      const keysTbody = document.querySelector('#keys-table tbody');
-      keysTbody.innerHTML = '';
-      (data.apiKeys || []).forEach(k => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td><code>${escapeHtml(k.masked || '****')}</code></td>
-          <td>${escapeHtml(k.userId)}</td>
-          <td>${(k.scopes || []).join(', ') || '-'}</td>
-          <td>${escapeHtml((k.createdAt || '').slice(0, 10))}</td>
-          <td><button class="danger revoke-key-btn" data-id="${escapeAttr(k.id)}">Revoke</button></td>
-        `;
-        keysTbody.appendChild(tr);
-      });
-      document.querySelectorAll('.revoke-key-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          if (!confirm('Revoke this key? It will stop working immediately.')) return;
-          const r = await fetch('/api/admin/keys/' + encodeURIComponent(btn.dataset.id), { method: 'DELETE', credentials: 'include', headers: headers() });
-          if (!r.ok) alert('Failed to revoke: ' + (await r.text()));
-          else load();
-        });
-      });
-
-      // Override button handlers
-      document.querySelectorAll('.override-form button[data-action="set"]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const ws = btn.dataset.ws;
-          const input = btn.parentElement.querySelector('input[type="number"]');
-          const limit = parseInt(input.value, 10);
-          if (!limit || limit <= 0) return;
-          await setOverride(ws, limit);
-          load();
-        });
-      });
-      document.querySelectorAll('.override-form button[data-action="clear"]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          await setOverride(btn.dataset.ws, null);
-          load();
-        });
-      });
+        c.innerHTML = `
+          <div class="cards">
+            <div class="card"><div class="label">Users</div><div class="value">${users.length}</div></div>
+            <div class="card"><div class="label">Workspaces</div><div class="value">${workspaces.length}</div></div>
+            <div class="card"><div class="label">API Keys</div><div class="value">${(d.apiKeys || []).length}</div></div>
+            <div class="card"><div class="label">Requests (7d)</div><div class="value">${(usage.totalRequests || 0).toLocaleString()}</div></div>
+          </div>
+          <div class="section">
+            <h3>System Health</h3>
+            <p>Backend: <strong>${esc(health.backend || '-')}</strong> ${health.reachable ? '<span class="ok">reachable</span>' : '<span class="err">unreachable</span>'} ${health.latencyMs != null ? '(' + health.latencyMs + 'ms)' : ''}</p>
+            <p>Storage: <strong>${esc(d.system?.storageBackend || 'json')}</strong> &middot; Quota: ${d.system?.quotaConfigured ? '<span class="ok">enabled</span>' : '<span class="warn">disabled</span>'} &middot; Scheduler: ${d.system?.scheduleEnabled ? '<span class="ok">enabled</span>' : 'disabled'}</p>
+          </div>
+          <div class="section">
+            <h3>Recent Audit Log</h3>
+            <table>
+              <thead><tr><th>Time</th><th>Action</th><th>Status</th><th>Error</th></tr></thead>
+              <tbody>${audit.map(e => `<tr><td>${esc((e.timestamp||'').slice(0,19))}</td><td>${esc(e.action||'-')}</td><td>${e.ok ? '<span class="ok">OK</span>' : '<span class="err">FAIL</span>'}</td><td>${esc(e.error||'-')}</td></tr>`).join('')}</tbody>
+            </table>
+          </div>`;
+        document.getElementById('last-refresh').textContent = 'Updated ' + new Date().toLocaleTimeString();
+      } catch (e) { c.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
     }
 
-    async function setOverride(workspace, limit) {
-      const opts = {
-        method: 'POST',
-        credentials: 'include',
-        headers: { ...headers(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspace, limit })
-      };
-      const r = await fetch('/api/admin/quotas/override', opts);
-      if (!r.ok) throw new Error(await r.text());
-      return r.json();
-    }
-
-    function escapeHtml(s) {
-      if (s == null) return '';
-      const d = document.createElement('div');
-      d.textContent = s;
-      return d.innerHTML;
-    }
-    function escapeAttr(s) {
-      return escapeHtml(s).replace(/"/g, '&quot;');
-    }
-
-    async function load() {
-      document.getElementById('loading').style.display = 'block';
+    // ─── API Keys Tab ────────────────────────────────
+    async function loadKeys() {
+      const c = document.getElementById('content');
+      c.innerHTML = '<p style="color:#64748b">Loading...</p>';
       try {
-        const data = await fetchSummary();
-        if (!data) {
-          adminKey = null;
-          sessionStorage.removeItem(ADMIN_KEY_STORAGE);
-          showLogin('Authentication required. Sign in or enter ADMIN_API_KEY.');
-          return;
-        }
-        showDashboard(data);
-      } catch (e) {
-        showLogin(e.message || 'Failed to load');
-      } finally {
-        document.getElementById('loading').style.display = 'none';
+        const data = await api('/api/admin/keys');
+        const keys = data.keys || data.items || [];
+        c.innerHTML = `
+          <div class="section">
+            <h3>Create API Key</h3>
+            <div class="form-row">
+              <input type="text" class="input" id="new-key-label" placeholder="Label / User ID" style="width:160px">
+              <input type="text" class="input" id="new-key-scopes" placeholder="Scopes: read,write" style="width:160px">
+              <button class="btn btn-primary" id="create-key-btn">Create</button>
+            </div>
+            <p id="new-key-result" style="font-size:0.8125rem;display:none"></p>
+          </div>
+          <div class="section">
+            <h3>Active Keys (${keys.length})</h3>
+            <table>
+              <thead><tr><th>Key</th><th>User</th><th>Scopes</th><th>Created</th><th>Action</th></tr></thead>
+              <tbody id="keys-tbody">${keys.map(k => `<tr>
+                <td><code>${esc(k.masked||'****')}</code></td>
+                <td>${esc(k.userId||'-')}</td>
+                <td>${(k.scopes||[]).join(', ')||'-'}</td>
+                <td>${esc((k.createdAt||'').slice(0,10))}</td>
+                <td><button class="btn btn-danger btn-sm revoke-btn" data-id="${esc(k.id)}">Revoke</button></td>
+              </tr>`).join('')}</tbody>
+            </table>
+          </div>`;
+        document.getElementById('create-key-btn').addEventListener('click', createKey);
+        document.getElementById('keys-tbody').addEventListener('click', async e => {
+          const btn = e.target.closest('.revoke-btn');
+          if (!btn || !confirm('Revoke this key?')) return;
+          try {
+            await api('/api/admin/keys/' + encodeURIComponent(btn.dataset.id), { method: 'DELETE' });
+            toast('Key revoked');
+            loadKeys();
+          } catch (e) { toast(e.message, 'error'); }
+        });
+      } catch (e) { c.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+    }
+    async function createKey() {
+      const userId = document.getElementById('new-key-label').value.trim();
+      const scopes = document.getElementById('new-key-scopes').value.trim();
+      if (!userId) { toast('User ID required', 'error'); return; }
+      try {
+        const r = await api('/api/admin/keys', { method: 'POST', body: JSON.stringify({ userId, scopes: scopes ? scopes.split(',').map(s => s.trim()) : undefined }) });
+        const el = document.getElementById('new-key-result');
+        el.style.display = 'block';
+        el.innerHTML = `<span class="ok">Key created:</span> <code>${esc(r.key || r.apiKey || 'See response')}</code> <em>(copy now, shown once)</em>`;
+        toast('API key created');
+      } catch (e) { toast(e.message, 'error'); }
+    }
+
+    // ─── Audit Log Tab ───────────────────────────────
+    let auditPage = 0;
+    async function loadAudit() {
+      const c = document.getElementById('content');
+      c.innerHTML = '<p style="color:#64748b">Loading...</p>';
+      try {
+        const params = new URLSearchParams({ limit: '50', offset: String(auditPage * 50) });
+        const data = await api('/api/admin/audit/query?' + params);
+        const entries = data.entries || data.items || [];
+        const retData = await api('/api/admin/audit/retention').catch(() => null);
+        c.innerHTML = `
+          <div class="section">
+            <h3>Filters</h3>
+            <div class="form-row">
+              <input type="text" class="input" id="audit-action" placeholder="Action filter" style="width:140px">
+              <input type="text" class="input" id="audit-user" placeholder="User ID" style="width:140px">
+              <button class="btn btn-ghost" id="audit-filter-btn">Filter</button>
+              <button class="btn btn-ghost" id="audit-export-csv">Export CSV</button>
+              <button class="btn btn-ghost" id="audit-export-json">Export JSON</button>
+            </div>
+            ${retData ? `<p style="font-size:0.75rem;color:#64748b">Retention: ${esc(JSON.stringify(retData.retention || retData))}</p>` : ''}
+          </div>
+          <div class="section">
+            <h3>Audit Entries</h3>
+            <table>
+              <thead><tr><th>Time</th><th>Action</th><th>User</th><th>Status</th><th>Details</th></tr></thead>
+              <tbody>${entries.map(e => `<tr>
+                <td>${esc((e.timestamp||'').slice(0,19))}</td>
+                <td>${esc(e.action||'-')}</td>
+                <td>${esc(e.userId||'-')}</td>
+                <td>${e.ok !== false ? '<span class="ok">OK</span>' : '<span class="err">FAIL</span>'}</td>
+                <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.error || e.result || '-')}</td>
+              </tr>`).join('')}</tbody>
+            </table>
+            <div class="pagination">
+              <button class="btn btn-ghost btn-sm" id="audit-prev" ${auditPage === 0 ? 'disabled' : ''}>Prev</button>
+              <span>Page ${auditPage + 1}</span>
+              <button class="btn btn-ghost btn-sm" id="audit-next" ${entries.length < 50 ? 'disabled' : ''}>Next</button>
+            </div>
+          </div>`;
+        document.getElementById('audit-prev')?.addEventListener('click', () => { auditPage = Math.max(0, auditPage - 1); loadAudit(); });
+        document.getElementById('audit-next')?.addEventListener('click', () => { auditPage++; loadAudit(); });
+        document.getElementById('audit-filter-btn')?.addEventListener('click', () => { auditPage = 0; loadAudit(); });
+        document.getElementById('audit-export-csv')?.addEventListener('click', () => window.open('/api/admin/audit/export?format=csv', '_blank'));
+        document.getElementById('audit-export-json')?.addEventListener('click', () => window.open('/api/admin/audit/export?format=json', '_blank'));
+      } catch (e) { c.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+    }
+
+    // ─── Quotas Tab ──────────────────────────────────
+    async function loadQuotas() {
+      const c = document.getElementById('content');
+      c.innerHTML = '<p style="color:#64748b">Loading...</p>';
+      try {
+        if (!summaryData) summaryData = await api('/api/admin/summary');
+        const workspaces = summaryData.workspaces || [];
+        c.innerHTML = `
+          <div class="section">
+            <h3>Override Quota</h3>
+            <div class="form-row">
+              <select class="input" id="quota-ws" style="width:180px">
+                <option value="">Select workspace</option>
+                ${workspaces.map(w => `<option value="${esc(w.workspaceId)}">${esc(w.userId)}/${esc(w.workspaceId)}</option>`).join('')}
+              </select>
+              <input type="number" class="input" id="quota-limit" placeholder="Token limit" style="width:120px" min="0">
+              <button class="btn btn-primary" id="quota-set-btn">Set Override</button>
+              <button class="btn btn-danger" id="quota-clear-btn">Clear</button>
+            </div>
+          </div>
+          <div class="section">
+            <h3>Per-Workspace Usage</h3>
+            <table>
+              <thead><tr><th>User</th><th>Workspace</th><th>Tokens Used</th><th>Limit</th><th>Usage</th></tr></thead>
+              <tbody>${workspaces.map(w => {
+                const used = w.tokensUsed || 0;
+                const limit = w.quota?.limit || w.override || 0;
+                const pct = limit > 0 ? Math.min(100, (used / limit * 100)) : 0;
+                const color = pct > 90 ? '#f87171' : pct > 70 ? '#fbbf24' : '#34d399';
+                return `<tr>
+                  <td>${esc(w.userId)}</td>
+                  <td>${esc(w.workspaceId)}</td>
+                  <td>${used.toLocaleString()}</td>
+                  <td>${limit > 0 ? limit.toLocaleString() : '<span style="color:#64748b">none</span>'}</td>
+                  <td style="min-width:100px">${limit > 0 ? `<div class="quota-bar"><div class="quota-bar-fill" style="width:${pct}%;background:${color}"></div></div><span style="font-size:0.6875rem;color:#64748b">${pct.toFixed(0)}%</span>` : '-'}</td>
+                </tr>`;
+              }).join('')}</tbody>
+            </table>
+          </div>`;
+        document.getElementById('quota-set-btn')?.addEventListener('click', async () => {
+          const ws = document.getElementById('quota-ws').value;
+          const limit = Number(document.getElementById('quota-limit').value);
+          if (!ws || !limit) { toast('Select workspace and enter limit', 'error'); return; }
+          try {
+            await api('/api/admin/quotas/override', { method: 'POST', body: JSON.stringify({ workspaceId: ws, limit }) });
+            toast('Quota override set');
+            summaryData = null; loadQuotas();
+          } catch (e) { toast(e.message, 'error'); }
+        });
+        document.getElementById('quota-clear-btn')?.addEventListener('click', async () => {
+          const ws = document.getElementById('quota-ws').value;
+          if (!ws) { toast('Select a workspace', 'error'); return; }
+          try {
+            await api('/api/admin/quotas/override', { method: 'POST', body: JSON.stringify({ workspaceId: ws, limit: null }) });
+            toast('Quota override cleared');
+            summaryData = null; loadQuotas();
+          } catch (e) { toast(e.message, 'error'); }
+        });
+      } catch (e) { c.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+    }
+
+    // ─── System Tab ──────────────────────────────────
+    async function loadSystem() {
+      const c = document.getElementById('content');
+      c.innerHTML = '<p style="color:#64748b">Loading...</p>';
+      try {
+        const [config, health, archStatus] = await Promise.all([
+          api('/config').catch(() => ({})),
+          api('/health/ready').catch(() => ({ status: 'unknown' })),
+          api('/api/admin/audit/archive-status').catch(() => null),
+        ]);
+        let backups = [];
+        try { const bd = await api('/api/v1/backup'); backups = bd.items || []; } catch {}
+
+        c.innerHTML = `
+          <div class="cards">
+            <div class="card"><div class="label">Backend</div><div class="value">${esc(config.backend || '-')}</div></div>
+            <div class="card"><div class="label">Storage</div><div class="value">${esc(config.storageBackend || 'json')}</div></div>
+            <div class="card"><div class="label">Health</div><div class="value ${health.status === 'ok' || health.status === 'ready' ? 'ok' : 'err'}">${esc(health.status || 'unknown')}</div></div>
+            <div class="card"><div class="label">Metrics</div><div class="value">${config.prometheusEnabled ? '<a href="/metrics" class="ok" target="_blank">Enabled</a>' : '<span class="warn">Off</span>'}</div></div>
+          </div>
+          <div class="section">
+            <h3>Configuration</h3>
+            <table>
+              <tbody>
+                <tr><td>Auth Required</td><td>${config.authRequired ? '<span class="ok">Yes</span>' : '<span class="warn">No</span>'}</td></tr>
+                <tr><td>Agent Mode</td><td>${config.agentEnabled ? '<span class="ok">Enabled</span>' : 'Disabled'}</td></tr>
+                <tr><td>Swarm Mode</td><td>${config.swarmEnabled ? '<span class="ok">Enabled</span>' : 'Disabled'}</td></tr>
+                <tr><td>Scheduler</td><td>${config.scheduleEnabled ? '<span class="ok">Enabled</span>' : 'Disabled'}</td></tr>
+                <tr><td>Fallback Backend</td><td>${esc(config.fallbackBackend || 'none')}</td></tr>
+                <tr><td>OpenTelemetry</td><td>${config.otelEnabled ? '<span class="ok">Enabled</span>' : 'Off'}</td></tr>
+                <tr><td>Max Agent Iterations</td><td>${config.agentMaxIterationsCeiling || 5}</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="section">
+            <h3>Backups (${backups.length})</h3>
+            <div class="form-row">
+              <button class="btn btn-primary" id="create-backup-btn">Create Backup</button>
+            </div>
+            ${backups.length ? `<table>
+              <thead><tr><th>File</th><th>Created</th></tr></thead>
+              <tbody>${backups.map(b => `<tr><td>${esc(b.id || b.filename || b)}</td><td>${esc((b.createdAt || '').slice(0, 19))}</td></tr>`).join('')}</tbody>
+            </table>` : '<p style="color:#64748b;font-size:0.8125rem">No backups found</p>'}
+          </div>
+          ${archStatus ? `<div class="section">
+            <h3>Audit Archive</h3>
+            <p style="font-size:0.8125rem">Status: ${esc(JSON.stringify(archStatus))}</p>
+            <button class="btn btn-ghost" id="archive-now-btn">Archive to S3 Now</button>
+          </div>` : ''}`;
+        document.getElementById('create-backup-btn')?.addEventListener('click', async () => {
+          try {
+            await api('/api/v1/backup', { method: 'POST' });
+            toast('Backup created');
+            loadSystem();
+          } catch (e) { toast(e.message, 'error'); }
+        });
+        document.getElementById('archive-now-btn')?.addEventListener('click', async () => {
+          try {
+            await api('/api/admin/audit/archive-now', { method: 'POST' });
+            toast('Archive triggered');
+          } catch (e) { toast(e.message, 'error'); }
+        });
+      } catch (e) { c.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+    }
+
+    // ─── Tab Router ──────────────────────────────────
+    function loadTab(tab) {
+      switch (tab) {
+        case 'dashboard': loadDashboard(); break;
+        case 'keys': loadKeys(); break;
+        case 'audit': loadAudit(); break;
+        case 'quotas': loadQuotas(); break;
+        case 'system': loadSystem(); break;
       }
     }
 
-    document.getElementById('unlock-btn').addEventListener('click', () => {
-      adminKey = document.getElementById('admin-key').value.trim();
-      if (!adminKey) return;
-      sessionStorage.setItem(ADMIN_KEY_STORAGE, adminKey);
-      load();
-    });
+    // ─── Init ────────────────────────────────────────
+    async function showApp() {
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('app').style.display = 'flex';
+      loadTab(currentTab);
+      refreshTimer = setInterval(() => { if (currentTab === 'dashboard') loadDashboard(); }, 30000);
+    }
 
-    document.getElementById('add-key-btn').addEventListener('click', async () => {
-      const userIdEl = document.getElementById('key-user-id');
-      const scopesEl = document.getElementById('key-scopes');
-      const msgEl = document.getElementById('key-add-msg');
-      const userId = (userIdEl?.value || '').trim();
-      if (!userId) {
-        msgEl.style.display = 'block';
-        msgEl.textContent = 'User ID required';
-        return;
+    async function init() {
+      if (adminKey) {
+        try {
+          await api('/api/admin/summary');
+          showApp();
+        } catch { showLogin(); }
+      } else {
+        showLogin();
       }
-      msgEl.style.display = 'none';
-      const scopesRaw = (scopesEl?.value || 'read,write').trim();
-      const scopes = scopesRaw ? scopesRaw.split(',').map(s => s.trim()).filter(Boolean) : ['read', 'write'];
-      try {
-        const r = await fetch('/api/admin/keys', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { ...headers(), 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId, scopes })
-        });
-        const data = await r.json().catch(() => ({}));
-        if (!r.ok) {
-          msgEl.style.display = 'block';
-          msgEl.textContent = data.error || 'Failed to add key';
-          return;
-        }
-        msgEl.style.display = 'block';
-        msgEl.textContent = 'Key created. Save it now - it won\'t be shown again: ' + (data.key || '');
-        msgEl.style.color = '#34d399';
-        load();
-      } catch (e) {
-        msgEl.style.display = 'block';
-        msgEl.textContent = e.message || 'Failed';
-      }
-    });
-
-    load();
+    }
+    init();
   </script>
 </body>
 </html>

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>Shared Conversation - SiskelBot</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { color-scheme: dark; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; flex-direction: column; }
+    a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+
+    .container { max-width: 800px; margin: 0 auto; padding: 2rem 1rem; flex: 1; width: 100%; }
+
+    .header { margin-bottom: 2rem; }
+    .header h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem; }
+    .header .meta { font-size: 0.8125rem; color: #64748b; }
+
+    .divider { border: none; border-top: 1px solid #334155; margin: 1.5rem 0; }
+
+    .message { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+    .message.user { border-left: 3px solid #2563eb; }
+    .message.assistant { border-left: 3px solid #34d399; }
+    .message.system { border-left: 3px solid #fbbf24; }
+    .message .role { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: #94a3b8; margin-bottom: 0.5rem; letter-spacing: 0.05em; }
+    .message .content { font-size: 0.875rem; line-height: 1.6; }
+    .message .content p { margin-bottom: 0.5rem; }
+    .message .content pre { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 0.75rem; overflow-x: auto; margin: 0.5rem 0; }
+    .message .content code { font-family: ui-monospace, monospace; font-size: 0.8125rem; }
+    .message .content p code { background: #334155; padding: 0.125rem 0.375rem; border-radius: 3px; }
+    .message .content ul, .message .content ol { margin: 0.5rem 0 0.5rem 1.5rem; }
+    .message .content blockquote { border-left: 3px solid #475569; padding-left: 0.75rem; color: #94a3b8; margin: 0.5rem 0; }
+
+    /* Password prompt */
+    .password-prompt { text-align: center; padding: 3rem 1rem; }
+    .password-prompt h2 { font-size: 1.25rem; margin-bottom: 1rem; }
+    .password-prompt p { color: #94a3b8; margin-bottom: 1.5rem; font-size: 0.875rem; }
+    .password-prompt input { background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 0.5rem 0.75rem; color: #e2e8f0; font-size: 0.875rem; width: 280px; max-width: 100%; margin-bottom: 0.75rem; display: block; margin-left: auto; margin-right: auto; }
+    .password-prompt input:focus { border-color: #2563eb; outline: none; }
+    .btn { padding: 0.5rem 1rem; border: none; border-radius: 6px; cursor: pointer; font-size: 0.875rem; font-weight: 500; }
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-primary:hover { background: #1d4ed8; }
+
+    /* States */
+    .loading { text-align: center; padding: 4rem 1rem; color: #64748b; font-size: 0.875rem; }
+    .error { text-align: center; padding: 4rem 1rem; }
+    .error h2 { font-size: 1.25rem; color: #f87171; margin-bottom: 0.5rem; }
+    .error p { color: #94a3b8; font-size: 0.875rem; }
+
+    .footer { text-align: center; padding: 1.5rem; font-size: 0.75rem; color: #475569; border-top: 1px solid #1e293b; }
+    .footer a { color: #60a5fa; text-decoration: none; }
+    .footer a:hover { text-decoration: underline; }
+
+    @media (max-width: 640px) {
+      .container { padding: 1rem 0.75rem; }
+      .header h1 { font-size: 1.25rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container" id="app">
+    <div class="loading" id="loading">Loading shared conversation...</div>
+  </div>
+  <footer class="footer">Shared from <a href="/">SiskelBot</a></footer>
+
+  <script>
+    (function() {
+      const app = document.getElementById("app");
+      const params = new URLSearchParams(window.location.search);
+      const shareId = params.get("id");
+
+      if (!shareId) {
+        showError("Invalid Link", "No share ID provided.");
+        return;
+      }
+
+      fetchConversation();
+
+      async function fetchConversation(password) {
+        try {
+          let url = "/api/v1/shared/" + encodeURIComponent(shareId);
+          const headers = {};
+          if (password) headers["X-Share-Password"] = password;
+
+          const resp = await fetch(url, { headers });
+          const data = await resp.json();
+
+          if (resp.status === 401 && data.code === "PASSWORD_REQUIRED") {
+            showPasswordPrompt();
+            return;
+          }
+
+          if (!resp.ok) {
+            showError("Not Found", data.error || "This shared conversation could not be found or has expired.");
+            return;
+          }
+
+          renderConversation(data);
+        } catch (err) {
+          showError("Error", "Failed to load the shared conversation.");
+        }
+      }
+
+      function showError(title, message) {
+        app.innerHTML = '<div class="error"><h2>' + escapeHtml(title) + '</h2><p>' + escapeHtml(message) + '</p></div>';
+      }
+
+      function showPasswordPrompt() {
+        app.innerHTML =
+          '<div class="password-prompt">' +
+          '<h2>Password Protected</h2>' +
+          '<p>This conversation requires a password to view.</p>' +
+          '<input type="password" id="sharePassword" placeholder="Enter password" autocomplete="off">' +
+          '<button class="btn btn-primary" id="submitPassword">View Conversation</button>' +
+          '</div>';
+
+        var input = document.getElementById("sharePassword");
+        var btn = document.getElementById("submitPassword");
+        btn.addEventListener("click", function() { fetchConversation(input.value); });
+        input.addEventListener("keydown", function(e) {
+          if (e.key === "Enter") fetchConversation(input.value);
+        });
+        input.focus();
+      }
+
+      function renderConversation(data) {
+        var conv = data.conversation;
+        var title = conv.title || "Untitled";
+        var date = conv.createdAt || "";
+        var model = (conv.meta && conv.meta.model) || conv.model || "";
+        var messages = Array.isArray(conv.messages) ? conv.messages : [];
+
+        document.title = title + " - SiskelBot";
+
+        var metaParts = [];
+        if (date) metaParts.push("Date: " + new Date(date).toLocaleDateString());
+        if (model) metaParts.push("Model: " + model);
+
+        var html = '<div class="header"><h1>' + escapeHtml(title) + '</h1>';
+        if (metaParts.length) html += '<div class="meta">' + escapeHtml(metaParts.join(" | ")) + '</div>';
+        html += '</div><hr class="divider">';
+
+        for (var i = 0; i < messages.length; i++) {
+          var msg = messages[i];
+          var role = String(msg.role || "unknown");
+          var roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
+          var roleClass = role === "assistant" ? "assistant" : role === "user" ? "user" : "system";
+          var content = String(msg.content || "");
+
+          var rendered = content;
+          if (typeof marked !== "undefined" && marked.parse) {
+            try { rendered = marked.parse(content); } catch(e) { rendered = escapeHtml(content); }
+          } else {
+            rendered = escapeHtml(content);
+          }
+
+          html += '<div class="message ' + roleClass + '">' +
+            '<div class="role">' + escapeHtml(roleLabel) + '</div>' +
+            '<div class="content">' + rendered + '</div>' +
+            '</div>';
+        }
+
+        app.innerHTML = html;
+      }
+
+      function escapeHtml(str) {
+        var div = document.createElement("div");
+        div.textContent = String(str);
+        return div.innerHTML;
+      }
+    })();
+  </script>
+</body>
+</html>

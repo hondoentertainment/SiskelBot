@@ -1,3 +1,16 @@
+import express from "express";
+import { randomUUID } from "crypto";
+
+export default function mountRecipeRoutes(app, deps) {
+  const {
+    apiRoute,
+    apiError,
+    logRequest,
+    apiKeyAuth,
+    requireScope,
+    storageRateLimiter,
+    sanitizeWorkspace,
+    storage,
 import { randomUUID } from "crypto";
 
 export function mountRecipeRoutes(app, deps) {
@@ -15,6 +28,10 @@ export function mountRecipeRoutes(app, deps) {
     schedulerRefresh,
     runRecipeNow,
     runDueJobsVercel,
+    logActivity,
+  } = deps;
+
+  // Recipes CRUD
   } = deps;
 
   apiRoute("get", "/recipes", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
@@ -109,7 +126,6 @@ export function mountRecipeRoutes(app, deps) {
   });
 
   // Schedules
-  // --- Schedules ---
   apiRoute("get", "/schedules", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);

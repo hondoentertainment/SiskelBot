@@ -1384,6 +1384,8 @@
 <header>
     <h1 data-i18n="app.title">Siskel Bot</h1>
     <span id="offline-indicator" class="offline-indicator" aria-live="polite" style="display:none;" data-i18n="header.offline">Offline</span>
+    <span id="offline-queue-badge" style="display:none;font-size:0.75rem;color:#eab308;margin-left:4px;" aria-live="polite"></span>
+    <span id="ws-connection-indicator" style="display:inline-flex;align-items:center;margin-left:4px;"></span>
     <span id="backend-badge" class="backend-badge" title="Backend (from server config)">—</span>
     <label class="sr-only" for="profile-select">Profile</label>
     <select id="profile-select" aria-label="Switch profile">
@@ -1981,6 +1983,10 @@
   </main>
 
   <script src="/js/stream-ui-batch.js"></script>
+  <script src="/js/agent-traces.js"></script>
+  <script src="/js/stream-metrics.js"></script>
+  <script src="/js/ws-reconnect.js"></script>
+  <script src="/js/offline-queue.js"></script>
   <script>
     (function initI18n() {
       if (window.SiskelI18n) {
@@ -5436,6 +5442,16 @@
       }
 
       if (!prompt && !attachedImages.length) return;
+
+      // Offline queue: if offline, queue the message instead of sending
+      if (!navigator.onLine && window.SiskelOfflineQueue && prompt) {
+        SiskelOfflineQueue.queueMessage(prompt);
+        if (typeof haptic === 'function') haptic('send');
+        addMessage('user', prompt + ' (queued)');
+        promptInput.value = '';
+        return;
+      }
+
       if (typeof haptic === 'function') haptic('send');
 
       if (activeAbortController) activeAbortController.abort();
@@ -5556,6 +5572,8 @@
           let content = '';
           let assistantEl = null;
           let lastAgentActivity = null;
+          const _streamMetrics = window.SiskelStreamMetrics ? SiskelStreamMetrics.createStreamMetrics() : null;
+          const _traceCollector = (isAgentMode && window.SiskelAgentTraces) ? SiskelAgentTraces.createTraceCollector() : null;
 
           while (true) {
             const { done, value } = await reader.read();
@@ -5590,6 +5608,7 @@
                   }
                   if (parsed.type === 'agent_activity') {
                     lastAgentActivity = parsed;
+                    if (_traceCollector) _traceCollector.addEvent(parsed);
                     scheduleDom(function () {
                       const progressEl = assistantEl && assistantEl.querySelector('.agent-progress-strip');
                       if (progressEl) progressEl.remove();
@@ -5616,6 +5635,7 @@
                   }
                   const delta = parsed.choices?.[0]?.delta?.content;
                   if (delta) {
+                    if (_streamMetrics) _streamMetrics.onToken(delta);
                     if (ttfb === null) ttfb = Math.round(performance.now() - streamStartTime);
                     content += delta;
                     const metaLine = ttfb !== null ? `First token: ${ttfb}ms` : null;
@@ -5653,6 +5673,21 @@
           if (assistantEl && meta) updateAssistantContent(assistantEl, content, meta);
           const runIdHdr = res.headers.get('X-Agent-Run-Id');
           if (assistantEl && runIdHdr) attachViewRunButton(assistantEl, runIdHdr);
+
+          // Stream metrics bar
+          if (_streamMetrics && assistantEl) {
+            _streamMetrics.onDone({ model: model });
+            const metricsContainer = document.createElement('div');
+            metricsContainer.className = 'stream-metrics-container';
+            assistantEl.appendChild(metricsContainer);
+            _streamMetrics.render(metricsContainer);
+          }
+
+          // Agent trace panel
+          if (_traceCollector && assistantEl) {
+            _traceCollector.done();
+            SiskelAgentTraces.renderTracePanel(_traceCollector.getTrace(), assistantEl);
+          }
 
           if (!content) {
             removeTypingIndicator();
@@ -6019,10 +6054,8 @@
     }
 
     let notificationsPollTimer = null;
-    let notificationsWs = null;
-    let notificationsWsReconnectDelay = 1000;
-    const NOTIFICATIONS_WS_MAX_BACKOFF = 30000;
     let notificationsWsConnected = false;
+    let notificationsWsManager = null;
 
     function startNotificationsPoll() {
       if (notificationsPollTimer) return;
@@ -6041,45 +6074,44 @@
     }
 
     function connectNotificationsWs() {
-      if (notificationsWs && notificationsWs.readyState === 1) return;
-      const ws = typeof getSelectedWorkspace === 'function' ? getSelectedWorkspace() : 'default';
-      const headers = getApiHeaders ? getApiHeaders() : { credentials: 'include' };
-      fetch(`/api/ws-token?workspace=${encodeURIComponent(ws)}`, { headers, credentials: 'include' })
-        .then((r) => r.ok ? r.json() : Promise.reject(new Error('ws-token failed')))
-        .then((data) => {
-          const token = data?.token;
-          if (!token) return;
-          const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-          const url = `${proto}//${location.host}/ws?token=${encodeURIComponent(token)}&workspace=${encodeURIComponent(ws)}`;
-          const sock = new WebSocket(url);
-          sock.onopen = () => {
+      if (notificationsWsManager) return;
+      if (window.SiskelWSReconnect) {
+        const wsWorkspace = typeof getSelectedWorkspace === 'function' ? getSelectedWorkspace() : 'default';
+        notificationsWsManager = SiskelWSReconnect.createReconnectingWebSocket({
+          getTokenUrl: '/api/v1/ws-token',
+          workspace: wsWorkspace,
+          onConnect: function () {
             notificationsWsConnected = true;
-            notificationsWsReconnectDelay = 1000;
             stopNotificationsPoll();
-          };
-          sock.onmessage = (e) => {
-            try {
-              const msg = JSON.parse(e.data);
-              if (msg?.type === 'notification') refreshNotifications();
-            } catch (_) {}
-          };
-          sock.onclose = () => {
-            notificationsWs = null;
+          },
+          onDisconnect: function () {
             notificationsWsConnected = false;
             startNotificationsPoll();
-            const delay = notificationsWsReconnectDelay;
-            notificationsWsReconnectDelay = Math.min(NOTIFICATIONS_WS_MAX_BACKOFF, notificationsWsReconnectDelay * 2);
-            setTimeout(connectNotificationsWs, delay);
-          };
-          sock.onerror = () => { sock.close(); };
-          notificationsWs = sock;
-        })
-        .catch(() => {
-          startNotificationsPoll();
-          const delay = notificationsWsReconnectDelay;
-          notificationsWsReconnectDelay = Math.min(NOTIFICATIONS_WS_MAX_BACKOFF, notificationsWsReconnectDelay * 2);
-          setTimeout(connectNotificationsWs, delay);
+          },
+          onMessage: function (e) {
+            try {
+              const msg = JSON.parse(e.data);
+              if (msg && msg.type === 'notification') refreshNotifications();
+            } catch (_) {}
+          },
         });
+        notificationsWsManager.connect();
+        // Render connection indicator
+        const wsIndicatorEl = document.getElementById('ws-connection-indicator');
+        if (wsIndicatorEl) {
+          SiskelWSReconnect.renderConnectionIndicator(wsIndicatorEl, notificationsWsManager);
+        }
+      } else {
+        // Fallback: no reconnect module available — start polling
+        startNotificationsPoll();
+      }
+    }
+    function disconnectNotificationsWs() {
+      if (notificationsWsManager) {
+        notificationsWsManager.disconnect();
+        notificationsWsManager = null;
+        notificationsWsConnected = false;
+      }
     }
 
     if (document.visibilityState === 'visible') {
@@ -6091,13 +6123,13 @@
         connectNotificationsWs();
         if (!notificationsWsConnected) startNotificationsPoll();
       } else {
-        if (notificationsWs) { notificationsWs.close(); notificationsWs = null; }
+        disconnectNotificationsWs();
         stopNotificationsPoll();
       }
     });
     if (typeof getSelectedWorkspace === 'function' && workspaceSelect) {
       workspaceSelect.addEventListener('change', () => {
-        if (notificationsWs) { notificationsWs.close(); notificationsWs = null; }
+        disconnectNotificationsWs();
         connectNotificationsWs();
       });
     }
@@ -6109,12 +6141,29 @@
     function updateOfflineUI() {
       const offline = !navigator.onLine;
       if (offlineIndicator) offlineIndicator.style.display = offline ? 'inline-block' : 'none';
-      if (sendBtn) sendBtn.disabled = offline || (stopBtn && stopBtn.style.display === 'inline-block');
+      // When offline queue is available, keep send button enabled so messages can be queued
+      const hasOfflineQueue = !!window.SiskelOfflineQueue;
+      if (sendBtn) sendBtn.disabled = (offline && !hasOfflineQueue) || (stopBtn && stopBtn.style.display === 'inline-block');
       setConnectionStatus(offline ? (window.SiskelI18n && SiskelI18n.t ? SiskelI18n.t('header.offline') : 'Offline') : (window.SiskelI18n && SiskelI18n.t ? SiskelI18n.t('status.ready') : 'Ready'));
     }
     updateOfflineUI();
     window.addEventListener('online', updateOfflineUI);
     window.addEventListener('offline', updateOfflineUI);
+
+    // --- Offline queue: auto-replay and badge ---
+    if (window.SiskelOfflineQueue) {
+      const offlineQueueBadge = document.getElementById('offline-queue-badge');
+      SiskelOfflineQueue.setOnQueueChange(function (count) {
+        if (offlineQueueBadge) {
+          offlineQueueBadge.textContent = count > 0 ? ('(' + count + ' queued)') : '';
+          offlineQueueBadge.style.display = count > 0 ? 'inline' : 'none';
+        }
+      });
+      SiskelOfflineQueue.initAutoReplay(async function (text) {
+        promptInput.value = text;
+        sendBtn.click();
+      });
+    }
 
     // --- Phase 20: Tap-outside-to-close for modals ---
     document.querySelectorAll('[data-modal-overlay]').forEach((overlay) => {

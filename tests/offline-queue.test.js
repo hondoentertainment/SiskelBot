@@ -99,7 +99,7 @@ globalThis.window = globalThis;
 // Import the module under test (after shims are in place)
 // ---------------------------------------------------------------------------
 
-const { queueMessage, getQueuedMessages, clearMessage, replayQueue, _resetDB } =
+const { queueMessage, getQueuedMessages, clearMessage, replayQueue, purgeExpired, getQueueSize, _resetDB } =
   await import("../client/js/offline-queue.js");
 
 // Reset DB state between tests
@@ -214,4 +214,88 @@ test("window.SiskelOfflineQueue is set", () => {
   assert.equal(typeof globalThis.SiskelOfflineQueue.getQueuedMessages, "function");
   assert.equal(typeof globalThis.SiskelOfflineQueue.clearMessage, "function");
   assert.equal(typeof globalThis.SiskelOfflineQueue.replayQueue, "function");
+});
+
+// ---------------------------------------------------------------------------
+// purgeExpired
+// ---------------------------------------------------------------------------
+
+test("purgeExpired removes expired messages (older than 24h)", async () => {
+  // Queue a message, then manually backdate it
+  const entry = await queueMessage("old-msg");
+  // We need to update the timestamp to make it expired
+  // Since our shim stores by id, we can update via updateMessage
+  const { updateMessage } = await import("../client/js/offline-queue.js");
+  entry.timestamp = Date.now() - (25 * 60 * 60 * 1000); // 25 hours ago
+  await updateMessage(entry);
+
+  await queueMessage("fresh-msg");
+
+  const purged = await purgeExpired();
+  assert.equal(purged, 1);
+
+  const remaining = await getQueuedMessages();
+  assert.equal(remaining.length, 1);
+  assert.equal(remaining[0].text, "fresh-msg");
+});
+
+test("purgeExpired removes messages with maxed retryCount", async () => {
+  const entry = await queueMessage("retried-msg");
+  const { updateMessage } = await import("../client/js/offline-queue.js");
+  entry.retryCount = 5; // MAX_RETRIES
+  await updateMessage(entry);
+
+  const purged = await purgeExpired();
+  assert.equal(purged, 1);
+
+  const remaining = await getQueuedMessages();
+  assert.equal(remaining.length, 0);
+});
+
+test("purgeExpired returns 0 when no messages need purging", async () => {
+  await queueMessage("valid-msg");
+  const purged = await purgeExpired();
+  assert.equal(purged, 0);
+});
+
+// ---------------------------------------------------------------------------
+// getQueueSize
+// ---------------------------------------------------------------------------
+
+test("getQueueSize returns count of pending (non-expired, non-maxed) messages", async () => {
+  await queueMessage("msg1");
+  await queueMessage("msg2");
+  await queueMessage("msg3");
+
+  const size = await getQueueSize();
+  assert.equal(size, 3);
+});
+
+test("getQueueSize excludes expired messages", async () => {
+  const entry = await queueMessage("old");
+  const { updateMessage } = await import("../client/js/offline-queue.js");
+  entry.timestamp = Date.now() - (25 * 60 * 60 * 1000);
+  await updateMessage(entry);
+
+  await queueMessage("fresh");
+
+  const size = await getQueueSize();
+  assert.equal(size, 1);
+});
+
+test("getQueueSize excludes max-retried messages", async () => {
+  const entry = await queueMessage("maxed");
+  const { updateMessage } = await import("../client/js/offline-queue.js");
+  entry.retryCount = 5;
+  await updateMessage(entry);
+
+  await queueMessage("active");
+
+  const size = await getQueueSize();
+  assert.equal(size, 1);
+});
+
+test("getQueueSize returns 0 for empty queue", async () => {
+  const size = await getQueueSize();
+  assert.equal(size, 0);
 });

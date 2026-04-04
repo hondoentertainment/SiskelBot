@@ -1,0 +1,32 @@
+{
+  "name": "siskelbot-client",
+  "version": "1.0.0",
+  "description": "JavaScript/TypeScript client SDK for the SiskelBot API",
+  "type": "module",
+  "main": "siskelbot-client.js",
+  "types": "siskelbot-client.d.ts",
+  "exports": {
+    ".": {
+      "import": "./siskelbot-client.js",
+      "types": "./siskelbot-client.d.ts"
+    }
+  },
+  "files": [
+    "siskelbot-client.js",
+    "siskelbot-client.d.ts",
+    "README.md"
+  ],
+  "keywords": [
+    "siskelbot",
+    "api",
+    "client",
+    "sdk",
+    "openai",
+    "ollama",
+    "vllm"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}

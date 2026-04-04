@@ -16,6 +16,11 @@ export function mountWebhookRoutes(app, deps) {
     listNotifications,
     markNotificationRead,
     markAllNotificationsRead,
+    storageRateLimiter,
+    userAuth,
+    canAccessWorkspace,
+    getWorkspaceMembers,
+    getOnlineUsers,
   } = deps;
 
   apiRoute("get", "/webhooks", ...webhooksHandlers, async (req, res) => {
@@ -118,6 +123,20 @@ export function mountWebhookRoutes(app, deps) {
       const ok = await markNotificationRead(req.params.id, workspace, userId);
       if (!ok) return res.status(404).json({ error: "Notification not found", code: "NOT_FOUND" });
       res.json({ ok: true });
+    } catch (err) {
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  // Workspace presence
+  apiRoute("get", "/workspaces/:id/presence", storageRateLimiter, userAuth, logRequest, async (req, res) => {
+    try {
+      const workspaceId = req.params.id;
+      const access = await canAccessWorkspace(workspaceId, req.userId);
+      const isTeamWorkspace = !!(await getWorkspaceMembers(workspaceId));
+      if (!access.allowed && isTeamWorkspace) return apiError(res, 403, "FORBIDDEN", "Access denied", null);
+      const online = getOnlineUsers(workspaceId);
+      res.json({ online });
     } catch (err) {
       return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
     }

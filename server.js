@@ -6,7 +6,6 @@ import rateLimit from "express-rate-limit";
 import cors from "cors";
 import helmet from "helmet";
 import { randomUUID } from "crypto";
-import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import passport from "passport";
@@ -24,13 +23,11 @@ import {
 } from "./lib/conversation-tree.js";
 import {
   indexDocument,
-  indexDocumentFromBuffer,
   search as knowledgeSearch,
   semanticSearch as knowledgeSemanticSearch,
   list as knowledgeList,
   reindexKnowledgeEmbeddingsInWorkspace,
 } from "./lib/knowledge-store.js";
-import { getWorkspaceChunkingConfig, setWorkspaceChunkingConfig } from "./lib/knowledge-chunking-config.js";
 import { embed, embedBatch, isAvailable as embeddingsAvailable } from "./lib/embeddings.js";
 import { executeStep, appendAuditLog, getRegisteredActions } from "./lib/action-executor.js";
 import { loadPlugins } from "./lib/plugins-loader.js";
@@ -122,21 +119,6 @@ import {
 import compression from "compression";
 import { otelHttpEnrichmentMiddleware } from "./lib/otel-context.js";
 import { exportWorkspaceBundle, deleteWorkspaceForUser } from "./lib/workspace-lifecycle.js";
-import {
-  storeMemory,
-  getMemories,
-  searchMemories,
-  updateMemory as updateAgentMemory,
-  deleteMemory as deleteAgentMemory,
-  getMemoryStats,
-  extractPotentialMemories,
-} from "./lib/agent-memory.js";
-import {
-  exportWorkspace as exportWorkspaceMigration,
-  importWorkspace as importWorkspaceMigration,
-  validateBundle,
-  diffWorkspaces,
-} from "./lib/workspace-migration.js";
 import { idempotencyLookup, idempotencyStore } from "./lib/idempotency.js";
 import { archiveExecutionAuditToS3, getAuditArchiveStatus } from "./lib/audit-s3-archive.js";
 import { fetchTextFromAllowedUrl } from "./lib/knowledge-url-fetch.js";
@@ -151,50 +133,16 @@ import {
   autoRecordEnabled,
 } from "./lib/trace-recorder.js";
 import { replayTrace, replayAll } from "./lib/trace-replay.js";
-import { workspaceRateLimiter } from "./lib/workspace-rate-limit.js";
 import { getEventsSince } from "./lib/realtime-replay.js";
-import { versionDetection } from "./lib/api-versioning.js";
-import {
-  recordLatency as obsRecordLatency,
-  getMetricsSummary,
-  getLatencyPercentiles as obsGetLatencyPercentiles,
-  getErrorRates as obsGetErrorRates,
-  getAgentStats as obsGetAgentStats,
-  getTokenUsageByWorkspace as obsGetTokenUsageByWorkspace,
-} from "./lib/observability.js";
-import {
-  PERMISSIONS as RBAC_PERMISSIONS,
-  BUILT_IN_ROLES,
-  createCustomRole,
-  updateCustomRole,
-  deleteCustomRole,
-  listRoles as listRbacRoles,
-  assignRole,
-  getUserPermissions,
-  requirePermission,
-} from "./lib/rbac.js";
-import {
-  getAvailableRegions,
-  setDataResidency,
-  getDataResidency,
-  detectPII,
-  redactPII,
-  setRetentionPolicy,
-  getRetentionPolicy,
-  generateComplianceReport,
-  scanTextForPII,
-} from "./lib/compliance.js";
 import {
   registerPeer,
   removePeer,
   listPeers,
-  healthCheckPeers,
   discoverFederatedWorkspaces,
   syncWorkspaceMetadata,
   handleDiscoverRequest,
   getInstanceInfo,
   federationAuth,
-  signPayload,
 } from "./lib/federation.js";
 
 import {
@@ -207,6 +155,8 @@ import {
   createWorkspaceFromTemplate,
 } from "./lib/workspace-templates.js";
 
+import { mountAllRoutes } from "./routes/index.js";
+import { errorMiddleware, errorHandler } from "./lib/error-middleware.js";
 // --- Route modules (P0.1) ---
 import { mountAuthRoutes } from "./routes/auth.js";
 import { mountChatRoutes } from "./routes/chat.js";
@@ -243,6 +193,7 @@ const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.API_KEY; // optional; protects /v1/chat/completions when set
+const API_KEY_PREVIOUS = process.env.API_KEY_PREVIOUS || null; // rotation: previous key accepted during rollover
 const API_KEY_SCOPES = (process.env.API_KEY_SCOPES || "read,write").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
 const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS) || 60_000;
 const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX) || 60;
@@ -305,7 +256,6 @@ function validateStartupConfig() {
     console.error("[startup] Required env vars missing:", requiredMissing.join("; "));
     process.exit(1);
   }
-  // Optional vars - log warnings
   if (isOAuthConfigured() && !process.env.SESSION_SECRET) {
     console.warn("[startup] OAuth configured but SESSION_SECRET not set.");
   }
@@ -401,7 +351,6 @@ const corsOpts = CORS_ORIGINS
     }
   : { credentials: true, origin: true };
 app.use(cors(corsOpts));
-// Phase 44: Response compression (JSON APIs; exclude streaming)
 const ENABLE_COMPRESSION = process.env.ENABLE_COMPRESSION !== "0" && (IS_PRODUCTION || process.env.ENABLE_COMPRESSION === "1");
 if (ENABLE_COMPRESSION) {
   app.use(
@@ -410,18 +359,15 @@ if (ENABLE_COMPRESSION) {
     })
   );
 }
-app.use(express.json());
+app.use(express.json({
+  verify: (req, _res, buf) => {
+    // Store raw body for webhook signature verification (Slack, Discord)
+    if (req.url?.includes("/integrations/slack/") || req.url?.includes("/integrations/discord/")) {
+      req.rawBody = buf.toString("utf8");
+    }
+  },
+}));
 app.use(otelHttpEnrichmentMiddleware());
-app.use(versionDetection());
-
-// Observability: record request latency for all requests (lightweight, after response)
-app.use((req, res, next) => {
-  const start = Date.now();
-  res.on("finish", () => {
-    obsRecordLatency(req.route?.path || req.path, req.method, Date.now() - start, res.statusCode);
-  });
-  next();
-});
 
 // Phase 106: Desktop model manager routes (Ollama management)
 if (process.env.ELECTRON_DESKTOP === "1") {
@@ -442,7 +388,6 @@ app.use((req, res, next) => {
 });
 
 // Phase 34: Security headers (configurable; disabled for dev if DISABLE_SECURITY_HEADERS=1)
-// Phase 35: CSP in production when ENABLE_CSP=1; report-only by default to avoid breaking SPA
 const DISABLE_SECURITY_HEADERS = process.env.DISABLE_SECURITY_HEADERS === "1";
 const ENABLE_CSP = process.env.ENABLE_CSP === "1" && IS_PRODUCTION;
 if (!DISABLE_SECURITY_HEADERS) {
@@ -468,17 +413,21 @@ if (!DISABLE_SECURITY_HEADERS) {
   app.use(helmet(helmetOpts));
 }
 
-// Phase 19: Session middleware (must run before auth; required when OAuth configured)
+// Phase 19: Session middleware
+// Secret rotation: when SESSION_SECRET_PREVIOUS is set, express-session receives an
+// array of secrets — it signs with the first and validates against all.
 const SESSION_SECRET =
   process.env.SESSION_SECRET ||
   (IS_PRODUCTION ? null : "dev-secret-change-in-production");
+const SESSION_SECRET_PREVIOUS = process.env.SESSION_SECRET_PREVIOUS?.trim() || null;
+const sessionSecretValue = SESSION_SECRET_PREVIOUS ? [SESSION_SECRET, SESSION_SECRET_PREVIOUS] : SESSION_SECRET;
 if (isOAuthConfigured() && !SESSION_SECRET) {
   console.warn("[auth] OAuth configured but SESSION_SECRET not set. OAuth login will not persist. Set SESSION_SECRET in production.");
 }
 if (SESSION_SECRET) {
   app.use(
     session({
-      secret: SESSION_SECRET,
+      secret: sessionSecretValue,
       resave: false,
       saveUninitialized: false,
       cookie: {
@@ -505,9 +454,7 @@ if (needsPassport) {
 // Phase 68: Warm Postgres-backed API key cache before isAuthConfigured / rate limiters.
 await warmApiKeysCache().catch((e) => console.warn("[startup] api-keys warm:", e.message));
 
-// Rate limit for /v1/chat/completions
-// Phase 21: When auth configured, rate limit by userId; else by IP
-// Phase 30: When RATE_LIMIT_PER_KEY set, additional per-key limit for API key requests
+// Rate limiters
 const perKeyChatRateLimiter =
   RATE_LIMIT_PER_KEY != null
     ? rateLimit({
@@ -539,7 +486,6 @@ const chatRateLimiter = rateLimit({
   },
 });
 
-// Rate limit for GitHub/Vercel proxy routes (30/min per IP)
 const integrationRateLimiter = rateLimit({
   windowMs: 60_000,
   max: 30,
@@ -547,7 +493,6 @@ const integrationRateLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Rate limit for knowledge indexing (10/min per IP)
 const knowledgeIndexRateLimiter = rateLimit({
   windowMs: 60_000,
   max: Number(process.env.KNOWLEDGE_INDEX_RATE_LIMIT_MAX) || 10,
@@ -558,7 +503,6 @@ const knowledgeIndexRateLimiter = rateLimit({
   },
 });
 
-// Phase 28: Rate limit for embeddings (30/min per IP, same or stricter than knowledge indexing)
 const embeddingsRateLimiter = rateLimit({
   windowMs: 60_000,
   max: Number(process.env.EMBEDDINGS_RATE_LIMIT_MAX) || 30,
@@ -569,7 +513,6 @@ const embeddingsRateLimiter = rateLimit({
   },
 });
 
-// Rate limit for read/search operations (configurable via READ_RATE_LIMIT_MAX)
 const readRateLimiter = rateLimit({
   windowMs: 60_000,
   max: Number(process.env.READ_RATE_LIMIT_MAX) || 60,
@@ -578,6 +521,13 @@ const readRateLimiter = rateLimit({
   handler: (req, res) => {
     apiError(res, 429, "RATE_LIMITED", "Too many read requests", "Reduce request rate or increase READ_RATE_LIMIT_MAX.");
   },
+});
+
+const storageRateLimiter = rateLimit({
+  windowMs: 60_000,
+  max: Number(process.env.STORAGE_RATE_LIMIT_MAX) || 120,
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 // Structured error response: { error, code, hint }
@@ -589,16 +539,17 @@ function apiError(res, status, code, message, hint) {
   });
 }
 
-// Phase 23: API versioning - deprecation header for legacy /api/* (non-v1, non-docs)
+// Phase 23: API versioning - deprecation header for legacy /api/*
 function deprecationApi(req, res, next) {
   res.setHeader("X-API-Deprecated", "use /api/v1/");
+  res.setHeader("Sunset", "2027-01-01T00:00:00Z");
+  res.setHeader("Deprecation", "true");
   next();
 }
 
-// Phase 23: Register route at /api/v1/path (stable), /api/v2/path (v2), and /api/path (legacy with deprecation)
+// Phase 23: Register route at both /api/v1/path (stable) and /api/path (legacy with deprecation)
 function apiRoute(method, path, ...handlers) {
   app[method](`/api/v1${path}`, ...handlers);
-  app[method](`/api/v2${path}`, ...handlers);
   app[method](`/api${path}`, deprecationApi, ...handlers);
 }
 
@@ -612,16 +563,22 @@ async function setQuotaHeaders(res, workspace, userId) {
   }
 }
 
-// Optional API key auth for routes that accept deployment key only (schedules, tasks/plan).
-// Phase 30: When API_KEY matches, sets req.apiKeyScopes (from API_KEY_SCOPES), req.apiKeyId="deployment"
+// Auth middleware
+// Secret rotation: accepts API_KEY_PREVIOUS during key rollover.
 function apiKeyAuth(req, res, next) {
   if (!API_KEY) return next();
   const auth = req.headers.authorization;
   const bearer = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : null;
   const xKey = req.headers["x-api-key"];
   const key = bearer || xKey;
-  if (!key || key !== API_KEY) {
+  const matchesCurrent = key && key === API_KEY;
+  const matchesPrevious = !matchesCurrent && API_KEY_PREVIOUS && key === API_KEY_PREVIOUS;
+  if (!key || (!matchesCurrent && !matchesPrevious)) {
     return apiError(res, 401, "AUTH_REQUIRED", "Unauthorized", "Use Authorization: Bearer <key> or x-api-key header.");
+  }
+  if (matchesPrevious) {
+    res.setHeader("X-API-Key-Deprecated", "true");
+    console.warn("[auth] Request authenticated with API_KEY_PREVIOUS. Rotate clients to new key.");
   }
   req.authenticatedViaDeploymentKey = true;
   req.apiKeyScopes = API_KEY_SCOPES.length ? API_KEY_SCOPES : ["read", "write"];
@@ -629,7 +586,6 @@ function apiKeyAuth(req, res, next) {
   next();
 }
 
-// Phase 30: Combined auth for chat - accepts API_KEY (deployment) or user key. Pass to userAuth for user key validation.
 function chatAuth(req, res, next) {
   if (!API_KEY) return userAuth(req, res, next);
   const bearer = req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7).trim() : null;
@@ -637,31 +593,38 @@ function chatAuth(req, res, next) {
   const xUserKey = req.headers["x-user-api-key"];
   const key = xApiKey || xUserKey || bearer;
   if (!key) return apiError(res, 401, "AUTH_REQUIRED", "Unauthorized", "Use Authorization: Bearer <key>, x-api-key, or x-user-api-key header.");
-  if (key === API_KEY) {
+  if (key === API_KEY || (API_KEY_PREVIOUS && key === API_KEY_PREVIOUS)) {
     req.authenticatedViaDeploymentKey = true;
     req.apiKeyScopes = API_KEY_SCOPES.length ? API_KEY_SCOPES : ["read", "write"];
     req.apiKeyId = "deployment";
     req.userId = "anonymous";
+    if (API_KEY_PREVIOUS && key === API_KEY_PREVIOUS) {
+      res.setHeader("X-API-Key-Deprecated", "true");
+      console.warn("[auth] Request authenticated with API_KEY_PREVIOUS. Rotate clients to new key.");
+    }
     return next();
   }
   return userAuth(req, res, next);
 }
 
-// Phase 32: Eval auth - ADMIN_API_KEY or API_KEY
 function evalAuth(req, res, next) {
   const adminKey = process.env.ADMIN_API_KEY;
   const apiKey = API_KEY;
-  if (!adminKey && !apiKey) return next(); // local dev: no keys = allow
+  if (!adminKey && !apiKey) return next();
   const bearer = req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7).trim() : null;
   const xKey = req.headers["x-api-key"] || req.headers["x-admin-api-key"];
   const key = bearer || xKey;
   if (!key) return apiError(res, 401, "AUTH_REQUIRED", "Eval endpoints require ADMIN_API_KEY or API_KEY", "Use Authorization: Bearer <key> or x-api-key header.");
+  const adminKeyPrev = process.env.ADMIN_API_KEY_PREVIOUS;
+  const apiKeyPrev = API_KEY_PREVIOUS;
   if ((adminKey && key === adminKey) || (apiKey && key === apiKey)) return next();
+  if ((adminKeyPrev && key === adminKeyPrev) || (apiKeyPrev && key === apiKeyPrev)) {
+    console.warn("[auth] Eval request authenticated with previous key. Rotate clients to new key.");
+    return next();
+  }
   return apiError(res, 401, "AUTH_REQUIRED", "Invalid key", "Use ADMIN_API_KEY or API_KEY.");
 }
 
-// Phase 24: Backup admin auth - ADMIN_API_KEY, BACKUP_ADMIN_KEY, or userId in QUOTA_ADMIN_USER_IDS
-// Runs userAuth internally when needed for quota-admin path
 function backupAdminAuth(req, res, next) {
   const adminKey = process.env.ADMIN_API_KEY || process.env.BACKUP_ADMIN_KEY;
   const bearer = req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7).trim() : null;
@@ -669,15 +632,14 @@ function backupAdminAuth(req, res, next) {
   const key = bearer || xKey;
   if (adminKey && key && key === adminKey) return next();
   if (adminKey && !key) return apiError(res, 403, "FORBIDDEN", "Backup requires admin", "Use ADMIN_API_KEY, BACKUP_ADMIN_KEY, or be in QUOTA_ADMIN_USER_IDS.");
-  if (!isAuthConfigured() && !adminKey) return next(); // No auth, no admin key: allow (local dev)
+  if (!isAuthConfigured() && !adminKey) return next();
   userAuth(req, res, () => {
     if (req.userId && isQuotaAdmin(req.userId)) return next();
     return apiError(res, 403, "FORBIDDEN", "Backup requires admin", "Use ADMIN_API_KEY, BACKUP_ADMIN_KEY, or be in QUOTA_ADMIN_USER_IDS.");
   });
 }
 
-// Phase 34: Structured request logging (X-Request-Id from middleware; JSON in production)
-// Phase 36: Log sanitization - never log secrets; path/headers sanitized
+// Request logging middleware
 function logRequest(req, res, next) {
   const requestId = req.requestId || randomUUID();
   const start = Date.now();
@@ -699,34 +661,21 @@ function logRequest(req, res, next) {
   next();
 }
 
-// Config endpoint for client (backend, model presets)
-// Phase 7: Monitoring config (computed before /config handler)
+// Additional config constants needed by route modules
 const ENABLE_MONITORING = process.env.ENABLE_MONITORING === "1";
 const MONITORING_INTERVAL_MS = Math.max(60_000, Number(process.env.MONITORING_INTERVAL_MS) || 300_000);
 const MONITORING_REPO = process.env.MONITORING_REPO?.trim() || null;
 const GITHUB_API_BASE = process.env.GITHUB_API_BASE || "https://api.github.com";
 const VERCEL_API_BASE = process.env.VERCEL_API_BASE || "https://api.vercel.com";
-
-function isMonitoringEnabled() {
-  return ENABLE_MONITORING && (process.env.GITHUB_TOKEN || process.env.VERCEL_TOKEN);
-}
-
-// GET /config — mounted via routes/health.js
-
-// Phase 19: OAuth routes — mounted via routes/auth.js
-function oauthCallback(req, res) {
-  if (!req.session) return res.redirect("/?auth_error=session");
-  req.session.userId = req.user?.userId;
-  res.redirect("/");
-}
-
-// Phase 13: Usage tracking env
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+const VERCEL_TOKEN = process.env.VERCEL_TOKEN;
 const USAGE_ALERT_TOKENS = process.env.USAGE_ALERT_TOKENS ? Number(process.env.USAGE_ALERT_TOKENS) : null;
-
-// Phase 15: Agent mode (iteration ceiling: MAX_AGENT_ITERATIONS env; Phase 92: optional agentOptions.maxIterations)
 const ALLOW_RECIPE_STEP_EXECUTION = process.env.ALLOW_RECIPE_STEP_EXECUTION === "1";
 const ENABLE_AGENT_SWARM = process.env.ENABLE_AGENT_SWARM === "1";
+const sanitizeWorkspace = storage.sanitizeWorkspace;
 
+function isMonitoringEnabled() {
+  return ENABLE_MONITORING && (GITHUB_TOKEN || VERCEL_TOKEN);
 // --- Task plan helpers (used by routes/chat.js) ---
 
 const TASK_PLAN_SYSTEM_PROMPT = `You are a task planning assistant. Given the user's messages, produce a structured task plan as valid JSON inside a fenced code block.
@@ -773,58 +722,48 @@ function validateTaskPlan(plan) {
   return null;
 }
 
-const taskPlanRateLimiter = rateLimit({ windowMs: RATE_LIMIT_WINDOW_MS, max: RATE_LIMIT_MAX, standardHeaders: true, legacyHeaders: false });
+// Rate limiters for route modules
+const pluginsActionsRateLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
-// --- Health check helpers ---
-const HEALTH_CACHE_TTL_MS = 5000;
-let _healthCache = null;
+const marketplaceRateLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
-function getHealthUrl(backend) {
-  switch (backend) {
-    case "ollama": return `${OLLAMA_URL}/api/tags`;
-    case "vllm": return `${VLLM_URL}/v1/models`;
-    case "openai": return "https://api.openai.com/v1/models";
-    default: return null;
-  }
-}
+const webhooksRateLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+const webhooksHandlers = [webhooksRateLimiter, storageRateLimiter, userAuth, logRequest];
 
-async function probeBackend(name, url, headers = {}) {
-  const start = Date.now();
-  try { const r = await fetch(url, { signal: AbortSignal.timeout(3000), headers }); return { reachable: r.ok, latencyMs: Date.now() - start, error: r.ok ? undefined : `HTTP ${r.status}` }; }
-  catch (e) { return { reachable: false, latencyMs: Date.now() - start, error: e.message }; }
-}
+const executeStepRateLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    apiError(res, 429, "RATE_LIMITED", "Too many execute requests", "Wait before retrying.");
+  },
+});
 
-async function runHealthChecks() {
-  const backends = {};
-  const checks = [];
-  const ollamaUrl = getHealthUrl("ollama");
-  if (ollamaUrl) checks.push(probeBackend("ollama", ollamaUrl).then((r) => { backends.ollama = r; }));
-  const vllmUrl = getHealthUrl("vllm");
-  if (vllmUrl) checks.push(probeBackend("vllm", vllmUrl).then((r) => { backends.vllm = r; }));
-  if (OPENAI_API_KEY) checks.push(probeBackend("openai", "https://api.openai.com/v1/models", { Authorization: `Bearer ${OPENAI_API_KEY}` }).then((r) => { backends.openai = r; }));
-  await Promise.all(checks);
-  const active = backends[BACKEND];
-  return { backend: BACKEND, reachable: active?.reachable ?? false, latencyMs: active?.latencyMs ?? null, lastChecked: new Date().toISOString(), backends };
-}
-
-// --- Metrics auth ---
-const METRICS_PATH = (process.env.METRICS_PATH || "/metrics").replace(/^\/+/, "/").replace(/\/+$/, "") || "/metrics";
-const METRICS_PROTECTED = process.env.METRICS_PROTECTED === "1";
-const METRICS_SECRET = process.env.METRICS_SECRET?.trim() || null;
-function metricsAuthFn(req, res, next) {
-  if (!METRICS_PROTECTED) return next();
-  const adminKey = process.env.ADMIN_API_KEY;
-  const secret = METRICS_SECRET;
-  const bearer = req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7).trim() : null;
-  const querySecret = req.query?.secret;
-  const xKey = req.headers["x-admin-api-key"];
-  const key = bearer || xKey;
-  if (secret && (querySecret === secret || bearer === secret)) return next();
-  if (adminKey && key && key === adminKey) return next();
-  if (secret || adminKey) return res.status(401).json({ error: "Metrics require authentication", code: "AUTH_REQUIRED", hint: "Use ?secret=<METRICS_SECRET> or Authorization: Bearer <ADMIN_API_KEY>" });
-  next();
-}
-
+const evalRateLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    apiError(res, 429, "RATE_LIMITED", "Too many eval runs", "Limit: 5 runs per minute. Wait before retrying.");
+  },
+});
 // --- Integration helpers ---
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const VERCEL_TOKEN = process.env.VERCEL_TOKEN;
@@ -882,17 +821,10 @@ if (isMonitoringEnabled()) {
   }, MONITORING_INTERVAL_MS);
 }
 
-// --- Rate limiters shared by route modules ---
-const storageRateLimiter = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false });
-const KNOWLEDGE_MAX_DOC_BYTES = Number(process.env.KNOWLEDGE_MAX_DOC_BYTES) || 1024 * 1024;
-const sanitizeWorkspace = storage.sanitizeWorkspace;
-const multimodalRateLimiter = rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false });
-const pluginsActionsRateLimiter = rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false });
-const marketplaceRateLimiter = rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false });
-const webhooksRateLimiter = rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false });
-const webhooksHandlers = [webhooksRateLimiter, storageRateLimiter, userAuth, logRequest];
-const executeStepRateLimiter = rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false, handler: (req, res) => { apiError(res, 429, "RATE_LIMITED", "Too many execute requests", "Wait before retrying."); } });
-const evalRateLimiter = rateLimit({ windowMs: 60_000, max: 5, standardHeaders: true, legacyHeaders: false, handler: (req, res) => { apiError(res, 429, "RATE_LIMITED", "Too many eval runs", "Limit: 5 runs per minute."); } });
+// Automation recipe validation helper
+const AUTOMATION_MAX_RECIPE_BYTES = 64 * 1024;
+const AUTOMATION_MAX_NAME_LENGTH = 128;
+const AUTOMATION_MAX_STEP_ACTION_LENGTH = 512;
 
 // GitHub/Vercel proxy routes live in routes/integrations.js (mountIntegrationRoutes).
 
@@ -908,6 +840,330 @@ function validateAutomationRecipe(recipe) {
   const errors = [];
   if (!recipe || typeof recipe !== "object") {
     return { valid: false, errors: ["Recipe must be an object"] };
+  }
+  if (typeof recipe.name !== "string" || !recipe.name.trim()) {
+    errors.push("name: required non-empty string");
+  } else if (recipe.name.length > AUTOMATION_MAX_NAME_LENGTH) {
+    errors.push(`name: max ${AUTOMATION_MAX_NAME_LENGTH} chars`);
+  }
+  if (recipe.trigger !== undefined && typeof recipe.trigger !== "string") {
+    errors.push("trigger: must be string");
+  }
+  if (!Array.isArray(recipe.steps)) {
+    errors.push("steps: required array");
+  } else {
+    recipe.steps.forEach((s, i) => {
+      if (!s || typeof s !== "object") {
+        errors.push(`steps[${i}]: must be object`);
+      } else if (!s.action || typeof s.action !== "string" || !String(s.action).trim()) {
+        errors.push(`steps[${i}]: action required non-empty string`);
+      } else if (String(s.action).length > AUTOMATION_MAX_STEP_ACTION_LENGTH) {
+        errors.push(`steps[${i}]: action max ${AUTOMATION_MAX_STEP_ACTION_LENGTH} chars`);
+      }
+      if (s.payload !== undefined && (s.payload === null || Array.isArray(s.payload) || typeof s.payload !== "object")) {
+        errors.push(`steps[${i}]: payload must be object`);
+      }
+    });
+  }
+  if (recipe.inputs !== undefined && (recipe.inputs === null || Array.isArray(recipe.inputs) || typeof recipe.inputs !== "object")) {
+    errors.push("inputs: must be object");
+  }
+  if (recipe.outputs !== undefined && (recipe.outputs === null || Array.isArray(recipe.outputs) || typeof recipe.outputs !== "object")) {
+    errors.push("outputs: must be object");
+  }
+  try {
+    const bytes = new TextEncoder().encode(JSON.stringify(recipe)).length;
+    if (bytes > AUTOMATION_MAX_RECIPE_BYTES) {
+      errors.push(`Recipe exceeds max size (${AUTOMATION_MAX_RECIPE_BYTES} bytes)`);
+    }
+  } catch (_) {
+    errors.push("Recipe serialization failed");
+  }
+  return { valid: errors.length === 0, errors };
+}
+
+// ─── Mount all route modules ────────────────────────────────────────────────
+
+const deps = {
+  // Helpers
+  apiError,
+  apiRoute,
+  buildProxyConfig,
+  backendFetch,
+  setQuotaHeaders,
+  sanitizeWorkspace,
+  __dirname,
+
+  // Auth middleware
+  chatAuth,
+  apiKeyAuth,
+  userAuth,
+  adminAuth,
+  evalAuth,
+  backupAdminAuth,
+  requireScope,
+  internalAuth,
+
+  // Rate limiters
+  chatRateLimiter,
+  perKeyChatRateLimiter,
+  integrationRateLimiter,
+  knowledgeIndexRateLimiter,
+  embeddingsRateLimiter,
+  storageRateLimiter,
+
+  // Logging
+  logRequest,
+
+  // OAuth / SSO
+  oauthProviders,
+  ssoProviders,
+
+  // Config constants
+  BACKEND,
+  IS_PRODUCTION,
+  MODEL_PRESETS,
+  VLLM_URL,
+  OLLAMA_URL,
+  OPENAI_API_KEY,
+  API_KEY,
+  API_KEY_PREVIOUS,
+  AB_ROUTING_ENABLED,
+  MODEL_ROUTING_CONFIG,
+  STREAM_AGENT_FINAL,
+  AGENT_STREAM_CHUNK_SIZE,
+  STREAM_SWARM_SYNTH,
+  MAX_AGENT_TOOL_CALLS_ENV,
+  AGENT_MAX_WALL_MS_ENV,
+  USAGE_ALERT_TOKENS,
+  ENABLE_AGENT_SWARM,
+  ALLOW_RECIPE_STEP_EXECUTION,
+  RATE_LIMIT_WINDOW_MS,
+  RATE_LIMIT_MAX,
+  GITHUB_TOKEN,
+  VERCEL_TOKEN,
+  GITHUB_API_BASE,
+  VERCEL_API_BASE,
+  MONITORING_REPO,
+  MONITORING_INTERVAL_MS,
+
+  // Lib: storage
+  storage,
+  scheduleStore,
+
+  // Lib: usage / analytics
+  recordUsage,
+  getSummary,
+  getTotalTokensInWindow,
+  getRecordsForPeriod,
+  estimate,
+  getDashboard,
+  exportToCsv,
+  exportToJson,
+  recordChatRequest,
+  recordTokensUsed,
+
+  // Lib: quota
+  isQuotaConfigured,
+  checkQuota,
+  getWorkspaceQuota,
+  getWorkspaceTokensUsed,
+  setWorkspaceQuotaOverride,
+  getQuotaOverrides,
+
+  // Lib: agent / swarm
+  getToolsSchema,
+  intersectClientToolsWithAllowlist,
+  getAgentToolsAllowlistNames,
+  resolveAgentMaxIterations,
+  runAgentLoop,
+  runSwarm,
+  runSwarmLegacy,
+  getSwarmSelectableSpecialistNames,
+  getSwarmSpecialistsAllowlistNames,
+  intersectSwarmSpecialistsWithAllowlist,
+  pipeLlmChatStreamToSse,
+
+  // Lib: knowledge / embeddings
+  indexDocument,
+  knowledgeSearch,
+  knowledgeSemanticSearch,
+  knowledgeList,
+  reindexKnowledgeEmbeddingsInWorkspace,
+  embed,
+  embedBatch,
+  embeddingsAvailable,
+  fetchTextFromAllowedUrl,
+
+  // Lib: teams
+  canAccessWorkspace,
+  resolveStorageUserId,
+  createInviteCode,
+  joinByInviteCode,
+  getWorkspaceMembers,
+  getWorkspaceActivity,
+  logActivity,
+
+  // Lib: workspace templates
+  createTemplate,
+  listTemplates,
+  getTemplate,
+  updateTemplate,
+  deleteTemplate,
+  applyTemplate,
+
+  // Lib: workspace lifecycle
+  exportWorkspaceBundle,
+  deleteWorkspaceForUser,
+
+  // Lib: workspace agent settings
+  loadWorkspaceAgentSettings,
+  saveWorkspaceAgentSettings,
+  getWorkspaceAgentAccess,
+  canEditWorkspaceAgentSettings,
+
+  // Lib: idempotency
+  idempotencyLookup,
+  idempotencyStore,
+
+  // Lib: scheduler
+  schedulerRefresh,
+  runRecipeNow,
+  runDueJobsVercel,
+
+  // Lib: webhooks / notifications / realtime
+  emitEvent,
+  listWebhooks,
+  addWebhook,
+  removeWebhook,
+  validateWebhookUrl,
+  listNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
+  createToken,
+  getOnlineUsers,
+
+  // Lib: admin
+  listAllUsers,
+  listAllWorkspaces,
+  getRecentAuditLog,
+  listKeysForAdmin,
+  addKey,
+  revokeKey,
+
+  // Lib: audit
+  archiveExecutionAuditToS3,
+  getAuditArchiveStatus,
+  AuditLifecycle,
+  queryAudit,
+  exportAudit,
+
+  // Lib: routing
+  selectBackend,
+  logRouting,
+  getRoutingStats,
+
+  // Lib: regions / replication
+  getRegionHealth,
+  getLeaderElection,
+  getReplicationManager,
+
+  // Lib: metrics
+  metricsEnabled,
+  renderPrometheus,
+
+  // Lib: docs
+  openApiSpec,
+
+  // Lib: monitoring
+  isMonitoringEnabled,
+
+  // Lib: error reporting
+  reportError,
+
+  // Lib: trace recorder
+  recordTrace,
+  autoRecordEnabled,
+
+  // Lib: auth config
+  isAuthConfigured,
+  toolValidationEnabled,
+  stagnationDetectionEnabled,
+  trajectoryApiEnabled,
+  defaultAgentSystemConfigured,
+
+  // Lib: backup
+  createBackup,
+  listBackups,
+  restoreBackup,
+
+  // Lib: conversations
+  branchConversation,
+  getConversationTree,
+  listConversationBranches,
+  getConversationBranch,
+  deleteConversationBranch,
+
+  // Lib: plugins
+  getRegisteredActions,
+  listJsPlugins,
+  execJsPlugin,
+  marketplaceListAvailable,
+  marketplaceRegistry,
+  marketplaceInstallPack,
+  marketplaceUninstallPack,
+  marketplaceListInstalled,
+  join,
+
+  // Lib: execute / automations
+  executeStep,
+  appendAuditLog,
+
+  // Lib: eval / trajectory / traces
+  loadTrajectory,
+  listTrajectories,
+  listRecordedTraces,
+  getRecordedTrace,
+  replayTrace,
+  deleteRecordedTrace,
+  listEvalSets,
+  loadEvalSet,
+  runEvalSet,
+
+  // Lib: realtime replay
+  getEventsSince,
+
+  // Lib: federation
+  registerPeer,
+  removePeer,
+  listPeers,
+  discoverFederatedWorkspaces,
+  syncWorkspaceMetadata,
+  handleDiscoverRequest,
+  getInstanceInfo,
+  federationAuth,
+
+  // Lib: rateLimit factory (for route modules that create their own limiters)
+  rateLimit,
+
+  // Route-specific rate limiters and helpers
+  pluginsActionsRateLimiter,
+  marketplaceRateLimiter,
+  webhooksHandlers,
+  executeStepRateLimiter,
+  evalRateLimiter,
+  validateAutomationRecipe,
+};
+
+mountAllRoutes(app, deps);
+
+// All routes are now in route modules under routes/
+
+// Static file serving
+const STATIC_CACHE_MAX_AGE_MS =
+  process.env.STATIC_CACHE_MAX_AGE === "0"
+    ? 0
+    : Number(process.env.STATIC_CACHE_MAX_AGE_MS) || (IS_PRODUCTION ? 86_400_000 : 0);
   }
   if (typeof recipe.name !== "string" || !recipe.name.trim()) {
     errors.push("name: required non-empty string");
@@ -1148,12 +1404,16 @@ app.use(
     etag: true,
     setHeaders(res, filePath) {
       const norm = filePath.replace(/\\/g, "/");
-      if (/(^|\/)index\.html$/i.test(norm) || /(^|\/)admin\.html$/i.test(norm) || /(^|\/)eval\.html$/i.test(norm) || /(^|\/)observability\.html$/i.test(norm)) {
+      if (/(^|\/)index\.html$/i.test(norm) || /(^|\/)admin\.html$/i.test(norm) || /(^|\/)eval\.html$/i.test(norm) || /(^|\/)shared\.html$/i.test(norm)) {
         res.setHeader("Cache-Control", "no-store");
       }
     },
   }),
 );
+
+// Error middleware (after all routes and static files)
+app.use(errorMiddleware);
+app.use(errorHandler);
 
 // Phase 34: Graceful shutdown (SIGTERM, SIGINT). Vercel: not applicable.
 const SHUTDOWN_TIMEOUT_MS = Number(process.env.SHUTDOWN_TIMEOUT_MS) || 10_000;

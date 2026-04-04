@@ -31,3 +31,6 @@ vendor/node-extract/
 
 # Coverage reports
 coverage/
+
+# Load test results
+load-test-results.json
