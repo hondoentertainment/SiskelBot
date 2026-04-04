@@ -1,4 +1,5 @@
 import express from "express";
+import { runStartupChecks, getCachedResults } from "../lib/startup-checks.js";
 
 export default function mountHealthRoutes(app, deps) {
   const {
@@ -127,6 +128,20 @@ export default function mountHealthRoutes(app, deps) {
       res.send(renderPrometheus());
     });
   }
+
+  // Integration health check
+  app.get("/health/integrations", async (req, res) => {
+    const cached = getCachedResults();
+    if (cached) {
+      return res.json(cached);
+    }
+    try {
+      const results = await runStartupChecks();
+      return res.json(results);
+    } catch (err) {
+      return res.status(503).json({ error: "Integration check failed", message: err.message });
+    }
+  });
 
   // Liveness probe
   app.get("/health/live", (req, res) => {

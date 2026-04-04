@@ -143,6 +143,7 @@ import {
 
 import { mountAllRoutes } from "./routes/index.js";
 import { errorMiddleware, errorHandler } from "./lib/error-middleware.js";
+import { runStartupChecks } from "./lib/startup-checks.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -998,6 +999,9 @@ const deps = {
 };
 
 mountAllRoutes(app, deps);
+
+console.log("[startup] Running integration checks...");
+await runStartupChecks().catch(e => console.warn("[startup] Check failed:", e.message));
 
 // All routes are now in route modules under routes/
 

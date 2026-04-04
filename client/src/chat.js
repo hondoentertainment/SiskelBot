@@ -1937,6 +1937,7 @@
     });
     if (scheduleCancel) scheduleCancel.addEventListener('click', () => { scheduleModal.style.display = 'none'; });
 
+    const recipesToggle = document.getElementById('recipes-toggle');
     if (recipesToggle) recipesToggle.addEventListener('toggle', () => { if (recipesToggle.open) renderScheduledRecipesList(); });
 
     // Phase 17: Fetch available actions for recipe steps dropdown
@@ -2507,7 +2508,7 @@
       saveConversations(trimmed);
     }
 
-    function switchToConversation(id) {
+    let switchToConversation = function switchToConversation(id) {
       saveCurrentToConversations();
       const list = loadConversations();
       const conv = list.find(c => c && String(c.id) === String(id));
@@ -3173,6 +3174,12 @@
       return lines.join('\n');
     }
 
+    function getAllowRecipeExecution() {
+      try {
+        return localStorage.getItem(RECIPE_EXECUTION_STORAGE_KEY) === '1';
+      } catch (_) { return false; }
+    }
+
     function renderTaskPlanCard(plan, raw) {
       const card = document.createElement('div');
       card.className = 'task-plan-card';
@@ -3199,11 +3206,6 @@
           setTimeout(clearNotice, 2000);
         }).catch(() => showNotice('Failed to copy', 'error', false));
       };
-      function getAllowRecipeExecution() {
-        try {
-          return localStorage.getItem(RECIPE_EXECUTION_STORAGE_KEY) === '1';
-        } catch (_) { return false; }
-      }
 
       const doExecute = async () => {
         const allowExecution = getAllowRecipeExecution();
