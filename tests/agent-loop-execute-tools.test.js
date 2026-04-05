@@ -69,6 +69,7 @@ test("executeAgentToolBatch returns hitlPause for execute_step when HITL env set
     assert.ok(out.hitlPause);
     assert.ok(out.hitlPause.token.length > 16);
     assert.equal(out.results.length, 0);
+    assert.equal(out.hadToolExecutionFailure, false);
   } finally {
     if (prev === undefined) delete process.env.AGENT_EXECUTE_STEP_HITL;
     else process.env.AGENT_EXECUTE_STEP_HITL = prev;

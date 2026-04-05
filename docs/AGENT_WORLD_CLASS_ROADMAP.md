@@ -34,7 +34,7 @@ These capabilities are already in place and are the **base layer** for everythin
 
 ---
 
-## 3. Workstreams (run in parallel after Phase 0)
+## 3. Workstreams (run in parallel after Phase 1)
 
 | Track | Objective |
 |-------|-----------|
@@ -48,227 +48,273 @@ These capabilities are already in place and are the **base layer** for everythin
 
 ---
 
-## 4. Phased roadmap (ordered)
+## 4. Twenty-phase feature roadmap (full program)
 
-Each phase lists **exit criteria** (what “done” means) and **depends on** prior phases.
+Each phase lists **goal**, **deliverables**, **exit criteria**, and **dependencies**. Phases **1–5** are largely **in progress or shipped** in-repo; **6–20** extend the bar to **OpenClaw-class breadth** (connectors, MCP, enterprise).
 
-### Phase 0 — Program setup (1–2 weeks)
+**Recommended next steps (highest leverage)** — do these in parallel where possible:
 
-**Deliverables**
-
-- Naming and ownership for tracks A–G; one DRI per track.
-- Threat model sketch for **filesystem**, **browser**, and **code execution** tools.
-- Test strategy: extend eval harness with **negative tests** (policy denial, path escape).
-- KPI baseline: tool success rate, truncation rate (`X-Agent-Truncated`), mean steps per successful run.
-
-**Exit criteria**
-
-- Documented RACI + KPI dashboard fields (even if manual at first).
-- CI still green; no user-facing change required.
+1. **Finish Phase 6 (browser):** screenshots, per-workspace domain allowlists, HITL for new registrable domains, golden evals with mocks — closes the highest-risk surface with product-grade gates.
+2. **Unify budgets:** **Done** for browser tools vs `fetch_allowed_url` via `toolConsumesExternalFetchBudget` (still tune **network** category caps separately if needed).
+3. **Phase 8 kickoff:** persist **planner output** (DAG JSON) on the session and add one **re-plan after tool failure** path — unlocks measurable gains before more tools land.
+4. **Phase 16 continuously:** expand **golden traces + CI gates** for every new tool category (negative + positive).
+5. **Phase 7 when act tools see production traffic:** **sandboxed** code/plugins (container or hardened subprocess), not host-native execution — before expanding allowlists.
 
 ---
 
-### Phase 1 — Session runtime v1 (4–8 weeks)
+### Phase 1 — Program foundation & threat modeling (1–2 weeks)
 
-**Goal:** First-class **agent sessions** distinct from a single HTTP request.
+**Goal:** Baselines for safety and measurement before expanding the tool surface.
 
-**Deliverables**
+**Deliverables:** RACI / ownership for tracks A–G; threat model for filesystem, browser, code execution; KPI definitions; negative tests (policy denial, path escape) in CI.
 
-- Session entity: id, workspace, user, created/updated, status (`running`, `paused`, `completed`, `failed`).
-- Persisted step log linked to existing trajectory/durable store patterns.
-- APIs: create session, append event, pause/resume, final summary; align with `X-Agent-Run-Id` story.
-- Server-side **cancellation** token propagated into tool execution and LLM streaming where possible.
-- Concurrency: max concurrent sessions per workspace (quota hook).
+**Exit:** Documented RACI + KPI fields; CI green; baseline metrics captured (tool success, truncation, steps/run).
 
-**Exit criteria**
-
-- A run can be **interrupted** and **resumed** without losing the step history.
-- Admin or workspace owner can list sessions and inspect trajectory for audit.
-
-**Depends on:** Phase 0.
+**Depends on:** —
 
 ---
 
-### Phase 2 — Policy engine v1 (4–8 weeks, overlap Phase 1)
+### Phase 2 — Durable agent sessions (4–8 weeks)
 
-**Goal:** Move from env allowlists alone to **structured policy** (per workspace + role).
+**Goal:** Sessions are first-class, not a single HTTP request.
 
-**Deliverables**
+**Deliverables:** Session entity (id, workspace, user, status, timestamps); persisted step/event log; APIs (create, append, pause/resume, summary); cancel propagated into tools/streaming; max concurrent sessions per workspace.
 
-- Policy model: tool groups, path prefixes, URL patterns, network egress class, max risk tier.
-- Enforcement at `runTool` / hooks boundary with **consistent error codes** for evals.
-- UI/API: workspace policy editor (minimal); defaults deny risky tools.
-- Metrics: policy denial count by rule id.
+**Exit:** Runs can be interrupted and resumed without losing history; operators can list sessions and inspect trajectory.
 
-**Exit criteria**
-
-- Two workspaces with **different** tool profiles behave predictably in automated tests.
-- No secret material in tool args logged (verify with regression tests).
-
-**Depends on:** Phase 0. **Parallel with** Phase 1.
+**Depends on:** 1
 
 ---
 
-### Phase 3 — Environment tools: read-first (6–10 weeks)
+### Phase 3 — Policy engine & tool governance (4–8 weeks, overlap with 2)
 
-**Goal:** OpenClaw-class **workspace grounding** — read the project like an engineer.
+**Goal:** Structured policy per workspace and role, not env-only allowlists.
 
-**Deliverables**
+**Deliverables:** Tool groups, path/URL/network classes, risk tiers; enforcement at `runTool` with stable error codes; workspace policy editor (minimal API/UI); metrics on denials by rule.
 
-- **Filesystem read**: list, read file, search (ripgrep-like or Node impl), strict path canonicalization, size limits.
-- **Git read**: status, diff, log (configurable depth), branch name; no write in this phase.
-- Optional: **single-root attachment** model for serverless (explicit `WORKSPACE_ROOT` or uploaded bundle).
+**Exit:** Two workspaces with different profiles behave predictably in tests; no secrets in tool-arg logs.
 
-**Exit criteria**
-
-- Golden evals: “summarize this repo structure”, “what changed since last commit” using only read tools.
-- Fuzz tests for path traversal; 100% blocked in CI.
-
-**Depends on:** Phase 2 (policy). **Uses** Phase 1 (session) if long tasks.
+**Depends on:** 1. **Parallel with** 2.
 
 ---
 
-### Phase 4 — Environment tools: act (8–14 weeks)
+### Phase 4 — Workspace read surface (6–10 weeks)
 
-**Goal:** Safe **mutation** and execution.
+**Goal:** Ground the agent in the repo like an engineer (read-only).
 
-**Deliverables**
+**Deliverables:** Filesystem list/read/search with strict canonical paths and size limits; git status/diff/log/branch; optional single-root attachment for serverless (`WORKSPACE_ROOT` / bundle).
 
-- **Filesystem write** behind approval tier: patch/diff apply or scoped write with backup snapshot (workspace-local).
-- **Git write** (opt-in): commit with message template; never force-push by default.
-- **Structured command runner**: allowlisted prefixes or recipe-bound commands; full stdout/stderr capture; timeouts.
-- **Sandboxed code execution** (preferred): container or isolated subprocess with CPU/mem/time/network policy; integrate with plugin story rather than one-off.
+**Exit:** Golden evals: repo structure summary, “what changed since last commit” using only read tools; path traversal fuzz tests 100% blocked.
 
-**Exit criteria**
-
-- Demo flow: clone or attach repo → agent runs tests → proposes patch → human approves → commit.
-- Automated test proves **denied** commands do not execute.
-
-**Depends on:** Phase 3.
+**Depends on:** 3 (uses 2 for long runs).
 
 ---
 
-### Phase 5 — Browser & live web (8–12 weeks)
+### Phase 5 — Workspace mutations & commands (8–14 weeks)
 
-**Goal:** Research and UI validation with **high** abuse risk — ship carefully.
+**Goal:** Safe writes and bounded execution.
 
-**Deliverables**
+**Deliverables:** Scoped writes with backup; git commit (no force-push by default); structured command runner (allowlisted argv, no arbitrary shell); full audit and timeouts.
 
-- Playwright (or equivalent) tool suite: open URL (allowlisted), extract text, screenshot, simple forms.
-- Human-in-the-loop gate for new domains or credential contexts.
-- Integration with citations (page title, URL, excerpt).
+**Exit:** Demo: attach repo → run tests → propose patch → approve → commit; tests prove denied commands never execute.
 
-**Exit criteria**
-
-- Eval: “price on allowed page” with **expected URL host**; fails closed if host not allowed.
-- Rate limits and per-session browser hours documented for operators.
-
-**Depends on:** Phase 2, Phase 1.
+**Depends on:** 4
 
 ---
 
-### Phase 6 — Data & API connectors (6–12 weeks)
+### Phase 6 — Browser & live web (8–12 weeks)
 
-**Goal:** Structured enterprise data without giving the model raw connection strings.
+**Goal:** JS-rendered research and UI checks with **high** abuse risk — ship incrementally.
 
-**Deliverables**
+**Deliverables:** Allowlisted navigation; text extraction (shipped), screenshots, simple forms; HITL for new domains / credential contexts; citations (title, URL, excerpt); operator docs for rate limits and session “browser budgets.”
 
-- **SQL read-only** path (or BigQuery/Snowflake read-only) with row caps, statement class limits, workspace-bound credentials via secret references.
-- **OpenAPI import → tools** (generated descriptions and parameter schemas; server executes with auth injection).
+**Exit:** Eval on fixed allowlisted host; fails closed off-allowlist; documented limits.
 
-**Exit criteria**
-
-- Sample connector passes eval: natural question → SQL tool → grounded answer with table/row citation pattern.
-- Fails closed on `DROP`, `DELETE`, multi-statement when not explicitly allowed.
-
-**Depends on:** Phase 2.
+**Depends on:** 2, 3
 
 ---
 
-### Phase 7 — Intelligence v2 (ongoing 8–16 weeks, can start after Phase 1)
+### Phase 7 — Sandboxed code & plugin execution (8–16 weeks)
 
-**Goal:** Reliability and planning beyond keyword routing.
+**Goal:** Run untrusted or third-party code **off the host process** with clear quotas.
 
-**Deliverables**
+**Deliverables:** Container or hardened subprocess integration; CPU/memory/time/network policy; bridge to existing plugin/recipe model; default-off + workspace opt-in.
 
-- **Planner** produces explicit task DAG (dependencies), rollback hints, and stop conditions.
-- **Critic/repair loop**: on tool failure, structured retry policy; optional small “diagnostician” model.
-- Telemetry-driven **specialist selection** (replace pure keywords over time).
+**Exit:** Escape/abuse tests and resource limit tests pass; production checklist section for “code execution enabled.”
 
-**Exit criteria**
-
-- A/B or offline eval: ↑ success rate on multi-tool benchmark set; ↓ useless repeats (stagnation already mitigated — measure remaining loops).
-
-**Depends on:** Phase 1; benefits from Phases 3–4 data.
+**Depends on:** 3, 5
 
 ---
 
-### Phase 8 — Channels & notifications (10–20 weeks)
+### Phase 8 — Structured planning & task graphs (8–16 weeks)
 
-**Goal:** Same session runtime across surfaces.
+**Goal:** Explicit plans the runtime can re-use, not only implicit tool chains.
 
-**Deliverables**
+**Deliverables:** Planner emits DAG (nodes, edges, stop conditions, rollback hints) stored on session; optional checkpoint before risky steps; re-plan after tool failure.
 
-- **Slack** and/or **Discord** bot: map channel/thread to workspace session; OAuth apps; rate limits.
-- Optional: email ingest/outbound (later; higher phishing/legal risk).
-- Desktop synergy: native notifications already planned in PRD phases — wire session events.
+**Exit:** Offline benchmark for planning; regression suite in eval harness; measure ↓ redundant tool loops.
 
-**Exit criteria**
-
-- User can start a run from Slack, continue from web, same session id and audit trail.
-
-**Depends on:** Phase 1, Phase 2.
+**Depends on:** 2 (strong benefit from 4–5 for grounding).
 
 ---
 
-### Phase 9 — MCP & skill packaging (8–14 weeks)
+### Phase 9 — Recovery, critique & routing (ongoing, 8–16 weeks)
 
-**Goal:** Ecosystem parity with modern agent hosts.
+**Goal:** Reliability when tools fail or the model drifts.
 
-**Deliverables**
+**Deliverables:** Structured retry/backoff policies; optional small “diagnostician” or critic step; telemetry-driven swarm/specialist selection (beyond keyword routing).
 
-- **MCP client**: register remote tool servers; merge into tool schema with namespacing; policy applies per tool.
-- **MCP server** (optional): expose core Siskel tools to external clients.
-- **Skill bundles**: versioned zip or manifest — prompt + tools + policy + eval cases (extends plugins/recipes).
+**Exit:** A/B or offline eval: ↑ task success on multi-tool benchmarks; ↓ useless repeats after stagnation controls.
 
-**Exit criteria**
-
-- One external MCP server’s tools appear in agent mode and respect workspace allowlist.
-- Publish skill bundle template and one reference bundle in-repo.
-
-**Depends on:** Phase 2; best after Phase 3 (clear value demo).
+**Depends on:** 8; benefits from 4–7.
 
 ---
 
-### Phase 10 — Enterprise hardening (continuous, heavy 12–24 weeks)
+### Phase 10 — Governed SQL & analytics (6–12 weeks)
 
-**Deliverables**
+**Goal:** Enterprise data without pasting connection strings into prompts.
 
-- SSO/SAML alignment if not already complete for target customers.
-- Per-region residency hooks (you have design notes — operational runbooks).
-- Backup/restore drills for session + workspace data.
-- Pentest fixes, dependency review SBOM, bug bounty prep (as appropriate).
+**Deliverables:** Read-only SQL (or BigQuery/Snowflake read) with workspace secret references; statement validator (`SELECT`-class); row/column caps; explain-only mode.
 
-**Exit criteria**
+**Exit:** Eval: natural question → governed SQL → grounded answer; `DROP`/`DELETE`/multi-statement blocked unless explicitly allowed.
 
-- Checklist sign-off for “safe to enable filesystem + browser + code exec in production” with policy defaults.
-
-**Depends on:** Phases 2, 4, 5.
+**Depends on:** 3
 
 ---
 
-## 5. Suggested calendar (compact)
+### Phase 11 — OpenAPI & HTTP tool factory (6–12 weeks)
+
+**Goal:** Internal and partner APIs become first-class tools.
+
+**Deliverables:** OpenAPI import → tool definitions + schemas; server-side auth injection (Bearer from vault); per-host rate limits and policy class.
+
+**Exit:** One real internal API integrated end-to-end with policy and an eval case.
+
+**Depends on:** 3
+
+---
+
+### Phase 12 — MCP client & federated tools (8–14 weeks)
+
+**Goal:** Long-tail integrations without bespoke routes for every vendor.
+
+**Deliverables:** MCP client (stdio + SSE); merge remote tool catalogs with namespacing (`mcp__server__tool`); policy applies per tool; health and version introspection.
+
+**Exit:** At least one external MCP server’s tools run under workspace allowlists in production-like env.
+
+**Depends on:** 3; best after 4 (clear demo).
+
+---
+
+### Phase 13 — MCP server & portable skill packages (6–12 weeks)
+
+**Goal:** SiskelBot participates in the wider MCP ecosystem and ships portable “skills.”
+
+**Deliverables:** Optional MCP server exposing a curated subset of tools; skill manifest format (tools + policy hints + eval cases); import/versioning API; reference bundle in-repo.
+
+**Exit:** External client (e.g. desktop agent) can call Siskel tools with OAuth/API key; one reference skill ships in docs.
+
+**Depends on:** 12
+
+---
+
+### Phase 14 — Messaging & async channels (10–20 weeks)
+
+**Goal:** Same session and audit trail across chat products.
+
+**Deliverables:** Slack and/or Discord OAuth; map thread/channel to `workspaceId` + `sessionId`; shared connector abstraction; optional email patterns (later; legal/phishing review).
+
+**Exit:** Start in Slack, continue in web UI, same session id and trajectory.
+
+**Depends on:** 2, 3
+
+---
+
+### Phase 15 — Human-in-the-loop product layer (6–12 weeks)
+
+**Goal:** Progressive autonomy as a **product**, not only recipes.
+
+**Deliverables:** Approval tiers (read → propose → execute); pending tool queue UI + API; escalation rules by risk tier and role; integration with existing HITL resume.
+
+**Exit:** Defaults differ by role; security reviewer can understand tiers without reading all tool code.
+
+**Depends on:** 3, 5 (6 strengthens story).
+
+---
+
+### Phase 16 — Observability, evals & regression gates (continuous)
+
+**Goal:** Every release proves it did not break agent behavior.
+
+**Deliverables:** Golden traces per phased capability; judge + thresholds in CI; trajectory export for debugging; dashboards for tool latency, denial rate, truncation.
+
+**Exit:** Release policy: merge blocked if eval regression exceeds threshold (after burn-in period).
+
+**Depends on:** 1; tightens all other phases.
+
+---
+
+### Phase 17 — Secrets, vault & ABAC (8–16 weeks)
+
+**Goal:** Credentials and fine-grained access at enterprise depth.
+
+**Deliverables:** Secret references only (no raw keys in model context); workspace-bound vault integration; ABAC rules mapping identity + workspace attributes to tool groups.
+
+**Exit:** Pentest scenarios for exfiltration pass; compliance narrative for session/trajectory retention.
+
+**Depends on:** 3
+
+---
+
+### Phase 18 — Multimodal & rich documents (8–16 weeks)
+
+**Goal:** Agents reason over how work **looks**, not only plaintext.
+
+**Deliverables:** Image/chart inputs in agent loop with policy; OCR/document pipeline alignment with knowledge/RAG; size and PII redaction policies for uploads.
+
+**Exit:** Evals on fixed multimodal fixtures with citations; abuse tests for oversized or malicious uploads.
+
+**Depends on:** 4, 16
+
+---
+
+### Phase 19 — Cost, latency & model routing (ongoing)
+
+**Goal:** Right model and spend per step without sacrificing quality on hard tasks.
+
+**Deliverables:** Router policies (intent, risk, token estimate); small/large model split; caching hooks; streaming and token budgets coordinated with existing circuit breaker and quotas.
+
+**Exit:** P95 wall time and cost per successful task improve on benchmark without quality regression.
+
+**Depends on:** 8, 9
+
+---
+
+### Phase 20 — Enterprise readiness & operational excellence (12–24 weeks, continuous)
+
+**Goal:** Safe defaults for filesystem + browser + code in regulated environments.
+
+**Deliverables:** SSO/SAML alignment for target customers; data residency and retention/export; backup/restore drills for sessions/workspaces; SBOM and automated dependency review; runbooks and on-call paths.
+
+**Exit:** Signed checklist: “risky tools allowed in production” with default-deny policy and operator training.
+
+**Depends on:** 6, 7, 17 (and maturity of 16)
+
+---
+
+## 5. Suggested calendar (compact, 20-phase view)
 
 This is **sequencing**, not headcount-adjusted capacity planning.
 
 | Quarter | Focus |
 |---------|--------|
-| **Q1** | Phase 0–1–2: sessions + policy MVP |
-| **Q2** | Phase 3–4: read filesystem/git; write/exec with sandbox |
-| **Q3** | Phase 5–6: browser + SQL/OpenAPI; start Phase 7 |
-| **Q4** | Phase 8–9: Slack/Discord + MCP; Phase 10 continuous |
+| **Q1** | **1–3:** foundation, sessions, policy — **4–5:** read + act MVP |
+| **Q2** | **6–7:** browser suite + sandboxed execution — start **8–9** planning/recovery |
+| **Q3** | **10–11:** SQL + OpenAPI — **12–13:** MCP client/server and skills |
+| **Q4** | **14–15:** channels + HITL productization — deepen **16–17** |
+| **Year 2** | **18–20:** multimodal, routing/cost polish, enterprise hardening (continuous **16**) |
 
-Parallelism: **Phase 7** and **Phase 8** can start mid-year once Phase 1–2 land. **Desktop** work (PRD 97–116) overlaps Q1–Q4 without blocking core server capabilities.
+Parallelism: **8–9** and **14** can start once **2–3** are solid. **Desktop** (PRD 97–116) runs in parallel and improves reach but does not replace server-side tool breadth.
 
 ---
 
@@ -310,74 +356,91 @@ The program is successful when:
 
 ---
 
-## 9. Implementation status (April 2026)
+## 9. Implementation status (April 2026, vs 20-phase map)
 
-| Phase | Status |
-|-------|--------|
-| **0** | **Shipped:** [AGENT_THREAT_MODEL.md](./AGENT_THREAT_MODEL.md), `lib/workspace-path-guard.js`, tests (`workspace-path-guard.test.js`, `agent-policy-denied-tools.test.js`, `workspace-fs-tools.test.js`). |
-| **1** | **Shipped:** `lib/agent-session.js` (durable store), `lib/agent-run-control.js` (concurrency + in-process cancel), `routes/agent-sessions.js`, `agent-loop` integration: `agentOptions.sessionId`, headers `X-Agent-Session-Id`, `POST /api/v1/agent/sessions/:id/cancel`, env `AGENT_SESSION_API` (default on), optional `AGENT_MAX_CONCURRENT_RUNS_PER_WORKSPACE`. |
-| **2** | **Shipped:** `agentPolicy.deniedTools` in workspace agent-settings; enforcement in `checkPolicyBeforeTool` and `runTool`; metric `siskelbot_agent_policy_denials_total` when `ENABLE_METRICS=1`. |
-| **3** | **Shipped (read-only FS):** `WORKSPACE_FILE_TOOLS=1` and `WORKSPACE_ROOT` — `workspace_list_dir`, `workspace_read_file`, `workspace_search_text` (`lib/workspace-fs-tools.js`). |
-| **4** | **Shipped (MVP):** `lib/workspace-act-tools.js` — `workspace_write_file` (`WORKSPACE_FILE_WRITE_TOOLS=1`, backup before overwrite), `workspace_git_*` read (`WORKSPACE_GIT_TOOLS=1`), `workspace_git_commit` (`WORKSPACE_GIT_WRITE=1`, explicit paths only), `workspace_run_command` (`WORKSPACE_COMMAND_ALLOWLIST`, no shell). Audit log + category caps (`write`) apply. Tests: `workspace-act-tools.test.js`. **Deferred from MVP:** patch/diff-apply format, Docker-isolated code execution, HITL gate per mutation (use `deniedTools` + `execute_step` HITL today). |
-| **5** | **Partial (B5.1):** `lib/browser-agent-tools.js`, tool `browser_open_extract_text`, env `AGENT_BROWSER_TOOLS=1`; reuses `BROWSER_URL_ALLOWLIST` or `AGENT_FETCH_ALLOWLIST`; Playwright optional dependency. |
-| **6–10** | *Planned* — see **§10** for the next milestones. |
+| Phase | Theme | Status |
+|-------|--------|--------|
+| **1** | Foundation & threat model | **Shipped:** [AGENT_THREAT_MODEL.md](./AGENT_THREAT_MODEL.md), `lib/workspace-path-guard.js`, tests (`workspace-path-guard.test.js`, `agent-policy-denied-tools.test.js`, `workspace-fs-tools.test.js`). |
+| **2** | Durable sessions | **Shipped:** `lib/agent-session.js`, `lib/agent-run-control.js`, `routes/agent-sessions.js`, `agent-loop` + `agentOptions.sessionId`, `X-Agent-Session-Id`, `POST .../cancel`, optional **`planSummary` / `planDag`** on create and **`POST .../sessions/:id/plan`** to update (Phase 8 storage hook). |
+| **3** | Policy engine | **Shipped (MVP):** `agentPolicy.deniedTools`; `checkPolicyBeforeTool` / `runTool`; `siskelbot_agent_policy_denials_total` when `ENABLE_METRICS=1`. *Next:* tool groups, URL/path classes in agent-settings UI. |
+| **4** | Workspace read | **Shipped:** `WORKSPACE_FILE_TOOLS=1`, `WORKSPACE_ROOT`, `workspace_list_dir` / `workspace_read_file` / `workspace_search_text` (`lib/workspace-fs-tools.js`). |
+| **5** | Mutations & commands | **Shipped (MVP):** `lib/workspace-act-tools.js` — write, git read/commit, `workspace_run_command` with allowlist. **Deferred:** structured patch apply, per-step HITL product layer (Phase 15). |
+| **6** | Browser & web | **Partial:** `browser_open_extract_text`, `browser_capture_screenshot`; workspace `agentPolicy.browserAllowedHosts`; browser tools share **`maxExternalFetches`** with `fetch_allowed_url`. **Next:** HITL for new domains, golden evals. |
+| **7** | Sandboxed execution | *Planned* — container/hardened subprocess; plugin bridge. |
+| **8** | Planning & DAGs | **Partial (I8.1):** Tool `update_agent_session_plan` (session runs only); `tool_failed` session events; optional `AGENT_SESSION_REPLAN_NUDGE=1` user nudge after `ok:false`. **Next:** offline planner benchmark (I8.2). |
+| **9** | Recovery & routing | *Planned* — critic/retry; telemetry-driven swarm routing. |
+| **10** | Governed SQL | *Planned* — read-only proxy, caps, secret refs. |
+| **11** | OpenAPI tools | *Planned* — import + auth injection. |
+| **12** | MCP client | *Planned* — stdio/SSE, namespaced tools. |
+| **13** | MCP server & skills | *Planned* — export tools; skill bundles. |
+| **14** | Channels | *Planned* — Slack/Discord abstraction. |
+| **15** | HITL product | *Planned* — approval tiers, pending queue. |
+| **16** | Evals & gates | **Partial** — existing trajectory/eval harness; expand per-phase golden sets + merge gates. |
+| **17** | Vault & ABAC | *Planned* — secret references, fine-grained access. |
+| **18** | Multimodal | *Planned* — images/docs in loop with policy. |
+| **19** | Cost & routing | **Partial** — budgets, circuit breaker; formalize router + caching. |
+| **20** | Enterprise ops | *Planned* — residency, SBOM, DR, checklist. |
 
-`/config` exposes session, filesystem, git, command-runner, and **browser tools** (`agentBrowserToolsEnabled`) flags for clients.
+`/config` exposes session, filesystem, git, command-runner, and browser tool flags for clients.
 
 ---
 
-## 10. Forward plan (Phase 5–10 milestones)
+## 10. Near-term milestones (rolling backlog)
 
-Use this as a rolling backlog; re-prioritize each quarter.
+Re-prioritize each quarter; milestones nest under **§4** phases above.
 
-### Phase 5 — Browser (incremental)
-
-| Milestone | Outcome |
-|-----------|---------|
-| B5.1 | **Shipped (in-repo):** text extraction + allowlist via `browser_open_extract_text` (`lib/browser-agent-tools.js`, `AGENT_BROWSER_TOOLS=1`; allowlist via `BROWSER_URL_ALLOWLIST` / `AGENT_FETCH_ALLOWLIST`; Playwright optional). **B5.2+** still planned (screenshot, HITL, golden evals). |
-| B5.2 | Screenshot + storage in workspace; attach to trajectory. |
-| B5.3 | HITL for first visit to new registrable domain; per-workspace domain policy in agent-settings. |
-| B5.4 | Golden evals with fixed URL fixture or recorded HTTP mocks. |
-
-### Phase 6 — Data plane
+### Phase 6 — Browser (incremental)
 
 | Milestone | Outcome |
 |-----------|---------|
-| D6.1 | Read-only SQL proxy: one connection string per workspace via env/secret ref; `SELECT` only validator. |
-| D6.2 | Row/column caps + explain-only mode. |
-| D6.3 | OpenAPI import: generate tool defs + server-side auth injection (Bearer from vault). |
+| B6.1 | **Shipped:** `browser_open_extract_text` + allowlists (`lib/browser-agent-tools.js`). |
+| B6.2 | **Shipped:** `browser_capture_screenshot`; workspace file under `.siskelbot/browser-screenshots/` when `WORKSPACE_ROOT` set, else capped base64 JPEG. |
+| B6.3 | HITL for new registrable domains; per-workspace domain policy in agent-settings. |
+| B6.4 | Golden evals with fixtures or recorded HTTP mocks. |
+| B6.5 | **Shipped:** `maxExternalFetches` / `AGENT_MAX_EXTERNAL_FETCHES` counts `fetch_allowed_url` + browser tools (`toolConsumesExternalFetchBudget` in `lib/agent-policy.js`). |
 
-### Phase 7 — Intelligence
-
-| Milestone | Outcome |
-|-----------|---------|
-| I7.1 | Structured planner output (JSON DAG) stored on session; optional re-plan after tool failure. |
-| I7.2 | Offline benchmark set for planner + regression in eval harness. |
-| I7.3 | Replace/enrich swarm routing with embedding + telemetry features (build on `swarm-intent-v2`). |
-
-### Phase 8 — Channels
+### Phase 8–9 — Intelligence
 
 | Milestone | Outcome |
 |-----------|---------|
-| C8.1 | Slack OAuth + event URL → map to `sessionId` + `workspaceId`. |
-| C8.2 | Discord parity; shared connector abstraction (`lib/channel-connectors/`). |
-| C8.3 | Desktop/native notifications for session completion (align with PRD desktop phases). |
+| I8.1 | **Shipped:** `update_agent_session_plan` + session `tool_failed` events + optional replan nudge env. |
+| I8.2 | Offline benchmark + eval harness regression for planner. |
+| I9.1 | Structured retry policy per tool category. |
+| I9.2 | Enrich swarm routing with embeddings + telemetry (extends `swarm-intent-v2`). |
 
-### Phase 9 — MCP & skills
-
-| Milestone | Outcome |
-|-----------|---------|
-| M9.1 | MCP client (stdio + SSE transport); namespace tools `mcp__<server>__<tool>`. |
-| M9.2 | Optional MCP server exporting `runTool` subset for Claude Desktop etc. |
-| M9.3 | Skill manifest v1: zip with `skill.json` (tools, policy hints, eval cases) + import API. |
-
-### Phase 10 — Enterprise
+### Phase 10–11 — Data & APIs
 
 | Milestone | Outcome |
 |-----------|---------|
-| E10.1 | Production checklist doc + pre-flight `GET /admin/agent-capabilities` summary. |
-| E10.2 | Per-region session + trajectory retention; export for compliance. |
-| E10.3 | SBOM + automated dep review gate on release. |
+| D10.1 | Read-only SQL proxy; `SELECT`-only validator; secret ref per workspace. |
+| D10.2 | Row/column caps + explain-only mode. |
+| D11.1 | OpenAPI import → tools + server-side Bearer from vault. |
+
+### Phase 12–13 — MCP
+
+| Milestone | Outcome |
+|-----------|---------|
+| M12.1 | MCP client (stdio + SSE); `mcp__<server>__<tool>` namespacing. |
+| M13.1 | Optional MCP server for external clients. |
+| M13.2 | Skill manifest + import API; reference `skill.zip` in-repo. |
+
+### Phase 14–15 — Channels & HITL
+
+| Milestone | Outcome |
+|-----------|---------|
+| C14.1 | Slack OAuth + session mapping. |
+| C14.2 | Discord parity; `lib/channel-connectors/`. |
+| H15.1 | Approval tiers API + UI; pending tool queue. |
+
+### Phase 16–20 — Hardening
+
+| Milestone | Outcome |
+|-----------|---------|
+| O16.1 | CI merge gate on golden trace regression (threshold tuning). |
+| E17.1 | Vault integration + ABAC rules for tool groups. |
+| E18.1 | Multimodal ingest policy + eval fixtures. |
+| E19.1 | Router/cost dashboard + policies per workspace. |
+| E20.1 | Production checklist + `GET /admin/agent-capabilities` summary; SBOM gate. |
 
 ---
 

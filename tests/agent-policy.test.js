@@ -41,3 +41,16 @@ test("policy blocks external fetch cap and cumulative tool ms", () => {
   assert.equal(checkPolicyBeforeTool(st, "fetch_allowed_url").ok, false);
   assert.equal(checkPolicyAfterRound(st).ok, false);
 });
+
+test("browser tools share external fetch budget with fetch_allowed_url", () => {
+  const st = createPolicyState({
+    toolCategoryCaps: { read: 10, write: 10, network: 10 },
+    maxExternalFetches: 1,
+    maxTotalToolMs: 0,
+  });
+  assert.equal(checkPolicyBeforeTool(st, "browser_open_extract_text").ok, true);
+  recordPolicyToolCompletion(st, "browser_open_extract_text", 1);
+  assert.equal(st.externalFetches, 1);
+  assert.equal(checkPolicyBeforeTool(st, "fetch_allowed_url").ok, false);
+  assert.equal(checkPolicyBeforeTool(st, "browser_capture_screenshot").ok, false);
+});

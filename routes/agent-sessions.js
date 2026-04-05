@@ -6,6 +6,7 @@ import {
   listAgentSessionsForWorkspace,
   appendAgentSessionEvent,
   setAgentSessionStatus,
+  updateAgentSessionPlan,
 } from "../lib/agent-session.js";
 import { cancelAgentSessionRun as cancelInProcessRun } from "../lib/agent-run-control.js";
 import { resolveStorageUserId } from "../lib/teams.js";
@@ -37,9 +38,21 @@ export function mountAgentSessionRoutes(app, deps) {
         workspace,
         ownerStorageUserId: storageUserId,
         title,
+        planSummary: req.body?.planSummary,
+        planDag: req.body?.planDag,
       });
       res.status(201).json(session);
     } catch (err) {
+      const pc = err?.code;
+      if (
+        pc &&
+        (String(pc).startsWith("INVALID") ||
+          pc === "EMPTY_PLAN" ||
+          pc === "PLAN_DAG_TOO_LARGE" ||
+          pc === "PLAN_DAG_TOO_DEEP")
+      ) {
+        return apiError(res, 400, pc, err.message || "Invalid plan", "Fix planSummary / planDag and retry.");
+      }
       return apiError(res, 500, "INTERNAL_ERROR", err?.message || "Create failed", "See server logs.");
     }
   });
@@ -133,6 +146,29 @@ export function mountAgentSessionRoutes(app, deps) {
     }
     const updated = await setAgentSessionStatus(sessionId, "running");
     res.json(updated);
+  });
+
+  apiRoute("post", "/agent/sessions/:sessionId/plan", logRequest, userAuth, requireScope("write"), async (req, res) => {
+    if (!agentSessionApiEnabled()) {
+      return apiError(res, 503, "FEATURE_DISABLED", "Agent sessions API disabled", "");
+    }
+    const sessionId = String(req.params.sessionId || "").trim();
+    const row = await getAgentSession(sessionId);
+    if (!row) return apiError(res, 404, "NOT_FOUND", "Session not found", "");
+    const access = await getWorkspaceAgentAccess(req.userId || "anonymous", row.workspace);
+    const storageUserId = await resolveStorageUserId(req.userId || "anonymous", row.workspace);
+    if (!access.allowed || row.ownerStorageUserId !== storageUserId) {
+      return apiError(res, 403, "FORBIDDEN", "Access denied", "");
+    }
+    if (!canEditWorkspaceAgentSettings(access.role)) {
+      return apiError(res, 403, "FORBIDDEN", "Insufficient role", "");
+    }
+    const result = await updateAgentSessionPlan(sessionId, req.body || {});
+    if (!result.ok) {
+      const status = result.code === "NOT_FOUND" ? 404 : 400;
+      return apiError(res, status, result.code, result.message, "");
+    }
+    res.json(result.session);
   });
 
   apiRoute("post", "/agent/sessions/:sessionId/cancel", logRequest, userAuth, requireScope("write"), async (req, res) => {

@@ -580,6 +580,61 @@ test("POST /api/agent/sessions creates session for workspace", async () => {
   assert.ok(list.body.items.length >= 1);
 });
 
+test("POST /api/agent/sessions with planSummary and planDag persists plan", async () => {
+  const app = await loadApp({ BACKEND: "ollama", USER_API_KEYS: "" });
+  const created = await request(app).post("/api/workspaces").send({ name: "Session plan WS" });
+  assert.equal(created.status, 201);
+  const wid = created.body.id;
+  const res = await request(app)
+    .post("/api/agent/sessions")
+    .send({
+      workspace: wid,
+      title: "With plan",
+      planSummary: "Phase A",
+      planDag: { version: 1, steps: ["read", "act"] },
+    });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.planSummary, "Phase A");
+  assert.deepEqual(res.body.planDag, { version: 1, steps: ["read", "act"] });
+  const one = await request(app).get(`/api/agent/sessions/${res.body.id}`);
+  assert.equal(one.status, 200);
+  assert.equal(one.body.planSummary, "Phase A");
+});
+
+test("POST /api/agent/sessions/:id/plan merges plan fields", async () => {
+  const app = await loadApp({ BACKEND: "ollama", USER_API_KEYS: "" });
+  const created = await request(app).post("/api/workspaces").send({ name: "Plan route WS" });
+  const wid = created.body.id;
+  const sess = await request(app).post("/api/agent/sessions").send({ workspace: wid, title: "P" });
+  assert.equal(sess.status, 201);
+  const sid = sess.body.id;
+  const plan = await request(app)
+    .post(`/api/agent/sessions/${sid}/plan`)
+    .send({ planSummary: "Updated", planDag: { nodes: [{ id: "n1" }] } });
+  assert.equal(plan.status, 200);
+  assert.equal(plan.body.planSummary, "Updated");
+  assert.deepEqual(plan.body.planDag, { nodes: [{ id: "n1" }] });
+  const ev = (plan.body.events || []).filter((e) => e.type === "plan_updated");
+  assert.ok(ev.length >= 1);
+});
+
+test("PUT agent-settings persists browserAllowedHosts", async () => {
+  const app = await loadApp({ BACKEND: "ollama", USER_API_KEYS: "" });
+  const created = await request(app).post("/api/workspaces").send({ name: "Browser policy WS" });
+  assert.equal(created.status, 201);
+  const id = created.body.id;
+  const put = await request(app)
+    .put(`/api/workspaces/${id}/agent-settings`)
+    .send({
+      agentPolicy: { browserAllowedHosts: ["docs.example.com", "api.example.com"] },
+    });
+  assert.equal(put.status, 200);
+  assert.deepEqual(put.body.agentPolicy.browserAllowedHosts, ["docs.example.com", "api.example.com"]);
+  const get = await request(app).get(`/api/workspaces/${id}/agent-settings`);
+  assert.equal(get.status, 200);
+  assert.deepEqual(get.body.agentPolicy.browserAllowedHosts, ["docs.example.com", "api.example.com"]);
+});
+
 test("GET /api/workspaces/:id/agent-memory/stats returns usage", async () => {
   const app = await loadApp({ BACKEND: "ollama", USER_API_KEYS: "" });
   const created = await request(app).post("/api/workspaces").send({ name: "Mem stats WS" });

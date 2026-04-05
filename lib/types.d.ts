@@ -114,6 +114,8 @@ export interface ToolContext {
   workspaceAllowedToolNames?: string[];
   workspaceDeniedTools?: Set<string>;
   workspaceFilesystemRoot?: string;
+  /** When set, update_agent_session_plan may persist to this session */
+  agentSessionId?: string;
 }
 
 export interface ProxyConfig {
