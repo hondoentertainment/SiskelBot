@@ -98,6 +98,11 @@
     .output-cell { max-width: 260px; word-break: break-all; font-family: monospace; font-size: 0.8125rem; }
     .activity-cell { max-width: 220px; word-break: break-word; font-size: 0.75rem; color: #cbd5e1; }
     .error-msg { color: #f87171; font-size: 0.8125rem; }
+    .trace-list { margin: 0; padding-left: 1.1rem; font-size: 0.8125rem; color: #cbd5e1; }
+    .trace-list li { margin: 0.35rem 0; }
+    .trace-list code { font-size: 0.75rem; background: #0f172a; padding: 0.15rem 0.35rem; border-radius: 4px; word-break: break-all; }
+    .trace-meta { color: #64748b; font-size: 0.7rem; margin-left: 0.35rem; }
+    .hint { font-size: 0.8125rem; color: #94a3b8; margin: 0 0 0.75rem 0; line-height: 1.4; }
   </style>
 </head>
 <body>
@@ -122,6 +127,14 @@
       <div class="form-row">
         <button type="button" class="run" id="runBtn">Run eval</button>
       </div>
+    </div>
+    <div class="section" id="tracesSection">
+      <h2>Staging trace files (Phase 97)</h2>
+      <p class="hint">
+        Use <code>stagingTraceFile</code> in eval cases with <code>target: &quot;staging_trace&quot;</code>.
+        Paths are relative to the server process cwd (and <code>stagingTraceRoot</code> when set on the eval set).
+      </p>
+      <ul class="trace-list" id="tracesList"><li>Loading…</li></ul>
     </div>
     <div class="section" id="resultsSection" style="display: none;">
       <h2>Results</h2>
@@ -167,8 +180,39 @@
       }
     }
 
-    document.getElementById("apiKey").addEventListener("blur", loadSets);
+    async function loadStagingTraces() {
+      const ul = document.getElementById("tracesList");
+      try {
+        const key = apiKeyInput.value.trim();
+        const headers = key ? { "x-api-key": key } : {};
+        const r = await fetch("/api/eval/staging-traces", { headers });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          ul.innerHTML = `<li class="error-msg">${escapeHtml(err.error || "Failed to load traces")}</li>`;
+          return;
+        }
+        const { traces } = await r.json();
+        if (!traces || traces.length === 0) {
+          ul.innerHTML = "<li>No .json files found (see EVAL_STAGING_TRACES_DIR or data/eval-sets/traces).</li>";
+          return;
+        }
+        ul.innerHTML = traces
+          .map(
+            (t) =>
+              `<li><code>${escapeHtml(t.stagingTraceFile || t.name)}</code><span class="trace-meta">${t.bytes != null ? t.bytes + " B" : ""}</span></li>`
+          )
+          .join("");
+      } catch (e) {
+        ul.innerHTML = `<li class="error-msg">${escapeHtml(e.message)}</li>`;
+      }
+    }
+
+    document.getElementById("apiKey").addEventListener("blur", () => {
+      loadSets();
+      loadStagingTraces();
+    });
     loadSets();
+    loadStagingTraces();
 
     runBtn.addEventListener("click", async () => {
       const setId = evalSetSelect.value;

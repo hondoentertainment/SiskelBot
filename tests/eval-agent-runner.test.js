@@ -166,6 +166,22 @@ test("checkCriteria enforces expectedAgentActivityToolNames", () => {
   );
 });
 
+test("checkCriteria enforces expectedStopReason", () => {
+  const activity = {
+    type: "agent_activity",
+    toolCalls: [{ name: "search_context", iteration: 1 }],
+    stopReason: "policy_blocked",
+  };
+  assert.equal(
+    checkCriteria({ expectedStopReason: "policy_blocked" }, "ok", null, activity).pass,
+    true
+  );
+  assert.equal(
+    checkCriteria({ expectedStopReasonOneOf: ["max_iterations", "wall_clock"] }, "ok", null, activity).pass,
+    false
+  );
+});
+
 test("runEvalSet applies outcome criteria from SSE agent_activity", async () => {
   const sseBody = [
     `data: ${JSON.stringify({

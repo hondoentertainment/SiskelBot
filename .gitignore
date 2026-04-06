@@ -31,9 +31,12 @@ data/*
 !data/eval-sets/
 data/eval-sets/*
 !data/eval-sets/example.json
+!data/eval-sets/ci-offline.json
 !data/eval-sets/agent-outcome-examples.json
 !data/eval-sets/traces/
 !data/eval-sets/traces/example-staging.json
+!data/eval-sets/traces/swarm-staging-example.json
+!data/eval-sets/traces/agent-stop-stagnation-example.json
 !data/workspace-templates/
 data/workspace-templates/*
 !data/workspace-templates/defaults/

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
+import { createHash } from "node:crypto";
 
 async function loadApp(env = {}, opts = {}) {
   const original = { ...process.env };
@@ -23,6 +24,13 @@ async function loadAppKeepEnv(env = {}) {
   return { app, restore: () => { process.env = original; } };
 }
 
+function stableStringify(value) {
+  if (value == null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map((v) => stableStringify(v)).join(",")}]`;
+  const keys = Object.keys(value).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(",")}}`;
+}
+
 test("GET /config returns backend defaults", async () => {
   const app = await loadApp({ BACKEND: "ollama" });
   const response = await request(app).get("/config");
@@ -41,6 +49,14 @@ test("GET /config returns backend defaults", async () => {
   assert.equal(response.body.agentStagnationStop, true);
   assert.equal(response.body.agentRequireCitations, false);
   assert.equal(response.body.agentTrajectoryApi, true);
+  assert.equal(response.body.agentSessionApi, true);
+  assert.equal(response.body.workspaceFileToolsEnabled, false);
+  assert.equal(response.body.workspaceRootConfigured, false);
+  assert.equal(response.body.workspaceFileWriteToolsEnabled, false);
+  assert.equal(response.body.workspaceGitToolsEnabled, false);
+  assert.equal(response.body.workspaceGitWriteEnabled, false);
+  assert.equal(response.body.workspaceCommandRunnerConfigured, false);
+  assert.equal(response.body.agentBrowserToolsEnabled, false);
   assert.equal(response.body.agentDefaultSystemSet, false);
   assert.equal(response.body.streamSwarmSynth, false);
   assert.equal(response.body.agentPlanReflect, false);
@@ -529,6 +545,144 @@ test("PUT /api/workspaces/:id/agent-settings persists for GET", async () => {
   assert.equal(get.status, 200);
   assert.equal(get.body.defaultSystemPrompt, "Use metric units.");
   assert.deepEqual(get.body.memorySnippets, ["Project: Acme"]);
+});
+
+test("PUT /api/workspaces/:id/agent-settings persists deniedTools", async () => {
+  const app = await loadApp({ BACKEND: "ollama", USER_API_KEYS: "" });
+  const created = await request(app).post("/api/workspaces").send({ name: "Denied tools WS" });
+  assert.equal(created.status, 201);
+  const id = created.body.id;
+  const put = await request(app)
+    .put(`/api/workspaces/${id}/agent-settings`)
+    .send({
+      agentPolicy: { deniedTools: ["execute_step", "unknown_future_tool"] },
+    });
+  assert.equal(put.status, 200);
+  assert.ok(Array.isArray(put.body.agentPolicy?.deniedTools));
+  assert.ok(put.body.agentPolicy.deniedTools.includes("execute_step"));
+  const get = await request(app).get(`/api/workspaces/${id}/agent-settings`);
+  assert.equal(get.status, 200);
+  assert.ok(get.body.agentPolicy.deniedTools.includes("execute_step"));
+});
+
+test("POST /api/agent/sessions creates session for workspace", async () => {
+  const app = await loadApp({ BACKEND: "ollama", USER_API_KEYS: "" });
+  const created = await request(app).post("/api/workspaces").send({ name: "Session holder" });
+  assert.equal(created.status, 201);
+  const wid = created.body.id;
+  const res = await request(app).post("/api/agent/sessions").send({ workspace: wid, title: "T1" });
+  assert.equal(res.status, 201);
+  assert.ok(res.body.id);
+  assert.equal(res.body.workspace, wid);
+  assert.equal(res.body.status, "running");
+  const list = await request(app).get("/api/agent/sessions").query({ workspace: wid });
+  assert.equal(list.status, 200);
+  assert.ok(list.body.items.length >= 1);
+});
+
+test("POST /api/agent/sessions with planSummary and planDag persists plan", async () => {
+  const app = await loadApp({ BACKEND: "ollama", USER_API_KEYS: "" });
+  const created = await request(app).post("/api/workspaces").send({ name: "Session plan WS" });
+  assert.equal(created.status, 201);
+  const wid = created.body.id;
+  const res = await request(app)
+    .post("/api/agent/sessions")
+    .send({
+      workspace: wid,
+      title: "With plan",
+      planSummary: "Phase A",
+      planDag: { version: 1, steps: ["read", "act"] },
+    });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.planSummary, "Phase A");
+  assert.deepEqual(res.body.planDag, { version: 1, steps: ["read", "act"] });
+  const one = await request(app).get(`/api/agent/sessions/${res.body.id}`);
+  assert.equal(one.status, 200);
+  assert.equal(one.body.planSummary, "Phase A");
+});
+
+test("POST /api/agent/sessions/:id/plan merges plan fields", async () => {
+  const app = await loadApp({ BACKEND: "ollama", USER_API_KEYS: "" });
+  const created = await request(app).post("/api/workspaces").send({ name: "Plan route WS" });
+  const wid = created.body.id;
+  const sess = await request(app).post("/api/agent/sessions").send({ workspace: wid, title: "P" });
+  assert.equal(sess.status, 201);
+  const sid = sess.body.id;
+  const plan = await request(app)
+    .post(`/api/agent/sessions/${sid}/plan`)
+    .send({ planSummary: "Updated", planDag: { nodes: [{ id: "n1" }] } });
+  assert.equal(plan.status, 200);
+  assert.equal(plan.body.planSummary, "Updated");
+  assert.deepEqual(plan.body.planDag, { nodes: [{ id: "n1" }] });
+  const ev = (plan.body.events || []).filter((e) => e.type === "plan_updated");
+  assert.ok(ev.length >= 1);
+});
+
+test("PUT agent-settings persists browserAllowedHosts", async () => {
+  const app = await loadApp({ BACKEND: "ollama", USER_API_KEYS: "" });
+  const created = await request(app).post("/api/workspaces").send({ name: "Browser policy WS" });
+  assert.equal(created.status, 201);
+  const id = created.body.id;
+  const put = await request(app)
+    .put(`/api/workspaces/${id}/agent-settings`)
+    .send({
+      agentPolicy: { browserAllowedHosts: ["docs.example.com", "api.example.com"] },
+    });
+  assert.equal(put.status, 200);
+  assert.deepEqual(put.body.agentPolicy.browserAllowedHosts, ["docs.example.com", "api.example.com"]);
+  const get = await request(app).get(`/api/workspaces/${id}/agent-settings`);
+  assert.equal(get.status, 200);
+  assert.deepEqual(get.body.agentPolicy.browserAllowedHosts, ["docs.example.com", "api.example.com"]);
+});
+
+test("GET /api/workspaces/:id/agent-memory/stats returns usage", async () => {
+  const app = await loadApp({ BACKEND: "ollama", USER_API_KEYS: "" });
+  const created = await request(app).post("/api/workspaces").send({ name: "Mem stats WS" });
+  assert.equal(created.status, 201);
+  const id = created.body.id;
+  await request(app)
+    .put(`/api/workspaces/${id}/agent-settings`)
+    .send({ defaultSystemPrompt: "Use metric units.", memorySnippets: ["one", "two"] });
+  const res = await request(app).get(`/api/workspaces/${id}/agent-memory/stats`);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.workspaceId, id);
+  assert.equal(res.body.memory.snippets, 2);
+});
+
+test("marketplace install/list/policy routes work for workspace", async () => {
+  const { app, restore } = await loadAppKeepEnv({
+    BACKEND: "ollama",
+    USER_API_KEYS: "",
+    MARKETPLACE_TRUSTED_KEY_IDS: "trusted-key",
+  });
+  try {
+    const created = await request(app).post("/api/workspaces").send({ name: "Market WS" });
+    assert.equal(created.status, 201);
+    const id = created.body.id;
+    const unsigned = { id: "pack.demo", version: "1.0.0", tools: [{ name: "build" }] };
+    const stable = stableStringify(unsigned);
+    const digest = createHash("sha256").update(stable, "utf8").digest("hex");
+    const manifest = {
+      ...unsigned,
+      signature: { algorithm: "sha256", keyId: "trusted-key", value: digest },
+    };
+    const install = await request(app)
+      .post(`/api/workspaces/${id}/marketplace/install`)
+      .send({ manifest });
+    assert.equal(install.status, 201);
+    const list = await request(app).get(`/api/workspaces/${id}/marketplace/packs`);
+    assert.equal(list.status, 200);
+    assert.ok(Array.isArray(list.body.packs));
+    const policyPut = await request(app)
+      .put(`/api/workspaces/${id}/marketplace/policy`)
+      .send({ blockedToolNames: ["deploy"] });
+    assert.equal(policyPut.status, 200);
+    const policyGet = await request(app).get(`/api/workspaces/${id}/marketplace/policy`);
+    assert.equal(policyGet.status, 200);
+    assert.ok(policyGet.body.policy.blockedToolNames.includes("deploy"));
+  } finally {
+    restore();
+  }
 });
 
 // --- Phase 10: Storage CRUD ---
@@ -1569,6 +1723,17 @@ test("GET /api/eval/sets returns sets from data/eval-sets", async () => {
   const example = sets.find((s) => s.id === "example");
   assert.ok(example, "example eval set should be loaded from data/eval-sets/example.json");
   assert.equal(example.name, "Example Eval Set");
+});
+
+test("GET /api/eval/staging-traces returns traces including shipped example", async () => {
+  const app = await loadApp({ BACKEND: "ollama" });
+  const response = await request(app).get("/api/eval/staging-traces");
+  assert.equal(response.status, 200);
+  assert.ok(Array.isArray(response.body.traces));
+  assert.ok(
+    response.body.traces.some((t) => t.name === "example-staging.json"),
+    "example-staging.json should be listed from data/eval-sets/traces",
+  );
 });
 
 test("GET /api/eval/sets returns 401 when ADMIN_API_KEY set and no key", async () => {

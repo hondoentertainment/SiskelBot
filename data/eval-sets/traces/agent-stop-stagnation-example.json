@@ -1,0 +1,10 @@
+{
+  "_comment": "Documents expected agent_activity stopReason for stagnation-style regression (offline).",
+  "goldenTrace": [{ "name": "list_context", "arguments": {} }],
+  "agentActivity": {
+    "type": "agent_activity",
+    "toolCalls": [{ "name": "list_context", "args": {} }],
+    "swarmSteps": [],
+    "stopReason": "stagnation"
+  }
+}

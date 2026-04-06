@@ -1,6 +1,9 @@
 /**
  * Siskel Bot desktop shell (Electron).
  * Spawns the Node Express server, stores data under app.getPath("userData"), opens a window.
+ *
+ * Phases 97–106: native menu, system tray, auto-updater, IPC bridge,
+ *   native notifications, deep linking, shortcuts, window state, model manager.
  */
 const { app, BrowserWindow, shell, dialog } = require("electron");
 const { spawn } = require("child_process");
@@ -8,12 +11,26 @@ const path = require("path");
 const net = require("net");
 const fs = require("fs");
 
+const { buildMenu } = require("./menu.cjs");
+const { createTray, setTrayBadge, destroyTray } = require("./tray.cjs");
+const { initUpdater, checkForUpdates, destroyUpdater } = require("./updater.cjs");
+const { registerIpcHandlers } = require("./ipc-handlers.cjs");
+const { connectNotificationWs, disconnectNotificationWs } = require("./notifications.cjs");
+const { registerProtocol, handleDeepLink, extractDeepLinkFromArgv } = require("./deep-link.cjs");
+const { registerGlobalShortcuts, registerLocalShortcuts, unregisterAll: unregisterShortcuts } = require("./shortcuts.cjs");
+const { loadWindowState, trackWindowState } = require("./window-state.cjs");
+
 /** @type {import('child_process').ChildProcess | null} */
 let serverProcess = null;
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
 let serverPort = null;
 let serverBaseUrl = "http://127.0.0.1:38447";
+
+const closeToTray = process.env.DESKTOP_CLOSE_TO_TRAY === "1";
+
+// Phase 103: register protocol handler early (before app.whenReady)
+registerProtocol();
 
 function getFreePort() {
   return new Promise((resolve, reject) => {
@@ -66,24 +83,46 @@ function getProjectPaths() {
 function resolveNodeBinary() {
   if (process.env.NODE_BINARY) return process.env.NODE_BINARY;
   if (app.isPackaged) {
-    const bundled = path.join(process.resourcesPath, "node-win", "node.exe");
-    if (fs.existsSync(bundled)) return bundled;
+    // Platform-specific bundled Node binary
+    if (process.platform === "win32") {
+      const bundled = path.join(process.resourcesPath, "node-win", "node.exe");
+      if (fs.existsSync(bundled)) return bundled;
+    } else if (process.platform === "darwin") {
+      const bundled = path.join(process.resourcesPath, "node-mac", "node");
+      if (fs.existsSync(bundled)) return bundled;
+    } else {
+      const bundled = path.join(process.resourcesPath, "node-linux", "node");
+      if (fs.existsSync(bundled)) return bundled;
+    }
   }
   return "node";
 }
 
-async function waitForServer(port, maxMs = 30000) {
+function desktopServerTimeoutMs() {
+  const n = parseInt(process.env.DESKTOP_SERVER_TIMEOUT_MS || "30000", 10);
+  return Number.isFinite(n) && n >= 5000 ? Math.min(n, 300000) : 30000;
+}
+
+async function waitForServer(port, maxMs) {
+  const limit = maxMs ?? desktopServerTimeoutMs();
   const start = Date.now();
-  while (Date.now() - start < maxMs) {
+  let lastErr = "";
+  while (Date.now() - start < limit) {
     try {
       const res = await fetch(`http://127.0.0.1:${port}/health/live`, { signal: AbortSignal.timeout(2000) });
       if (res.ok) return;
-    } catch (_) {
-      /* retry */
+      lastErr = `HTTP ${res.status}`;
+    } catch (e) {
+      lastErr = e?.message || String(e);
+      if (process.env.DESKTOP_DEBUG) {
+        console.error("[desktop] Waiting for /health/live:", lastErr);
+      }
     }
     await new Promise((r) => setTimeout(r, 250));
   }
-  throw new Error("Server did not become ready in time");
+  throw new Error(
+    `Server did not become ready within ${limit}ms (${lastErr || "no response"}). Try DESKTOP_DEBUG=1, confirm port ${port} is free, or increase DESKTOP_SERVER_TIMEOUT_MS.`
+  );
 }
 
 async function startServer() {
@@ -105,6 +144,10 @@ async function startServer() {
     STORAGE_PATH: storagePath,
     VERCEL: "",
   };
+  const packagedEnvPath = path.join(storagePath, ".env");
+  if (app.isPackaged && fs.existsSync(packagedEnvPath)) {
+    env.DOTENV_CONFIG_PATH = packagedEnvPath;
+  }
 
   const nodeBin = resolveNodeBinary();
   serverProcess = spawn(nodeBin, [serverScript], {
@@ -112,6 +155,21 @@ async function startServer() {
     env,
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
+  });
+
+  await new Promise((resolve, reject) => {
+    const onErr = (err) => {
+      reject(
+        new Error(
+          `Could not start Node (${nodeBin}): ${err.message}. Packaged: ensure resources/node-win/node.exe exists. Dev: install Node or set NODE_BINARY.`
+        )
+      );
+    };
+    serverProcess.once("error", onErr);
+    serverProcess.once("spawn", () => {
+      serverProcess.off("error", onErr);
+      resolve();
+    });
   });
 
   serverProcess.stdout?.on("data", (buf) => {
@@ -125,9 +183,9 @@ async function startServer() {
     console.error("[desktop] Failed to spawn server:", err.message);
   });
 
-  serverProcess.on("exit", (code, signal) => {
+  serverProcess.on("exit", (code, _signal) => {
     if (code && code !== 0 && !app.isQuitting) {
-      console.error("[desktop] Server exited:", code, signal);
+      console.error("[desktop] Server exited:", code, _signal);
     }
     serverProcess = null;
   });
@@ -142,20 +200,51 @@ function stopServer() {
   }
 }
 
+function onNewChat() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.loadURL(`${serverBaseUrl}/`);
+    mainWindow.show();
+    mainWindow.focus();
+  }
+}
+
 function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 840,
+  // Phase 105: load persisted window state
+  const savedState = loadWindowState();
+
+  const winOpts = {
+    width: savedState.width,
+    height: savedState.height,
     minWidth: 800,
     minHeight: 600,
     show: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
+      preload: path.join(__dirname, "preload.cjs"),
     },
-  });
+  };
+
+  // Only set position if we have saved coordinates
+  if (savedState.x !== undefined && savedState.y !== undefined) {
+    winOpts.x = savedState.x;
+    winOpts.y = savedState.y;
+  }
+
+  mainWindow = new BrowserWindow(winOpts);
+
+  // Phase 105: track state changes and restore maximized
+  trackWindowState(mainWindow);
+  if (savedState.isMaximized) {
+    mainWindow.maximize();
+  }
 
   mainWindow.once("ready-to-show", () => mainWindow?.show());
+
+  if (process.env.DESKTOP_TITLE_PORT === "1") {
+    mainWindow.setTitle(`${app.getName()} · ${serverBaseUrl}`);
+  }
 
   mainWindow.loadURL(`${serverBaseUrl}/`);
 
@@ -164,19 +253,67 @@ function createWindow() {
     return { action: "deny" };
   });
 
+  // Phase 98: minimize-to-tray on close
+  if (closeToTray) {
+    mainWindow.on("close", (e) => {
+      if (!app.isQuitting) {
+        e.preventDefault();
+        mainWindow.hide();
+      }
+    });
+  }
+
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
+
+  // Phase 97: build native menu bar
+  buildMenu({
+    onNewChat,
+    onCheckUpdates: checkForUpdates,
+    serverBaseUrl,
+  });
+
+  // Phase 98: create system tray
+  createTray(mainWindow, { onNewChat });
+
+  // Phase 101: register IPC handlers
+  registerIpcHandlers({
+    onNewChat,
+    onSetBadge: setTrayBadge,
+    mainWindow,
+  });
+
+  // Phase 102: connect notification WebSocket
+  connectNotificationWs(serverBaseUrl, mainWindow);
+
+  // Phase 104: register keyboard shortcuts
+  registerGlobalShortcuts(mainWindow);
+  registerLocalShortcuts(mainWindow, { serverBaseUrl });
 }
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
+  app.on("second-instance", (_event, argv) => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
       mainWindow.focus();
+    }
+    // Phase 103: forward deep-link URL from argv (Windows/Linux)
+    const deepUrl = extractDeepLinkFromArgv(argv);
+    if (deepUrl && mainWindow) {
+      handleDeepLink(mainWindow, serverBaseUrl, deepUrl);
+    }
+  });
+
+  // Phase 103: macOS open-url event
+  app.on("open-url", (event, url) => {
+    event.preventDefault();
+    if (mainWindow) {
+      handleDeepLink(mainWindow, serverBaseUrl, url);
     }
   });
 
@@ -184,6 +321,9 @@ if (!gotLock) {
     try {
       await startServer();
       createWindow();
+
+      // Phase 100: start auto-updater
+      initUpdater();
     } catch (e) {
       console.error("[desktop] Startup failed:", e.message);
       dialog.showErrorBox(
@@ -195,7 +335,7 @@ if (!gotLock) {
   });
 
   app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") {
+    if (process.platform !== "darwin" && !closeToTray) {
       app.isQuitting = true;
       stopServer();
       app.quit();
@@ -204,6 +344,10 @@ if (!gotLock) {
 
   app.on("before-quit", () => {
     app.isQuitting = true;
+    unregisterShortcuts();
+    disconnectNotificationWs();
+    destroyUpdater();
+    destroyTray();
     stopServer();
   });
 

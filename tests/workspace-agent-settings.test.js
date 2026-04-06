@@ -27,6 +27,15 @@ test("normalizeWorkspaceAgentSettings caps allowedTools", () => {
   assert.ok(n.allowedTools.length <= 48);
 });
 
+test("normalizeWorkspaceAgentSettings normalizes browserAllowedHosts", () => {
+  const n = normalizeWorkspaceAgentSettings({
+    agentPolicy: {
+      browserAllowedHosts: [" Example.COM ", "", "docs.example.com", 1],
+    },
+  });
+  assert.deepEqual(n.agentPolicy.browserAllowedHosts, ["Example.COM", "docs.example.com"]);
+});
+
 test("buildWorkspaceAgentAugmentation includes approved memory heading", () => {
   const text = buildWorkspaceAgentAugmentation({
     defaultSystemPrompt: "P",

@@ -51,3 +51,14 @@ test("get_recipe requires name", () => {
   const v = validateToolCall("get_recipe", {});
   assert.equal(v.valid, false);
 });
+
+test("update_agent_session_plan requires planSummary or planDag", () => {
+  assert.equal(validateToolCall("update_agent_session_plan", {}).valid, false);
+  assert.equal(validateToolCall("update_agent_session_plan", { planSummary: "x" }).valid, true);
+  assert.equal(validateToolCall("update_agent_session_plan", { planDag: { a: 1 } }).valid, true);
+});
+
+test("update_agent_session_plan rejects non-object planDag", () => {
+  const v = validateToolCall("update_agent_session_plan", { planDag: [] });
+  assert.equal(v.valid, false);
+});

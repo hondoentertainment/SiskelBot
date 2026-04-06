@@ -24,6 +24,7 @@ export function mountEvalRoutes(app, deps) {
     listEvalSets,
     loadEvalSet,
     runEvalSet,
+    listStagingTraceSummaries,
   } = deps;
 
   // --- Agent trajectory ---
@@ -129,6 +130,16 @@ export function mountEvalRoutes(app, deps) {
     const deleted = await deleteRecordedTrace(id);
     if (!deleted) return apiError(res, 404, "NOT_FOUND", "Trace not found", `No trace with id: ${id}`);
     res.json({ ok: true, traceId: id });
+  });
+
+  apiRoute("get", "/eval/staging-traces", evalRateLimiter, evalAuth, logRequest, (req, res) => {
+    try {
+      const traces = listStagingTraceSummaries();
+      res.json({ traces });
+    } catch (err) {
+      console.error("Eval staging-traces list error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
   });
 
   // --- Eval harness ---

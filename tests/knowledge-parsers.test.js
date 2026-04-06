@@ -5,10 +5,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
-import { writeFileSync, readFileSync, mkdtempSync, rmSync, mkdirSync } from "node:fs";
+import { writeFileSync, readFileSync, mkdtempSync, rmSync, mkdirSync, createWriteStream } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { execSync } from "node:child_process";
+import archiver from "archiver";
+
+/** Cross-platform ZIP (CI + Windows dev); avoids shell `zip` binary. */
+async function zipDirectoryToBuffer(absDir) {
+  const outZip = join(tmpdir(), `knowledge-test-${Date.now()}-${Math.random().toString(36).slice(2)}.zip`);
+  await new Promise((resolve, reject) => {
+    const output = createWriteStream(outZip);
+    const archive = archiver("zip", { zlib: { level: 5 } });
+    output.on("close", resolve);
+    archive.on("error", reject);
+    archive.pipe(output);
+    archive.directory(absDir, false);
+    archive.finalize();
+  });
+  const buf = readFileSync(outZip);
+  rmSync(outZip, { force: true });
+  return buf;
+}
 
 const {
   parseDocument,
@@ -139,10 +156,9 @@ test("parseDocument CSV: headers only", async () => {
 // ---------------------------------------------------------------------------
 
 /**
- * Build a minimal DOCX buffer using system `zip` command.
- * DOCX is a ZIP containing word/document.xml and optionally docProps/core.xml.
+ * Build a minimal DOCX buffer (ZIP with word/document.xml and optional docProps).
  */
-function buildMinimalDocx(bodyText, metadata = {}) {
+async function buildMinimalDocx(bodyText, metadata = {}) {
   const dir = mkdtempSync(join(tmpdir(), "docx-build-"));
   try {
     // Create word/document.xml
@@ -179,16 +195,14 @@ function buildMinimalDocx(bodyText, metadata = {}) {
 </Types>`,
     );
 
-    const zipPath = join(dir, "out.zip");
-    execSync(`cd "${dir}" && zip -r out.zip . -x out.zip`, { stdio: "pipe" });
-    return readFileSync(zipPath);
+    return await zipDirectoryToBuffer(dir);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 }
 
 test("parseDocument DOCX: extracts text from minimal docx", async () => {
-  const buffer = buildMinimalDocx("Hello from DOCX");
+  const buffer = await buildMinimalDocx("Hello from DOCX");
   const result = await parseDocument(
     buffer,
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -198,7 +212,7 @@ test("parseDocument DOCX: extracts text from minimal docx", async () => {
 });
 
 test("parseDocument DOCX: extracts metadata", async () => {
-  const buffer = buildMinimalDocx("Content", { title: "My Doc", author: "Jane" });
+  const buffer = await buildMinimalDocx("Content", { title: "My Doc", author: "Jane" });
   const result = await parseDocument(buffer, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
   assert.equal(result.metadata.title, "My Doc");
   assert.equal(result.metadata.author, "Jane");
@@ -208,7 +222,7 @@ test("parseDocument DOCX: extracts metadata", async () => {
 // XLSX tests (minimal in-memory XLSX = ZIP with XML)
 // ---------------------------------------------------------------------------
 
-function buildMinimalXlsx(rows) {
+async function buildMinimalXlsx(rows) {
   const dir = mkdtempSync(join(tmpdir(), "xlsx-build-"));
   try {
     // Build shared strings
@@ -271,16 +285,14 @@ ${allStrings.map((s) => `<si><t>${s}</t></si>`).join("\n")}
 </Types>`,
     );
 
-    const zipPath = join(dir, "out.zip");
-    execSync(`cd "${dir}" && zip -r out.zip . -x out.zip`, { stdio: "pipe" });
-    return readFileSync(zipPath);
+    return await zipDirectoryToBuffer(dir);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 }
 
 test("parseDocument XLSX: extracts cell data with sheet name", async () => {
-  const buffer = buildMinimalXlsx([
+  const buffer = await buildMinimalXlsx([
     ["Name", "Score"],
     ["Alice", "95"],
     ["Bob", "87"],
