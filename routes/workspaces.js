@@ -209,10 +209,7 @@ export default function mountWorkspaceRoutes(app, deps) {
         defaultSystemPrompt: settings.defaultSystemPrompt,
         memorySnippets: settings.memorySnippets,
         allowedTools: settings.allowedTools || [],
-        agentPolicy: {
-          deniedTools: settings.deniedTools || [],
-          browserAllowedHosts: settings.browserAllowedHosts || [],
-        },
+        agentPolicy: settings.agentPolicy || { deniedTools: [], browserAllowedHosts: [] },
       });
     } catch (err) {
       console.error("Agent settings GET error:", err.message);
@@ -250,10 +247,7 @@ export default function mountWorkspaceRoutes(app, deps) {
           defaultSystemPrompt: saved.defaultSystemPrompt,
           memorySnippets: saved.memorySnippets,
           allowedTools: saved.allowedTools || [],
-          agentPolicy: {
-            deniedTools: saved.deniedTools || [],
-            browserAllowedHosts: saved.browserAllowedHosts || [],
-          },
+          agentPolicy: saved.agentPolicy || { deniedTools: [], browserAllowedHosts: [] },
         });
       } catch (err) {
         console.error("Agent settings PUT error:", err.message);
@@ -261,4 +255,22 @@ export default function mountWorkspaceRoutes(app, deps) {
       }
     }
   );
+
+  apiRoute("get", "/workspaces/:id/agent-memory/stats", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspaceId = sanitizeWorkspace(req.params.id);
+      const storageUserId = await resolveStorageUserId(req.userId, workspaceId);
+      const settings = await loadWorkspaceAgentSettings(storageUserId, workspaceId);
+      res.json({
+        workspaceId,
+        memory: {
+          snippets: (settings.memorySnippets || []).length,
+          systemPromptLength: (settings.defaultSystemPrompt || "").length,
+          allowedTools: (settings.allowedTools || []).length,
+        },
+      });
+    } catch (err) {
+      return apiError(res, 500, "INTERNAL_ERROR", err.message);
+    }
+  });
 }
