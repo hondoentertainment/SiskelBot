@@ -13,7 +13,7 @@ import request from "supertest";
 import express from "express";
 import session from "express-session";
 import { _resetForTesting, resolveKeyInfo, userAuth } from "../lib/auth.js";
-import { adminAuth } from "../lib/admin-auth.js";
+// import { adminAuth } from "../lib/admin-auth.js";
 
 // ---------------------------------------------------------------------------
 // Helpers: Replicates the apiKeyAuth logic from server.js

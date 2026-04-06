@@ -56,6 +56,10 @@ import mountMultimodalRoutes from "./multimodal.js";
 import { mountFederationRoutes } from "./federation.js";
 import { mountMcpRoutes } from "./mcp.js";
 import { mountSlackDiscordRoutes } from "./slack-discord.js";
+import { mountMemoryRoutes } from "./memory.js";
+import { mountRbacRoutes } from "./rbac.js";
+import { mountAnalyticsRoutes } from "./analytics.js";
+import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
   mountAuthRoutes,
@@ -80,6 +84,9 @@ const mountFunctions = [
   mountFederationRoutes,
   mountMcpRoutes,
   mountSlackDiscordRoutes,
+  mountMemoryRoutes,
+  mountRbacRoutes,
+  mountAnalyticsRoutes,
 ];
 
 /**
@@ -91,4 +98,6 @@ export function mountAllRoutes(app, deps) {
   for (const mount of mountFunctions) {
     mount(app, deps);
   }
+  // Mount v2 API routes
+  mountV2Routes(app, deps);
 }

@@ -1,5 +1,3 @@
-import express from "express";
-
 export default function mountDocsRoutes(app, deps) {
   const { openApiSpec } = deps;
 

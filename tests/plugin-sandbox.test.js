@@ -5,8 +5,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { resolve, dirname } from "path";
-import { fileURLToPath, pathToFileURL } from "url";
-import { writeFileSync, mkdirSync, unlinkSync, rmSync } from "fs";
+import { fileURLToPath } from "url";
+import { writeFileSync, mkdirSync, rmSync } from "fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");

@@ -16,7 +16,7 @@ const ROOT = resolve(__dirname, '..');
 const args = process.argv.slice(2);
 const outputArg = args.find((a) => a.startsWith('--output='));
 const outputDir = resolve(ROOT, outputArg ? outputArg.split('=')[1] : 'sdk');
-const _generateTS = args.includes('--typescript');
+// const _generateTS = args.includes('--typescript');
 
 // Load the OpenAPI spec
 let spec;

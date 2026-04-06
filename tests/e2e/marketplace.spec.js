@@ -1,8 +1,6 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("Plugin marketplace API", () => {
-  let availablePackId;
-
   test("GET /api/marketplace lists available packs", async ({ request }) => {
     const res = await request.get("/api/marketplace");
     expect(res.status()).toBe(200);
@@ -10,10 +8,6 @@ test.describe("Plugin marketplace API", () => {
     expect(body).toHaveProperty("_version", 1);
     expect(body).toHaveProperty("packs");
     expect(Array.isArray(body.packs)).toBe(true);
-    // Save first pack id for later tests
-    if (body.packs.length > 0) {
-      availablePackId = body.packs[0].id;
-    }
   });
 
   test("GET /api/marketplace supports category filter", async ({ request }) => {

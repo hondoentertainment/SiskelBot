@@ -1,4 +1,6 @@
 import passport from "passport";
+import { configCache } from "../lib/cache.js";
+import { cacheResponse } from "../lib/cache-middleware.js";
 
 export default function mountAuthRoutes(app, deps) {
   const {
@@ -20,6 +22,7 @@ export default function mountAuthRoutes(app, deps) {
     trajectoryApiEnabled,
     defaultAgentSystemConfigured,
     isAuthConfigured,
+    agentSessionApiEnabled,
   } = deps;
 
   // Config endpoint for client (backend, model presets)
@@ -78,6 +81,14 @@ export default function mountAuthRoutes(app, deps) {
       agentMaxIterationsClientTunable: process.env.AGENT_MAX_ITERATIONS_IGNORE_CLIENT !== "1",
       prometheusEnabled: process.env.ENABLE_METRICS === "1",
       prometheusPath: "/metrics",
+      agentSessionApi: agentSessionApiEnabled(),
+      workspaceFileToolsEnabled: process.env.WORKSPACE_FILE_TOOLS === "1",
+      workspaceRootConfigured: Boolean((process.env.WORKSPACE_ROOT || "").trim()),
+      workspaceFileWriteToolsEnabled: process.env.WORKSPACE_FILE_WRITE_TOOLS === "1",
+      workspaceGitToolsEnabled: process.env.WORKSPACE_GIT_TOOLS === "1",
+      workspaceGitWriteEnabled: process.env.WORKSPACE_GIT_WRITE === "1",
+      workspaceCommandRunnerConfigured: Boolean((process.env.WORKSPACE_COMMAND_RUNNER || "").trim()),
+      agentBrowserToolsEnabled: process.env.AGENT_BROWSER_TOOLS === "1",
     };
     if (IS_PRODUCTION && !API_KEY) {
       payload.productionHint = "Set API_KEY in Vercel env vars to protect /v1/chat/completions";
@@ -91,8 +102,6 @@ export default function mountAuthRoutes(app, deps) {
     req.session.userId = req.user?.userId;
     res.redirect("/");
   }
-export function mountAuthRoutes(app, deps) {
-  const { oauthProviders, oauthCallback } = deps;
 
   if (oauthProviders.github) {
     app.get("/auth/github", passport.authenticate("github", { scope: ["user:email"] }));
@@ -108,13 +117,7 @@ export function mountAuthRoutes(app, deps) {
   });
   app.get("/auth/me", (req, res) => {
     if (req.session?.userId) {
-      const provider =
-        req.user?.provider ||
-        (req.session.userId?.startsWith("github-")
-          ? "github"
-          : req.session.userId?.startsWith("google-")
-            ? "google"
-            : null);
+      const provider = req.user?.provider || (req.session.userId?.startsWith("github-") ? "github" : req.session.userId?.startsWith("google-") ? "google" : null);
       return res.json({ userId: req.session.userId, provider });
     }
     return res.status(401).json({ error: "Not authenticated", code: "NOT_AUTHENTICATED" });

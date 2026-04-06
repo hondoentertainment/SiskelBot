@@ -33,7 +33,7 @@
     const INSTALL_DISMISSED_KEY = 'siskelbot-install-dismissed';
     const NOTIFICATIONS_STORAGE_KEY = 'siskelbot-notifications';
     const MAX_CONVERSATIONS = 50;
-    const MAX_NOTIFICATIONS = 100;
+    // const MAX_NOTIFICATIONS = 100;
     const ONBOARDING_DONE_KEY = 'siskelbot-onboarding-v3-done';
     const MAX_CHAT_DOM_MESSAGES = 120;
     const scheduleDom = (typeof SiskelRafBatcher !== 'undefined' && SiskelRafBatcher.create)
@@ -93,7 +93,7 @@
     let config = { backend: 'vllm', modelPresets: [], modelPlaceholder: 'meta-llama/Llama-3-8B-Instruct' };
     let activeAbortController = null;
     let lastSubmittedPrompt = '';
-    let lastErrorMessage = '';
+    // let lastErrorMessage = '';
 
     let conversationMeta = { pinned: false, tags: [] };
     let attachedImages = [];
@@ -168,7 +168,7 @@
     }
 
     function showNotice(message, variant = 'warning', opts = false) {
-      lastErrorMessage = message;
+      // lastErrorMessage = message;
       noticeText.textContent = message;
       noticeBanner.className = `notice-banner visible ${variant}`;
       const canRetry = typeof opts === 'boolean' ? opts : (opts && opts.canRetry);
@@ -585,7 +585,7 @@
 
     // Phase 29: Team workspaces - create, join, invite, members, activity
     (function initPhase29Workspace() {
-      const workspaceDetails = document.getElementById('workspace-details');
+      document.getElementById('workspace-details');
       const wsCreateBtn = document.getElementById('workspace-create-btn');
       const wsJoinBtn = document.getElementById('workspace-join-btn');
       const wsInviteBtn = document.getElementById('workspace-invite-btn');
@@ -1703,7 +1703,7 @@
     function renderAttachedImages() {
       if (!attachedImagesEl || !attachedImagesWrap) return;
       attachedImagesWrap.style.display = attachedImages.length ? 'block' : 'none';
-      attachedImagesEl.innerHTML = attachedImages.map((dataUrl, i) => `
+      attachedImagesEl.innerHTML = attachedImages.map((dataUrl, _i) => `
         <div class="attached-image-preview"><img src="${dataUrl}" alt="Attached"/><button type="button" class="remove-img" aria-label="Remove image">×</button></div>
       `).join('');
       attachedImagesEl.querySelectorAll('.remove-img').forEach((btn, i) => {
@@ -1726,7 +1726,6 @@
             showNotice(`Image ${file.name} exceeds 5MB`, 'warning', false);
             continue;
           }
-          const mime = file.type || (file.name?.endsWith('.png') ? 'image/png' : file.name?.endsWith('.webp') ? 'image/webp' : 'image/jpeg');
           const reader = new FileReader();
           reader.onload = () => {
             const dataUrl = reader.result;
@@ -1748,8 +1747,8 @@
     // --- Phase 6: Recipes panel ---
     const recipesList = document.getElementById('recipes-list');
     const recipeCreateBtn = document.getElementById('recipe-create-btn');
-    const recipesSyncBtn = document.getElementById('recipes-sync-btn');
-    const recipesLoadBtn = document.getElementById('recipes-load-btn');
+    // const recipesSyncBtn = document.getElementById('recipes-sync-btn');
+    // const recipesLoadBtn = document.getElementById('recipes-load-btn');
     const recipeCreateModal = document.getElementById('recipe-create-modal');
     const recipeCreateNameInput = document.getElementById('recipe-create-name-input');
     const recipeCreateDescInput = document.getElementById('recipe-create-desc-input');
@@ -1820,7 +1819,7 @@
     }
 
     async function openScheduleModal(recipe) {
-      const returnTo = document.activeElement;
+      // const returnTo = document.activeElement;
       _scheduleModalRecipeId = recipe.id;
       const nameEl = document.getElementById('recipe-schedule-name');
       if (nameEl) nameEl.textContent = recipe.name || 'Recipe';
@@ -1967,7 +1966,7 @@
       recipeAddStepBtn.addEventListener('click', () => {
         const action = recipeAddStepSelect?.value?.trim();
         if (!action) return;
-        const step = JSON.stringify({ action, payload: {} });
+        // const step = JSON.stringify({ action, payload: {} });
         const cur = recipeCreateStepsInput.value.trim();
         let steps = [];
         try {
@@ -2581,7 +2580,7 @@
             conversationsSyncBtn.dataset.wired = '1';
             conversationsSyncBtn.onclick = async () => {
               try {
-                const list = loadConversations();
+                loadConversations();
                 saveCurrentToConversations();
                 const list2 = loadConversations();
                 const res2 = await fetch('/api/conversations', {
@@ -2630,7 +2629,7 @@
     }
 
     if (clearBtn) {
-      const origClear = clearBtn.onclick;
+      // const origClear = clearBtn.onclick;
       clearBtn.onclick = () => {
         saveCurrentToConversations();
         clearHistory();
@@ -2780,7 +2779,7 @@
 
     // --- Voice: Text-to-Speech ---
     const synth = window.speechSynthesis;
-    let currentUtterance = null;
+    // let currentUtterance = null;
 
     function speakText(text, onEnd) {
       if (!synth || !text || !text.trim()) return;
@@ -2793,7 +2792,7 @@
         if (onEnd) onEnd();
       };
       u.onerror = () => document.querySelectorAll('.btn-speaker.speaking').forEach(b => b.classList.remove('speaking'));
-      currentUtterance = u;
+      // currentUtterance = u;
       synth.speak(u);
     }
 
@@ -2986,14 +2985,14 @@
         };
         recognition.onresult = (e) => {
           let final = '';
-          let interim = '';
+          // let interim = '';
           for (let i = e.resultIndex; i < e.results.length; i++) {
             const result = e.results[i];
             const transcript = result[0].transcript;
             if (result.isFinal) {
               final += transcript;
             } else {
-              interim += transcript;
+              // interim += transcript;
             }
           }
           if (final) {
@@ -3145,12 +3144,12 @@
     const approvalConfirm = document.getElementById('approval-confirm');
     const approvalCancel = document.getElementById('approval-cancel');
 
-    function isTaskOriented(text) {
-      if (!text || typeof text !== 'string') return false;
-      const lower = text.toLowerCase();
-      const keywords = ['deploy', 'execute', 'run', 'build', 'install', 'setup', 'create', 'delete', 'restart', 'push', 'publish'];
-      return keywords.some(k => lower.includes(k));
-    }
+    // function isTaskOriented(text) {
+    //   if (!text || typeof text !== 'string') return false;
+    //   const lower = text.toLowerCase();
+    //   const keywords = ['deploy', 'execute', 'run', 'build', 'install', 'setup', 'create', 'delete', 'restart', 'push', 'publish'];
+    //   return keywords.some(k => lower.includes(k));
+    // }
 
     function updatePlanTaskButtonState() {
       if (!planTaskBtn) return;
@@ -3180,7 +3179,7 @@
       } catch (_) { return false; }
     }
 
-    function renderTaskPlanCard(plan, raw) {
+    function renderTaskPlanCard(plan, _raw) {
       const card = document.createElement('div');
       card.className = 'task-plan-card';
       const stepsHtml = (plan.steps || []).map((s, i) => {
@@ -3858,7 +3857,7 @@
     installAppBtn?.addEventListener('click', async () => {
       if (!deferredInstallPrompt) return;
       deferredInstallPrompt.prompt();
-      const { outcome } = await deferredInstallPrompt.userChoice;
+      await deferredInstallPrompt.userChoice;
       deferredInstallPrompt = null;
       if (installBanner) installBanner.style.display = 'none';
     });

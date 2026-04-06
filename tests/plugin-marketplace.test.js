@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHmac } from "node:crypto";
+// import { createHmac } from "node:crypto";
 import {
   registry,
   validateManifest,
@@ -19,7 +19,7 @@ import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TMP_DIR = join(__dirname, "..", "data", "_test_marketplace");
-const TMP_PACKS = join(TMP_DIR, "packs");
+// const TMP_PACKS = join(TMP_DIR, "packs");
 
 function cleanTmp() {
   if (existsSync(TMP_DIR)) rmSync(TMP_DIR, { recursive: true, force: true });

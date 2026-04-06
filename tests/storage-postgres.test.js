@@ -19,7 +19,7 @@ delete process.env.STORAGE_BACKEND;
 delete process.env.DATABASE_URL;
 
 // Dynamic import after env is configured
-const { readJsonPath, writeJsonPath, withPathLock, getDataDir } = await import(
+const { readJsonPath, writeJsonPath, withPathLock } = await import(
   "../lib/json-path-store.js"
 );
 
@@ -47,7 +47,7 @@ test("readJsonPath returns default when file missing", async () => {
 test("withPathLock serializes concurrent writes", async () => {
   const path = join(tempDir, "lock-test.json");
   await writeJsonPath(path, { counter: 0 });
-  const increments = Array.from({ length: 10 }, (_, i) =>
+  const increments = Array.from({ length: 10 }, (_) =>
     withPathLock(path, async () => {
       const data = await readJsonPath(path, { counter: 0 });
       data.counter += 1;
