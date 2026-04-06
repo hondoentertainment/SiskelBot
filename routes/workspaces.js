@@ -209,6 +209,10 @@ export default function mountWorkspaceRoutes(app, deps) {
         defaultSystemPrompt: settings.defaultSystemPrompt,
         memorySnippets: settings.memorySnippets,
         allowedTools: settings.allowedTools || [],
+        agentPolicy: {
+          deniedTools: settings.deniedTools || [],
+          browserAllowedHosts: settings.browserAllowedHosts || [],
+        },
       });
     } catch (err) {
       console.error("Agent settings GET error:", err.message);
@@ -246,8 +250,10 @@ export default function mountWorkspaceRoutes(app, deps) {
           defaultSystemPrompt: saved.defaultSystemPrompt,
           memorySnippets: saved.memorySnippets,
           allowedTools: saved.allowedTools || [],
-          deniedTools: saved.deniedTools || [],
-          browserAllowedHosts: saved.browserAllowedHosts || [],
+          agentPolicy: {
+            deniedTools: saved.deniedTools || [],
+            browserAllowedHosts: saved.browserAllowedHosts || [],
+          },
         });
       } catch (err) {
         console.error("Agent settings PUT error:", err.message);

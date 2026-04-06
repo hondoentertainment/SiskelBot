@@ -25,8 +25,8 @@ export default function mountAuthRoutes(app, deps) {
     agentSessionApiEnabled,
   } = deps;
 
-  // Config endpoint for client (backend, model presets) -- cached 30s
-  app.get("/config", cacheResponse(configCache, () => "global_config", { ttlMs: 30_000 }), (req, res) => {
+  // Config endpoint for client (backend, model presets)
+  app.get("/config", (req, res) => {
     const payload = {
       backend: BACKEND,
       modelPresets: MODEL_PRESETS[BACKEND] || [],
@@ -88,6 +88,7 @@ export default function mountAuthRoutes(app, deps) {
       workspaceGitToolsEnabled: process.env.WORKSPACE_GIT_TOOLS === "1",
       workspaceGitWriteEnabled: process.env.WORKSPACE_GIT_WRITE === "1",
       workspaceCommandRunnerConfigured: Boolean((process.env.WORKSPACE_COMMAND_RUNNER || "").trim()),
+      agentBrowserToolsEnabled: process.env.AGENT_BROWSER_TOOLS === "1",
     };
     if (IS_PRODUCTION && !API_KEY) {
       payload.productionHint = "Set API_KEY in Vercel env vars to protect /v1/chat/completions";
