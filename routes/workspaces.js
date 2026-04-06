@@ -246,6 +246,8 @@ export default function mountWorkspaceRoutes(app, deps) {
           defaultSystemPrompt: saved.defaultSystemPrompt,
           memorySnippets: saved.memorySnippets,
           allowedTools: saved.allowedTools || [],
+          deniedTools: saved.deniedTools || [],
+          browserAllowedHosts: saved.browserAllowedHosts || [],
         });
       } catch (err) {
         console.error("Agent settings PUT error:", err.message);

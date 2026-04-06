@@ -22,6 +22,7 @@ export default function mountAuthRoutes(app, deps) {
     trajectoryApiEnabled,
     defaultAgentSystemConfigured,
     isAuthConfigured,
+    agentSessionApiEnabled,
   } = deps;
 
   // Config endpoint for client (backend, model presets) -- cached 30s
@@ -80,6 +81,13 @@ export default function mountAuthRoutes(app, deps) {
       agentMaxIterationsClientTunable: process.env.AGENT_MAX_ITERATIONS_IGNORE_CLIENT !== "1",
       prometheusEnabled: process.env.ENABLE_METRICS === "1",
       prometheusPath: "/metrics",
+      agentSessionApi: agentSessionApiEnabled(),
+      workspaceFileToolsEnabled: process.env.WORKSPACE_FILE_TOOLS === "1",
+      workspaceRootConfigured: Boolean((process.env.WORKSPACE_ROOT || "").trim()),
+      workspaceFileWriteToolsEnabled: process.env.WORKSPACE_FILE_WRITE_TOOLS === "1",
+      workspaceGitToolsEnabled: process.env.WORKSPACE_GIT_TOOLS === "1",
+      workspaceGitWriteEnabled: process.env.WORKSPACE_GIT_WRITE === "1",
+      workspaceCommandRunnerConfigured: Boolean((process.env.WORKSPACE_COMMAND_RUNNER || "").trim()),
     };
     if (IS_PRODUCTION && !API_KEY) {
       payload.productionHint = "Set API_KEY in Vercel env vars to protect /v1/chat/completions";
