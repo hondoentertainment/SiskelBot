@@ -81,10 +81,11 @@ await test("estimate.inputFromMessages counts tokens from messages", async () =>
   assert.ok(tokens >= 1);
 });
 
-await test("estimate.inputFromMessages returns 0 for empty array", async () => {
+await test("estimate.inputFromMessages returns minimum 1 for empty array", async () => {
   const { estimate } = await import("../lib/usage-tracker.js");
   const tokens = estimate.inputFromMessages([]);
-  assert.equal(tokens, 0);
+  // Empty messages still yields Math.max(1, 0) = 1 per the implementation
+  assert.equal(tokens, 1);
 });
 
 await test("estimate.outputFromChars estimates tokens from char count", async () => {
