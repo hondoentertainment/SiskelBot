@@ -1,4 +1,8 @@
 import { randomUUID } from "crypto";
+import { createCache } from "../lib/cache.js";
+import { cacheResponse } from "../lib/cache-middleware.js";
+
+const recipesCache = createCache({ ttlMs: 60_000, maxSize: 200, name: "recipes" });
 
 export default function mountRecipeRoutes(app, deps) {
   const {
@@ -18,7 +22,7 @@ export default function mountRecipeRoutes(app, deps) {
   } = deps;
 
   // Recipes CRUD
-  apiRoute("get", "/recipes", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+  apiRoute("get", "/recipes", storageRateLimiter, requireScope("read"), logRequest, cacheResponse(recipesCache, (req) => `recipes:${req.userId || "anon"}:${req.query?.workspace || "default"}`, { ttlMs: 60_000 }), async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
       const data = await storage.listItems("recipes", workspace);
@@ -47,6 +51,7 @@ export default function mountRecipeRoutes(app, deps) {
       const merged = await storage.mergeItems("recipes", workspace, [item]);
       const out = merged.find((x) => x.id === id) || item;
       await logActivity(workspace, "recipe_added", req.userId || "anonymous", { recipeName: item.name, id: out.id });
+      recipesCache.clear();
       res.status(201).json(out);
     } catch (err) {
       console.error("Storage recipes add error:", err.message);
@@ -77,6 +82,7 @@ export default function mountRecipeRoutes(app, deps) {
         return existing;
       });
       if (!updated) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
+      recipesCache.clear();
       res.json(updated);
     } catch (err) {
       console.error("Storage recipes update error:", err.message);
@@ -89,6 +95,7 @@ export default function mountRecipeRoutes(app, deps) {
       const workspace = sanitizeWorkspace(req.query?.workspace);
       const deleted = await storage.deleteItem("recipes", req.params.id, workspace);
       if (!deleted) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
+      recipesCache.clear();
       res.status(204).send();
     } catch (err) {
       console.error("Storage recipes delete error:", err.message);

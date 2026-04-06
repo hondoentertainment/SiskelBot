@@ -12,29 +12,6 @@ const v2Mounts = [
 ];
 
 /**
- * v2 Bearer-only auth middleware.
- * Rejects requests using x-api-key; only Authorization: Bearer is accepted.
- */
-function createV2BearerAuth(deps) {
-  const { apiV2Error: v2Err } = deps;
-  return (req, res, next) => {
-    // If x-api-key is present, reject — v2 only supports Bearer auth
-    if (req.headers["x-api-key"]) {
-      const { apiV2Error: errorFn } = await_import();
-      return v2Err
-        ? v2Err(res, 401, "INVALID_AUTH", "v2 endpoints require Authorization: Bearer token, x-api-key is not supported")
-        : res.status(401).json({ error: { code: "INVALID_AUTH", message: "v2 endpoints require Authorization: Bearer token", details: null, requestId: req.requestId || "unknown" } });
-    }
-    const auth = req.headers.authorization;
-    if (!auth || !auth.startsWith("Bearer ")) {
-      // Allow through if userAuth/requireScope will handle auth downstream
-      // (e.g., session-based auth in dev mode)
-    }
-    next();
-  };
-}
-
-/**
  * Middleware that adds standard RateLimit-* headers to v2 responses.
  */
 function createV2RateHeaders() {

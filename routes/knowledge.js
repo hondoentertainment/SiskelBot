@@ -1,4 +1,6 @@
 import { validate } from "../lib/validate.js";
+import { getWorkspaceChunkingConfig, setWorkspaceChunkingConfig, VALID_STRATEGIES } from "../lib/knowledge-chunking-config.js";
+import { autoDetectAndParse } from "../lib/knowledge-parsers.js";
 
 export default function mountKnowledgeRoutes(app, deps) {
   const {
@@ -157,6 +159,47 @@ export default function mountKnowledgeRoutes(app, deps) {
     }
   });
 
+  // GET /api/v1/knowledge/chunking-config — get workspace chunking config
+  apiRoute("get", "/knowledge/chunking-config", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const config = await getWorkspaceChunkingConfig(workspace);
+      res.json({ workspace, config });
+    } catch (err) {
+      console.error("Chunking config get error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RAG_PIPELINE_V2.md.");
+    }
+  });
+
+  // PUT /api/v1/knowledge/chunking-config — update workspace chunking config
+  apiRoute("put", "/knowledge/chunking-config", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.body?.workspace);
+      const { chunkSize, chunkOverlap, maxChunks, strategy, metadataExtraction, preserveStructure } = req.body || {};
+
+      if (strategy && !VALID_STRATEGIES.includes(strategy)) {
+        return apiError(res, 400, "INVALID_INPUT", `Invalid strategy: ${strategy}`, `Valid strategies: ${VALID_STRATEGIES.join(", ")}`);
+      }
+
+      const updates = {};
+      if (chunkSize !== undefined) updates.chunkSize = chunkSize;
+      if (chunkOverlap !== undefined) updates.chunkOverlap = chunkOverlap;
+      if (maxChunks !== undefined) updates.maxChunks = maxChunks;
+      if (strategy !== undefined) updates.strategy = strategy;
+      if (metadataExtraction !== undefined) updates.metadataExtraction = metadataExtraction;
+      if (preserveStructure !== undefined) updates.preserveStructure = preserveStructure;
+
+      const config = await setWorkspaceChunkingConfig(workspace, updates);
+      res.json({ workspace, config });
+    } catch (err) {
+      if (err.code === "INVALID_INPUT") {
+        return apiError(res, 400, "INVALID_INPUT", err.message, "Workspace must be alphanumeric, 1-50 chars.");
+      }
+      console.error("Chunking config set error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RAG_PIPELINE_V2.md.");
+    }
+  });
+
   apiRoute("post", "/knowledge/fetch", knowledgeIndexRateLimiter, requireScope("write"), logRequest, async (req, res) => {
     try {
       const url = typeof req.body?.url === "string" ? req.body.url.trim() : "";
@@ -215,10 +258,24 @@ export default function mountKnowledgeRoutes(app, deps) {
   apiRoute("post", "/context", storageRateLimiter, requireScope("write"), logRequest, validateCreateContext, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.body?.workspace);
-      const { title, content } = req.body || {};
+      let { title, content } = req.body || {};
       if (typeof title !== "string" || !title.trim()) {
         return apiError(res, 400, "INVALID_INPUT", "title required", "Send { title: string, content?: string }.");
       }
+
+      // Phase 17: Auto-detect content type and parse if applicable
+      const contentType = req.body?.contentType;
+      if (typeof content === "string" && content.trim()) {
+        const parsed = autoDetectAndParse(content, contentType);
+        if (parsed.detectedType !== "text/plain") {
+          content = parsed.text;
+          // Use parsed title as fallback if original title is generic
+          if (parsed.title && (!title.trim() || title.trim() === "Untitled")) {
+            title = parsed.title;
+          }
+        }
+      }
+
       const { randomUUID } = await import("crypto");
       const id = (req.body?.id && String(req.body.id).trim()) || randomUUID();
       const doc = {

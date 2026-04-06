@@ -1,4 +1,6 @@
 import passport from "passport";
+import { configCache } from "../lib/cache.js";
+import { cacheResponse } from "../lib/cache-middleware.js";
 
 export default function mountAuthRoutes(app, deps) {
   const {
@@ -22,8 +24,8 @@ export default function mountAuthRoutes(app, deps) {
     isAuthConfigured,
   } = deps;
 
-  // Config endpoint for client (backend, model presets)
-  app.get("/config", (req, res) => {
+  // Config endpoint for client (backend, model presets) -- cached 30s
+  app.get("/config", cacheResponse(configCache, () => "global_config", { ttlMs: 30_000 }), (req, res) => {
     const payload = {
       backend: BACKEND,
       modelPresets: MODEL_PRESETS[BACKEND] || [],

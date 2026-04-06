@@ -1,4 +1,8 @@
 import { runStartupChecks, getCachedResults } from "../lib/startup-checks.js";
+import { createCache } from "../lib/cache.js";
+import { cacheResponse } from "../lib/cache-middleware.js";
+
+const readyCache = createCache({ ttlMs: 10_000, maxSize: 10, name: "health-ready" });
 
 export default function mountHealthRoutes(app, deps) {
   const {
@@ -146,8 +150,8 @@ export default function mountHealthRoutes(app, deps) {
     res.status(200).json({ ok: true, status: "alive" });
   });
 
-  // Readiness probe
-  app.get("/health/ready", async (req, res) => {
+  // Readiness probe -- cached 10s
+  app.get("/health/ready", cacheResponse(readyCache, () => "ready_check", { ttlMs: 10_000 }), async (req, res) => {
     try {
       await storage.listWorkspaces("anonymous");
     } catch (e) {

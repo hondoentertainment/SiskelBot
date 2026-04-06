@@ -1,5 +1,7 @@
 // Context CRUD + sync routes extracted from server.js
 import { randomUUID } from "crypto";
+import { knowledgeCache } from "../lib/cache.js";
+import { cacheResponse } from "../lib/cache-middleware.js";
 
 export function mountContextRoutes(app, deps) {
   const {
@@ -14,7 +16,7 @@ export function mountContextRoutes(app, deps) {
     logActivity,
   } = deps;
 
-  apiRoute("get", "/context", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
+  apiRoute("get", "/context", storageRateLimiter, userAuth, requireScope("read"), logRequest, cacheResponse(knowledgeCache, (req) => `ctx:${req.userId || "anon"}:${req.query?.workspace || "default"}`, { ttlMs: 60_000 }), async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
       const data = await storage.listItems("context", workspace, req.userId);
@@ -42,6 +44,7 @@ export function mountContextRoutes(app, deps) {
       const merged = await storage.mergeItems("context", workspace, [doc]);
       const item = merged.find((x) => x.id === id) || doc;
       await logActivity(workspace, "context_added", req.userId || "anonymous", { title: doc.title, id: doc.id });
+      knowledgeCache.clear();
       res.status(201).json(item);
     } catch (err) {
       console.error("Storage context add error:", err.message);
@@ -71,6 +74,7 @@ export function mountContextRoutes(app, deps) {
         return existing;
       });
       if (!updated) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
+      knowledgeCache.clear();
       res.json(updated);
     } catch (err) {
       console.error("Storage context update error:", err.message);
@@ -83,6 +87,7 @@ export function mountContextRoutes(app, deps) {
       const workspace = sanitizeWorkspace(req.query?.workspace);
       const deleted = await storage.deleteItem("context", req.params.id, workspace);
       if (!deleted) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
+      knowledgeCache.clear();
       res.status(204).send();
     } catch (err) {
       console.error("Storage context delete error:", err.message);
