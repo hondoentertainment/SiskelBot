@@ -1,4 +1,4 @@
-/* global process */
+/* eslint-disable no-redeclare */
 import { defineConfig } from "@playwright/test";
 
 const PORT = 3847;

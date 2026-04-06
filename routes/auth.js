@@ -93,8 +93,6 @@ export default function mountAuthRoutes(app, deps) {
     req.session.userId = req.user?.userId;
     res.redirect("/");
   }
-export function mountAuthRoutes(app, deps) {
-  const { oauthProviders, oauthCallback } = deps;
 
   if (oauthProviders.github) {
     app.get("/auth/github", passport.authenticate("github", { scope: ["user:email"] }));
@@ -110,13 +108,7 @@ export function mountAuthRoutes(app, deps) {
   });
   app.get("/auth/me", (req, res) => {
     if (req.session?.userId) {
-      const provider =
-        req.user?.provider ||
-        (req.session.userId?.startsWith("github-")
-          ? "github"
-          : req.session.userId?.startsWith("google-")
-            ? "google"
-            : null);
+      const provider = req.user?.provider || (req.session.userId?.startsWith("github-") ? "github" : req.session.userId?.startsWith("google-") ? "google" : null);
       return res.json({ userId: req.session.userId, provider });
     }
     return res.status(401).json({ error: "Not authenticated", code: "NOT_AUTHENTICATED" });
