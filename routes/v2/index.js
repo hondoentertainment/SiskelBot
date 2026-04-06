@@ -51,9 +51,10 @@ export function mountV2Routes(app, deps) {
  * Rejects x-api-key; passes through to downstream auth for Bearer tokens.
  */
 function createV2BearerAuthMiddleware(deps) {
+  const { userAuth } = deps;
   return (req, res, next) => {
+    const requestId = req.requestId || "unknown";
     if (req.headers["x-api-key"]) {
-      const requestId = req.requestId || "unknown";
       return res.status(401).json({
         error: {
           code: "INVALID_AUTH",
@@ -63,7 +64,18 @@ function createV2BearerAuthMiddleware(deps) {
         },
       });
     }
-    // Delegate to existing userAuth downstream for Bearer token validation
-    next();
+    const bearer = req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7).trim() : null;
+    if (!bearer) {
+      return res.status(401).json({
+        error: {
+          code: "AUTH_REQUIRED",
+          message: "Authorization: Bearer <token> header is required",
+          details: null,
+          requestId,
+        },
+      });
+    }
+    // Delegate to userAuth for token validation
+    userAuth(req, res, next);
   };
 }
