@@ -73,6 +73,7 @@ import { listEvalSets, loadEvalSet } from "./lib/storage-eval.js";
 import { listStagingTraceSummaries } from "./lib/eval-staging-traces.js";
 import { createToken, attachToServer, getOnlineUsers, closeServer } from "./lib/realtime.js";
 import { sanitizeForLog } from "./lib/log-sanitizer.js";
+import { requestContextMiddleware } from "./lib/request-context.js";
 import { execute as circuitExecute } from "./lib/circuit-breaker.js";
 import { parseRoutingConfig, selectBackend, logRouting, getRoutingStats } from "./lib/ab-router.js";
 import { recordModelResponse, getModelQuality, getModelRanking, getQualityHistory, loadFromDisk as loadModelQuality, resetModelStats, checkAutoPromotion } from "./lib/model-quality.js";
