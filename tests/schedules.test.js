@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 // Mock json-path-store in-memory
-let mockStore = {};
+let _mockStore = {};
 
 test.before(async () => {
   // Set a temp data dir so getDataDir returns something predictable
