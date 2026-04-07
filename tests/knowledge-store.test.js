@@ -12,7 +12,6 @@ test.after(() => {
 });
 
 // Mock json-path-store before importing knowledge-store
-const _store = {};
 
 await test("indexDocument returns error when text is missing", async () => {
   const { indexDocument } = await import("../lib/knowledge-store.js");

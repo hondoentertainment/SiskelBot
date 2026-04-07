@@ -38,7 +38,6 @@ const {
 } = await import("../lib/knowledge-parsers.js");
 
 const {
-  chunkPlainText: _chunkPlainText,
   chunkByFixed,
   chunkBySentence,
   chunkByParagraph,

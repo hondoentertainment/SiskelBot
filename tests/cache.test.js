@@ -165,12 +165,11 @@ test("cache-middleware: returns MISS on first request, HIT on second", () => {
   // First request — MISS
   let headersSent = {};
   let jsonBody = null;
-  let statusCode = 200;
   const req1 = { url: "/test" };
   const res1 = {
     statusCode: 200,
     setHeader(k, v) { headersSent[k] = v; },
-    status(code) { statusCode = code; return this; },
+    status(code) { res1.statusCode = code; return this; },
     json(body) { jsonBody = body; return this; },
   };
   // Bind original json

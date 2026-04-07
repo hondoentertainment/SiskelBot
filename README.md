@@ -4,7 +4,76 @@
 
 *Streaming assistant (OpenAI-compatible API for Ollama, vLLM, or OpenAI). Repository package name: `experimentagent`.*
 
-Realtime streaming assistant proxy for Ollama, vLLM, or OpenAI. Node.js proxy that streams chat completions to clients.
+Realtime streaming assistant proxy for Ollama, vLLM, or OpenAI. Node.js proxy that streams chat completions to clients with workspace management, agent orchestration, knowledge graphs, workflow automation, and integrations with GitHub, Vercel, Jira, Linear, Slack, and Discord.
+
+## Architecture
+
+```
+                          +---------------------+
+                          |    client/ (SPA)     |
+                          |  Vanilla JS, no build|
+                          +---------+-----------+
+                                    |
+                          HTTP / WebSocket
+                                    |
+                          +---------v-----------+
+                          |     server.js        |
+                          |  Express + Middleware |
+                          +---------+-----------+
+                                    |
+                   +----------------+----------------+
+                   |                |                 |
+          +--------v------+ +------v-------+ +-------v--------+
+          | routes/ (37)  | | lib/ (145)   | | routes/v2/ (5) |
+          | v1 API routes | | Core modules | | v2 API routes  |
+          +--------+------+ +------+-------+ +-------+--------+
+                   |                |                 |
+          +--------v----------------v-----------------v--------+
+          |                    Backends                         |
+          |  +----------+  +----------+  +-----------+         |
+          |  |  Ollama   |  |   vLLM   |  |  OpenAI   |        |
+          |  +----------+  +----------+  +-----------+         |
+          +----------------------------------------------------+
+                   |
+          +--------v---------+
+          |     Storage       |
+          |  JSON / SQLite /  |
+          |    PostgreSQL     |
+          +------------------+
+```
+
+## Features
+
+- **OpenAI-compatible API** -- `/v1/chat/completions` with streaming (SSE) and non-streaming modes
+- **Multi-backend** -- Ollama, vLLM, and OpenAI backends with automatic failover
+- **Agent mode** -- Single-agent tool-call loop with 21 built-in tools
+- **Swarm mode** -- Multi-specialist orchestration (researcher, executor, synthesizer)
+- **Knowledge base** -- Document storage, chunking, embeddings, semantic search
+- **Knowledge graph** -- Automatic entity extraction and relationship mapping across documents
+- **Unified search** -- Inverted index search across conversations and knowledge
+- **Tool chaining** -- Multi-step tool pipelines without LLM round-trips
+- **Workflow engine** -- DAG-based workflow execution with retries and status tracking
+- **Model quality routing** -- Route requests to the best backend based on quality metrics
+- **Collaborative workspaces** -- Team workspaces with roles, invite codes, activity feeds
+- **RBAC** -- Role-based access control with granular permissions
+- **Agent memory** -- Long-term memory injection across agent sessions
+- **Agent sessions** -- Durable run grouping with plan persistence and cancellation
+- **Conversation management** -- Branching, export, sharing, search
+- **API versioning** -- v1 (stable), v2 (next-gen with structured errors)
+- **Webhook delivery** -- Reliable delivery with retries and dead-letter queue
+- **Database migrations** -- Schema migration support for SQLite and PostgreSQL
+- **OAuth and SSO** -- GitHub, Google OAuth; OIDC and SAML support
+- **MCP** -- Model Context Protocol server and client for tool interop
+- **Plugins** -- Marketplace, sandboxed execution, custom actions
+- **Scheduled recipes** -- Cron-based recipe execution with audit logging
+- **Real-time sync** -- WebSocket presence and live notifications
+- **Admin dashboard** -- Users, workspaces, quotas, usage, audit log
+- **Observability** -- OpenTelemetry, Prometheus metrics, Grafana dashboards
+- **PWA** -- Service worker, offline support, installable
+- **Desktop app** -- Electron wrapper for Windows, macOS, Linux
+- **CLI** -- 18 commands for chat, context, recipes, workspaces, and more
+- **VS Code extension** -- Editor integration
+- **143 tests** -- Unit, integration, e2e (Playwright), load, and eval tests
 
 ## Quick start
 
@@ -30,21 +99,36 @@ pip install vllm
 vllm serve meta-llama/Llama-3-8B-Instruct --max-model-len 4096
 ```
 
+**OpenAI:**
+
+```bash
+# Set OPENAI_API_KEY in .env
+cp .env.example .env
+```
+
 ### 3. Start the proxy
 
 ```bash
 # For Ollama (default for quick start)
-set BACKEND=ollama
-npm start
+BACKEND=ollama npm start
 
-# Or copy .env.example to .env and set BACKEND=ollama
+# Or copy .env.example to .env and configure
+cp .env.example .env
+npm start
 ```
 
 Runs on `http://localhost:3000`.
 
-### Desktop app (Electron)
+### 4. Use the app
 
-Wraps the same UI + API in a native window; data lives under the OS app data directory.
+- **Web UI:** `http://localhost:3000`
+- **API:** `POST http://localhost:3000/v1/chat/completions` (OpenAI-compatible)
+- **CLI:** `npx . chat "Hello"` or `npm run cli -- chat "Your message"`
+- **API docs:** `http://localhost:3000/api/docs` (Swagger UI)
+- **Admin dashboard:** `http://localhost:3000/admin` (requires `ADMIN_API_KEY`)
+- **Metrics:** `GET /metrics` (Prometheus format when `ENABLE_METRICS=1`)
+
+### Desktop app (Electron)
 
 ```bash
 npm install
@@ -56,12 +140,10 @@ Default URL: `http://127.0.0.1:38447/`. See **[docs/DESKTOP.md](docs/DESKTOP.md)
 **Windows installers (NSIS):**
 
 ```bash
-npm run desktop:dist          # x64 → ...-Windows-x64.exe
-npm run desktop:dist:arm64    # ARM64 → ...-Windows-arm64.exe
-npm run desktop:dist:all      # both (two installers)
+npm run desktop:dist          # x64
+npm run desktop:dist:arm64    # ARM64
+npm run desktop:dist:all      # both
 ```
-
-The first build downloads the matching **Node.js** `node.exe` into `vendor/node-win-x64` / `vendor/node-win-arm64` (then staged for `electron-builder`). See **[docs/DESKTOP.md](docs/DESKTOP.md)**.
 
 ### Docker (self-hosted)
 
@@ -74,16 +156,7 @@ docker build -t siskelbot .
 docker run -d -p 3000:3000 -e BACKEND=ollama -e OLLAMA_URL=http://host.docker.internal:11434 siskelbot
 ```
 
-See **[docs/DOCKER.md](docs/DOCKER.md)** for build, run, compose, and health-check details. Vercel deployment is unchanged.
-
-### 4. Use the app
-
-- Open `http://localhost:3000` in a browser
-- API: `POST http://localhost:3000/v1/chat/completions` (OpenAI-compatible)
-- **CLI (Phase 38):** `npx . chat "Hello"` or `npm run cli -- chat "Your message"` — see [CLI usage](#cli-phase-38) below
-- **API docs:** [http://localhost:3000/api/docs](http://localhost:3000/api/docs) (Swagger UI)
-- **Admin dashboard:** [http://localhost:3000/admin](http://localhost:3000/admin) (requires `ADMIN_API_KEY` or user in `QUOTA_ADMIN_USER_IDS`)
-- **Metrics:** `GET /metrics` (Prometheus text format when `ENABLE_METRICS=1`). See [docs/RUNBOOK.md](docs/RUNBOOK.md) Phase 36.
+See **[docs/DOCKER.md](docs/DOCKER.md)** for details.
 
 ## Backends
 
@@ -92,6 +165,68 @@ See **[docs/DOCKER.md](docs/DOCKER.md)** for build, run, compose, and health-che
 | **Ollama** | `BACKEND=ollama`, `OLLAMA_URL` | Local, Windows-friendly |
 | **vLLM** | `BACKEND=vllm`, `VLLM_URL` | High throughput, Linux/WSL |
 | **OpenAI** | `BACKEND=openai`, `OPENAI_API_KEY` | Cloud API |
+
+## CLI
+
+Command-line client for chat, context, recipes, workspaces, and administration.
+
+```bash
+# Chat (streaming by default)
+npx . chat "Hello"
+npx . chat "Summarize this" --model gpt-4
+npx . chat "Say ok" --no-stream
+
+# Agent and swarm mode
+npx . chat "Research this topic" --agent
+npx . chat "Build and deploy" --swarm
+
+# Context management
+npx . context list
+npx . context add --file ./notes.txt --title "Notes"
+
+# Recipes
+npx . recipes list
+npx . recipes run "Build and Deploy"
+
+# Workspaces
+npx . workspace list
+npx . workspace create --name "my-project"
+
+# Search
+npx . search "deployment guide"
+
+# Administration
+npx . admin
+npx . health
+npx . backup
+npx . migrate
+
+# Scheduled jobs and webhooks
+npx . schedules
+npx . webhooks
+
+# Configuration
+npx . config --url https://app.example.com
+npx . init
+npx . export
+```
+
+**Options:** `--url`, `--api-key`, `--workspace`, `--json`, `--no-stream`, `--model`, `--agent`, `--swarm`. Env: `SISKELBOT_URL`, `SISKELBOT_API_KEY`.
+
+## Integrations
+
+SiskelBot integrates with external services for issue tracking, notifications, and tooling.
+
+| Integration | Env vars | Features |
+|-------------|----------|----------|
+| **GitHub** | `GITHUB_TOKEN`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | Repos, issues, OAuth sign-in |
+| **Vercel** | `VERCEL_TOKEN` | Deployments, projects |
+| **Jira** | `JIRA_BASE_URL`, `JIRA_API_TOKEN`, `JIRA_USER_EMAIL` | Create/search issues |
+| **Linear** | `LINEAR_API_KEY` | Create/search issues |
+| **Slack** | `SLACK_BOT_TOKEN` | Bot events, notifications |
+| **Discord** | `DISCORD_BOT_TOKEN` | Bot interactions, notifications |
+| **Email** | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | Email notifications, digests |
+| **MCP** | `MCP_SERVERS` | Model Context Protocol tool interop |
 
 ## Environment
 
@@ -102,513 +237,141 @@ Copy `.env.example` to `.env`:
 | `BACKEND` | `ollama` | `ollama`, `vllm`, or `openai` |
 | `VLLM_URL` | `http://localhost:8000` | vLLM server URL |
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama server URL |
-| `OPENAI_API_KEY` | — | Required for OpenAI backend |
+| `OPENAI_API_KEY` | -- | Required for OpenAI backend |
 | `PORT` | `3000` | Proxy port |
-| `API_KEY` | — | Optional; protects /v1/chat/completions |
-| `GITHUB_TOKEN` | — | Optional; for GitHub proxy (repos, repo details, issues). Set in server env only. |
-| `VERCEL_TOKEN` | — | Optional; for Vercel proxy (deployments, projects). Set in server env only. |
-| `RATE_LIMIT_WINDOW_MS` | `60000` | Rate limit window (ms) |
-| `RATE_LIMIT_MAX` | `60` | Max requests per window per IP |
-| `RATE_LIMIT_MAX_PER_USER` | same as `RATE_LIMIT_MAX` | Phase 21: Per-user limit when auth configured |
-| `QUOTA_TOKENS_PER_WORKSPACE` | — | Phase 21: Tokens per workspace per period. Unset = no quota. |
-| `QUOTA_WORKSPACE_PERIOD_DAYS` | `30` | Phase 21: Quota period |
-| `QUOTA_ADMIN_USER_IDS` | — | Phase 21: Comma-separated userIds that bypass quota; also grants admin dashboard access |
-| `ADMIN_API_KEY` | — | Phase 25: Protects `/admin` and `/api/admin/*`. Use Bearer or x-admin-api-key header. |
-| `STORAGE_PATH` | `./data` | Directory for persistent storage JSON files (context.json, recipes.json, conversations.json) |
-| `USER_API_KEYS` | — | Phase 14: Optional; comma-separated `key:userId` pairs for user auth. When set, storage and workspaces require `Authorization: Bearer <key>` or `x-user-api-key`. |
-| `ANALYTICS_COST_PER_1K_INPUT` | 0.002 | Phase 18: $ per 1K input tokens for OpenAI cost estimate. Ollama/vLLM = local. |
-| `ANALYTICS_COST_PER_1K_OUTPUT` | 0.006 | Phase 18: $ per 1K output tokens. |
-| `ENABLE_SCHEDULED_RECIPES` | — | Phase 16: Set to `1` to enable scheduled recipe execution (local node-cron). Requires `ALLOW_RECIPE_STEP_EXECUTION=1`. |
-| `CRON_SECRET` | — | Phase 16: Optional; protects `GET /api/cron` for Vercel Cron. Pass via `Authorization: Bearer` or `?secret=`. |
+| `API_KEY` | -- | Protects `/v1/chat/completions` |
+| `ADMIN_API_KEY` | -- | Protects `/admin` and `/api/admin/*` |
+| `USER_API_KEYS` | -- | Comma-separated `key:userId` pairs for user auth |
+| `SESSION_SECRET` | -- | Secret for session cookies (required for OAuth) |
+| `DATABASE_URL` | -- | PostgreSQL connection string |
+| `STORAGE_BACKEND` | `json` | `json`, `sqlite`, or `postgres` |
+| `STORAGE_PATH` | `./data` | Directory for JSON storage |
+| `REDIS_URL` | -- | Redis connection string (caching/pubsub) |
+| `ENABLE_METRICS` | -- | Set `1` to enable Prometheus metrics |
+| `ENABLE_SCHEDULED_RECIPES` | -- | Set `1` to enable cron-based recipe execution |
+| `WORKSPACE_FILE_TOOLS` | -- | Set `1` to enable workspace file read agent tool |
+| `AGENT_TOOLS_ALLOWLIST` | -- | Comma-separated tool names to expose (empty = all) |
 
-## CLI (Phase 38)
+See `.env.example` for the full list of supported variables.
 
-Command-line client for chat, context, and recipes. Works with local or deployed instances.
+## Agent system
 
-```bash
-# Chat (streaming by default)
-npx . chat "Hello"
-npm run cli -- chat "Summarize this" --model gpt-4
+### Agent mode
 
-# Chat (wait for full response)
-npx . chat "Say ok" --no-stream
+When enabled, the assistant uses a tool-call loop: the LLM calls tools, results feed back, and the loop continues until the model responds with text or max iterations are reached. 21 built-in tools cover knowledge search, recipe execution, memory, knowledge graph queries, file access, and tool chaining.
 
-# Context: list and add
-npx . context list
-npx . context add --file ./notes.txt --title "Notes"
-echo "Content" | npx . context add --title "From stdin"
+### Swarm mode
 
-# Recipes: list and run
-npx . recipes list
-npx . recipes run "Build and Deploy"
+Multi-specialist orchestration where researcher, executor, and synthesizer agents run in parallel. Intent detection routes queries to eligible specialists automatically.
 
-# Config (backend, URL, auth)
-npx . config --url https://app.example.com
-```
+### Agent memory
 
-**Options:** `--url`, `--api-key`, `--workspace`, `--json`, `--no-stream` (chat), `--model` (chat). Env: `SISKELBOT_URL`, `SISKELBOT_API_KEY` (or `API_KEY`). See [docs/RUNBOOK.md](docs/RUNBOOK.md) Phase 38.
+Long-term memory persists across agent sessions. Relevant memories are injected into context before each turn. Memory is scoped per workspace and managed via the memory API.
 
-## Phase 16: Scheduled & Automated Recipes
+### Agent sessions
 
-Schedule recipes to run at specified times (cron format). In the Recipes panel, click **Schedule** on a recipe to set a cron expression (e.g. `0 9 * * 1-5` for 9am weekdays). Schedules are stored in `data/schedules.json`. Requires `ENABLE_SCHEDULED_RECIPES=1` (local) or Vercel Cron (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).
+Durable agent sessions group tool-call runs, persist task plans (DAGs), and support pause/resume/cancel lifecycle control.
 
-- **Local:** `node-cron` runs in-process when `ENABLE_SCHEDULED_RECIPES=1`.
-- **Vercel:** `vercel.json` cron triggers `GET /api/cron` every minute; set `CRON_SECRET` to protect it.
-- **Audit:** Scheduled runs log to `data/execution-audit.json` with `source: "scheduled"`.
+## Knowledge graph
 
-## Phase 14: User Authentication & Workspaces
+Documents added to the knowledge base are automatically processed for entity extraction. Entities (people, organizations, concepts, tools, technologies) and their relationships form a queryable graph. The `search_knowledge_graph` agent tool traverses the graph to find connections between concepts.
 
-When `USER_API_KEYS` (or `data/users.json`) is configured, the app supports per-user workspaces. Storage (context, recipes, conversations) is scoped by `userId` and `workspaceId`.
+## Workflow engine
 
-- **Auth flow:** API key per user via `Authorization: Bearer <key>` or `x-user-api-key` header.
-- **Workspaces:** Each user has a default workspace; create more via `POST /api/workspaces`.
-- **Client:** When auth is configured, Settings shows User API key; header shows workspace switcher.
-- **No auth:** When `USER_API_KEYS` is unset, app behaves as before (anonymous user, default workspace).
-- **Migration:** Existing data in `data/context.json` etc. migrates to `data/users/anonymous/workspaces/default/` on first access.
-
-See [docs/RUNBOOK.md](docs/RUNBOOK.md) for full Phase 14 details.
-
-## Phase 29: Multi-Tenant Teams & Collaboration
-
-When auth is configured, workspaces can be **personal** or **team**. Team workspaces support invite codes, roles (admin, member, viewer), shared context/recipes/conversations, and an activity feed.
-
-- **Create team:** Workspace panel → Create → Type: Team. Creates workspace and registers you as admin.
-- **Invite:** Select team workspace → Generate invite → Share link (`?join=CODE`) or code.
-- **Join:** Workspace panel → Join → Enter code. Or visit `/?join=CODE` to auto-open join flow.
-- **Members & activity:** For team workspaces, expand Members and Activity in the workspace panel.
-- **Backward compat:** Existing workspaces default to personal; no breaking changes.
-
-See [docs/RUNBOOK.md](docs/RUNBOOK.md) for Phase 29 API and troubleshooting.
-
-## Phase 19: OAuth & SSO
-
-When OAuth credentials are configured (GitHub and/or Google), users can sign in with "Sign in with GitHub" or "Sign in with Google" in Settings. Session cookie auth takes precedence over API key when both are present. API key auth still works for programmatic access.
-
-- **Env vars:** `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SESSION_SECRET`, and `BASE_URL` (for production callbacks).
-- **Client:** Shows OAuth sign-in buttons when auth required and OAuth configured; Logout when session exists; fetches `/auth/me` on load.
-- **Backward compat:** No OAuth env = API key or anonymous only.
-
-## Phase 21: Per-User & Per-Workspace Quotas
-
-When auth is configured, chat is rate-limited per user (RATE_LIMIT_MAX_PER_USER) instead of per IP. Set `QUOTA_TOKENS_PER_WORKSPACE` to cap tokens per workspace per period (default 30 days). When exceeded, chat returns 429 with `QUOTA_EXCEEDED`. Admin override: `QUOTA_ADMIN_USER_IDS=user1,user2`. Response headers: `X-Quota-Limit`, `X-Quota-Remaining`, `X-Quota-Reset`. Usage panel shows quota when endpoint returns it.
-
-## Phase 33: Real-Time Sync & Presence
-
-WebSocket-based live notifications. When recipes complete, schedules run, or plans are created, notifications are pushed instantly to connected clients instead of 30s polling. Fallback to polling when WebSocket is unavailable. Optional presence shows who's online per workspace. Requires Node.js server (not available on Vercel serverless; client falls back to polling).
-
-- **API:** `GET /api/ws-token?workspace=X` (returns token for WebSocket), `GET /api/workspaces/:id/presence` (online users)
-- **Client:** Connects to WebSocket on load; reconnect with exponential backoff; workspace change triggers reconnect
-
-See [docs/RUNBOOK.md](docs/RUNBOOK.md) for Phase 33 details.
-
-## Phase 25: Admin Dashboard
-
-The admin dashboard at `/admin` provides a server-side UI for users, workspaces, quotas, usage, system health, and recent audit log.
-
-- **Access:** Requires `ADMIN_API_KEY` (Bearer or x-admin-api-key header) or sign in via OAuth as a user in `QUOTA_ADMIN_USER_IDS`.
-- **Sections:** Users (from data/users, oauth-users), Workspaces (with quota), Usage summary, Quota status, System health (backend, integrations), Recent audit log.
-- **Actions:** Override quota for a workspace (set custom token limit or clear override).
-- **Client:** `client/admin.html` — dark theme consistent with main app.
-
-## Phases 35–39: Production Hardening
-
-Five additional phases to productionize the app:
-
-| Phase | Feature | Env vars |
-|-------|----------|----------|
-| **35** | Content Security Policy (CSP) | `ENABLE_CSP=1`, `CSP_ENFORCE=1` (optional) |
-| **36** | Log sanitization | Automatic — API keys/tokens never logged |
-| **37** | Backend circuit breaker | `CIRCUIT_BREAKER_FAILURES`, `CIRCUIT_BREAKER_COOLDOWN_MS` |
-| **38** | Error reporting webhook | `ERROR_REPORT_WEBHOOK_URL` (uncaught errors POSTed) |
-| **39** | Deployment smoke tests | `npm run smoke-test`, `npm run smoke-test:ci --live-only` |
-
-- **CSP:** Report-only by default; set `CSP_ENFORCE=1` after validating.
-- **Circuit breaker:** After 5 consecutive backend failures, returns 503 immediately until cooldown.
-- **Smoke test:** Run `node scripts/smoke-test.js [BASE_URL]` after deploy. CI runs it against a started server.
-
-See [docs/RUNBOOK.md](docs/RUNBOOK.md) for Phase 35–39 details.
-
-## Production (Vercel)
-
-For Vercel deployment, Ollama and vLLM (localhost) will not work. Use the OpenAI backend and secure the API:
-
-1. Connect your GitHub repo at [vercel.com](https://vercel.com) → Add New Project.
-2. Vercel uses `vercel.json` for build/routes. In **Project → Settings → Environment Variables**, add (for Production):
-   - `BACKEND` = `openai` (required; Ollama localhost won't work)
-   - `OPENAI_API_KEY` = your OpenAI API key (required)
-   - `API_KEY` = a secret key to protect `/v1/chat/completions` (strongly recommended)
-3. Redeploy after adding variables.
-
-See [Vercel environment variables documentation](https://vercel.com/docs/projects/environment-variables) for details.
-
-For API-key protected deployments, users can enter the key in the in-app **Settings** panel. The key is stored only in `sessionStorage`.
-
-## Personal Workflow Memory (Phase 2)
-
-### Task templates
-
-Preset task types (Coding, Deployment, Research, Content, Ops) set system prompt and optional model. Stored in `siskelbot-templates` (localStorage). Default templates are defined in `client/templates.defaults.json` and merged with user-created ones (ids starting with `user-`).
-
-### Profiles
-
-Switch between saved profiles (name + template + model + system prompt) via the header dropdown. Stored in `siskelbot-profiles` (localStorage). Default profiles: "Coding", "Quick ops", "Detailed research".
-
-### Searchable history
-
-Search input filters displayed messages by content (client-side). Shows match count (e.g. `3 / 12`). Search preference persisted in sessionStorage (`siskelbot-history-search`).
-
-### Storage keys
-
-| Key | Storage | Description |
-|-----|---------|-------------|
-| `siskelbot-messages` | localStorage | Chat messages + metadata (`_version`, `pinned`, `tags`) |
-| `siskelbot-templates` | localStorage | Task templates (`_version`, `templates`) |
-| `siskelbot-profiles` | localStorage | Profiles + `activeProfileId` |
-| `siskelbot-install-dismissed` | localStorage | Phase 20: Install banner dismissed (`1` = hidden) |
-| `siskelbot-history-search` | sessionStorage | Last search query |
-| `siskelbot-api-key` | sessionStorage | Deployment API key (when configured) |
-
-All payloads include `_version: 1` for future migration. On load, data is migrated when the version changes.
-
-### Pin and tags
-
-- **Pin**: Pin a conversation (metadata stored with chat). Pinned state persists across sessions.
-- **Tags**: Optional `tags: string[]` on conversation metadata. Comma-separated in the UI.
-
-## UX additions
-
-- Markdown rendering for assistant replies, including code blocks and links
-- Persistent chat history with continue, export, and import
-- Voice input and text-to-speech controls
-- Generation controls for `temperature`, `top_p`, and `max_tokens`
-- Retry-last and protected deployment API key entry in the UI
-- Keyboard shortcut: `Ctrl/Cmd + Enter` to send
-- Installable PWA shell with offline asset caching
-
-## Personal Workflow Memory (Phase 2)
-
-### Task templates
-
-Task templates are preset configurations (system prompt + optional model) for common workflows. Default templates: **Coding**, **Deployment**, **Research**, **Content**, **Ops**. Select a template from the dropdown to apply its system prompt and model. User-created templates are merged with defaults and stored in localStorage.
-
-### Profiles
-
-Profiles bundle a name, template, model, and system prompt for quick switching. Default profiles: **Coding**, **Quick ops**, **Detailed research**. Use the Profile dropdown in the header to switch. Your active profile and custom profiles persist across sessions.
-
-### Searchable history
-
-The search input above the chat filters displayed messages by content (client-side). Match count shows `N / total`. The search query persists in `sessionStorage` for the current session.
-
-### Pin and tags
-
-- **Pin** – Pin the current conversation (stored in metadata). Pinned state persists across reloads.
-- **Tags** – Add optional tags (comma-separated) to conversation metadata for organization.
-
-### Storage keys (localStorage)
-
-| Key | Contents |
-|-----|----------|
-| `siskelbot-messages` | Versioned payload: `{ _version: 1, messages, pinned, tags }` |
-| `siskelbot-templates` | Versioned payload: `{ _version: 1, templates }` (user-created only) |
-| `siskelbot-profiles` | Versioned payload: `{ _version: 1, profiles, activeProfileId }` |
-
-All payloads use `_version: 1` for future migration. Default templates and profiles are defined in `client/templates.defaults.json` and merged with stored data on load.
-
-## Toolchain Integration Hub (Phase 4)
-
-When `GITHUB_TOKEN` or `VERCEL_TOKEN` is set in server env, the client shows an **Integrations** panel (collapsible in the header) with status and refresh actions.
-
-| Endpoint | Description | Requires |
-|----------|-------------|----------|
-| `GET /api/integrations/status` | `{ github, vercel }` booleans | — |
-| `GET /api/github/repos` | List user repos | `GITHUB_TOKEN` |
-| `GET /api/github/repo/:owner/:repo` | Repo details | `GITHUB_TOKEN` |
-| `GET /api/github/issues/:owner/:repo` | List issues | `GITHUB_TOKEN` |
-| `GET /api/vercel/deployments` | List deployments | `VERCEL_TOKEN` |
-| `GET /api/vercel/projects` | List projects | `VERCEL_TOKEN` |
-
-**Security:** Tokens stay server-side; routes return `503` with a hint when a token is missing. GitHub/Vercel routes are rate-limited (30/min). Route params (`owner`, `repo`) are validated to prevent injection.
-
-## Task planning (Phase 3: Action-Oriented Agent)
-
-The app includes a **task planning** flow that turns conversational intent into structured, step-by-step plans. No shell or code execution—plans are for display and manual execution only.
-
-### API: `POST /v1/tasks/plan`
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `messages` | array | yes | Non-empty array of `{ role, content }` (OpenAI format) |
-| `model` | string | no | Model name; falls back to backend default |
-
-**Response:** `{ plan, raw }` — `plan` is the validated task object; `raw` is the raw LLM response text.
-
-**Protection:** Same rate limit and API key as `/v1/chat/completions`.
-
-**Errors:** `400` with `PARSE_ERROR` or `VALIDATION_ERROR` when the LLM output cannot be parsed or validated against the task schema (see `docs/TASK_SCHEMA.md`).
-
-### Client flow
-
-1. Send a message (or type one and click **Plan task**).
-2. Click **Plan task** to call `/v1/tasks/plan`.
-3. The plan appears in a structured card: name, steps, and optional “Requires approval” badge.
-4. **Copy plan** — copies a formatted summary to the clipboard.
-5. **Execute** — copies the plan (e.g. “Run these steps: …”) to the clipboard. For plans with `requiresApproval`, a confirmation modal appears before copy. There is no actual execution; the app only copies to clipboard.
-
-### Schema
-
-See [docs/TASK_SCHEMA.md](docs/TASK_SCHEMA.md) for the full JSON schema.
-
-## Phase 15: Agentic Autonomy Mode
-
-When **Agent mode** is enabled (Settings → Agent mode), the assistant can use tools to search context, list documents, fetch recipes, and optionally execute steps (build, deploy). The server runs a tool-call loop: the LLM can call tools, results are fed back, and the loop continues until the model responds with text or max iterations are reached.
-
-### Tools
-
-| Tool | Description |
-|------|-------------|
-| `search_context` | Search the knowledge base by query (read-only) |
-| `list_context` | List indexed context document titles (read-only) |
-| `get_recipe` | Fetch a saved recipe by name (read-only) |
-| `execute_step` | Run a build or deploy step (requires approval) |
-
-### Safety
-
-- **Read-only tools** (`search_context`, `list_context`, `get_recipe`) run without user approval.
-- **execute_step** requires both server `ALLOW_RECIPE_STEP_EXECUTION=1` and the client "Allow recipe step execution" toggle.
-- Max iterations configurable via `MAX_AGENT_ITERATIONS` (default: 5).
-
-### API
-
-- Reuses `POST /v1/chat/completions`. When `agentMode: true` is in the body, the server injects tools and runs the agent loop. The response streams the final text after tool execution.
-
-### Agent Swarm (production-grade multi-agent)
-
-When `ENABLE_AGENT_SWARM=1`, enable **Swarm mode** in Settings for multi-specialist orchestration:
-
-- **Specialists:** researcher (search, list context), executor (recipes, execute_step), synthesizer (combines outputs).
-- **Intent detection:** routes the query to eligible specialists automatically.
-- **Parallel execution:** specialists run in parallel; tool calls within agent loop also run in parallel.
-- **Observability:** webhook events `swarm_started`, `swarm_specialist_completed`, `swarm_completed`; response headers `X-Swarm-Agents`, `X-Swarm-Duration-Ms`.
-
-**API:** `POST /v1/chat/completions` with `agentMode: true`, `swarmMode: true`; or `POST /v1/agent/swarm`; or `POST /v1/swarm` (direct tool execution, no LLM synthesis).
-
-See [docs/AGENT_MODE.md](docs/AGENT_MODE.md) for details.
-
-## Phase 17: Plugins & Extensions
-
-Recipe step actions are extensible via a plugin registry. Built-in actions: `build`, `deploy`, `copy`. The `webhook` action POSTs to a URL (requires `ALLOW_WEBHOOK_ACTIONS=1`, HTTPS only, rate-limited 5/min per URL).
-
-### Config
-
-- **plugins/config.json** or **PLUGINS_PATH** — load custom actions at startup.
-- Schema: `{ actions: [{ name, type: "webhook"|"builtin", config }] }`
-- Webhook type: `config.url` (required), `config.headers`, `config.body`.
-- Builtin type: `config.target` — alias to existing action (`build`, `deploy`, `copy`).
-
-### API
-
-- **GET /api/plugins/actions** — list registered action names (for recipe step dropdown). Protected by user auth when Phase 14 is configured.
-
-### Client
-
-- Recipe create/edit: **Add step** dropdown populated from `GET /api/plugins/actions`. Hint shows available actions in the Recipes panel.
-
-### Security
-
-- No `eval()`, no `require(userPath)`. Config only.
-- Webhook URLs must be HTTPS; localhost and private IPs rejected.
-- See [docs/PLUGINS.md](docs/PLUGINS.md) for full details.
-
-## Phase 23: API Versioning & Public API Docs
-
-Stable API routes use the `/api/v1/` prefix. Legacy `/api/*` routes still work but return header `X-API-Deprecated: use /api/v1/`.
-
-- **Versioned routes:** `/api/v1/context`, `/api/v1/recipes`, `/api/v1/conversations`, `/api/v1/workspaces`, `/api/v1/usage/summary`, `/api/v1/analytics/dashboard`, `/api/v1/webhooks`, `/api/v1/schedules`, `/api/v1/plugins/actions`, `/api/v1/execute-step`, etc.
-- **Chat:** `/v1/chat/completions` (OpenAI spec) — unchanged.
-- **API docs:** [GET /api/docs](http://localhost:3000/api/docs) — Swagger UI; OpenAPI spec at [GET /api/docs/openapi.json](http://localhost:3000/api/docs/openapi.json).
-- **Auth:** Bearer token (API key) or OAuth when configured.
-
-See [docs/RUNBOOK.md](docs/RUNBOOK.md#phase-23-api-versioning--deprecation) for deprecation timeline.
-
-## Phase 22: Event Webhooks & Notifications
-
-Subscribe to events (`message_sent`, `plan_created`, `recipe_executed`, `schedule_completed`) and receive POST payloads at your URL.
-
-- **Storage:** `data/webhooks.json` keyed by workspace
-- **API:** `GET/POST/DELETE /api/webhooks` (auth required)
-- **Client:** Integrations panel → Webhooks form (URL, events checkboxes, optional secret)
-- **Delivery:** Fire-and-forget with 2 retries (1s, 5s); HMAC signing when secret set
-- **Security:** Rate limit 5/min per URL; HTTPS only; `ALLOW_WEBHOOK_LOCALHOST=1` for dev
-
-See [docs/WEBHOOKS.md](docs/WEBHOOKS.md) for event schema and examples.
-
-## Phase 20: Mobile-First & PWA Polish
-
-Mobile and PWA improvements for better touch and offline experience.
-
-### Install prompt
-
-- Captures `beforeinstallprompt` when the app is installable (HTTPS, meets PWA criteria).
-- Shows a minimal "Install app" banner when criteria are met.
-- Dismissal stored in `localStorage` (`siskelbot-install-dismissed`) so the banner does not reappear after the user dismisses it.
-
-### Offline support
-
-- **Offline indicator:** Header shows "Offline" when `navigator.onLine` is false.
-- **Cached app shell:** Service worker caches index.html, manifest, icons, and CDN scripts for offline load.
-- **Conversation cache:** Recent conversations and messages are cached in the service worker when online. When offline, cached messages and the conversations list from localStorage are available for viewing.
-- **Send when offline:** The send button is disabled when offline. Message queue/sync on reconnect is stubbed for future implementation.
-
-### Touch targets
-
-- Buttons and inputs have a minimum 44×44px touch target on viewports ≤768px.
-- Extra padding on header buttons, send button, recipe/context items, and search/tags inputs.
-
-### Gestures
-
-- **Tap-outside-to-close:** Modals (Status report, Context add, Recipe create/schedule, Approval, Continue) close when the user taps the overlay outside the dialog.
-
-### Viewport and layout
-
-- Meta viewport set for responsive layout.
-- Input area uses `scrollIntoView` on focus to avoid being covered by the mobile keyboard.
-- Sticky input bar at the bottom on mobile (≤768px).
-
-### Haptics (optional)
-
-- `navigator.vibrate` on send (10ms), success (10–50–10ms pattern), and error (20–50–20ms) when supported by the device.
+DAG-based workflow definitions with dependency ordering, retries, and execution history. Create workflows via the API, trigger them manually or on schedule, and monitor run status.
 
 ## Testing
 
-### How to run tests
-
 ```bash
-# All tests (node --test)
-npm test
-
-# Single file
-node --test tests/server.test.js
-
-# With spec reporter
-node --test tests/**/*.test.js --test-reporter=spec
+npm test                    # Run all tests
+npm run test:coverage       # Tests with c8 coverage
+npm run test:ci             # CI mode
+npm run test:e2e            # Playwright end-to-end
+npm run test:load           # Load/stress tests
+npm run eval:ci             # Eval sets in CI mode
+node --test tests/foo.test.js  # Single file
 ```
 
-The CI workflow runs the same tests on pushes and pull requests. **Tests:** [Actions → CI](https://github.com/YOUR_USERNAME/experimentagent/actions/workflows/ci.yml). **Build:** [Actions → Docker](https://github.com/YOUR_USERNAME/experimentagent/actions/workflows/docker.yml). Replace `YOUR_USERNAME` in badge URLs and links with your GitHub username or org.
+143 test files: unit, integration, e2e (Playwright), load, and eval tests. Coverage enforced in CI via `c8` (50% lines, 45% functions, 40% branches, 50% statements).
 
-### Test coverage
+## Production (Vercel)
 
-| Area | Files | Coverage |
-|------|-------|----------|
-| Server API | `tests/server.test.js` | Config, health, auth, integrations, task planning, workspaces, context, recipes, schedules, cron, execute-step, plugins, usage, automations |
-| Auth | `tests/auth.test.js` | userAuth (anonymous, 401 when configured, Bearer/x-user-api-key) |
-| Storage | `tests/storage.test.js` | sanitizeWorkspace, listWorkspaces, mergeItems, get, updateItem, deleteItem, createWorkspace |
-| Scheduler | `tests/scheduler.test.js` | schedules list/upsert/remove, runDueJobs (skipped), runRecipeNow (not found) |
-| Templates | `tests/templates.test.js` | Default templates and profiles schema |
+For Vercel deployment, use the OpenAI backend:
 
-See [docs/TEST_PLAN.md](docs/TEST_PLAN.md) for the full test plan (per-phase scenarios, API coverage matrix, priorities, manual checklist).
+1. Connect your GitHub repo at [vercel.com](https://vercel.com).
+2. Set env vars: `BACKEND=openai`, `OPENAI_API_KEY`, `API_KEY`.
+3. Redeploy after adding variables.
 
-## Operations
-
-For runbooks, troubleshooting, and verification steps, see [docs/RUNBOOK.md](docs/RUNBOOK.md).
-
-## Deploy to GitHub
-
-### 1. Create repo and push
-
-```bash
-git init
-git add .
-git commit -m "feat: streaming assistant with multi-backend"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/experimentagent.git
-git push -u origin main
-```
-
-### 2. Deploy to Render (optional)
-
-1. Go to [render.com](https://render.com) → New → Web Service
-2. Connect your GitHub repo
-3. Build command: `npm install`
-4. Start command: `node server.js`
-5. Add env vars (e.g. `BACKEND=openai`, `OPENAI_API_KEY=...`)
-
-Or use the included `render.yaml` for one-click deploy.
-
-**Note:** The proxy needs a backend (Ollama, vLLM, or OpenAI). For cloud deploy, use `BACKEND=openai` with an API key. Ollama/vLLM require a separate server.
-
-### 3. Deploy to Vercel
-
-1. Connect your GitHub repo at [vercel.com](https://vercel.com) → Add New Project.
-2. Vercel uses the `vercel.json` config (builds, routes, functions).
-3. Set env vars per [Production (Vercel)](#production-vercel) above.
-
-## Custom domain (Vercel)
-
-Custom domains are configured in the Vercel dashboard, not in `vercel.json`. For a full deployment and custom domain guide, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Quick steps:
-
-### Add a custom domain
-
-1. Open [Vercel Dashboard](https://vercel.com/dashboard) → select your project (SiskelBot).
-2. Go to **Settings** → **Domains**.
-3. Enter your domain (e.g. `assistant.yourdomain.com` or `yourdomain.com`) and click **Add**.
-4. Vercel will show the DNS records you need to create.
-
-### DNS setup
-
-**Subdomain (e.g. `assistant.yourdomain.com`):**
-
-| Type  | Name     | Value                     |
-|-------|----------|---------------------------|
-| CNAME | assistant | `cname.vercel-dns.com`     |
-
-**Apex domain (e.g. `yourdomain.com`):**
-
-| Type | Name | Value           |
-|------|------|-----------------|
-| A    | @    | `76.76.21.21`   |
-
-Use your registrar’s DNS management to add the records. Exact names may vary; follow the values Vercel shows for your project.
-
-### SSL (HTTPS)
-
-After DNS propagates (often within minutes, sometimes up to 48 hours), Vercel automatically provisions a TLS certificate. HTTPS will be enabled with no extra steps.
-
-### Verify
-
-- In Vercel → Domains, confirm the domain shows a green “Valid configuration” status.
-- Optional: `vercel alias set <deployment-url> <your-domain>` via the Vercel CLI for programmatic aliasing.
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for full deployment guide including custom domains.
 
 ## Project layout
 
 ```
-experimentagent/
-├── server.js           # Express streaming proxy
-├── Dockerfile          # Phase 35: Docker build
-├── docker-compose.yml  # Phase 35: Compose (siskelbot + optional Ollama)
-├── vercel.json         # Vercel deploy config (builds, functions, routes; env vars in Dashboard)
-├── docs/
-│   ├── DEPLOYMENT.md   # Vercel deployment and custom domain setup
-│   ├── RUNBOOK.md      # Ops runbook, troubleshooting, env checklist
-│   ├── TASK_SCHEMA.md  # Task plan JSON schema (Phase 3)
-│   └── TEST_PLAN.md    # Comprehensive test plan (Phases 1-18)
-├── client/
-│   ├── index.html           # Chat UI
-│   ├── templates.js         # Templates/profiles (Phase 2)
-│   ├── templates.defaults.json # Default templates and profiles
-│   ├── app.webmanifest      # PWA manifest
-│   ├── sw.js                # Service worker
-│   └── icon.svg             # App icon
-├── .github/workflows/
-│   ├── ci.yml          # Phase 37: CI (lint, test, smoke)
-│   ├── docker.yml      # Phase 37: Docker build
-│   └── release.yml     # Phase 37: Release on tag v*
-├── render.yaml         # Render deploy config
-├── tests/
-│   ├── server.test.js      # Server API integration tests
-│   ├── auth.test.js        # Phase 14 user auth
-│   ├── storage.test.js     # Phase 10 storage module
-│   ├── scheduler.test.js   # Phase 16 schedules + scheduler
-│   └── templates.test.js   # Template/profile schema (Phase 2)
+siskelbot/
+├── server.js              # Express streaming proxy (1,073 lines)
+├── routes/                # 37 route modules
+│   ├── chat.js            # /v1/chat/completions
+│   ├── agent-sessions.js  # Durable agent sessions
+│   ├── analytics.js       # Real-time analytics
+│   ├── collaboration.js   # Workspace collaboration
+│   ├── knowledge.js       # Knowledge graph queries
+│   ├── memory.js          # Agent long-term memory
+│   ├── model-quality.js   # Model quality/ranking
+│   ├── rbac.js            # Role-based access control
+│   ├── search.js          # Unified search
+│   ├── workflows.js       # Workflow engine
+│   ├── v2/               # Next-gen API (v2)
+│   │   ├── conversations.js
+│   │   ├── documents.js
+│   │   ├── recipes.js
+│   │   └── workspaces.js
+│   └── ...                # 24 more route modules
+├── lib/                   # 145 core modules
+│   ├── agent-*.js         # Agent system (19 modules)
+│   ├── knowledge-*.js     # Knowledge and RAG (10 modules)
+│   ├── workspace-*.js     # Workspace management (10 modules)
+│   ├── eval-*.js          # Evaluation (7 modules)
+│   ├── audit-*.js         # Audit trail (4 modules)
+│   ├── storage-*.js       # Storage backends (5 modules)
+│   └── ...                # 90 more modules
+├── client/                # Vanilla JS SPA (no build step)
+│   ├── index.html         # Chat UI
+│   ├── admin.html         # Admin dashboard
+│   ├── eval.html          # Eval runner
+│   └── marketplace.html   # Plugin marketplace
+├── bin/                   # CLI (18 commands)
+├── tests/                 # 143 test files
+├── docs/                  # Operational docs
+├── scripts/               # Utility scripts
+├── plugins/               # Plugin packs and manifests
+├── electron/              # Desktop wrapper
+├── vscode-extension/      # VS Code extension
+├── sdk/                   # Generated client SDK
+├── grafana/               # Grafana dashboard template
+├── Dockerfile
+├── docker-compose.yml
+├── vercel.json
 ├── package.json
 └── .env.example
 ```
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [CLAUDE.md](CLAUDE.md) | AI assistant context and codebase conventions |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Vercel, Render, and custom domain deployment |
+| [docs/DOCKER.md](docs/DOCKER.md) | Docker build, compose, and health checks |
+| [docs/DESKTOP.md](docs/DESKTOP.md) | Electron desktop app build and packaging |
+| [docs/RUNBOOK.md](docs/RUNBOOK.md) | Operational runbook and troubleshooting |
+| [docs/PLUGINS.md](docs/PLUGINS.md) | Plugin development guide |
+| [docs/PLUGIN_API.md](docs/PLUGIN_API.md) | Plugin API reference |
+| [docs/WEBHOOKS.md](docs/WEBHOOKS.md) | Webhook configuration and event schema |
+| [docs/MULTI_REGION_HA.md](docs/MULTI_REGION_HA.md) | Multi-region high availability setup |
+| [docs/AGENT_MODE.md](docs/AGENT_MODE.md) | Agent and swarm mode details |
+| [docs/TASK_SCHEMA.md](docs/TASK_SCHEMA.md) | Task plan JSON schema |
+| [docs/TEST_PLAN.md](docs/TEST_PLAN.md) | Comprehensive test plan |
+
+## License
+
+See [LICENSE](LICENSE) for details.
