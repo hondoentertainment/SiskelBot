@@ -4,7 +4,6 @@
 import {
   searchConversations,
   reindex,
-  indexKnowledgeDoc,
 } from "../lib/conversation-search.js";
 import { listAllDocs } from "../lib/knowledge-store.js";
 

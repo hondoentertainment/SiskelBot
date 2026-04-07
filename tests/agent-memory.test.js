@@ -14,7 +14,6 @@ import {
   storeMemory,
   getMemories,
   searchMemories,
-  updateMemory,
   deleteMemory,
   extractPotentialMemories,
 } from "../lib/agent-memory.js";

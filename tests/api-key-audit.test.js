@@ -1,5 +1,4 @@
 import test from "node:test";
-import assert from "node:assert/strict";
 
 test.before(() => {
   process.env.STORAGE_PATH = "/tmp/api-key-audit-test-" + Date.now();

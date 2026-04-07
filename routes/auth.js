@@ -1,6 +1,4 @@
 import passport from "passport";
-import { configCache } from "../lib/cache.js";
-import { cacheResponse } from "../lib/cache-middleware.js";
 
 export default function mountAuthRoutes(app, deps) {
   const {
