@@ -356,6 +356,9 @@ app.use((req, res, next) => {
   next();
 });
 
+// Request context propagation (AsyncLocalStorage) -- after requestId is set
+app.use(requestContextMiddleware());
+
 // Phase 34: Security headers (configurable; disabled for dev if DISABLE_SECURITY_HEADERS=1)
 const DISABLE_SECURITY_HEADERS = process.env.DISABLE_SECURITY_HEADERS === "1";
 const ENABLE_CSP = process.env.ENABLE_CSP === "1" && IS_PRODUCTION;
@@ -501,10 +504,12 @@ const storageRateLimiter = rateLimit({
 
 // Structured error response: { error, code, hint }
 function apiError(res, status, code, message, hint) {
+  const requestId = res.req?.requestId || res.getHeader?.("X-Request-Id") || undefined;
   return res.status(status).json({
     error: message || "Request failed",
     code,
     hint: hint || "See docs/RUNBOOK.md for troubleshooting.",
+    ...(requestId && { requestId }),
   });
 }
 
@@ -1076,7 +1081,7 @@ app.use(
     etag: true,
     setHeaders(res, filePath) {
       const norm = filePath.replace(/\\/g, "/");
-      if (/(^|\/)index\.html$/i.test(norm) || /(^|\/)admin\.html$/i.test(norm) || /(^|\/)eval\.html$/i.test(norm) || /(^|\/)shared\.html$/i.test(norm) || /(^|\/)analytics\.html$/i.test(norm)) {
+      if (/(^|\/)index\.html$/i.test(norm) || /(^|\/)admin\.html$/i.test(norm) || /(^|\/)eval\.html$/i.test(norm) || /(^|\/)shared\.html$/i.test(norm) || /(^|\/)analytics\.html$/i.test(norm) || /(^|\/)health\.html$/i.test(norm)) {
         res.setHeader("Cache-Control", "no-store");
       }
     },
