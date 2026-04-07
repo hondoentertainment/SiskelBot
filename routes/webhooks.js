@@ -1,5 +1,6 @@
 // Webhooks, ws-token, ws-replay, and notifications routes extracted from server.js
 import { validate } from "../lib/validate.js";
+import { getDLQ, clearDLQEntry, retryDLQEntry, getDLQStats } from "../lib/webhook-delivery.js";
 
 export function mountWebhookRoutes(app, deps) {
   const {
@@ -128,6 +129,47 @@ export function mountWebhookRoutes(app, deps) {
       res.json({ ok: true });
     } catch (err) {
       return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  // Dead-letter queue routes
+  apiRoute("get", "/webhooks/dlq/stats", ...webhooksHandlers, async (req, res) => {
+    try {
+      const stats = await getDLQStats();
+      res.json(stats);
+    } catch (err) {
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/WEBHOOKS.md.");
+    }
+  });
+
+  apiRoute("get", "/webhooks/dlq", ...webhooksHandlers, async (req, res) => {
+    try {
+      const entries = await getDLQ();
+      res.json({ _version: 1, items: entries });
+    } catch (err) {
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/WEBHOOKS.md.");
+    }
+  });
+
+  apiRoute("post", "/webhooks/dlq/:id/retry", ...webhooksHandlers, async (req, res) => {
+    try {
+      const result = await retryDLQEntry(req.params.id);
+      if (result.attempts === 0) {
+        return apiError(res, 404, "NOT_FOUND", "DLQ entry not found", null);
+      }
+      res.json(result);
+    } catch (err) {
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/WEBHOOKS.md.");
+    }
+  });
+
+  apiRoute("delete", "/webhooks/dlq/:id", ...webhooksHandlers, async (req, res) => {
+    try {
+      const removed = await clearDLQEntry(req.params.id);
+      if (!removed) return apiError(res, 404, "NOT_FOUND", "DLQ entry not found", null);
+      res.status(204).send();
+    } catch (err) {
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/WEBHOOKS.md.");
     }
   });
 

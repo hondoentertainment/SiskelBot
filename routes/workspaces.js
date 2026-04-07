@@ -1,4 +1,11 @@
 import { validate } from "../lib/validate.js";
+import {
+  installMarketplacePack,
+  listInstalledMarketplacePacks,
+  setMarketplacePackEnabled,
+  getWorkspaceMarketplacePolicy,
+  saveWorkspaceMarketplacePolicy,
+} from "../lib/marketplace-registry.js";
 
 export default function mountWorkspaceRoutes(app, deps) {
   const {
@@ -270,6 +277,70 @@ export default function mountWorkspaceRoutes(app, deps) {
         },
       });
     } catch (err) {
+      return apiError(res, 500, "INTERNAL_ERROR", err.message);
+    }
+  });
+
+  // Marketplace routes
+  apiRoute("post", "/workspaces/:id/marketplace/install", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
+    try {
+      const workspaceId = sanitizeWorkspace(req.params.id);
+      const result = await installMarketplacePack(workspaceId, req.body?.manifest);
+      if (!result.ok) {
+        const status = result.code === "INVALID_MANIFEST" ? 400 : 403;
+        return res.status(status).json({ error: result.error || result.errors, code: result.code });
+      }
+      res.status(201).json(result);
+    } catch (err) {
+      console.error("Marketplace install error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message);
+    }
+  });
+
+  apiRoute("get", "/workspaces/:id/marketplace/packs", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspaceId = sanitizeWorkspace(req.params.id);
+      const packs = await listInstalledMarketplacePacks(workspaceId);
+      res.json({ packs });
+    } catch (err) {
+      console.error("Marketplace list error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message);
+    }
+  });
+
+  apiRoute("post", "/workspaces/:id/marketplace/packs/:packId/:op(enable|disable)", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
+    try {
+      const workspaceId = sanitizeWorkspace(req.params.id);
+      const enabled = req.params.op === "enable";
+      const result = await setMarketplacePackEnabled(workspaceId, req.params.packId, enabled);
+      if (!result.ok) {
+        return res.status(404).json({ error: result.error, code: result.code });
+      }
+      res.json(result);
+    } catch (err) {
+      console.error("Marketplace enable/disable error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message);
+    }
+  });
+
+  apiRoute("get", "/workspaces/:id/marketplace/policy", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspaceId = sanitizeWorkspace(req.params.id);
+      const policy = await getWorkspaceMarketplacePolicy(workspaceId);
+      res.json({ policy });
+    } catch (err) {
+      console.error("Marketplace policy GET error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message);
+    }
+  });
+
+  apiRoute("put", "/workspaces/:id/marketplace/policy", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
+    try {
+      const workspaceId = sanitizeWorkspace(req.params.id);
+      const policy = await saveWorkspaceMarketplacePolicy(workspaceId, req.body);
+      res.json({ policy });
+    } catch (err) {
+      console.error("Marketplace policy PUT error:", err.message);
       return apiError(res, 500, "INTERNAL_ERROR", err.message);
     }
   });

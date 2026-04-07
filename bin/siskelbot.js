@@ -90,6 +90,9 @@ Commands:
     --to=<backend>            Target backend (json, sqlite, postgres)
     --dry-run                 Show what would be migrated without writing
     --verbose                 Show detailed progress
+  migrate db                   Run pending PostgreSQL schema migrations
+    --status                  Show migration status instead of running
+    --rollback <id>           Roll back a specific migration
 
   chat "message"              Send message, stream response
     --no-stream               Wait for full response
@@ -413,6 +416,78 @@ async function cmdMigrate() {
   });
 }
 
+async function cmdMigrateDb(json) {
+  if (!process.env.DATABASE_URL) {
+    err("DATABASE_URL is required for database migrations. Set it in your environment or .env file.");
+  }
+
+  const pg = (await import("pg")).default;
+  const { runMigrations, getMigrationStatus, rollbackMigration } = await import("../lib/migrations.js");
+
+  const pool = new pg.Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: 2,
+    connectionTimeoutMillis: 10_000,
+  });
+
+  try {
+    if (hasFlag("--status")) {
+      const status = await getMigrationStatus(pool);
+      if (json) {
+        console.log(JSON.stringify(status, null, 2));
+      } else {
+        console.log("Applied migrations:");
+        if (status.applied.length === 0) console.log("  (none)");
+        for (const m of status.applied) {
+          console.log(`  - ${m.id}: ${m.description} (applied ${new Date(m.applied_at).toISOString()})`);
+        }
+        console.log("\nPending migrations:");
+        if (status.pending.length === 0) console.log("  (none)");
+        for (const id of status.pending) {
+          console.log(`  - ${id}`);
+        }
+      }
+      return;
+    }
+
+    const rollbackId = getFlag("--rollback");
+    if (rollbackId) {
+      const result = await rollbackMigration(pool, rollbackId);
+      if (json) {
+        console.log(JSON.stringify(result, null, 2));
+      } else if (result.success) {
+        console.log(`Rolled back: ${rollbackId}`);
+      } else {
+        err(`Rollback failed: ${result.error}`);
+      }
+      return;
+    }
+
+    // Run pending migrations
+    const result = await runMigrations(pool);
+    if (json) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      if (result.applied.length > 0) {
+        console.log(`Applied ${result.applied.length} migration(s):`);
+        for (const id of result.applied) console.log(`  - ${id}`);
+      }
+      if (result.skipped.length > 0) {
+        console.log(`Skipped ${result.skipped.length} already-applied migration(s).`);
+      }
+      if (result.errors.length > 0) {
+        console.error("Errors:");
+        for (const e of result.errors) console.error(`  - ${e.id}: ${e.error}`);
+      }
+      if (result.applied.length === 0 && result.errors.length === 0) {
+        console.log("Database is up to date.");
+      }
+    }
+  } finally {
+    await pool.end();
+  }
+}
+
 async function cmdInit(json) {
   const created = [];
   if (!existsSync(".env")) {
@@ -616,6 +691,8 @@ async function main() {
   try {
     if (cmd === "init") {
       await cmdInit(json);
+    } else if (cmd === "migrate" && sub === "db") {
+      await cmdMigrateDb(json);
     } else if (cmd === "migrate") {
       await cmdMigrate();
     } else if (cmd === "config") {

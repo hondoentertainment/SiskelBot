@@ -1,6 +1,7 @@
 import { validate } from "../lib/validate.js";
 import { getWorkspaceChunkingConfig, setWorkspaceChunkingConfig, VALID_STRATEGIES } from "../lib/knowledge-chunking-config.js";
 import { autoDetectAndParse } from "../lib/knowledge-parsers.js";
+import { getWorkspaceKnowledgeGraph } from "../lib/knowledge-graph-store.js";
 
 export default function mountKnowledgeRoutes(app, deps) {
   const {
@@ -344,6 +345,91 @@ export default function mountKnowledgeRoutes(app, deps) {
       res.json({ _version: 1, items: merged });
     } catch (err) {
       console.error("Storage context sync error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  // --- Knowledge Graph endpoints ---
+
+  // GET /api/v1/knowledge/graph/entities?type=&q= — search entities
+  apiRoute("get", "/knowledge/graph/entities", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const graph = await getWorkspaceKnowledgeGraph(workspace);
+      const query = {};
+      if (req.query?.q) query.name = String(req.query.q);
+      if (req.query?.type) query.type = String(req.query.type);
+      const entities = graph.findEntities(query);
+      res.json({ entities, count: entities.length });
+    } catch (err) {
+      console.error("Knowledge graph entities search error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  // GET /api/v1/knowledge/graph/entities/:id — get entity with relations
+  apiRoute("get", "/knowledge/graph/entities/:id", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const graph = await getWorkspaceKnowledgeGraph(workspace);
+      const entity = graph.getEntity(req.params.id);
+      if (!entity) return res.status(404).json({ error: "Entity not found", code: "NOT_FOUND" });
+      const relations = graph.getRelations(req.params.id);
+      res.json({ entity, relations });
+    } catch (err) {
+      console.error("Knowledge graph entity get error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  // GET /api/v1/knowledge/graph/entities/:id/neighbors?depth=2 — get neighbors
+  apiRoute("get", "/knowledge/graph/entities/:id/neighbors", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const depth = Math.max(1, Math.min(Number(req.query?.depth) || 1, 5));
+      const graph = await getWorkspaceKnowledgeGraph(workspace);
+      const entity = graph.getEntity(req.params.id);
+      if (!entity) return res.status(404).json({ error: "Entity not found", code: "NOT_FOUND" });
+      const result = graph.getNeighbors(req.params.id, depth);
+      res.json(result);
+    } catch (err) {
+      console.error("Knowledge graph neighbors error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  // GET /api/v1/knowledge/graph/stats — graph statistics
+  apiRoute("get", "/knowledge/graph/stats", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const graph = await getWorkspaceKnowledgeGraph(workspace);
+      const stats = graph.getStats();
+      res.json(stats);
+    } catch (err) {
+      console.error("Knowledge graph stats error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  // GET /api/v1/knowledge/graph/path?from=&to= — find path between entities
+  apiRoute("get", "/knowledge/graph/path", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const fromId = req.query?.from;
+      const toId = req.query?.to;
+      if (!fromId || !toId) {
+        return apiError(res, 400, "INVALID_INPUT", "from and to query params are required", "Use ?from=entityId&to=entityId.");
+      }
+      const graph = await getWorkspaceKnowledgeGraph(workspace);
+      const result = graph.findPath(String(fromId), String(toId));
+      if (!result.found) {
+        return res.json({ found: false, path: [], relations: [] });
+      }
+      // Resolve entity objects for the path
+      const pathEntities = result.path.map((id) => graph.getEntity(id)).filter(Boolean);
+      res.json({ found: true, path: pathEntities, relations: result.relations });
+    } catch (err) {
+      console.error("Knowledge graph path error:", err.message);
       return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
     }
   });

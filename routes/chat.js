@@ -44,6 +44,8 @@ export default function mountChatRoutes(app, deps) {
     reportError,
     autoRecordEnabled,
     recordTrace,
+    recordModelResponse,
+    checkAndLogPromotion,
   } = deps;
 
   const validateChat = validate({ body: { messages: "array", model: "?string", stream: "?boolean" } });
@@ -51,6 +53,7 @@ export default function mountChatRoutes(app, deps) {
   // POST /v1/chat/completions
   app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRateLimiter, chatRateLimiter, logRequest, validateChat, async (req, res) => {
     recordChatRequest();
+    const _startTime = Date.now();
     try {
       const workspace = req.body?.agentOptions?.workspace || "default";
       const userId = req.userId || null;
@@ -217,6 +220,10 @@ export default function mountChatRoutes(app, deps) {
         recordTokensUsed(inputTokens, outputTokens);
         await recordUsage({ timestamp: new Date().toISOString(), model, inputTokens, outputTokens, backend: BACKEND, workspace, userId }).catch(() => {});
 
+        // Record model quality metrics
+        recordModelResponse(model, { latencyMs: Date.now() - _startTime, tokens: outputTokens, error: false });
+        checkAndLogPromotion(model);
+
         if (autoRecordEnabled()) {
           try {
             const tracePayload = req._agentLoopMeta || {};
@@ -335,6 +342,10 @@ export default function mountChatRoutes(app, deps) {
         userId,
       }).catch((e) => console.warn("[usage-tracker] Record failed:", e.message));
 
+      // Record model quality metrics for streaming proxy path
+      recordModelResponse(model, { latencyMs: Date.now() - _startTime, tokens: outputTokens, error: false });
+      checkAndLogPromotion(model);
+
       if (USAGE_ALERT_TOKENS) {
         const totalInWindow = await getTotalTokensInWindow();
         if (totalInWindow >= USAGE_ALERT_TOKENS) {
@@ -345,6 +356,10 @@ export default function mountChatRoutes(app, deps) {
 
       res.end();
     } catch (err) {
+      // Record error in model quality
+      const errModel = req.body?.model || "unknown";
+      recordModelResponse(errModel, { latencyMs: Date.now() - _startTime, tokens: 0, error: true });
+
       if (err.code === "CIRCUIT_OPEN") {
         return res.status(503).json({
           error: "Backend temporarily unavailable",
