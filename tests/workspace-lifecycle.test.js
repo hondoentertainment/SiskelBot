@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mock } from "node:test";
+import { mock as _mock } from "node:test";
 
 test.before(() => {
   process.env.STORAGE_PATH = "/tmp/ws-lifecycle-test-" + Date.now();
