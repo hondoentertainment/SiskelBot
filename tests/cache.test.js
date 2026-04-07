@@ -190,7 +190,6 @@ test("cache-middleware: returns MISS on first request, HIT on second", () => {
   // Second request — HIT
   headersSent = {};
   jsonBody = null;
-  statusCode = 200;
   const req2 = { url: "/test" };
   const res2 = {
     statusCode: 200,
@@ -216,7 +215,7 @@ test("cache-middleware: does not cache error responses", () => {
     statusCode: 500,
     setHeader() {},
     status(code) { res1.statusCode = code; return res1; },
-    json(body) { return res1; },
+    json(_body) { return res1; },
   };
 
   middleware(req1, res1, () => {

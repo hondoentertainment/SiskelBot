@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 test.describe("Conversations API", () => {
   const workspace = "test-e2e-conversations";
-  let createdId;
+  let _createdId;
 
   test("POST /api/v1/conversations creates a conversation", async ({ request }) => {
     const res = await request.post("/api/v1/conversations", {
@@ -22,7 +22,7 @@ test.describe("Conversations API", () => {
     expect(Array.isArray(body.messages)).toBe(true);
     expect(body.messages).toHaveLength(1);
     expect(body).toHaveProperty("createdAt");
-    createdId = body.id;
+    _createdId = body.id;
   });
 
   test("GET /api/v1/conversations lists conversations", async ({ request }) => {
