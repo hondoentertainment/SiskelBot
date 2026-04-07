@@ -1,0 +1,24 @@
+version: '3.8'
+
+# Development overrides -- use with:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  siskelbot:
+    build:
+      context: .
+      target: builder
+    command: ["npm", "run", "dev"]
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - BACKEND=ollama
+      - OLLAMA_URL=http://ollama:11434
+      - STORAGE_BACKEND=postgres
+      - DATABASE_URL=postgresql://siskelbot:siskelbot@postgres:5432/siskelbot
+      - REDIS_URL=redis://redis:6379
+      - SESSION_SECRET=dev-secret-change-in-production
+      - ENABLE_METRICS=1
+      - PORT=3000
