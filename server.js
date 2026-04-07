@@ -1014,6 +1014,29 @@ const deps = {
 mountAllRoutes(app, deps);
 mountAgentSessionRoutes(app, deps);
 
+// Run PostgreSQL migrations on startup when using postgres backend
+if (process.env.STORAGE_BACKEND === "postgres" && process.env.DATABASE_URL) {
+  try {
+    const { runMigrations } = await import("./lib/migrations.js");
+    const pg = await import("pg");
+    const migrationPool = new pg.default.Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: 2,
+      connectionTimeoutMillis: 10_000,
+    });
+    const result = await runMigrations(migrationPool);
+    await migrationPool.end();
+    if (result.applied.length > 0) {
+      console.log(`[startup] Applied ${result.applied.length} database migration(s)`);
+    }
+    if (result.errors.length > 0) {
+      console.error("[startup] Migration errors:", result.errors);
+    }
+  } catch (e) {
+    console.warn("[startup] Database migration failed:", e.message);
+  }
+}
+
 console.log("[startup] Running integration checks...");
 await runStartupChecks().catch(e => console.warn("[startup] Check failed:", e.message));
 
