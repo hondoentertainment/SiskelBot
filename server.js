@@ -70,6 +70,7 @@ import {
 import openApiSpec from "./lib/openapi-spec.js";
 import { runEvalSet } from "./lib/eval-runner.js";
 import { listEvalSets, loadEvalSet } from "./lib/storage-eval.js";
+import { listStagingTraceSummaries } from "./lib/eval-staging-traces.js";
 import { createToken, attachToServer, getOnlineUsers, closeServer } from "./lib/realtime.js";
 import { sanitizeForLog } from "./lib/log-sanitizer.js";
 import { execute as circuitExecute } from "./lib/circuit-breaker.js";
@@ -621,7 +622,7 @@ function logRequest(req, res, next) {
       durationMs,
     });
     const msg = IS_PRODUCTION ? JSON.stringify(entry) : `${entry.method} ${entry.path} ${entry.status} ${entry.durationMs}ms`;
-    console.log(msg);
+    if (!process.env.NODE_TEST_CONTEXT) console.log(msg);
     if (req.apiKeyId) void logKeyUsage({ keyId: req.apiKeyId, path: req.path, method: req.method }).catch(() => {});
     if (metricsEnabled()) recordRequest(req.method, req.path, res.statusCode, durationMs);
   });
@@ -997,6 +998,7 @@ const deps = {
   listEvalSets,
   loadEvalSet,
   runEvalSet,
+  listStagingTraceSummaries,
 
   // Lib: realtime replay
   getEventsSince,
@@ -1050,8 +1052,10 @@ if (process.env.STORAGE_BACKEND === "postgres" && process.env.DATABASE_URL) {
   }
 }
 
-console.log("[startup] Running integration checks...");
-await runStartupChecks().catch(e => console.warn("[startup] Check failed:", e.message));
+if (!process.env.NODE_TEST_CONTEXT) {
+  console.log("[startup] Running integration checks...");
+  await runStartupChecks().catch(e => console.warn("[startup] Check failed:", e.message));
+}
 
 // Load persisted model quality data and parse cost config
 await loadModelQuality().catch(e => console.warn("[startup] Model quality load failed:", e.message));

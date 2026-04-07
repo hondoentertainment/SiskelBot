@@ -1,12 +1,15 @@
 {
   "name": "example-staging",
-  "cases": [
-    {
-      "id": "smoke",
-      "request": {
-        "messages": [{ "role": "user", "content": "ping" }]
-      },
-      "expected": { "contains": "pong" }
-    }
-  ]
+  "goldenTrace": [
+    { "name": "list_context", "arguments": {} },
+    { "name": "search_context", "arguments": { "query": "docs" } }
+  ],
+  "agentActivity": {
+    "type": "agent_activity",
+    "toolCalls": [
+      { "name": "list_context", "args": {} },
+      { "name": "search_context", "args": { "query": "docs" } }
+    ],
+    "swarmSteps": []
+  }
 }
