@@ -74,6 +74,8 @@ import { createToken, attachToServer, getOnlineUsers, closeServer } from "./lib/
 import { sanitizeForLog } from "./lib/log-sanitizer.js";
 import { execute as circuitExecute } from "./lib/circuit-breaker.js";
 import { parseRoutingConfig, selectBackend, logRouting, getRoutingStats } from "./lib/ab-router.js";
+import { recordModelResponse, getModelQuality, getModelRanking, getQualityHistory, loadFromDisk as loadModelQuality, resetModelStats, checkAutoPromotion } from "./lib/model-quality.js";
+import { selectSmartBackend, parseCostConfig, checkAndLogPromotion, getRoutingSummary } from "./lib/smart-router.js";
 import { AuditLifecycle } from "./lib/audit-lifecycle.js";
 import { queryAudit, exportAudit } from "./lib/audit-query.js";
 import { initErrorReporting, reportError } from "./lib/error-reporting.js";
@@ -918,6 +920,17 @@ const deps = {
   logRouting,
   getRoutingStats,
 
+  // Lib: model quality / smart router
+  recordModelResponse,
+  getModelQuality,
+  getModelRanking,
+  getQualityHistory,
+  resetModelStats,
+  checkAutoPromotion,
+  selectSmartBackend,
+  checkAndLogPromotion,
+  getRoutingSummary,
+
   // Lib: regions / replication
   getRegionHealth,
   getLeaderElection,
@@ -1039,6 +1052,10 @@ if (process.env.STORAGE_BACKEND === "postgres" && process.env.DATABASE_URL) {
 
 console.log("[startup] Running integration checks...");
 await runStartupChecks().catch(e => console.warn("[startup] Check failed:", e.message));
+
+// Load persisted model quality data and parse cost config
+await loadModelQuality().catch(e => console.warn("[startup] Model quality load failed:", e.message));
+parseCostConfig(process.env.MODEL_COSTS);
 
 // All routes are now in route modules under routes/
 
