@@ -1,16 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const ROOT = resolve(__dirname, "..");
-const DIST_DIR = join(ROOT, "client", "dist");
-const MANIFEST_PATH = join(DIST_DIR, "manifest.json");
-
-// Import after defining paths so we can set up fixtures
 import {
   getAssetManifest,
   assetUrl,
@@ -19,36 +12,36 @@ import {
   invalidateManifestCache,
 } from "../lib/asset-fingerprint.js";
 
-// --- Test fixtures ---
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const ROOT = resolve(__dirname, "..");
+const DIST_DIR = join(ROOT, "client", "dist");
+const MANIFEST_PATH = join(DIST_DIR, "manifest.json");
 
-let hadManifest = false;
-let originalManifest = null;
+// --- Fixture helpers ---
 
-function setupManifest(data) {
-  invalidateManifestCache();
+function withManifest(data, fn) {
   mkdirSync(DIST_DIR, { recursive: true });
+  let origContent = null;
+  let hadFile = false;
   if (existsSync(MANIFEST_PATH)) {
-    hadManifest = true;
-    const { readFileSync } = await_import_fs();
-    originalManifest = readFileSync(MANIFEST_PATH, "utf8");
+    hadFile = true;
+    origContent = readFileSync(MANIFEST_PATH, "utf8");
   }
-  writeFileSync(MANIFEST_PATH, JSON.stringify(data));
-}
 
-function restoreManifest() {
   invalidateManifestCache();
-  if (hadManifest && originalManifest !== null) {
-    writeFileSync(MANIFEST_PATH, originalManifest);
-  } else if (!hadManifest && existsSync(MANIFEST_PATH)) {
-    try { rmSync(MANIFEST_PATH); } catch { /* ignore */ }
-  }
-  hadManifest = false;
-  originalManifest = null;
-}
+  writeFileSync(MANIFEST_PATH, JSON.stringify(data));
 
-function await_import_fs() {
-  // Synchronous fs is already available
-  return { readFileSync: (await import("node:fs")).readFileSync };
+  try {
+    return fn();
+  } finally {
+    invalidateManifestCache();
+    if (hadFile && origContent !== null) {
+      writeFileSync(MANIFEST_PATH, origContent);
+    } else if (!hadFile && existsSync(MANIFEST_PATH)) {
+      try { rmSync(MANIFEST_PATH); } catch { /* ignore */ }
+    }
+  }
 }
 
 // --- Helper: mock Express req/res ---
@@ -77,110 +70,59 @@ function mockRes() {
 
 test("asset-fingerprint: getAssetManifest returns empty object when no manifest", () => {
   invalidateManifestCache();
-  // If there happens to be a manifest from a previous build, the result should
-  // still be a valid object
-  const manifest = getAssetManifest();
-  assert.equal(typeof manifest, "object");
-  assert.ok(manifest !== null);
+  // Temporarily remove manifest if it exists
+  let origContent = null;
+  let hadFile = false;
+  if (existsSync(MANIFEST_PATH)) {
+    hadFile = true;
+    origContent = readFileSync(MANIFEST_PATH, "utf8");
+    rmSync(MANIFEST_PATH);
+  }
+
+  try {
+    const manifest = getAssetManifest();
+    assert.equal(typeof manifest, "object");
+    assert.ok(manifest !== null);
+    assert.deepEqual(manifest, {});
+  } finally {
+    invalidateManifestCache();
+    if (hadFile && origContent !== null) {
+      mkdirSync(DIST_DIR, { recursive: true });
+      writeFileSync(MANIFEST_PATH, origContent);
+    }
+  }
 });
 
 test("asset-fingerprint: getAssetManifest reads manifest.json", () => {
   const testData = { "modules.js": "abc123def456", "styles.css": "789xyz" };
-  mkdirSync(DIST_DIR, { recursive: true });
-
-  // Save original if exists
-  let origContent = null;
-  if (existsSync(MANIFEST_PATH)) {
-    origContent = require("node:fs").readFileSync(MANIFEST_PATH, "utf8");
-  }
-
-  invalidateManifestCache();
-  writeFileSync(MANIFEST_PATH, JSON.stringify(testData));
-
-  try {
+  withManifest(testData, () => {
     const manifest = getAssetManifest();
     assert.deepEqual(manifest, testData);
-  } finally {
-    // Restore
-    invalidateManifestCache();
-    if (origContent !== null) {
-      writeFileSync(MANIFEST_PATH, origContent);
-    } else {
-      try { rmSync(MANIFEST_PATH); } catch { /* ignore */ }
-    }
-  }
+  });
 });
 
 test("asset-fingerprint: getAssetManifest caches the result", () => {
-  mkdirSync(DIST_DIR, { recursive: true });
-  let origContent = null;
-  if (existsSync(MANIFEST_PATH)) {
-    origContent = require("node:fs").readFileSync(MANIFEST_PATH, "utf8");
-  }
-
-  invalidateManifestCache();
-  writeFileSync(MANIFEST_PATH, JSON.stringify({ "test.js": "aaa" }));
-
-  try {
+  withManifest({ "test.js": "aaa" }, () => {
     const m1 = getAssetManifest();
     const m2 = getAssetManifest();
     assert.equal(m1, m2, "Should return same cached object reference");
-  } finally {
-    invalidateManifestCache();
-    if (origContent !== null) {
-      writeFileSync(MANIFEST_PATH, origContent);
-    } else {
-      try { rmSync(MANIFEST_PATH); } catch { /* ignore */ }
-    }
-  }
+  });
 });
 
 // --- assetUrl ---
 
 test("asset-fingerprint: assetUrl returns versioned URL when hash exists", () => {
-  mkdirSync(DIST_DIR, { recursive: true });
-  let origContent = null;
-  if (existsSync(MANIFEST_PATH)) {
-    origContent = require("node:fs").readFileSync(MANIFEST_PATH, "utf8");
-  }
-
-  invalidateManifestCache();
-  writeFileSync(MANIFEST_PATH, JSON.stringify({ "modules.js": "abc123" }));
-
-  try {
+  withManifest({ "modules.js": "abc123" }, () => {
     const url = assetUrl("modules.js");
     assert.equal(url, "/dist/modules.js?v=abc123");
-  } finally {
-    invalidateManifestCache();
-    if (origContent !== null) {
-      writeFileSync(MANIFEST_PATH, origContent);
-    } else {
-      try { rmSync(MANIFEST_PATH); } catch { /* ignore */ }
-    }
-  }
+  });
 });
 
 test("asset-fingerprint: assetUrl returns plain URL when no hash", () => {
-  mkdirSync(DIST_DIR, { recursive: true });
-  let origContent = null;
-  if (existsSync(MANIFEST_PATH)) {
-    origContent = require("node:fs").readFileSync(MANIFEST_PATH, "utf8");
-  }
-
-  invalidateManifestCache();
-  writeFileSync(MANIFEST_PATH, JSON.stringify({}));
-
-  try {
+  withManifest({}, () => {
     const url = assetUrl("unknown.js");
     assert.equal(url, "/dist/unknown.js");
-  } finally {
-    invalidateManifestCache();
-    if (origContent !== null) {
-      writeFileSync(MANIFEST_PATH, origContent);
-    } else {
-      try { rmSync(MANIFEST_PATH); } catch { /* ignore */ }
-    }
-  }
+  });
 });
 
 // --- assetMiddleware ---
@@ -245,51 +187,19 @@ test("asset-fingerprint: middleware removes Pragma for versioned assets", () => 
 // --- scriptTag ---
 
 test("asset-fingerprint: scriptTag generates correct HTML", () => {
-  mkdirSync(DIST_DIR, { recursive: true });
-  let origContent = null;
-  if (existsSync(MANIFEST_PATH)) {
-    origContent = require("node:fs").readFileSync(MANIFEST_PATH, "utf8");
-  }
-
-  invalidateManifestCache();
-  writeFileSync(MANIFEST_PATH, JSON.stringify({ "app.js": "xyz789" }));
-
-  try {
+  withManifest({ "app.js": "xyz789" }, () => {
     const tag = scriptTag("app.js");
     assert.equal(tag, '<script src="/dist/app.js?v=xyz789"></script>');
-  } finally {
-    invalidateManifestCache();
-    if (origContent !== null) {
-      writeFileSync(MANIFEST_PATH, origContent);
-    } else {
-      try { rmSync(MANIFEST_PATH); } catch { /* ignore */ }
-    }
-  }
+  });
 });
 
 test("asset-fingerprint: scriptTag includes additional attributes", () => {
-  mkdirSync(DIST_DIR, { recursive: true });
-  let origContent = null;
-  if (existsSync(MANIFEST_PATH)) {
-    origContent = require("node:fs").readFileSync(MANIFEST_PATH, "utf8");
-  }
-
-  invalidateManifestCache();
-  writeFileSync(MANIFEST_PATH, JSON.stringify({ "app.js": "xyz789" }));
-
-  try {
+  withManifest({ "app.js": "xyz789" }, () => {
     const tag = scriptTag("app.js", { defer: true, type: "module" });
     assert.ok(tag.includes("defer"));
     assert.ok(tag.includes('type="module"'));
     assert.ok(tag.includes("/dist/app.js?v=xyz789"));
-  } finally {
-    invalidateManifestCache();
-    if (origContent !== null) {
-      writeFileSync(MANIFEST_PATH, origContent);
-    } else {
-      try { rmSync(MANIFEST_PATH); } catch { /* ignore */ }
-    }
-  }
+  });
 });
 
 // --- invalidateManifestCache ---
@@ -297,26 +207,29 @@ test("asset-fingerprint: scriptTag includes additional attributes", () => {
 test("asset-fingerprint: invalidateManifestCache forces reload", () => {
   mkdirSync(DIST_DIR, { recursive: true });
   let origContent = null;
+  let hadFile = false;
   if (existsSync(MANIFEST_PATH)) {
-    origContent = require("node:fs").readFileSync(MANIFEST_PATH, "utf8");
+    hadFile = true;
+    origContent = readFileSync(MANIFEST_PATH, "utf8");
   }
 
-  invalidateManifestCache();
-  writeFileSync(MANIFEST_PATH, JSON.stringify({ "a.js": "111" }));
-  const m1 = getAssetManifest();
-  assert.equal(m1["a.js"], "111");
+  try {
+    invalidateManifestCache();
+    writeFileSync(MANIFEST_PATH, JSON.stringify({ "a.js": "111" }));
+    const m1 = getAssetManifest();
+    assert.equal(m1["a.js"], "111");
 
-  // Update the manifest and invalidate
-  writeFileSync(MANIFEST_PATH, JSON.stringify({ "a.js": "222" }));
-  invalidateManifestCache();
-  const m2 = getAssetManifest();
-  assert.equal(m2["a.js"], "222");
-
-  // Restore
-  invalidateManifestCache();
-  if (origContent !== null) {
-    writeFileSync(MANIFEST_PATH, origContent);
-  } else {
-    try { rmSync(MANIFEST_PATH); } catch { /* ignore */ }
+    // Update the manifest and invalidate
+    writeFileSync(MANIFEST_PATH, JSON.stringify({ "a.js": "222" }));
+    invalidateManifestCache();
+    const m2 = getAssetManifest();
+    assert.equal(m2["a.js"], "222");
+  } finally {
+    invalidateManifestCache();
+    if (hadFile && origContent !== null) {
+      writeFileSync(MANIFEST_PATH, origContent);
+    } else if (existsSync(MANIFEST_PATH)) {
+      try { rmSync(MANIFEST_PATH); } catch { /* ignore */ }
+    }
   }
 });

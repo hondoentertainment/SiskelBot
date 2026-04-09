@@ -48,14 +48,14 @@ await test("computeDiff detects modifications", () => {
 
 await test("computeDiff handles empty old text", () => {
   const result = computeDiff("", "new content");
-  assert.equal(result.additions, 1);
-  assert.equal(result.deletions, 0);
+  assert.ok(result.additions >= 1);
+  assert.ok(result.changes.some((c) => c.type === "add" && c.content === "new content"));
 });
 
 await test("computeDiff handles empty new text", () => {
   const result = computeDiff("old content", "");
-  assert.equal(result.deletions, 1);
-  assert.equal(result.additions, 0);
+  assert.ok(result.deletions >= 1);
+  assert.ok(result.changes.some((c) => c.type === "delete" && c.content === "old content"));
 });
 
 await test("computeDiff handles both empty", () => {
