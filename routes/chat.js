@@ -1,5 +1,12 @@
 import { randomUUID } from "crypto";
 import { validate } from "../lib/validate.js";
+import { detectPromptInjection, sanitizeInput } from "../lib/prompt-guard.js";
+import { checkOutputSafety } from "../lib/output-guard.js";
+import { estimateRequestCost, checkCostLimit, recordCost } from "../lib/cost-controls.js";
+
+const ENABLE_PROMPT_GUARD = process.env.ENABLE_PROMPT_GUARD === "1";
+const ENABLE_OUTPUT_GUARD = process.env.ENABLE_OUTPUT_GUARD === "1";
+const ENABLE_COST_LIMITS = process.env.ENABLE_COST_LIMITS === "1";
 
 export default function mountChatRoutes(app, deps) {
   const {
@@ -71,6 +78,45 @@ export default function mountChatRoutes(app, deps) {
             code: "QUOTA_EXCEEDED",
             hint: "Quota resets at period end. Contact admin or use a different workspace.",
           });
+        }
+      }
+
+      // Phase 26: Prompt guard — injection detection and sanitization
+      if (ENABLE_PROMPT_GUARD && Array.isArray(req.body?.messages)) {
+        for (const msg of req.body.messages) {
+          if (typeof msg?.content === "string") {
+            const injection = detectPromptInjection(msg.content);
+            if (!injection.safe && injection.risk === "high") {
+              return res.status(400).json({
+                error: "Prompt injection detected",
+                code: "PROMPT_INJECTION",
+                risk: injection.risk,
+                patterns: injection.patterns,
+              });
+            }
+            const sanitized = sanitizeInput(msg.content, { maxLength: 100_000 });
+            if (sanitized.modified) {
+              msg.content = sanitized.text;
+            }
+          }
+        }
+      }
+
+      // Phase 26: Cost controls — pre-request limit check
+      if (ENABLE_COST_LIMITS) {
+        const costModel = req.body?.model || MODEL_PRESETS[BACKEND]?.[0] || "unknown";
+        const estInputTokens = estimate.inputFromMessages(req.body?.messages || []);
+        const costEstimate = estimateRequestCost(costModel, estInputTokens, 512);
+        if (costEstimate.cost > 0) {
+          const costCheck = await checkCostLimit(workspace, costEstimate.cost);
+          if (!costCheck.allowed) {
+            return res.status(429).json({
+              error: "Workspace cost limit exceeded",
+              code: "COST_LIMIT_EXCEEDED",
+              limit: costCheck.limit,
+              remaining: costCheck.remaining,
+            });
+          }
         }
       }
 
@@ -220,6 +266,22 @@ export default function mountChatRoutes(app, deps) {
         recordTokensUsed(inputTokens, outputTokens);
         await recordUsage({ timestamp: new Date().toISOString(), model, inputTokens, outputTokens, backend: BACKEND, workspace, userId }).catch(() => {});
 
+        // Phase 26: Output guard — check response safety
+        if (ENABLE_OUTPUT_GUARD && typeof content === "string") {
+          const safety = checkOutputSafety(content);
+          if (!safety.safe) {
+            console.warn("[output-guard] Issues detected:", safety.issues.map((i) => i.type).join(", "));
+          }
+        }
+
+        // Phase 26: Cost controls — record actual cost
+        if (ENABLE_COST_LIMITS) {
+          const actualCost = estimateRequestCost(model, inputTokens, outputTokens);
+          if (actualCost.cost > 0) {
+            await recordCost(workspace, actualCost.cost, { model, timestamp: new Date().toISOString() }).catch(() => {});
+          }
+        }
+
         // Record model quality metrics
         recordModelResponse(model, { latencyMs: Date.now() - _startTime, tokens: outputTokens, error: false });
         checkAndLogPromotion(model);
@@ -341,6 +403,22 @@ export default function mountChatRoutes(app, deps) {
         workspace,
         userId,
       }).catch((e) => console.warn("[usage-tracker] Record failed:", e.message));
+
+      // Phase 26: Output guard — check streaming response safety
+      if (ENABLE_OUTPUT_GUARD && outputContent) {
+        const safety = checkOutputSafety(outputContent);
+        if (!safety.safe) {
+          console.warn("[output-guard] Issues in streaming response:", safety.issues.map((i) => i.type).join(", "));
+        }
+      }
+
+      // Phase 26: Cost controls — record actual cost for streaming path
+      if (ENABLE_COST_LIMITS) {
+        const actualCost = estimateRequestCost(model, finalInputTokens, outputTokens);
+        if (actualCost.cost > 0) {
+          await recordCost(workspace, actualCost.cost, { model, timestamp: new Date().toISOString() }).catch(() => {});
+        }
+      }
 
       // Record model quality metrics for streaming proxy path
       recordModelResponse(model, { latencyMs: Date.now() - _startTime, tokens: outputTokens, error: false });

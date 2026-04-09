@@ -61,6 +61,10 @@ import { mountRbacRoutes } from "./rbac.js";
 import { mountAnalyticsRoutes } from "./analytics.js";
 import { mountModelQualityRoutes } from "./model-quality.js";
 import { mountCollaborationRoutes } from "./collaboration.js";
+import { mountScheduledAgentRoutes } from "./scheduled-agents.js";
+import { mountBillingRoutes } from "./billing.js";
+import { mountBrandingRoutes } from "./branding.js";
+import { mountSecurityRoutes } from "./security.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -91,6 +95,10 @@ const mountFunctions = [
   mountAnalyticsRoutes,
   mountModelQualityRoutes,
   mountCollaborationRoutes,
+  mountScheduledAgentRoutes,
+  mountBillingRoutes,
+  mountBrandingRoutes,
+  mountSecurityRoutes,
 ];
 
 /**
