@@ -61,6 +61,7 @@ import { mountFederationRoutes } from "./federation.js";
 import { mountMcpRoutes } from "./mcp.js";
 import { mountSlackDiscordRoutes } from "./slack-discord.js";
 import { mountMemoryRoutes } from "./memory.js";
+import { mountReasoningMemoryRoutes } from "./reasoning-memory.js";
 import { mountRbacRoutes } from "./rbac.js";
 import { mountAnalyticsRoutes } from "./analytics.js";
 import { mountModelQualityRoutes } from "./model-quality.js";
@@ -75,6 +76,9 @@ import mountTraceExplorerRoutes from "./traces.js";
 import { mountSLORoutes } from "./slo.js";
 import { mountSyntheticRoutes } from "./synthetic.js";
 import { mountRunbookRoutes } from "./runbooks.js";
+import { mountPromptEvolutionRoutes } from "./prompt-evolution.js";
+import { mountToolDiscoveryRoutes } from "./tool-discovery.js";
+import { mountExplainabilityRoutes } from "./explainability.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -101,6 +105,7 @@ const mountFunctions = [
   mountMcpRoutes,
   mountSlackDiscordRoutes,
   mountMemoryRoutes,
+  mountReasoningMemoryRoutes,
   mountRbacRoutes,
   mountAnalyticsRoutes,
   mountModelQualityRoutes,
@@ -115,6 +120,9 @@ const mountFunctions = [
   mountSLORoutes,
   mountSyntheticRoutes,
   mountRunbookRoutes,
+  mountPromptEvolutionRoutes,
+  mountToolDiscoveryRoutes,
+  mountExplainabilityRoutes,
 ];
 
 /**

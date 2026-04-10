@@ -46,6 +46,7 @@ import { resolveAgentMaxIterations } from "./lib/agent-iterations.js";
 import * as storage from "./lib/storage.js";
 import * as scheduleStore from "./lib/schedules.js";
 import { start as schedulerStart, stop as schedulerStop, refresh as schedulerRefresh, runRecipeNow, runDueJobsVercel } from "./lib/scheduler.js";
+import { startPromptEvolutionScheduler } from "./lib/prompt-evolution.js";
 import { userAuth, isAuthConfigured } from "./lib/auth.js";
 import { recordUsage, getSummary, getTotalTokensInWindow, getRecordsForPeriod, estimate } from "./lib/usage-tracker.js";
 import { getDashboard, exportToCsv, exportToJson } from "./lib/analytics.js";
@@ -1150,6 +1151,14 @@ if (process.env.VERCEL !== "1") {
         if (BACKEND === "openai") console.log(`OpenAI: api.openai.com (key set)`);
         if (process.env.ENABLE_SCHEDULED_RECIPES === "1") {
           schedulerStart().catch((e) => console.warn("[scheduler] Start failed:", e.message));
+        }
+        if (process.env.ENABLE_PROMPT_EVOLUTION === "1") {
+          try {
+            startPromptEvolutionScheduler();
+            console.log("Phase 32.2: Prompt evolution auto-promotion enabled (hourly)");
+          } catch (e) {
+            console.warn("[prompt-evolution] Start failed:", e.message);
+          }
         }
         if (process.env.ENABLE_SYNTHETIC_MONITORING === "1") {
           try {

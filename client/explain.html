@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>Siskel Bot - Decision Explorer</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 2px solid #60a5fa;
+      outline-offset: 2px;
+    }
+    header {
+      padding: 0.75rem 1rem;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    header h1 { margin: 0; font-size: 1.125rem; font-weight: 600; }
+    header a { color: #60a5fa; text-decoration: none; }
+    header a:hover { text-decoration: underline; }
+
+    main {
+      padding: 1rem;
+      max-width: 1400px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; }
+    }
+
+    .section {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .section h2 {
+      margin: 0 0 0.75rem 0;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .runs-list {
+      max-height: 520px;
+      overflow: auto;
+    }
+    .run-item {
+      padding: 0.6rem 0.75rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      margin-bottom: 0.4rem;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .run-item:hover { background: #243244; }
+    .run-item.active { background: #1e3a5f; border-color: #3b82f6; }
+    .run-item .run-id { font-family: ui-monospace, Menlo, monospace; font-size: 0.78rem; color: #e2e8f0; }
+    .run-item .run-meta { font-size: 0.72rem; color: #64748b; margin-top: 2px; }
+
+    .controls {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .controls input, .controls select, .controls button {
+      padding: 0.4rem 0.6rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.85rem;
+    }
+    .controls button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    .controls button:hover { background: #2563eb; }
+
+    .narrative-summary {
+      padding: 1rem;
+      background: linear-gradient(135deg, #1e3a5f 0%, #1e293b 100%);
+      border: 1px solid #3b82f6;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+    .narrative-summary .conf-badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 10px;
+      background: #064e3b;
+      color: #34d399;
+      font-size: 0.72rem;
+      font-weight: 600;
+      margin-left: 0.5rem;
+    }
+
+    .timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .decision-card {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-left: 3px solid #3b82f6;
+      border-radius: 6px;
+      padding: 0.9rem;
+    }
+    .decision-card.tool_selection { border-left-color: #34d399; }
+    .decision-card.model_selection { border-left-color: #60a5fa; }
+    .decision-card.specialist_delegation { border-left-color: #f59e0b; }
+    .decision-card.termination { border-left-color: #f87171; }
+    .decision-card.retry { border-left-color: #fbbf24; }
+    .decision-card.skip { border-left-color: #94a3b8; }
+    .decision-card.reflection { border-left-color: #a78bfa; }
+
+    .decision-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .decision-type {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #94a3b8;
+      font-weight: 600;
+    }
+    .decision-chosen {
+      font-family: ui-monospace, Menlo, monospace;
+      font-size: 0.95rem;
+      color: #e2e8f0;
+      font-weight: 600;
+      word-break: break-all;
+    }
+    .decision-turn {
+      font-size: 0.72rem;
+      color: #64748b;
+    }
+    .confidence-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+    .confidence-badge.high { background: #064e3b; color: #34d399; }
+    .confidence-badge.mid { background: #78350f; color: #fbbf24; }
+    .confidence-badge.low { background: #7f1d1d; color: #fca5a5; }
+
+    .decision-alts {
+      margin-top: 0.5rem;
+      font-size: 0.78rem;
+      color: #94a3b8;
+    }
+    .decision-alts .alt-pill {
+      display: inline-block;
+      padding: 1px 8px;
+      margin: 2px 4px 2px 0;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      font-family: ui-monospace, Menlo, monospace;
+      font-size: 0.72rem;
+      color: #94a3b8;
+    }
+
+    .factor-bars {
+      margin-top: 0.6rem;
+    }
+    .factor-row {
+      display: grid;
+      grid-template-columns: 140px 1fr 60px;
+      gap: 0.5rem;
+      align-items: center;
+      margin-bottom: 0.3rem;
+      font-size: 0.78rem;
+    }
+    .factor-name { color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .factor-bar-track {
+      position: relative;
+      height: 8px;
+      background: #1e293b;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .factor-bar-fill {
+      position: absolute;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      background: linear-gradient(90deg, #3b82f6, #60a5fa);
+      border-radius: 4px;
+    }
+    .factor-value {
+      font-family: ui-monospace, Menlo, monospace;
+      color: #64748b;
+      font-size: 0.72rem;
+      text-align: right;
+    }
+
+    .decision-reasoning {
+      margin-top: 0.6rem;
+      padding: 0.5rem 0.75rem;
+      background: #1e293b;
+      border-left: 2px solid #475569;
+      border-radius: 4px;
+      font-size: 0.82rem;
+      color: #cbd5e1;
+      font-style: italic;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: #64748b;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.6rem;
+      margin-bottom: 1rem;
+    }
+    .stat-card {
+      padding: 0.75rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+    }
+    .stat-label { font-size: 0.68rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-value { font-size: 1.4rem; font-weight: 700; margin-top: 0.25rem; color: #e2e8f0; }
+
+    .loading { color: #64748b; font-style: italic; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Decision Explorer</h1>
+    <a href="/">Home</a>
+    <a href="/admin.html">Admin</a>
+    <a href="/traces.html">Traces</a>
+    <span style="flex:1"></span>
+    <button id="refresh-btn" class="btn">Refresh</button>
+  </header>
+  <main>
+    <aside>
+      <div class="section">
+        <h2>Filters</h2>
+        <div class="controls">
+          <input type="text" id="workspace-input" placeholder="workspace (optional)" />
+          <select id="period-select">
+            <option value="">All time</option>
+            <option value="1h">Last hour</option>
+            <option value="24h">Last 24 hours</option>
+            <option value="7d" selected>Last 7 days</option>
+            <option value="30d">Last 30 days</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Aggregate Stats</h2>
+        <div id="stats-grid" class="stats-grid">
+          <div class="stat-card"><div class="stat-label">Loading</div></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Recent Runs</h2>
+        <div id="runs-list" class="runs-list">
+          <div class="empty-state">Loading runs...</div>
+        </div>
+      </div>
+    </aside>
+
+    <section>
+      <div id="run-detail">
+        <div class="empty-state">Select a run from the left to see its decision timeline.</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const API_BASE = "/api/v1/explain";
+    let currentRunId = null;
+
+    function getFilters() {
+      const ws = document.getElementById("workspace-input").value.trim();
+      const period = document.getElementById("period-select").value;
+      return { workspace: ws || null, period: period || null };
+    }
+
+    function buildQuery(params) {
+      const s = new URLSearchParams();
+      for (const [k, v] of Object.entries(params)) {
+        if (v != null && v !== "") s.set(k, v);
+      }
+      const str = s.toString();
+      return str ? "?" + str : "";
+    }
+
+    function confClass(conf) {
+      if (conf >= 0.8) return "high";
+      if (conf >= 0.5) return "mid";
+      return "low";
+    }
+
+    async function fetchJson(path) {
+      const r = await fetch(path);
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+      return r.json();
+    }
+
+    async function loadStats() {
+      const { workspace, period } = getFilters();
+      const grid = document.getElementById("stats-grid");
+      grid.innerHTML = '<div class="stat-card"><div class="stat-label">Loading</div></div>';
+      try {
+        const data = await fetchJson(`${API_BASE}/stats${buildQuery({ workspace, period })}`);
+        const typeCells = Object.entries(data.typeDistribution || {})
+          .map(([t, n]) => `<div class="stat-card"><div class="stat-label">${t.replace(/_/g, " ")}</div><div class="stat-value">${n}</div></div>`)
+          .join("");
+        grid.innerHTML = `
+          <div class="stat-card"><div class="stat-label">Decisions</div><div class="stat-value">${data.total}</div></div>
+          <div class="stat-card"><div class="stat-label">Runs</div><div class="stat-value">${data.runCount}</div></div>
+          <div class="stat-card"><div class="stat-label">Avg Confidence</div><div class="stat-value">${(data.avgConfidence * 100).toFixed(0)}%</div></div>
+          <div class="stat-card"><div class="stat-label">Avg Alternatives</div><div class="stat-value">${data.avgAlternativesConsidered}</div></div>
+          ${typeCells}
+        `;
+      } catch (err) {
+        grid.innerHTML = `<div class="stat-card"><div class="stat-label">Error</div><div class="stat-value" style="font-size:0.8rem">${err.message}</div></div>`;
+      }
+    }
+
+    async function loadRuns() {
+      const { workspace } = getFilters();
+      const list = document.getElementById("runs-list");
+      list.innerHTML = '<div class="empty-state">Loading runs...</div>';
+      try {
+        const data = await fetchJson(`${API_BASE}/runs${buildQuery({ workspace, limit: 100 })}`);
+        if (!data.runs || data.runs.length === 0) {
+          list.innerHTML = '<div class="empty-state">No runs recorded yet.</div>';
+          return;
+        }
+        list.innerHTML = data.runs.map((r) => {
+          const when = new Date(r.lastDecisionAt).toLocaleString();
+          const active = r.runId === currentRunId ? "active" : "";
+          return `
+            <div class="run-item ${active}" data-run="${r.runId}">
+              <div class="run-id">${r.runId.slice(0, 18)}…</div>
+              <div class="run-meta">${r.decisionCount} decisions · ${when}</div>
+            </div>
+          `;
+        }).join("");
+        list.querySelectorAll(".run-item").forEach((el) => {
+          el.addEventListener("click", () => {
+            const runId = el.getAttribute("data-run");
+            selectRun(runId);
+          });
+        });
+      } catch (err) {
+        list.innerHTML = `<div class="empty-state">Error: ${err.message}</div>`;
+      }
+    }
+
+    function renderDecision(d, index) {
+      const conf = typeof d.confidence === "number" ? d.confidence : null;
+      const confBadge = conf != null
+        ? `<span class="confidence-badge ${confClass(conf)}">conf ${(conf * 100).toFixed(0)}%</span>`
+        : "";
+      const alts = (d.alternatives || []).slice(0, 8);
+      const altsHtml = alts.length > 0
+        ? `<div class="decision-alts">Considered: ${alts.map((a) => `<span class="alt-pill">${escapeHtml(a)}</span>`).join("")}</div>`
+        : "";
+      const factors = (d.factors || []).slice().sort((a, b) => (b.weight || 0) - (a.weight || 0));
+      const factorsHtml = factors.length > 0
+        ? `<div class="factor-bars">${factors.map((f) => `
+            <div class="factor-row">
+              <div class="factor-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</div>
+              <div class="factor-bar-track"><div class="factor-bar-fill" style="width:${(f.weight * 100).toFixed(0)}%"></div></div>
+              <div class="factor-value">${escapeHtml(String(f.value ?? ""))}</div>
+            </div>
+          `).join("")}</div>`
+        : "";
+      const reasoningHtml = d.reasoning
+        ? `<div class="decision-reasoning">${escapeHtml(d.reasoning)}</div>`
+        : "";
+      return `
+        <div class="decision-card ${d.decisionType}" data-index="${index}">
+          <div class="decision-head">
+            <div>
+              <div class="decision-type">${d.decisionType.replace(/_/g, " ")}</div>
+              <div class="decision-chosen">${escapeHtml(d.chosen)}</div>
+            </div>
+            <div style="text-align:right">
+              ${confBadge}
+              <div class="decision-turn">turn ${d.turnIndex}</div>
+            </div>
+          </div>
+          ${altsHtml}
+          ${factorsHtml}
+          ${reasoningHtml}
+        </div>
+      `;
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      }[c]));
+    }
+
+    async function selectRun(runId) {
+      currentRunId = runId;
+      document.querySelectorAll(".run-item").forEach((el) => {
+        el.classList.toggle("active", el.getAttribute("data-run") === runId);
+      });
+      const detail = document.getElementById("run-detail");
+      detail.innerHTML = '<div class="loading">Loading decisions…</div>';
+      try {
+        const [runData, narrative] = await Promise.all([
+          fetchJson(`${API_BASE}/runs/${encodeURIComponent(runId)}`),
+          fetchJson(`${API_BASE}/runs/${encodeURIComponent(runId)}/narrative`),
+        ]);
+        const narrativeHtml = narrative
+          ? `<div class="narrative-summary">
+              <strong>Summary</strong>
+              <span class="conf-badge">avg ${(narrative.confidence * 100).toFixed(0)}%</span>
+              <div style="margin-top:0.5rem">${escapeHtml(narrative.summary)}</div>
+            </div>`
+          : "";
+        const cards = runData.decisions
+          .map((d, i) => renderDecision(d, i))
+          .join("");
+        detail.innerHTML = `
+          ${narrativeHtml}
+          <div class="section">
+            <h2>Decision Timeline (${runData.count})</h2>
+            <div class="timeline">${cards}</div>
+          </div>
+        `;
+      } catch (err) {
+        detail.innerHTML = `<div class="empty-state">Error: ${err.message}</div>`;
+      }
+    }
+
+    function refreshAll() {
+      loadStats();
+      loadRuns();
+      if (currentRunId) selectRun(currentRunId);
+    }
+
+    document.getElementById("refresh-btn").addEventListener("click", refreshAll);
+    document.getElementById("workspace-input").addEventListener("change", refreshAll);
+    document.getElementById("period-select").addEventListener("change", refreshAll);
+
+    refreshAll();
+  </script>
+</body>
+</html>

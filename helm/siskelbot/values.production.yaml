@@ -1,0 +1,192 @@
+# Production-tuned values for siskelbot.
+# Usage: helm install siskelbot ./helm/siskelbot -f values.production.yaml
+
+replicaCount: 3
+
+image:
+  repository: ghcr.io/hondoentertainment/siskelbot
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 75
+  customMetrics:
+    - type: Pods
+      pods:
+        metric:
+          name: http_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: "100"
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: 50m
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+  hosts:
+    - host: siskelbot.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: siskelbot-tls
+      hosts:
+        - siskelbot.example.com
+
+env:
+  - name: NODE_ENV
+    value: production
+  - name: PORT
+    value: "3000"
+  - name: BACKEND
+    value: openai
+  - name: ENABLE_METRICS
+    value: "1"
+  - name: STORAGE_BACKEND
+    value: postgres
+  - name: STORAGE_PATH
+    value: /data
+  - name: LOG_LEVEL
+    value: info
+
+envFrom:
+  secretRefs:
+    - name: siskelbot-secrets
+  configMapRefs:
+    - name: siskelbot-config
+
+persistence:
+  enabled: true
+  storageClass: gp3
+  accessModes:
+    - ReadWriteOnce
+  size: 50Gi
+  mountPath: /data
+
+postgresql:
+  enabled: true
+  host: siskelbot-postgres.database.svc.cluster.local
+  port: 5432
+  database: siskelbot
+  username: siskelbot
+  existingSecret: siskelbot-postgres-credentials
+  existingSecretPasswordKey: password
+
+redis:
+  enabled: true
+  host: siskelbot-redis.cache.svc.cluster.local
+  port: 6379
+  existingSecret: siskelbot-redis-credentials
+  existingSecretPasswordKey: password
+
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
+    labels:
+      release: prometheus
+
+networkPolicy:
+  enabled: true
+  ingressRules:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - protocol: TCP
+          port: 3000
+  egressRules:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: database
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: cache
+      ports:
+        - protocol: TCP
+          port: 6379
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 53
+        - protocol: UDP
+          port: 53
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: siskelbot
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: siskelbot
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: siskelbot
+          topologyKey: kubernetes.io/hostname
+
+priorityClassName: high-priority
+
+terminationGracePeriodSeconds: 60
