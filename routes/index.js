@@ -79,6 +79,7 @@ import { mountRunbookRoutes } from "./runbooks.js";
 import { mountPromptEvolutionRoutes } from "./prompt-evolution.js";
 import { mountToolDiscoveryRoutes } from "./tool-discovery.js";
 import { mountExplainabilityRoutes } from "./explainability.js";
+import { mountComplianceRoutes } from "./compliance.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
