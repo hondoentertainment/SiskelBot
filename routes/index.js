@@ -33,6 +33,9 @@
  *   mcp.js           - /mcp, /mcp/sse
  *   slack-discord.js - /api/integrations/slack/*, /api/integrations/discord/*, /api/integrations/bots/*
  *   voice.js         - /api/voice/transcribe, /api/voice/synthesize, /api/voice/capabilities
+ *   slo.js           - /api/slo, /api/slo/:name, /api/slo/:name/burndown
+ *   synthetic.js     - /api/synthetic/checks, history, stats, manual runs
+ *   runbooks.js      - /api/runbooks, generate, report (on-call automation)
  */
 
 import mountAuthRoutes from "./auth.js";
@@ -68,6 +71,10 @@ import { mountBrandingRoutes } from "./branding.js";
 import { mountSecurityRoutes } from "./security.js";
 import { mountFeedbackRoutes } from "./feedback.js";
 import { mountVoiceRoutes } from "./voice.js";
+import mountTraceExplorerRoutes from "./traces.js";
+import { mountSLORoutes } from "./slo.js";
+import { mountSyntheticRoutes } from "./synthetic.js";
+import { mountRunbookRoutes } from "./runbooks.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -104,6 +111,10 @@ const mountFunctions = [
   mountSecurityRoutes,
   mountFeedbackRoutes,
   mountVoiceRoutes,
+  mountTraceExplorerRoutes,
+  mountSLORoutes,
+  mountSyntheticRoutes,
+  mountRunbookRoutes,
 ];
 
 /**

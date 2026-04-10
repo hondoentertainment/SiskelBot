@@ -14,6 +14,7 @@ import { configureSSO, isSSOConfigured } from "./lib/sso.js";
 import { getLeaderElection } from "./lib/leader-election.js";
 import { getRegionHealth } from "./lib/region-health.js";
 import { getReplicationManager, internalAuth } from "./lib/storage-replication.js";
+import { getSyntheticMonitor, registerBuiltInChecks } from "./lib/synthetic-monitor.js";
 import {
   branchConversation,
   getConversationTree,
@@ -89,6 +90,7 @@ import {
   intersectSwarmSpecialistsWithAllowlist,
 } from "./lib/swarm.js";
 import { initTracing } from "./lib/tracing.js";
+import { initLogShipping } from "./lib/log-shipper.js";
 import {
   recordRequest,
   renderPrometheus,
@@ -96,6 +98,7 @@ import {
   recordTokensUsed,
   isEnabled as metricsEnabled,
 } from "./lib/metrics.js";
+import { globalSLOTracker } from "./lib/slo-tracker.js";
 import { fetchWithTimeoutAndRetry } from "./lib/backend-fetch.js";
 import { toolValidationEnabled } from "./lib/tool-validation.js";
 import { stagnationDetectionEnabled } from "./lib/agent-stagnation.js";
@@ -631,6 +634,14 @@ function logRequest(req, res, next) {
     if (!process.env.NODE_TEST_CONTEXT) console.log(msg);
     if (req.apiKeyId) void logKeyUsage({ keyId: req.apiKeyId, path: req.path, method: req.method }).catch(() => {});
     if (metricsEnabled()) recordRequest(req.method, req.path, res.statusCode, durationMs);
+    // Phase 31.2: SLO/SLI event recording.
+    try {
+      globalSLOTracker.recordEvent("success_rate", res.statusCode < 500 ? 1 : 0);
+      globalSLOTracker.recordEvent("error_rate", res.statusCode >= 500 ? 1 : 0);
+      globalSLOTracker.recordEvent("latency_ms", durationMs);
+    } catch (_) {
+      // never fail a request because of SLO bookkeeping
+    }
   });
   next();
 }
@@ -1096,6 +1107,8 @@ app.use(errorHandler);
 const SHUTDOWN_TIMEOUT_MS = Number(process.env.SHUTDOWN_TIMEOUT_MS) || 10_000;
 
 if (process.env.VERCEL !== "1") {
+  // Phase 31.4: Initialize log shipping before anything else so startup logs are forwarded.
+  initLogShipping();
   // Phase 47: Start OTEL before createServer so HTTP instrumentation wraps the server.
   initTracing()
     .catch(() => {})
@@ -1108,6 +1121,9 @@ if (process.env.VERCEL !== "1") {
         httpServer.close(async () => {
           try {
             if (process.env.ENABLE_SCHEDULED_RECIPES === "1") schedulerStop();
+            if (process.env.ENABLE_SYNTHETIC_MONITORING === "1") {
+              try { getSyntheticMonitor().stop(); } catch (_) {}
+            }
             await closeServer();
             console.log("[shutdown] Graceful shutdown complete");
             process.exit(0);
@@ -1134,6 +1150,19 @@ if (process.env.VERCEL !== "1") {
         if (BACKEND === "openai") console.log(`OpenAI: api.openai.com (key set)`);
         if (process.env.ENABLE_SCHEDULED_RECIPES === "1") {
           schedulerStart().catch((e) => console.warn("[scheduler] Start failed:", e.message));
+        }
+        if (process.env.ENABLE_SYNTHETIC_MONITORING === "1") {
+          try {
+            const monitor = getSyntheticMonitor();
+            const host = (process.env.LISTEN_HOST?.trim() || "127.0.0.1");
+            const baseUrl = process.env.SYNTHETIC_MONITOR_BASE_URL || `http://${host}:${PORT}`;
+            registerBuiltInChecks(monitor, baseUrl);
+            const intervalMs = Number(process.env.SYNTHETIC_MONITOR_INTERVAL_MS) || 5 * 60 * 1000;
+            monitor.start(intervalMs);
+            console.log(`Phase 31.3: Synthetic monitoring enabled (interval=${intervalMs}ms, base=${baseUrl})`);
+          } catch (e) {
+            console.warn("[synthetic-monitor] Start failed:", e.message);
+          }
         }
         console.log("Phase 33: WebSocket real-time sync enabled at /ws");
         console.log("Phase 34: Health probes at /health/live, /health/ready");
