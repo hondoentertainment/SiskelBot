@@ -120,16 +120,19 @@ test("createSSEWriter back-pressure: write returns false when sink returns false
 
 test("createSSEWriter flushes once batch exceeds maxBatchBytes", () => {
   const res = makeRes();
-  const writer = newWriter(res, { maxBatchBytes: 32 });
-  writer.writeData("aaaaaaaaaaaa"); // ~20 bytes framed
-  writer.writeData("bbbbbbbbbbbb"); // pushes batch over 32 bytes
-  writer.writeData("cccccccccccc");
+  // Each event is ~40 bytes framed; with maxBatchBytes=64 every second event
+  // forces a flush before the new event is appended.
+  const writer = newWriter(res, { maxBatchBytes: 64 });
+  const big = "x".repeat(30); // framed = "data: " (6) + 30 + "\n\n" (2) = 38
+  writer.writeData(big);
+  writer.writeData(big);
+  writer.writeData(big);
   writer.flush();
   // We expect at least two write() calls due to the size threshold.
   assert.ok(res.chunks.length >= 2, `expected >= 2 writes, got ${res.chunks.length}`);
-  assert.ok(res.text.includes("data: aaaaaaaaaaaa\n\n"));
-  assert.ok(res.text.includes("data: bbbbbbbbbbbb\n\n"));
-  assert.ok(res.text.includes("data: cccccccccccc\n\n"));
+  // All three events should still be present in the cumulative output.
+  const occurrences = res.text.split(`data: ${big}\n\n`).length - 1;
+  assert.equal(occurrences, 3);
 });
 
 test("createSSEWriter stats track bytes/events/flushes", () => {
