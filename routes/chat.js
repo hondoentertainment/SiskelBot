@@ -306,6 +306,8 @@ export default function mountChatRoutes(app, deps) {
           }
         }
 
+        const feedbackMeta = JSON.stringify({ type: "metadata", feedbackUrl: "/api/v1/feedback" });
+        res.write(`data: ${feedbackMeta}\n\n`);
         res.write("data: [DONE]\n\n");
         res.end();
         const ws = req.body?.agentOptions?.workspace || "default";

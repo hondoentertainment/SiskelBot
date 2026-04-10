@@ -32,6 +32,7 @@
  *   federation.js    - /api/federation/*
  *   mcp.js           - /mcp, /mcp/sse
  *   slack-discord.js - /api/integrations/slack/*, /api/integrations/discord/*, /api/integrations/bots/*
+ *   voice.js         - /api/voice/transcribe, /api/voice/synthesize, /api/voice/capabilities
  */
 
 import mountAuthRoutes from "./auth.js";
@@ -65,6 +66,8 @@ import { mountScheduledAgentRoutes } from "./scheduled-agents.js";
 import { mountBillingRoutes } from "./billing.js";
 import { mountBrandingRoutes } from "./branding.js";
 import { mountSecurityRoutes } from "./security.js";
+import { mountFeedbackRoutes } from "./feedback.js";
+import { mountVoiceRoutes } from "./voice.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -99,6 +102,8 @@ const mountFunctions = [
   mountBillingRoutes,
   mountBrandingRoutes,
   mountSecurityRoutes,
+  mountFeedbackRoutes,
+  mountVoiceRoutes,
 ];
 
 /**
