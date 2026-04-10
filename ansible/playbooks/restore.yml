@@ -1,0 +1,152 @@
+---
+# Restore a SiskelBot backup produced by backup.yml.
+# Stops the service, replaces the data directory and .env, restores Postgres, then restarts.
+#
+# Usage:
+#   ansible-playbook playbooks/restore.yml -e backup_file=/var/backups/siskelbot/siskelbot-20260410T120000.tar.gz
+
+- name: Restore SiskelBot from backup
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars_files:
+    - ../roles/siskelbot/defaults/main.yml
+
+  vars:
+    restore_staging: "/tmp/siskelbot-restore"
+
+  pre_tasks:
+    - name: Require backup_file variable
+      ansible.builtin.assert:
+        that:
+          - backup_file is defined
+          - backup_file | length > 0
+        fail_msg: "Pass the backup path with -e backup_file=/var/backups/siskelbot/siskelbot-XXX.tar.gz"
+
+    - name: Verify backup file exists on target
+      ansible.builtin.stat:
+        path: "{{ backup_file }}"
+      register: backup_stat
+
+    - name: Fail if backup file missing
+      ansible.builtin.fail:
+        msg: "Backup file {{ backup_file }} not found on target host"
+      when: not backup_stat.stat.exists
+
+    - name: Prompt for confirmation
+      ansible.builtin.pause:
+        prompt: "This will OVERWRITE data at {{ siskelbot_data_dir }} and the {{ postgres_db }} database. Type 'yes' to continue"
+      register: confirm_restore
+
+    - name: Abort if not confirmed
+      ansible.builtin.fail:
+        msg: "Restore aborted"
+      when: confirm_restore.user_input | default('') != 'yes'
+
+  tasks:
+    - name: Stop SiskelBot service
+      ansible.builtin.systemd:
+        name: siskelbot
+        state: stopped
+
+    - name: Create restore staging directory
+      ansible.builtin.file:
+        path: "{{ restore_staging }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Extract backup tarball
+      ansible.builtin.unarchive:
+        src: "{{ backup_file }}"
+        dest: "{{ restore_staging }}"
+        remote_src: true
+
+    - name: Locate extracted backup directory
+      ansible.builtin.find:
+        paths: "{{ restore_staging }}"
+        patterns: "siskelbot-*"
+        file_type: directory
+      register: extracted_dirs
+
+    - name: Set staged path
+      ansible.builtin.set_fact:
+        staged: "{{ extracted_dirs.files[0].path }}"
+
+    - name: Restore data directory
+      ansible.posix.synchronize:
+        src: "{{ staged }}/data/"
+        dest: "{{ siskelbot_data_dir }}/"
+        archive: true
+        delete: true
+      delegate_to: "{{ inventory_hostname }}"
+
+    - name: Fix data directory ownership
+      ansible.builtin.file:
+        path: "{{ siskelbot_data_dir }}"
+        state: directory
+        owner: "{{ siskelbot_user }}"
+        group: "{{ siskelbot_group }}"
+        recurse: true
+
+    - name: Restore .env file
+      ansible.builtin.copy:
+        src: "{{ staged }}/env"
+        dest: "{{ siskelbot_install_dir }}/.env"
+        remote_src: true
+        owner: "{{ siskelbot_user }}"
+        group: "{{ siskelbot_group }}"
+        mode: "0600"
+
+    - name: Check for Postgres dump
+      ansible.builtin.stat:
+        path: "{{ staged }}/postgres.dump"
+      register: dump_stat
+
+    - name: Drop and recreate Postgres database
+      become_user: postgres
+      community.postgresql.postgresql_db:
+        name: "{{ postgres_db }}"
+        state: "{{ item }}"
+        owner: "{{ postgres_user }}"
+      loop:
+        - absent
+        - present
+      when: enable_postgres | default(true) | bool and dump_stat.stat.exists
+
+    - name: Restore Postgres dump
+      ansible.builtin.command: >
+        pg_restore
+        --no-owner
+        --no-privileges
+        --dbname=postgresql://{{ postgres_user }}:{{ postgres_password }}@{{ postgres_host }}:{{ postgres_port }}/{{ postgres_db }}
+        {{ staged }}/postgres.dump
+      when: enable_postgres | default(true) | bool and dump_stat.stat.exists
+      no_log: true
+      changed_when: true
+
+    - name: Start SiskelBot service
+      ansible.builtin.systemd:
+        name: siskelbot
+        state: started
+        daemon_reload: true
+
+    - name: Wait for health endpoint
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ siskelbot_port }}/health"
+        status_code: 200
+      register: health_check
+      retries: 30
+      delay: 2
+      until: health_check.status == 200
+
+    - name: Clean up staging directory
+      ansible.builtin.file:
+        path: "{{ restore_staging }}"
+        state: absent
+
+    - name: Report restore result
+      ansible.builtin.debug:
+        msg: "Restore complete from {{ backup_file }}"

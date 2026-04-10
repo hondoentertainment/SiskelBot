@@ -1,0 +1,138 @@
+---
+# Uninstall SiskelBot from target host(s).
+# Stops the service, removes systemd unit, install/data/log dirs, nginx vhost, and optionally the database.
+#
+# Usage:
+#   ansible-playbook playbooks/uninstall.yml
+#   ansible-playbook playbooks/uninstall.yml -e drop_database=true  # also drop Postgres DB and user
+#   ansible-playbook playbooks/uninstall.yml -e remove_user=true    # also remove siskelbot system user
+
+- name: Uninstall SiskelBot
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars_files:
+    - ../roles/siskelbot/defaults/main.yml
+
+  vars:
+    drop_database: false
+    remove_user: false
+
+  pre_tasks:
+    - name: Prompt for confirmation
+      ansible.builtin.pause:
+        prompt: |
+          This will REMOVE SiskelBot from {{ inventory_hostname }}:
+            - systemd service
+            - install dir: {{ siskelbot_install_dir }}
+            - data dir:    {{ siskelbot_data_dir }}
+            - log dir:     {{ siskelbot_log_dir }}
+            - nginx vhost: {{ siskelbot_domain }}
+          {% if drop_database | bool %}
+            - Postgres database {{ postgres_db }} and user {{ postgres_user }}
+          {% endif %}
+          {% if remove_user | bool %}
+            - system user {{ siskelbot_user }}
+          {% endif %}
+          Type 'yes' to continue
+      register: confirm_uninstall
+
+    - name: Abort if not confirmed
+      ansible.builtin.fail:
+        msg: "Uninstall aborted"
+      when: confirm_uninstall.user_input | default('') != 'yes'
+
+  tasks:
+    - name: Stop SiskelBot service
+      ansible.builtin.systemd:
+        name: siskelbot
+        state: stopped
+      failed_when: false
+
+    - name: Disable SiskelBot service
+      ansible.builtin.systemd:
+        name: siskelbot
+        enabled: false
+      failed_when: false
+
+    - name: Remove systemd unit file
+      ansible.builtin.file:
+        path: /etc/systemd/system/siskelbot.service
+        state: absent
+      notify: reload systemd
+
+    - name: Remove nginx vhost symlink
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/siskelbot.conf
+        state: absent
+      notify: reload nginx
+
+    - name: Remove nginx vhost available
+      ansible.builtin.file:
+        path: /etc/nginx/sites-available/siskelbot.conf
+        state: absent
+      notify: reload nginx
+
+    - name: Remove nginx upgrade map
+      ansible.builtin.file:
+        path: /etc/nginx/conf.d/siskelbot-upgrade.conf
+        state: absent
+      notify: reload nginx
+
+    - name: Remove install directory
+      ansible.builtin.file:
+        path: "{{ siskelbot_install_dir }}"
+        state: absent
+
+    - name: Remove data directory
+      ansible.builtin.file:
+        path: "{{ siskelbot_data_dir }}"
+        state: absent
+
+    - name: Remove log directory
+      ansible.builtin.file:
+        path: "{{ siskelbot_log_dir }}"
+        state: absent
+
+    - name: Drop Postgres database
+      become_user: postgres
+      community.postgresql.postgresql_db:
+        name: "{{ postgres_db }}"
+        state: absent
+      when: drop_database | bool and enable_postgres | default(true) | bool
+
+    - name: Drop Postgres user
+      become_user: postgres
+      community.postgresql.postgresql_user:
+        name: "{{ postgres_user }}"
+        state: absent
+      when: drop_database | bool and enable_postgres | default(true) | bool
+
+    - name: Remove siskelbot system user
+      ansible.builtin.user:
+        name: "{{ siskelbot_user }}"
+        state: absent
+        remove: true
+      when: remove_user | bool
+
+    - name: Remove siskelbot group
+      ansible.builtin.group:
+        name: "{{ siskelbot_group }}"
+        state: absent
+      when: remove_user | bool
+
+    - name: Report uninstall complete
+      ansible.builtin.debug:
+        msg: "SiskelBot has been uninstalled from {{ inventory_hostname }}"
+
+  handlers:
+    - name: reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: reload nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded
+      failed_when: false

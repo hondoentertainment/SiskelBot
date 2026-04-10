@@ -1,0 +1,9 @@
+---
+# Fresh install of SiskelBot on target host(s).
+# This is an alias for site.yml provided for discoverability.
+#
+# Usage:
+#   ansible-playbook playbooks/install.yml
+
+- name: Install SiskelBot (fresh provision)
+  import_playbook: ../site.yml

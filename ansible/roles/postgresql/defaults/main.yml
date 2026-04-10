@@ -1,0 +1,10 @@
+---
+postgres_version: "16"
+postgres_db: "siskelbot"
+postgres_user: "siskelbot"
+postgres_password: "change-me-postgres-password"
+postgres_host: "127.0.0.1"
+postgres_port: 5432
+postgres_listen_addresses: "localhost"
+postgres_encoding: "UTF-8"
+postgres_locale: "en_US.UTF-8"

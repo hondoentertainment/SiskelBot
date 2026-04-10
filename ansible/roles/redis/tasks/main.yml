@@ -1,0 +1,73 @@
+---
+# Install and configure Redis.
+
+- name: Install Redis server
+  ansible.builtin.apt:
+    name:
+      - redis-server
+      - redis-tools
+    state: present
+    update_cache: true
+
+- name: Configure Redis bind address
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: "^bind "
+    line: "bind {{ redis_bind }}"
+    state: present
+  notify: restart redis
+
+- name: Configure Redis port
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: "^port "
+    line: "port {{ redis_port }}"
+    state: present
+  notify: restart redis
+
+- name: Configure Redis password
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: "^#?requirepass "
+    line: "requirepass {{ redis_password }}"
+    state: present
+  notify: restart redis
+  no_log: true
+
+- name: Configure Redis maxmemory
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: "^#?maxmemory "
+    line: "maxmemory {{ redis_maxmemory }}"
+    state: present
+  notify: restart redis
+
+- name: Configure Redis maxmemory-policy
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: "^#?maxmemory-policy "
+    line: "maxmemory-policy {{ redis_maxmemory_policy }}"
+    state: present
+  notify: restart redis
+
+- name: Configure Redis appendonly
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: "^appendonly "
+    line: "appendonly {{ redis_appendonly }}"
+    state: present
+  notify: restart redis
+
+- name: Configure Redis to run as a daemon with systemd supervision
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: "^supervised "
+    line: "supervised systemd"
+    state: present
+  notify: restart redis
+
+- name: Ensure Redis is started and enabled
+  ansible.builtin.service:
+    name: redis-server
+    state: started
+    enabled: true

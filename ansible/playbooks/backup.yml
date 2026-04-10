@@ -1,0 +1,113 @@
+---
+# Create a backup of SiskelBot: data directory plus Postgres dump (if enabled).
+# Writes a single tarball to /var/backups/siskelbot/ on the target host.
+#
+# Usage:
+#   ansible-playbook playbooks/backup.yml
+#   ansible-playbook playbooks/backup.yml -e fetch_backup=true  # also copy to control node
+
+- name: Backup SiskelBot
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars_files:
+    - ../roles/siskelbot/defaults/main.yml
+
+  vars:
+    backup_root: /var/backups/siskelbot
+    backup_timestamp: "{{ ansible_date_time.iso8601_basic_short }}"
+    backup_name: "siskelbot-{{ backup_timestamp }}"
+    backup_staging: "{{ backup_root }}/{{ backup_name }}"
+    backup_tarball: "{{ backup_root }}/{{ backup_name }}.tar.gz"
+    fetch_backup: false
+
+  tasks:
+    - name: Ensure backup root exists
+      ansible.builtin.file:
+        path: "{{ backup_root }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Create staging directory
+      ansible.builtin.file:
+        path: "{{ backup_staging }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Dump PostgreSQL database
+      ansible.builtin.command: >
+        pg_dump
+        --no-owner
+        --no-privileges
+        --format=custom
+        --file={{ backup_staging }}/postgres.dump
+        postgresql://{{ postgres_user }}:{{ postgres_password }}@{{ postgres_host }}:{{ postgres_port }}/{{ postgres_db }}
+      when: enable_postgres | default(true) | bool
+      no_log: true
+      changed_when: true
+
+    - name: Snapshot SiskelBot data directory
+      ansible.posix.synchronize:
+        src: "{{ siskelbot_data_dir }}/"
+        dest: "{{ backup_staging }}/data/"
+        archive: true
+      delegate_to: "{{ inventory_hostname }}"
+
+    - name: Copy .env file (secrets included)
+      ansible.builtin.copy:
+        src: "{{ siskelbot_install_dir }}/.env"
+        dest: "{{ backup_staging }}/env"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Record version metadata
+      ansible.builtin.shell: |
+        set -e
+        cd {{ siskelbot_install_dir }}
+        git rev-parse HEAD > {{ backup_staging }}/git-sha.txt
+        git describe --tags --always > {{ backup_staging }}/git-describe.txt || true
+        node --version > {{ backup_staging }}/node-version.txt
+        date -u +"%Y-%m-%dT%H:%M:%SZ" > {{ backup_staging }}/backup-time.txt
+      changed_when: true
+
+    - name: Create tarball
+      community.general.archive:
+        path: "{{ backup_staging }}"
+        dest: "{{ backup_tarball }}"
+        format: gz
+        owner: root
+        group: root
+        mode: "0600"
+        remove: true
+
+    - name: Report backup location
+      ansible.builtin.debug:
+        msg: "Backup created at {{ backup_tarball }}"
+
+    - name: Fetch backup to control node
+      ansible.builtin.fetch:
+        src: "{{ backup_tarball }}"
+        dest: "./backups/"
+        flat: false
+      when: fetch_backup | bool
+
+    - name: Prune backups older than 30 days
+      ansible.builtin.find:
+        paths: "{{ backup_root }}"
+        patterns: "siskelbot-*.tar.gz"
+        age: 30d
+      register: old_backups
+
+    - name: Remove old backups
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ old_backups.files }}"
+      when: old_backups.files | length > 0
