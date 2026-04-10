@@ -3,6 +3,7 @@ import { getWorkspaceChunkingConfig, setWorkspaceChunkingConfig, VALID_STRATEGIE
 import { autoDetectAndParse } from "../lib/knowledge-parsers.js";
 import { getWorkspaceKnowledgeGraph } from "../lib/knowledge-graph-store.js";
 import { hybridSearch } from "../lib/hybrid-search.js";
+import { globalEmbeddingCache } from "../lib/embedding-cache.js";
 import {
   saveDocumentVersion,
   getDocumentHistory,
@@ -17,6 +18,7 @@ export default function mountKnowledgeRoutes(app, deps) {
     apiError,
     logRequest,
     chatAuth,
+    adminAuth,
     requireScope,
     embeddingsRateLimiter,
     knowledgeIndexRateLimiter,
@@ -65,6 +67,17 @@ export default function mountKnowledgeRoutes(app, deps) {
       return apiError(res, 400, "INVALID_BODY", "text or texts required", "Send { text: string } or { texts: string[] }.");
     } catch (err) {
       console.error("Embeddings API error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  // Phase 35.2: GET /api/v1/embeddings/cache/stats — admin endpoint for embedding cache stats.
+  apiRoute("get", "/embeddings/cache/stats", adminAuth, requireScope("admin"), logRequest, async (req, res) => {
+    try {
+      const stats = globalEmbeddingCache.stats();
+      return res.json({ ok: true, stats });
+    } catch (err) {
+      console.error("Embedding cache stats error:", err.message);
       return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
     }
   });

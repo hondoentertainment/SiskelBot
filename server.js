@@ -30,6 +30,7 @@ import {
   reindexKnowledgeEmbeddingsInWorkspace,
 } from "./lib/knowledge-store.js";
 import { embed, embedBatch, isAvailable as embeddingsAvailable } from "./lib/embeddings.js";
+import { globalEmbeddingCache } from "./lib/embedding-cache.js";
 import { executeStep, appendAuditLog, getRegisteredActions } from "./lib/action-executor.js";
 import { loadPlugins } from "./lib/plugins-loader.js";
 import {
@@ -59,6 +60,7 @@ import { adminAuth } from "./lib/admin-auth.js";
 import { listAllUsers, listAllWorkspaces, getRecentAuditLog } from "./lib/admin-data.js";
 import { requireScope } from "./lib/scope-middleware.js";
 import { logKeyUsage } from "./lib/api-key-audit.js";
+import { findDeveloperByRawKey, recordDeveloperRequest } from "./lib/developer-keys.js";
 import { listKeysForAdmin, addKey, revokeKey, warmApiKeysCache } from "./lib/api-keys.js";
 import {
   canAccessWorkspace,
@@ -617,10 +619,33 @@ function backupAdminAuth(req, res, next) {
   });
 }
 
+// Phase 34.4: Detect developer API keys (skdev-…) on the inbound request so the
+// logger can record usage on finish. Best-effort: never blocks the request.
+async function _resolveDeveloperKey(req) {
+  if (req.developerKeyId !== undefined) return; // already resolved
+  req.developerKeyId = null;
+  const bearer = req.headers.authorization?.startsWith("Bearer ")
+    ? req.headers.authorization.slice(7).trim()
+    : null;
+  const xKey = req.headers["x-api-key"];
+  const candidate = bearer || xKey;
+  if (!candidate || typeof candidate !== "string" || !candidate.startsWith("skdev-")) return;
+  try {
+    const info = await findDeveloperByRawKey(candidate);
+    if (info) {
+      req.developerKeyId = info.keyId;
+      req.developerId = info.developerId;
+      req.developerTier = info.tier;
+    }
+  } catch (_) { /* ignore */ }
+}
+
 // Request logging middleware
 function logRequest(req, res, next) {
   const requestId = req.requestId || randomUUID();
   const start = Date.now();
+  // Kick off developer-key resolution in the background; result is consumed in finish.
+  const devKeyResolved = _resolveDeveloperKey(req);
   res.on("finish", () => {
     const durationMs = Date.now() - start;
     const entry = sanitizeForLog({
@@ -634,6 +659,14 @@ function logRequest(req, res, next) {
     const msg = IS_PRODUCTION ? JSON.stringify(entry) : `${entry.method} ${entry.path} ${entry.status} ${entry.durationMs}ms`;
     if (!process.env.NODE_TEST_CONTEXT) console.log(msg);
     if (req.apiKeyId) void logKeyUsage({ keyId: req.apiKeyId, path: req.path, method: req.method }).catch(() => {});
+    // Phase 34.4: Record developer-key usage once resolution settles.
+    void devKeyResolved
+      .then(() => {
+        if (req.developerKeyId && res.statusCode < 500) {
+          return recordDeveloperRequest(req.developerKeyId).catch(() => {});
+        }
+      })
+      .catch(() => {});
     if (metricsEnabled()) recordRequest(req.method, req.path, res.statusCode, durationMs);
     // Phase 31.2: SLO/SLI event recording.
     try {
@@ -1079,6 +1112,18 @@ if (!process.env.NODE_TEST_CONTEXT) {
 await loadModelQuality().catch(e => console.warn("[startup] Model quality load failed:", e.message));
 parseCostConfig(process.env.MODEL_COSTS);
 
+// Phase 35.2: Load persisted embedding cache from disk if EMBEDDING_CACHE_PATH is set.
+if (process.env.EMBEDDING_CACHE_PATH && !process.env.NODE_TEST_CONTEXT) {
+  try {
+    const loaded = await globalEmbeddingCache.load(process.env.EMBEDDING_CACHE_PATH);
+    if (loaded > 0) {
+      console.log(`[startup] Loaded ${loaded} embedding(s) from cache file: ${process.env.EMBEDDING_CACHE_PATH}`);
+    }
+  } catch (e) {
+    console.warn("[startup] Embedding cache load failed:", e.message);
+  }
+}
+
 // All routes are now in route modules under routes/
 
 // Static file serving
@@ -1124,6 +1169,15 @@ if (process.env.VERCEL !== "1") {
             if (process.env.ENABLE_SCHEDULED_RECIPES === "1") schedulerStop();
             if (process.env.ENABLE_SYNTHETIC_MONITORING === "1") {
               try { getSyntheticMonitor().stop(); } catch (_) {}
+            }
+            // Phase 35.2: Persist embedding cache to disk if configured.
+            if (process.env.EMBEDDING_CACHE_PATH) {
+              try {
+                await globalEmbeddingCache.persist(process.env.EMBEDDING_CACHE_PATH);
+                console.log(`[shutdown] Persisted embedding cache to ${process.env.EMBEDDING_CACHE_PATH}`);
+              } catch (e) {
+                console.warn("[shutdown] Embedding cache persist failed:", e.message);
+              }
             }
             await closeServer();
             console.log("[shutdown] Graceful shutdown complete");

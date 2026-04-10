@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>Recipe Marketplace - Siskel Bot</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    a { color: #60a5fa; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible {
+      outline: 2px solid #60a5fa;
+      outline-offset: 2px;
+    }
+    header {
+      padding: 0.75rem 1rem;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      justify-content: space-between;
+    }
+    header h1 { margin: 0; font-size: 1.125rem; font-weight: 600; }
+    .header-actions { display: flex; gap: 0.5rem; align-items: center; }
+    main { padding: 1rem; max-width: 1200px; margin: 0 auto; }
+
+    .tabs {
+      display: flex;
+      gap: 0.25rem;
+      border-bottom: 1px solid #334155;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .tab {
+      padding: 0.5rem 1rem;
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 0.875rem;
+      font-weight: 500;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+    .tab.active {
+      color: #f1f5f9;
+      border-bottom-color: #60a5fa;
+    }
+    .tab:hover { color: #e2e8f0; }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .toolbar label { font-size: 0.875rem; color: #94a3b8; }
+    .toolbar select, .toolbar input {
+      padding: 0.375rem 0.5rem;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.875rem;
+    }
+    .toolbar input[type="search"] { min-width: 240px; }
+
+    .recipe-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 1rem;
+    }
+    .recipe-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .recipe-card:hover { border-color: #475569; }
+
+    .recipe-header {
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-start;
+    }
+    .recipe-icon {
+      width: 40px;
+      height: 40px;
+      background: #0f172a;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      flex-shrink: 0;
+    }
+    .recipe-title { flex: 1; min-width: 0; }
+    .recipe-name {
+      font-size: 1rem;
+      font-weight: 600;
+      margin: 0;
+      color: #f1f5f9;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .recipe-author {
+      font-size: 0.75rem;
+      color: #64748b;
+    }
+
+    .recipe-description {
+      font-size: 0.875rem;
+      color: #94a3b8;
+      margin: 0;
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .recipe-meta {
+      display: flex;
+      gap: 0.75rem;
+      font-size: 0.75rem;
+      color: #64748b;
+      flex-wrap: wrap;
+      margin-top: auto;
+    }
+    .recipe-meta span { display: flex; align-items: center; gap: 0.25rem; }
+
+    .badge {
+      font-size: 0.6875rem;
+      padding: 0.125rem 0.375rem;
+      border-radius: 4px;
+      background: #334155;
+      color: #94a3b8;
+      text-transform: capitalize;
+    }
+    .badge.category { background: #1e3a8a; color: #93c5fd; }
+    .badge.tag { background: #312e81; color: #c4b5fd; }
+
+    .btn {
+      padding: 0.375rem 0.75rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      transition: background 0.15s;
+      color: white;
+      background: #2563eb;
+    }
+    .btn:hover { background: #1d4ed8; }
+    .btn.secondary { background: #334155; color: #e2e8f0; }
+    .btn.secondary:hover { background: #475569; }
+    .btn.success { background: #047857; }
+    .btn.success:hover { background: #065f46; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: #64748b;
+    }
+    .error-msg { color: #f87171; margin-top: 0.5rem; font-size: 0.875rem; }
+
+    /* Modal */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1.25rem;
+      max-width: 720px;
+      width: 100%;
+      max-height: 85vh;
+      overflow-y: auto;
+    }
+    .modal h2 { margin-top: 0; color: #f1f5f9; }
+    .modal-actions {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: flex-end;
+      margin-top: 1rem;
+      flex-wrap: wrap;
+    }
+    .steps-list {
+      background: #0f172a;
+      border-radius: 6px;
+      padding: 0.75rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.8125rem;
+      color: #cbd5e1;
+      max-height: 280px;
+      overflow-y: auto;
+    }
+    .form-row { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.75rem; }
+    .form-row label { font-size: 0.8125rem; color: #94a3b8; }
+    .form-row input, .form-row textarea, .form-row select {
+      padding: 0.5rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.875rem;
+      font-family: inherit;
+    }
+    .form-row textarea { min-height: 80px; resize: vertical; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Recipe Marketplace</h1>
+    <div class="header-actions">
+      <a href="/">Home</a>
+      <button class="btn" id="publish-btn">Publish your recipe</button>
+    </div>
+  </header>
+  <main>
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="featured" role="tab">Featured</button>
+      <button class="tab" data-tab="trending" role="tab">Trending</button>
+      <button class="tab" data-tab="new" role="tab">New</button>
+      <button class="tab" data-tab="categories" role="tab">Categories</button>
+    </div>
+
+    <div class="toolbar">
+      <input type="search" id="search-input" placeholder="Search recipes..." aria-label="Search recipes">
+      <label for="category-filter">Category:</label>
+      <select id="category-filter">
+        <option value="">All</option>
+        <option value="automation">Automation</option>
+        <option value="deployment">Deployment</option>
+        <option value="data-processing">Data processing</option>
+        <option value="integration">Integration</option>
+        <option value="monitoring">Monitoring</option>
+        <option value="notification">Notification</option>
+        <option value="content-generation">Content generation</option>
+        <option value="analysis">Analysis</option>
+        <option value="other">Other</option>
+      </select>
+      <label for="sort-by">Sort:</label>
+      <select id="sort-by">
+        <option value="newest">Newest</option>
+        <option value="stars">Most starred</option>
+        <option value="forks">Most forked</option>
+        <option value="installs">Most installed</option>
+        <option value="name">Name</option>
+      </select>
+    </div>
+
+    <div id="recipe-list" class="recipe-grid">
+      <div class="empty-state">Loading recipes...</div>
+    </div>
+    <div id="error" class="error-msg" hidden></div>
+  </main>
+
+  <!-- Detail modal -->
+  <div class="modal-backdrop" id="detail-modal" role="dialog" aria-modal="true">
+    <div class="modal">
+      <h2 id="detail-name"></h2>
+      <p id="detail-author" class="recipe-author"></p>
+      <p id="detail-description"></p>
+      <div id="detail-meta" class="recipe-meta"></div>
+      <h3>Steps</h3>
+      <pre class="steps-list" id="detail-steps"></pre>
+      <div class="modal-actions">
+        <button class="btn secondary" id="modal-close">Close</button>
+        <button class="btn" id="modal-star">Star</button>
+        <button class="btn success" id="modal-fork">Fork to workspace</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Publish modal -->
+  <div class="modal-backdrop" id="publish-modal" role="dialog" aria-modal="true">
+    <div class="modal">
+      <h2>Publish a recipe</h2>
+      <form id="publish-form">
+        <div class="form-row">
+          <label for="pub-name">Name</label>
+          <input id="pub-name" required maxlength="128">
+        </div>
+        <div class="form-row">
+          <label for="pub-description">Description</label>
+          <textarea id="pub-description" maxlength="1024"></textarea>
+        </div>
+        <div class="form-row">
+          <label for="pub-category">Category</label>
+          <select id="pub-category">
+            <option value="automation">Automation</option>
+            <option value="deployment">Deployment</option>
+            <option value="data-processing">Data processing</option>
+            <option value="integration">Integration</option>
+            <option value="monitoring">Monitoring</option>
+            <option value="notification">Notification</option>
+            <option value="content-generation">Content generation</option>
+            <option value="analysis">Analysis</option>
+            <option value="other" selected>Other</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="pub-tags">Tags (comma-separated)</label>
+          <input id="pub-tags" placeholder="e.g. ci, slack, github">
+        </div>
+        <div class="form-row">
+          <label for="pub-icon">Icon (emoji or short text)</label>
+          <input id="pub-icon" maxlength="8" placeholder="e.g. 🚀">
+        </div>
+        <div class="form-row">
+          <label for="pub-steps">Steps (JSON array)</label>
+          <textarea id="pub-steps" placeholder='[{"action":"http","url":"..."}]'>[]</textarea>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn secondary" id="publish-cancel">Cancel</button>
+          <button type="submit" class="btn">Publish</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = "/api/v1/recipe-marketplace";
+    let currentTab = "featured";
+    let currentRecipe = null;
+
+    const listEl = document.getElementById("recipe-list");
+    const errorEl = document.getElementById("error");
+    const searchInput = document.getElementById("search-input");
+    const categoryFilter = document.getElementById("category-filter");
+    const sortBy = document.getElementById("sort-by");
+
+    async function fetchJSON(url, options = {}) {
+      const res = await fetch(url, {
+        headers: { "Content-Type": "application/json" },
+        ...options,
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(`${res.status} ${res.statusText} ${text}`);
+      }
+      return res.json();
+    }
+
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.hidden = false;
+    }
+    function clearError() { errorEl.hidden = true; }
+
+    function escapeHtml(s) {
+      return String(s || "").replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[c]));
+    }
+
+    function recipeCard(r) {
+      const icon = r.icon || "📦";
+      const author = (r.publisher && r.publisher.name) || "anonymous";
+      const tags = (r.tags || []).slice(0, 3)
+        .map((t) => `<span class="badge tag">${escapeHtml(t)}</span>`)
+        .join("");
+      return `
+        <div class="recipe-card" data-id="${escapeHtml(r.marketplaceId)}">
+          <div class="recipe-header">
+            <div class="recipe-icon">${escapeHtml(icon)}</div>
+            <div class="recipe-title">
+              <h3 class="recipe-name">${escapeHtml(r.name)}</h3>
+              <div class="recipe-author">by ${escapeHtml(author)}</div>
+            </div>
+          </div>
+          <p class="recipe-description">${escapeHtml(r.description || "")}</p>
+          <div>
+            <span class="badge category">${escapeHtml(r.category || "other")}</span>
+            ${tags}
+          </div>
+          <div class="recipe-meta">
+            <span>★ ${r.stars || 0}</span>
+            <span>⑃ ${r.forks || 0}</span>
+            <span>↓ ${r.installs || 0}</span>
+            <span>v${escapeHtml(r.version || "1.0.0")}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function render(items) {
+      clearError();
+      if (!items || items.length === 0) {
+        listEl.innerHTML = '<div class="empty-state">No recipes found.</div>';
+        return;
+      }
+      listEl.innerHTML = items.map(recipeCard).join("");
+      for (const card of listEl.querySelectorAll(".recipe-card")) {
+        card.addEventListener("click", () => openDetail(card.dataset.id));
+      }
+    }
+
+    async function loadList() {
+      try {
+        listEl.innerHTML = '<div class="empty-state">Loading...</div>';
+        const params = new URLSearchParams();
+        if (categoryFilter.value) params.set("category", categoryFilter.value);
+        if (sortBy.value) params.set("sortBy", sortBy.value);
+
+        let url;
+        if (currentTab === "trending") {
+          url = `${API_BASE}/trending?period=7d`;
+        } else if (currentTab === "new") {
+          params.set("sortBy", "newest");
+          url = `${API_BASE}?${params}`;
+        } else if (currentTab === "featured") {
+          params.set("sortBy", "stars");
+          url = `${API_BASE}?${params}`;
+        } else {
+          url = `${API_BASE}?${params}`;
+        }
+
+        const data = await fetchJSON(url);
+        render(data.items || []);
+      } catch (err) {
+        showError("Failed to load recipes: " + err.message);
+        listEl.innerHTML = '<div class="empty-state">Error loading recipes.</div>';
+      }
+    }
+
+    async function searchRecipes(q) {
+      if (!q || !q.trim()) {
+        loadList();
+        return;
+      }
+      try {
+        const data = await fetchJSON(`${API_BASE}/search?q=${encodeURIComponent(q)}`);
+        render(data.items || []);
+      } catch (err) {
+        showError("Search failed: " + err.message);
+      }
+    }
+
+    async function openDetail(id) {
+      try {
+        const recipe = await fetchJSON(`${API_BASE}/${encodeURIComponent(id)}`);
+        currentRecipe = recipe;
+        document.getElementById("detail-name").textContent = recipe.name;
+        document.getElementById("detail-author").textContent =
+          "by " + ((recipe.publisher && recipe.publisher.name) || "anonymous");
+        document.getElementById("detail-description").textContent = recipe.description || "";
+        document.getElementById("detail-meta").innerHTML = `
+          <span>★ ${recipe.stars || 0}</span>
+          <span>⑃ ${recipe.forks || 0}</span>
+          <span>↓ ${recipe.installs || 0}</span>
+          <span class="badge category">${escapeHtml(recipe.category || "other")}</span>
+          <span>v${escapeHtml(recipe.version || "1.0.0")}</span>
+        `;
+        document.getElementById("detail-steps").textContent = JSON.stringify(recipe.steps || [], null, 2);
+        document.getElementById("detail-modal").classList.add("open");
+      } catch (err) {
+        showError("Failed to load recipe: " + err.message);
+      }
+    }
+
+    function closeDetail() {
+      document.getElementById("detail-modal").classList.remove("open");
+      currentRecipe = null;
+    }
+
+    async function starCurrent() {
+      if (!currentRecipe) return;
+      try {
+        const result = await fetchJSON(
+          `${API_BASE}/${encodeURIComponent(currentRecipe.marketplaceId)}/star`,
+          { method: "POST", body: JSON.stringify({}) }
+        );
+        currentRecipe.stars = result.count;
+        document.getElementById("detail-meta").querySelector("span").textContent = `★ ${result.count}`;
+      } catch (err) {
+        showError("Star failed: " + err.message);
+      }
+    }
+
+    async function forkCurrent() {
+      if (!currentRecipe) return;
+      try {
+        const result = await fetchJSON(
+          `${API_BASE}/${encodeURIComponent(currentRecipe.marketplaceId)}/fork`,
+          { method: "POST", body: JSON.stringify({ workspace: "default" }) }
+        );
+        alert(`Forked to workspace as recipe ${result.recipeId}`);
+        closeDetail();
+        loadList();
+      } catch (err) {
+        showError("Fork failed: " + err.message);
+      }
+    }
+
+    function openPublish() {
+      document.getElementById("publish-modal").classList.add("open");
+    }
+    function closePublish() {
+      document.getElementById("publish-modal").classList.remove("open");
+    }
+
+    async function submitPublish(e) {
+      e.preventDefault();
+      const name = document.getElementById("pub-name").value.trim();
+      const description = document.getElementById("pub-description").value.trim();
+      const category = document.getElementById("pub-category").value;
+      const tagsRaw = document.getElementById("pub-tags").value;
+      const icon = document.getElementById("pub-icon").value.trim() || null;
+      const stepsRaw = document.getElementById("pub-steps").value || "[]";
+      let steps;
+      try {
+        steps = JSON.parse(stepsRaw);
+        if (!Array.isArray(steps)) throw new Error("steps must be an array");
+      } catch (err) {
+        showError("Invalid steps JSON: " + err.message);
+        return;
+      }
+      const tags = tagsRaw.split(",").map((t) => t.trim()).filter(Boolean);
+      try {
+        await fetchJSON(API_BASE, {
+          method: "POST",
+          body: JSON.stringify({ name, description, category, tags, icon, steps }),
+        });
+        closePublish();
+        loadList();
+      } catch (err) {
+        showError("Publish failed: " + err.message);
+      }
+    }
+
+    // Wire up tabs
+    for (const tab of document.querySelectorAll(".tab")) {
+      tab.addEventListener("click", () => {
+        for (const t of document.querySelectorAll(".tab")) t.classList.remove("active");
+        tab.classList.add("active");
+        currentTab = tab.dataset.tab;
+        loadList();
+      });
+    }
+
+    // Wire up controls
+    searchInput.addEventListener("input", (e) => {
+      clearTimeout(searchInput._timer);
+      searchInput._timer = setTimeout(() => searchRecipes(e.target.value), 250);
+    });
+    categoryFilter.addEventListener("change", loadList);
+    sortBy.addEventListener("change", loadList);
+
+    document.getElementById("modal-close").addEventListener("click", closeDetail);
+    document.getElementById("modal-star").addEventListener("click", starCurrent);
+    document.getElementById("modal-fork").addEventListener("click", forkCurrent);
+    document.getElementById("publish-btn").addEventListener("click", openPublish);
+    document.getElementById("publish-cancel").addEventListener("click", closePublish);
+    document.getElementById("publish-form").addEventListener("submit", submitPublish);
+    document.getElementById("detail-modal").addEventListener("click", (e) => {
+      if (e.target.id === "detail-modal") closeDetail();
+    });
+    document.getElementById("publish-modal").addEventListener("click", (e) => {
+      if (e.target.id === "publish-modal") closePublish();
+    });
+
+    loadList();
+  </script>
+</body>
+</html>

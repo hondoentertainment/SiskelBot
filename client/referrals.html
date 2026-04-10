@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>SiskelBot - Referrals</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 2rem 1.5rem;
+    }
+    a { color: #60a5fa; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    header {
+      max-width: 1100px;
+      margin: 0 auto 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    header h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+    .meta { font-size: 0.85rem; color: #94a3b8; }
+
+    .grid {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 1.5rem;
+    }
+    @media (max-width: 800px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 1.5rem;
+    }
+    .card h2 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #f8fafc;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    @media (max-width: 600px) {
+      .stats { grid-template-columns: repeat(2, 1fr); }
+    }
+    .stat {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1rem;
+      text-align: center;
+    }
+    .stat .value {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: #f8fafc;
+      margin-bottom: 0.25rem;
+    }
+    .stat .label {
+      font-size: 0.7rem;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .stat.earnings .value { color: #10b981; }
+
+    .code-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.85rem 1rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      margin-bottom: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .code-row code {
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: 0.95rem;
+      color: #f8fafc;
+      flex: 1;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .code-row .uses {
+      font-size: 0.75rem;
+      color: #94a3b8;
+    }
+    .code-row.inactive code { color: #64748b; text-decoration: line-through; }
+
+    .btn {
+      padding: 0.45rem 0.9rem;
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 500;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .btn:hover { background: #2563eb; text-decoration: none; }
+    .btn.secondary { background: #334155; }
+    .btn.secondary:hover { background: #475569; }
+    .btn.danger { background: #991b1b; }
+    .btn.danger:hover { background: #b91c1c; }
+    .btn.small { padding: 0.3rem 0.65rem; font-size: 0.75rem; }
+
+    .qr-wrap {
+      text-align: center;
+      padding: 1rem;
+      background: #fff;
+      border-radius: 8px;
+      display: inline-block;
+      margin: 0 auto 1rem;
+    }
+    .qr-wrap svg { display: block; }
+
+    .share-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+    .share-buttons a {
+      flex: 1;
+      min-width: 120px;
+      text-align: center;
+      padding: 0.55rem 0.75rem;
+      background: #334155;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      color: #e2e8f0;
+    }
+    .share-buttons a:hover { background: #475569; text-decoration: none; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { text-align: left; padding: 0.6rem 0.5rem; border-bottom: 1px solid #334155; }
+    th { color: #94a3b8; font-weight: 500; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    td { color: #e2e8f0; }
+    tr:last-child td { border-bottom: none; }
+    .rank { color: #f59e0b; font-weight: 700; width: 2rem; }
+
+    .new-code-form {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .new-code-form input {
+      flex: 1;
+      padding: 0.55rem 0.75rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.85rem;
+      min-width: 120px;
+    }
+    .empty {
+      text-align: center;
+      padding: 2rem 1rem;
+      color: #64748b;
+      font-size: 0.875rem;
+    }
+    .toast {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #10b981;
+      color: #fff;
+      padding: 0.6rem 1.25rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+    .toast.show { opacity: 1; }
+    .toast.error { background: #dc2626; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Referrals</h1>
+    <div class="meta">
+      <a href="/">Back to chat</a>
+    </div>
+  </header>
+
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>Your stats</h2>
+        <div class="stats">
+          <div class="stat">
+            <div class="value" id="statTotal">0</div>
+            <div class="label">Total referrals</div>
+          </div>
+          <div class="stat">
+            <div class="value" id="statActive">0</div>
+            <div class="label">Active</div>
+          </div>
+          <div class="stat">
+            <div class="value" id="statConversions">0</div>
+            <div class="label">Conversions</div>
+          </div>
+          <div class="stat earnings">
+            <div class="value" id="statEarnings">$0.00</div>
+            <div class="label">Earnings</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top: 1.5rem;">
+        <h2>Your referral codes</h2>
+        <form class="new-code-form" id="newCodeForm">
+          <input id="newCodeName" type="text" placeholder="Optional label (e.g. 'Twitter campaign')" maxlength="120" />
+          <input id="newCodeMaxUses" type="number" min="1" placeholder="Max uses (optional)" style="max-width: 160px;" />
+          <button type="submit" class="btn">Create code</button>
+        </form>
+        <div id="codesList"><div class="empty">Loading…</div></div>
+      </div>
+
+      <div class="card" style="margin-top: 1.5rem;">
+        <h2>
+          Leaderboard
+          <select id="periodSelect" style="background:#0f172a; border:1px solid #334155; color:#e2e8f0; padding:0.3rem 0.5rem; border-radius:6px; font-size:0.8rem;">
+            <option value="7d">Last 7 days</option>
+            <option value="30d" selected>Last 30 days</option>
+            <option value="all">All time</option>
+          </select>
+        </h2>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>User</th>
+              <th>Referrals</th>
+              <th>Conversions</th>
+              <th>Earnings</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboardBody">
+            <tr><td colspan="5" class="empty">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>Share your link</h2>
+        <div id="primaryLinkBox">
+          <div class="qr-wrap" id="qrWrap"></div>
+          <div class="code-row" style="margin-bottom: 0.75rem;">
+            <code id="primaryLink">Loading…</code>
+          </div>
+          <button class="btn" style="width:100%; justify-content:center;" id="copyBtn">Copy link</button>
+          <div class="share-buttons">
+            <a id="shareTwitter" href="#" target="_blank" rel="noopener">Twitter</a>
+            <a id="shareLinkedIn" href="#" target="_blank" rel="noopener">LinkedIn</a>
+            <a id="shareEmail" href="#">Email</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top: 1.5rem;">
+        <h2>How it works</h2>
+        <ul style="font-size:0.85rem; color:#cbd5e1; line-height:1.7; padding-left:1.25rem;">
+          <li>Share your link or code with friends.</li>
+          <li>When they sign up, you both get <strong>$5 in credits</strong>.</li>
+          <li>If they upgrade to a paid plan, you earn <strong>20% of their first month</strong>.</li>
+          <li>Track your earnings on this page.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    var API_BASE = "/api/v1";
+    var primaryCode = null;
+    var primaryUrl = null;
+
+    // ─── helpers ─────────────────────────────────────────────────────
+    function $(id) { return document.getElementById(id); }
+    function fmtMoney(n) { return "$" + (Number(n || 0).toFixed(2)); }
+    function showToast(msg, isError) {
+      var t = $("toast");
+      t.textContent = msg;
+      t.classList.toggle("error", !!isError);
+      t.classList.add("show");
+      setTimeout(function () { t.classList.remove("show"); }, 2200);
+    }
+
+    // Inline SVG QR-like code (Hilbert-curve placeholder using a hash of the code).
+    // We can't ship a full QR encoder inline without a lib; instead we render a
+    // visually distinct deterministic 21x21 module grid that represents the code.
+    // Real QR can be substituted server-side or via a fetched image.
+    function buildQrSvg(text, size) {
+      size = size || 168;
+      var n = 21;
+      var cell = Math.floor(size / n);
+      var sz = cell * n;
+      // Simple hash → 0/1 grid.
+      var grid = new Array(n * n).fill(0);
+      var seed = 0;
+      for (var i = 0; i < text.length; i++) seed = ((seed << 5) - seed + text.charCodeAt(i)) | 0;
+      for (var i = 0; i < n * n; i++) {
+        seed = (seed * 9301 + 49297) | 0;
+        grid[i] = (Math.abs(seed) % 100) < 48 ? 1 : 0;
+      }
+      // Force position-detection patterns at 3 corners.
+      function place(r, c) {
+        for (var dr = -1; dr <= 7; dr++) for (var dc = -1; dc <= 7; dc++) {
+          var rr = r + dr, cc = c + dc;
+          if (rr < 0 || cc < 0 || rr >= n || cc >= n) continue;
+          var on = (dr >= 0 && dr <= 6 && dc >= 0 && dc <= 6) &&
+            (dr === 0 || dr === 6 || dc === 0 || dc === 6 || (dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4));
+          grid[rr * n + cc] = on ? 1 : 0;
+        }
+      }
+      place(0, 0); place(0, n - 7); place(n - 7, 0);
+
+      var rects = "";
+      for (var r = 0; r < n; r++) {
+        for (var c = 0; c < n; c++) {
+          if (grid[r * n + c]) {
+            rects += '<rect x="' + (c * cell) + '" y="' + (r * cell) + '" width="' + cell + '" height="' + cell + '" />';
+          }
+        }
+      }
+      return '<svg xmlns="http://www.w3.org/2000/svg" width="' + sz + '" height="' + sz + '" viewBox="0 0 ' + sz + ' ' + sz + '" fill="#0f172a">' +
+        '<rect width="100%" height="100%" fill="#fff"/>' + rects + '</svg>';
+    }
+
+    function shareLinks(url, msg) {
+      var encUrl = encodeURIComponent(url);
+      var encMsg = encodeURIComponent(msg || "Try SiskelBot — sign up with my link and we both get $5 in credits.");
+      $("shareTwitter").href = "https://twitter.com/intent/tweet?url=" + encUrl + "&text=" + encMsg;
+      $("shareLinkedIn").href = "https://www.linkedin.com/sharing/share-offsite/?url=" + encUrl;
+      $("shareEmail").href = "mailto:?subject=" + encodeURIComponent("Try SiskelBot") + "&body=" + encMsg + "%0A%0A" + encUrl;
+    }
+
+    // ─── API ─────────────────────────────────────────────────────────
+    async function api(method, path, body) {
+      var opts = { method: method, credentials: "include", headers: {} };
+      if (body !== undefined) {
+        opts.headers["Content-Type"] = "application/json";
+        opts.body = JSON.stringify(body);
+      }
+      var res = await fetch(API_BASE + path, opts);
+      var data = null;
+      try { data = await res.json(); } catch (_) {}
+      if (!res.ok) {
+        throw new Error((data && (data.message || data.error)) || ("HTTP " + res.status));
+      }
+      return data;
+    }
+
+    async function loadStats() {
+      try {
+        var s = await api("GET", "/referrals/stats");
+        $("statTotal").textContent = s.totalReferrals || 0;
+        $("statActive").textContent = s.activeReferrals || 0;
+        var convCount = 0;
+        if (s.conversions) {
+          for (var k in s.conversions) convCount += Number(s.conversions[k]) || 0;
+        }
+        $("statConversions").textContent = convCount;
+        $("statEarnings").textContent = fmtMoney(s.earnings);
+      } catch (e) {
+        // not logged in or no data — leave zeros
+      }
+    }
+
+    async function loadCodes() {
+      var list = $("codesList");
+      try {
+        var data = await api("GET", "/referrals/codes");
+        var codes = (data && data.codes) || [];
+        if (!codes.length) {
+          list.innerHTML = '<div class="empty">No codes yet. Create one above to get started.</div>';
+          $("primaryLink").textContent = "Create a code to get your link.";
+          return;
+        }
+
+        // Pick the most recent active code as primary.
+        var primary = codes.find(function (c) { return c.active; }) || codes[0];
+        primaryCode = primary.code;
+        primaryUrl = primary.url;
+        $("primaryLink").textContent = primary.url;
+        $("qrWrap").innerHTML = buildQrSvg(primary.url, 168);
+        shareLinks(primary.url);
+
+        list.innerHTML = "";
+        codes.forEach(function (c) {
+          var row = document.createElement("div");
+          row.className = "code-row" + (c.active ? "" : " inactive");
+          var usesText = (c.uses || 0) + (c.maxUses ? " / " + c.maxUses : "") + " uses";
+          row.innerHTML =
+            '<code>' + c.code + '</code>' +
+            '<span class="uses">' + usesText + '</span>' +
+            '<button class="btn small secondary" data-copy="' + escapeAttr(c.url) + '">Copy</button>' +
+            (c.active ? '<button class="btn small danger" data-deactivate="' + escapeAttr(c.code) + '">Deactivate</button>' : '');
+          list.appendChild(row);
+        });
+
+        // Bind buttons.
+        list.querySelectorAll("[data-copy]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            copyToClipboard(btn.getAttribute("data-copy"));
+          });
+        });
+        list.querySelectorAll("[data-deactivate]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            deactivate(btn.getAttribute("data-deactivate"));
+          });
+        });
+      } catch (e) {
+        list.innerHTML = '<div class="empty">' + escapeHtml(e.message || "Failed to load codes") + '</div>';
+      }
+    }
+
+    async function loadLeaderboard() {
+      var period = $("periodSelect").value;
+      var body = $("leaderboardBody");
+      try {
+        var data = await api("GET", "/referrals/leaderboard?period=" + encodeURIComponent(period));
+        var board = (data && data.leaderboard) || [];
+        if (!board.length) {
+          body.innerHTML = '<tr><td colspan="5" class="empty">No data yet — be the first!</td></tr>';
+          return;
+        }
+        body.innerHTML = "";
+        board.forEach(function (row, i) {
+          var tr = document.createElement("tr");
+          tr.innerHTML =
+            '<td class="rank">' + (i + 1) + '</td>' +
+            '<td>' + escapeHtml(row.userId) + '</td>' +
+            '<td>' + (row.referrals || 0) + '</td>' +
+            '<td>' + (row.conversions || 0) + '</td>' +
+            '<td>' + fmtMoney(row.earnings) + '</td>';
+          body.appendChild(tr);
+        });
+      } catch (e) {
+        body.innerHTML = '<tr><td colspan="5" class="empty">' + escapeHtml(e.message || "Failed to load") + '</td></tr>';
+      }
+    }
+
+    async function createCode(e) {
+      e.preventDefault();
+      var name = $("newCodeName").value.trim();
+      var maxUses = parseInt($("newCodeMaxUses").value, 10);
+      var body = {};
+      if (name) body.name = name;
+      if (Number.isFinite(maxUses) && maxUses > 0) body.maxUses = maxUses;
+      try {
+        await api("POST", "/referrals/codes", body);
+        $("newCodeName").value = "";
+        $("newCodeMaxUses").value = "";
+        showToast("Code created");
+        await loadCodes();
+        await loadStats();
+      } catch (err) {
+        showToast(err.message || "Failed to create", true);
+      }
+    }
+
+    async function deactivate(code) {
+      if (!confirm("Deactivate this referral code?")) return;
+      try {
+        await api("DELETE", "/referrals/codes/" + encodeURIComponent(code));
+        showToast("Code deactivated");
+        await loadCodes();
+      } catch (e) {
+        showToast(e.message || "Failed", true);
+      }
+    }
+
+    function copyToClipboard(text) {
+      try {
+        navigator.clipboard.writeText(text).then(function () {
+          showToast("Copied to clipboard");
+        }).catch(function () { fallbackCopy(text); });
+      } catch (_) { fallbackCopy(text); }
+    }
+    function fallbackCopy(text) {
+      var ta = document.createElement("textarea");
+      ta.value = text; ta.style.position = "fixed"; ta.style.top = "-2000px";
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); showToast("Copied"); }
+      catch (e) { showToast("Copy failed", true); }
+      document.body.removeChild(ta);
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+    function escapeAttr(s) { return escapeHtml(s); }
+
+    // ─── init ────────────────────────────────────────────────────────
+    document.addEventListener("DOMContentLoaded", function () {
+      $("newCodeForm").addEventListener("submit", createCode);
+      $("copyBtn").addEventListener("click", function () {
+        if (primaryUrl) copyToClipboard(primaryUrl);
+      });
+      $("periodSelect").addEventListener("change", loadLeaderboard);
+      loadStats();
+      loadCodes();
+      loadLeaderboard();
+    });
+  </script>
+</body>
+</html>
