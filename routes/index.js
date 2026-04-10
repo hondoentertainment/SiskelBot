@@ -85,6 +85,7 @@ import { mountPluginCertificationRoutes } from "./plugin-certification.js";
 import { mountDeveloperPortalRoutes } from "./developer-portal.js";
 import { mountReferralRoutes } from "./referrals.js";
 import { mountTemplateGalleryRoutes } from "./template-gallery.js";
+import { mountEdgeCacheRoutes } from "./edge-cache.js";
 import mountQueryAnalyzerRoutes from "./query-analyzer.js";
 import { mountV2Routes } from "./v2/index.js";
 
@@ -136,6 +137,7 @@ const mountFunctions = [
   mountDeveloperPortalRoutes,
   mountReferralRoutes,
   mountTemplateGalleryRoutes,
+  mountEdgeCacheRoutes,
   mountQueryAnalyzerRoutes,
 ];
 
