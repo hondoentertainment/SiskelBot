@@ -84,6 +84,7 @@ import { mountRecipeMarketplaceRoutes } from "./recipe-marketplace.js";
 import { mountPluginCertificationRoutes } from "./plugin-certification.js";
 import { mountDeveloperPortalRoutes } from "./developer-portal.js";
 import { mountReferralRoutes } from "./referrals.js";
+import { mountTemplateGalleryRoutes } from "./template-gallery.js";
 import mountQueryAnalyzerRoutes from "./query-analyzer.js";
 import { mountV2Routes } from "./v2/index.js";
 
@@ -134,6 +135,7 @@ const mountFunctions = [
   mountPluginCertificationRoutes,
   mountDeveloperPortalRoutes,
   mountReferralRoutes,
+  mountTemplateGalleryRoutes,
   mountQueryAnalyzerRoutes,
 ];
 
