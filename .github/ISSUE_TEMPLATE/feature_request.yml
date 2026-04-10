@@ -1,0 +1,28 @@
+name: Feature Request
+description: Suggest a new feature or improvement for SiskelBot
+labels: [enhancement]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      placeholder: A clear description of the feature you'd like to see
+    validations:
+      required: true
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      placeholder: Describe the problem this feature would solve or the use case it enables
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      placeholder: Describe any alternative solutions or workarounds you've considered
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      placeholder: Any other context, screenshots, or references

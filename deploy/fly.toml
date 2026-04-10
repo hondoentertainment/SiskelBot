@@ -1,0 +1,14 @@
+app = "siskelbot"
+primary_region = "iad"
+
+[build]
+  builder = "heroku/builder:22"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+
+[[services.http_checks]]
+  interval = 10000
+  timeout = 2000
+  path = "/health/live"
