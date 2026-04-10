@@ -124,6 +124,7 @@ const mountFunctions = [
   mountPromptEvolutionRoutes,
   mountToolDiscoveryRoutes,
   mountExplainabilityRoutes,
+  mountComplianceRoutes,
 ];
 
 /**
