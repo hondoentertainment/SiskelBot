@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>SiskelBot - On-Call Runbooks</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 2rem;
+      line-height: 1.5;
+    }
+
+    header {
+      max-width: 1100px;
+      margin: 0 auto 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    header h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: #f8fafc;
+    }
+
+    .meta {
+      font-size: 0.85rem;
+      color: #94a3b8;
+    }
+
+    .toolbar {
+      max-width: 1100px;
+      margin: 0 auto 1.5rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+    }
+
+    .toolbar input[type="search"] {
+      flex: 1;
+      min-width: 240px;
+      padding: 0.6rem 0.9rem;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-size: 0.95rem;
+    }
+
+    .toolbar input[type="search"]:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+
+    button, select {
+      padding: 0.55rem 1rem;
+      background: #1e293b;
+      color: #e2e8f0;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-family: inherit;
+    }
+
+    button.primary {
+      background: #1d4ed8;
+      border-color: #2563eb;
+      color: #f8fafc;
+    }
+
+    button:hover {
+      border-color: #64748b;
+    }
+
+    button.primary:hover {
+      background: #2563eb;
+    }
+
+    .layout {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 1.25rem;
+    }
+
+    @media (max-width: 860px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 0.9rem 1.1rem;
+      background: #0f172a;
+      border-bottom: 1px solid #334155;
+      font-size: 0.8rem;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      padding: 0.7rem 1.1rem;
+      text-align: left;
+      border-bottom: 1px solid #334155;
+      font-size: 0.9rem;
+    }
+
+    th {
+      color: #94a3b8;
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: #0f172a;
+    }
+
+    tbody tr {
+      cursor: pointer;
+    }
+
+    tbody tr:hover {
+      background: #273449;
+    }
+
+    tbody tr.active {
+      background: #1e3a8a;
+    }
+
+    .sev {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .sev.critical { background: #7f1d1d; color: #fca5a5; }
+    .sev.high { background: #78350f; color: #fcd34d; }
+    .sev.medium { background: #1e3a8a; color: #93c5fd; }
+    .sev.low { background: #064e3b; color: #6ee7b7; }
+
+    .details {
+      padding: 1.25rem 1.5rem;
+    }
+
+    .details h2 {
+      font-size: 1.2rem;
+      color: #f8fafc;
+      margin-bottom: 0.35rem;
+    }
+
+    .details .sub {
+      color: #94a3b8;
+      font-size: 0.85rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .details h3 {
+      font-size: 0.8rem;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin: 1.25rem 0 0.5rem;
+    }
+
+    .details ul, .details ol {
+      margin: 0 0 0.5rem 1.25rem;
+      color: #cbd5e1;
+      font-size: 0.9rem;
+    }
+
+    .details li { margin-bottom: 0.35rem; }
+
+    .details pre {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      overflow-x: auto;
+      font-size: 0.85rem;
+      color: #e2e8f0;
+      margin-bottom: 0.6rem;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+    }
+
+    .placeholder {
+      color: #64748b;
+      font-size: 0.9rem;
+      text-align: center;
+      padding: 3rem 1rem;
+    }
+
+    dialog {
+      background: #1e293b;
+      color: #e2e8f0;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 1.5rem;
+      max-width: 520px;
+      width: 90%;
+    }
+
+    dialog::backdrop {
+      background: rgba(0, 0, 0, 0.6);
+    }
+
+    dialog h3 {
+      font-size: 1.1rem;
+      color: #f8fafc;
+      margin-bottom: 1rem;
+    }
+
+    dialog label {
+      display: block;
+      font-size: 0.8rem;
+      color: #94a3b8;
+      margin: 0.6rem 0 0.25rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    dialog input, dialog select, dialog textarea {
+      width: 100%;
+      padding: 0.55rem 0.75rem;
+      background: #0f172a;
+      color: #e2e8f0;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 0.9rem;
+    }
+
+    dialog textarea { min-height: 90px; resize: vertical; }
+
+    dialog .actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+      margin-top: 1.2rem;
+    }
+
+    #generated-output {
+      max-width: 1100px;
+      margin: 1.5rem auto 0;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      display: none;
+    }
+
+    #generated-output pre {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 0.9rem 1rem;
+      overflow-x: auto;
+      font-size: 0.8rem;
+      color: #cbd5e1;
+      max-height: 400px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>On-Call Runbooks</h1>
+    <div class="meta">
+      <span id="count">Loading runbooks…</span>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <input type="search" id="filter" placeholder="Filter by title, severity, or symptom…" aria-label="Filter runbooks">
+    <select id="sev-filter" aria-label="Severity filter">
+      <option value="">All severities</option>
+      <option value="critical">Critical</option>
+      <option value="high">High</option>
+      <option value="medium">Medium</option>
+      <option value="low">Low</option>
+    </select>
+    <button class="primary" id="gen-btn">Generate incident runbook</button>
+  </div>
+
+  <div class="layout">
+    <div class="panel">
+      <div class="panel-header">Runbook catalog</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Severity</th>
+          </tr>
+        </thead>
+        <tbody id="runbook-list">
+          <tr><td colspan="2" class="placeholder">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">Details</div>
+      <div class="details" id="details">
+        <p class="placeholder">Select a runbook to view steps, commands, and metrics.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="generated-output">
+    <h3 style="font-size:0.85rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.6rem;">Generated incident runbook</h3>
+    <pre id="generated-json"></pre>
+  </div>
+
+  <dialog id="gen-dialog">
+    <h3>Generate incident runbook</h3>
+    <form method="dialog" id="gen-form">
+      <label for="gen-type">Runbook type</label>
+      <select id="gen-type" required></select>
+
+      <label for="gen-severity">Severity override</label>
+      <select id="gen-severity">
+        <option value="">Use template default</option>
+        <option value="critical">Critical</option>
+        <option value="high">High</option>
+        <option value="medium">Medium</option>
+        <option value="low">Low</option>
+      </select>
+
+      <label for="gen-start">Start time (ISO 8601)</label>
+      <input type="text" id="gen-start" placeholder="auto (now)">
+
+      <label for="gen-desc">Description</label>
+      <textarea id="gen-desc" placeholder="What's happening?"></textarea>
+
+      <div class="actions">
+        <button type="button" id="gen-cancel">Cancel</button>
+        <button type="submit" class="primary">Generate</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    const state = { runbooks: [], selected: null, all: [] };
+
+    function sevClass(sev) {
+      return "sev " + (sev || "medium").toLowerCase();
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
+    function renderList() {
+      const q = (document.getElementById("filter").value || "").toLowerCase();
+      const sevPick = document.getElementById("sev-filter").value || "";
+      const rows = state.all.filter((r) => {
+        if (sevPick && r.severity !== sevPick) return false;
+        if (!q) return true;
+        const hay = (r.title + " " + r.severity + " " + (r.symptoms || []).join(" ")).toLowerCase();
+        return hay.includes(q);
+      });
+      const tbody = document.getElementById("runbook-list");
+      if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="2" class="placeholder">No matching runbooks.</td></tr>';
+      } else {
+        tbody.innerHTML = rows.map((r) => (
+          '<tr data-name="' + escapeHtml(r.name) + '" class="' + (state.selected === r.name ? "active" : "") + '">' +
+          '<td>' + escapeHtml(r.title) + '</td>' +
+          '<td><span class="' + sevClass(r.severity) + '">' + escapeHtml(r.severity) + '</span></td>' +
+          '</tr>'
+        )).join("");
+        for (const tr of tbody.querySelectorAll("tr[data-name]")) {
+          tr.addEventListener("click", () => loadDetails(tr.dataset.name));
+        }
+      }
+      document.getElementById("count").textContent = rows.length + " of " + state.all.length + " runbooks";
+    }
+
+    async function loadDetails(name) {
+      state.selected = name;
+      renderList();
+      const target = document.getElementById("details");
+      target.innerHTML = '<p class="placeholder">Loading…</p>';
+      try {
+        const res = await fetch("/api/v1/runbooks/" + encodeURIComponent(name));
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const rb = await res.json();
+        target.innerHTML = renderDetails(rb);
+      } catch (err) {
+        target.innerHTML = '<p class="placeholder">Error: ' + escapeHtml(err.message) + '</p>';
+      }
+    }
+
+    function renderDetails(rb) {
+      const section = (title, items) => items && items.length
+        ? '<h3>' + title + '</h3><ul>' + items.map((i) => '<li>' + escapeHtml(i) + '</li>').join("") + '</ul>'
+        : '';
+      const cmds = rb.commands && rb.commands.length
+        ? '<h3>Commands</h3>' + rb.commands.map((c) => '<pre>' + escapeHtml(c) + '</pre>').join("")
+        : '';
+      return (
+        '<h2>' + escapeHtml(rb.title) + '</h2>' +
+        '<div class="sub">' + '<span class="' + sevClass(rb.severity) + '">' + escapeHtml(rb.severity) + '</span>' + ' &nbsp; ' + escapeHtml(rb.name) + '</div>' +
+        section("Symptoms", rb.symptoms) +
+        section("Investigation steps", rb.steps) +
+        cmds +
+        section("Metrics", rb.metrics) +
+        section("Remediation", rb.remediation) +
+        section("Prevention", rb.prevention)
+      );
+    }
+
+    async function loadAll() {
+      try {
+        const res = await fetch("/api/v1/runbooks");
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        state.all = Array.isArray(data.runbooks) ? data.runbooks : [];
+      } catch (err) {
+        document.getElementById("count").textContent = "Error loading runbooks";
+        return;
+      }
+      renderList();
+      populateGenSelect();
+    }
+
+    function populateGenSelect() {
+      const sel = document.getElementById("gen-type");
+      sel.innerHTML = state.all.map((r) => (
+        '<option value="' + escapeHtml(r.name) + '">' + escapeHtml(r.title) + '</option>'
+      )).join("");
+    }
+
+    document.getElementById("filter").addEventListener("input", renderList);
+    document.getElementById("sev-filter").addEventListener("change", renderList);
+
+    const dialog = document.getElementById("gen-dialog");
+    document.getElementById("gen-btn").addEventListener("click", () => dialog.showModal());
+    document.getElementById("gen-cancel").addEventListener("click", () => dialog.close());
+    document.getElementById("gen-form").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const incident = {
+        type: document.getElementById("gen-type").value,
+        severity: document.getElementById("gen-severity").value || undefined,
+        startTime: document.getElementById("gen-start").value || undefined,
+        description: document.getElementById("gen-desc").value || undefined,
+      };
+      dialog.close();
+      const out = document.getElementById("generated-output");
+      const pre = document.getElementById("generated-json");
+      out.style.display = "block";
+      pre.textContent = "Generating…";
+      try {
+        const res = await fetch("/api/v1/runbooks/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ incident }),
+        });
+        const json = await res.json();
+        pre.textContent = JSON.stringify(json, null, 2);
+      } catch (err) {
+        pre.textContent = "Error: " + err.message;
+      }
+    });
+
+    loadAll();
+  </script>
+</body>
+</html>
