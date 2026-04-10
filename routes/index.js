@@ -80,6 +80,8 @@ import { mountPromptEvolutionRoutes } from "./prompt-evolution.js";
 import { mountToolDiscoveryRoutes } from "./tool-discovery.js";
 import { mountExplainabilityRoutes } from "./explainability.js";
 import { mountComplianceRoutes } from "./compliance.js";
+import { mountRecipeMarketplaceRoutes } from "./recipe-marketplace.js";
+import { mountPluginCertificationRoutes } from "./plugin-certification.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -125,6 +127,8 @@ const mountFunctions = [
   mountToolDiscoveryRoutes,
   mountExplainabilityRoutes,
   mountComplianceRoutes,
+  mountRecipeMarketplaceRoutes,
+  mountPluginCertificationRoutes,
 ];
 
 /**
