@@ -14,6 +14,8 @@ import { configureSSO, isSSOConfigured } from "./lib/sso.js";
 import { getLeaderElection } from "./lib/leader-election.js";
 import { getRegionHealth } from "./lib/region-health.js";
 import { getReplicationManager, internalAuth } from "./lib/storage-replication.js";
+import { getSyntheticMonitor, registerBuiltInChecks } from "./lib/synthetic-monitor.js";
+import { startDailySecurityScan } from "./lib/security-scorecard.js";
 import {
   branchConversation,
   getConversationTree,
@@ -29,6 +31,7 @@ import {
   reindexKnowledgeEmbeddingsInWorkspace,
 } from "./lib/knowledge-store.js";
 import { embed, embedBatch, isAvailable as embeddingsAvailable } from "./lib/embeddings.js";
+import { globalEmbeddingCache } from "./lib/embedding-cache.js";
 import { executeStep, appendAuditLog, getRegisteredActions } from "./lib/action-executor.js";
 import { loadPlugins } from "./lib/plugins-loader.js";
 import {
@@ -45,9 +48,11 @@ import { resolveAgentMaxIterations } from "./lib/agent-iterations.js";
 import * as storage from "./lib/storage.js";
 import * as scheduleStore from "./lib/schedules.js";
 import { start as schedulerStart, stop as schedulerStop, refresh as schedulerRefresh, runRecipeNow, runDueJobsVercel } from "./lib/scheduler.js";
+import { startPromptEvolutionScheduler } from "./lib/prompt-evolution.js";
 import { userAuth, isAuthConfigured } from "./lib/auth.js";
 import { recordUsage, getSummary, getTotalTokensInWindow, getRecordsForPeriod, estimate } from "./lib/usage-tracker.js";
 import { getDashboard, exportToCsv, exportToJson } from "./lib/analytics.js";
+import { recordUserActivity as recordCohortActivity } from "./lib/cohort-analysis.js";
 import { emitEvent, listWebhooks, addWebhook, removeWebhook, validateWebhookUrl } from "./lib/webhooks.js";
 import { list as listNotifications, markRead as markNotificationRead, markAllRead as markAllNotificationsRead } from "./lib/notifications.js";
 import { isQuotaConfigured, checkQuota, getWorkspaceQuota, getWorkspaceTokensUsed, isQuotaAdmin, setWorkspaceQuotaOverride, getQuotaOverrides } from "./lib/quotas.js";
@@ -57,6 +62,7 @@ import { adminAuth } from "./lib/admin-auth.js";
 import { listAllUsers, listAllWorkspaces, getRecentAuditLog } from "./lib/admin-data.js";
 import { requireScope } from "./lib/scope-middleware.js";
 import { logKeyUsage } from "./lib/api-key-audit.js";
+import { findDeveloperByRawKey, recordDeveloperRequest } from "./lib/developer-keys.js";
 import { listKeysForAdmin, addKey, revokeKey, warmApiKeysCache } from "./lib/api-keys.js";
 import {
   canAccessWorkspace,
@@ -70,8 +76,10 @@ import {
 import openApiSpec from "./lib/openapi-spec.js";
 import { runEvalSet } from "./lib/eval-runner.js";
 import { listEvalSets, loadEvalSet } from "./lib/storage-eval.js";
+import { listStagingTraceSummaries } from "./lib/eval-staging-traces.js";
 import { createToken, attachToServer, getOnlineUsers, closeServer } from "./lib/realtime.js";
 import { sanitizeForLog } from "./lib/log-sanitizer.js";
+import { requestContextMiddleware } from "./lib/request-context.js";
 import { execute as circuitExecute } from "./lib/circuit-breaker.js";
 import { parseRoutingConfig, selectBackend, logRouting, getRoutingStats } from "./lib/ab-router.js";
 import { recordModelResponse, getModelQuality, getModelRanking, getQualityHistory, loadFromDisk as loadModelQuality, resetModelStats, checkAutoPromotion } from "./lib/model-quality.js";
@@ -87,6 +95,7 @@ import {
   intersectSwarmSpecialistsWithAllowlist,
 } from "./lib/swarm.js";
 import { initTracing } from "./lib/tracing.js";
+import { initLogShipping } from "./lib/log-shipper.js";
 import {
   recordRequest,
   renderPrometheus,
@@ -94,6 +103,7 @@ import {
   recordTokensUsed,
   isEnabled as metricsEnabled,
 } from "./lib/metrics.js";
+import { globalSLOTracker } from "./lib/slo-tracker.js";
 import { fetchWithTimeoutAndRetry } from "./lib/backend-fetch.js";
 import { toolValidationEnabled } from "./lib/tool-validation.js";
 import { stagnationDetectionEnabled } from "./lib/agent-stagnation.js";
@@ -354,6 +364,9 @@ app.use((req, res, next) => {
   next();
 });
 
+// Request context propagation (AsyncLocalStorage) -- after requestId is set
+app.use(requestContextMiddleware());
+
 // Phase 34: Security headers (configurable; disabled for dev if DISABLE_SECURITY_HEADERS=1)
 const DISABLE_SECURITY_HEADERS = process.env.DISABLE_SECURITY_HEADERS === "1";
 const ENABLE_CSP = process.env.ENABLE_CSP === "1" && IS_PRODUCTION;
@@ -499,10 +512,12 @@ const storageRateLimiter = rateLimit({
 
 // Structured error response: { error, code, hint }
 function apiError(res, status, code, message, hint) {
+  const requestId = res.req?.requestId || res.getHeader?.("X-Request-Id") || undefined;
   return res.status(status).json({
     error: message || "Request failed",
     code,
     hint: hint || "See docs/RUNBOOK.md for troubleshooting.",
+    ...(requestId && { requestId }),
   });
 }
 
@@ -606,10 +621,33 @@ function backupAdminAuth(req, res, next) {
   });
 }
 
+// Phase 34.4: Detect developer API keys (skdev-…) on the inbound request so the
+// logger can record usage on finish. Best-effort: never blocks the request.
+async function _resolveDeveloperKey(req) {
+  if (req.developerKeyId !== undefined) return; // already resolved
+  req.developerKeyId = null;
+  const bearer = req.headers.authorization?.startsWith("Bearer ")
+    ? req.headers.authorization.slice(7).trim()
+    : null;
+  const xKey = req.headers["x-api-key"];
+  const candidate = bearer || xKey;
+  if (!candidate || typeof candidate !== "string" || !candidate.startsWith("skdev-")) return;
+  try {
+    const info = await findDeveloperByRawKey(candidate);
+    if (info) {
+      req.developerKeyId = info.keyId;
+      req.developerId = info.developerId;
+      req.developerTier = info.tier;
+    }
+  } catch (_) { /* ignore */ }
+}
+
 // Request logging middleware
 function logRequest(req, res, next) {
   const requestId = req.requestId || randomUUID();
   const start = Date.now();
+  // Kick off developer-key resolution in the background; result is consumed in finish.
+  const devKeyResolved = _resolveDeveloperKey(req);
   res.on("finish", () => {
     const durationMs = Date.now() - start;
     const entry = sanitizeForLog({
@@ -621,9 +659,30 @@ function logRequest(req, res, next) {
       durationMs,
     });
     const msg = IS_PRODUCTION ? JSON.stringify(entry) : `${entry.method} ${entry.path} ${entry.status} ${entry.durationMs}ms`;
-    console.log(msg);
+    if (!process.env.NODE_TEST_CONTEXT) console.log(msg);
     if (req.apiKeyId) void logKeyUsage({ keyId: req.apiKeyId, path: req.path, method: req.method }).catch(() => {});
+    // Phase 34.4: Record developer-key usage once resolution settles.
+    void devKeyResolved
+      .then(() => {
+        if (req.developerKeyId && res.statusCode < 500) {
+          return recordDeveloperRequest(req.developerKeyId).catch(() => {});
+        }
+      })
+      .catch(() => {});
     if (metricsEnabled()) recordRequest(req.method, req.path, res.statusCode, durationMs);
+    // Phase 31.2: SLO/SLI event recording.
+    try {
+      globalSLOTracker.recordEvent("success_rate", res.statusCode < 500 ? 1 : 0);
+      globalSLOTracker.recordEvent("error_rate", res.statusCode >= 500 ? 1 : 0);
+      globalSLOTracker.recordEvent("latency_ms", durationMs);
+    } catch (_) {
+      // never fail a request because of SLO bookkeeping
+    }
+    // Phase 39.1: Cohort activity tracking for authenticated users.
+    if (req.userId && req.userId !== "anonymous" && res.statusCode < 500) {
+      const ws = req.workspace || req.headers["x-workspace-id"] || "default";
+      void recordCohortActivity(req.userId, ws, "request").catch(() => {});
+    }
   });
   next();
 }
@@ -997,6 +1056,7 @@ const deps = {
   listEvalSets,
   loadEvalSet,
   runEvalSet,
+  listStagingTraceSummaries,
 
   // Lib: realtime replay
   getEventsSince,
@@ -1050,12 +1110,26 @@ if (process.env.STORAGE_BACKEND === "postgres" && process.env.DATABASE_URL) {
   }
 }
 
-console.log("[startup] Running integration checks...");
-await runStartupChecks().catch(e => console.warn("[startup] Check failed:", e.message));
+if (!process.env.NODE_TEST_CONTEXT) {
+  console.log("[startup] Running integration checks...");
+  await runStartupChecks().catch(e => console.warn("[startup] Check failed:", e.message));
+}
 
 // Load persisted model quality data and parse cost config
 await loadModelQuality().catch(e => console.warn("[startup] Model quality load failed:", e.message));
 parseCostConfig(process.env.MODEL_COSTS);
+
+// Phase 35.2: Load persisted embedding cache from disk if EMBEDDING_CACHE_PATH is set.
+if (process.env.EMBEDDING_CACHE_PATH && !process.env.NODE_TEST_CONTEXT) {
+  try {
+    const loaded = await globalEmbeddingCache.load(process.env.EMBEDDING_CACHE_PATH);
+    if (loaded > 0) {
+      console.log(`[startup] Loaded ${loaded} embedding(s) from cache file: ${process.env.EMBEDDING_CACHE_PATH}`);
+    }
+  } catch (e) {
+    console.warn("[startup] Embedding cache load failed:", e.message);
+  }
+}
 
 // All routes are now in route modules under routes/
 
@@ -1071,7 +1145,7 @@ app.use(
     etag: true,
     setHeaders(res, filePath) {
       const norm = filePath.replace(/\\/g, "/");
-      if (/(^|\/)index\.html$/i.test(norm) || /(^|\/)admin\.html$/i.test(norm) || /(^|\/)eval\.html$/i.test(norm) || /(^|\/)shared\.html$/i.test(norm) || /(^|\/)analytics\.html$/i.test(norm)) {
+      if (/(^|\/)index\.html$/i.test(norm) || /(^|\/)admin\.html$/i.test(norm) || /(^|\/)eval\.html$/i.test(norm) || /(^|\/)shared\.html$/i.test(norm) || /(^|\/)analytics\.html$/i.test(norm) || /(^|\/)health\.html$/i.test(norm) || /(^|\/)playground\.html$/i.test(norm) || /(^|\/)webhook-builder\.html$/i.test(norm)) {
         res.setHeader("Cache-Control", "no-store");
       }
     },
@@ -1086,6 +1160,8 @@ app.use(errorHandler);
 const SHUTDOWN_TIMEOUT_MS = Number(process.env.SHUTDOWN_TIMEOUT_MS) || 10_000;
 
 if (process.env.VERCEL !== "1") {
+  // Phase 31.4: Initialize log shipping before anything else so startup logs are forwarded.
+  initLogShipping();
   // Phase 47: Start OTEL before createServer so HTTP instrumentation wraps the server.
   initTracing()
     .catch(() => {})
@@ -1098,6 +1174,18 @@ if (process.env.VERCEL !== "1") {
         httpServer.close(async () => {
           try {
             if (process.env.ENABLE_SCHEDULED_RECIPES === "1") schedulerStop();
+            if (process.env.ENABLE_SYNTHETIC_MONITORING === "1") {
+              try { getSyntheticMonitor().stop(); } catch (_) {}
+            }
+            // Phase 35.2: Persist embedding cache to disk if configured.
+            if (process.env.EMBEDDING_CACHE_PATH) {
+              try {
+                await globalEmbeddingCache.persist(process.env.EMBEDDING_CACHE_PATH);
+                console.log(`[shutdown] Persisted embedding cache to ${process.env.EMBEDDING_CACHE_PATH}`);
+              } catch (e) {
+                console.warn("[shutdown] Embedding cache persist failed:", e.message);
+              }
+            }
             await closeServer();
             console.log("[shutdown] Graceful shutdown complete");
             process.exit(0);
@@ -1124,6 +1212,37 @@ if (process.env.VERCEL !== "1") {
         if (BACKEND === "openai") console.log(`OpenAI: api.openai.com (key set)`);
         if (process.env.ENABLE_SCHEDULED_RECIPES === "1") {
           schedulerStart().catch((e) => console.warn("[scheduler] Start failed:", e.message));
+        }
+        if (process.env.ENABLE_PROMPT_EVOLUTION === "1") {
+          try {
+            startPromptEvolutionScheduler();
+            console.log("Phase 32.2: Prompt evolution auto-promotion enabled (hourly)");
+          } catch (e) {
+            console.warn("[prompt-evolution] Start failed:", e.message);
+          }
+        }
+        if (process.env.ENABLE_SYNTHETIC_MONITORING === "1") {
+          try {
+            const monitor = getSyntheticMonitor();
+            const host = (process.env.LISTEN_HOST?.trim() || "127.0.0.1");
+            const baseUrl = process.env.SYNTHETIC_MONITOR_BASE_URL || `http://${host}:${PORT}`;
+            registerBuiltInChecks(monitor, baseUrl);
+            const intervalMs = Number(process.env.SYNTHETIC_MONITOR_INTERVAL_MS) || 5 * 60 * 1000;
+            monitor.start(intervalMs);
+            console.log(`Phase 31.3: Synthetic monitoring enabled (interval=${intervalMs}ms, base=${baseUrl})`);
+          } catch (e) {
+            console.warn("[synthetic-monitor] Start failed:", e.message);
+          }
+        }
+        if (process.env.ENABLE_SECURITY_SCORECARD !== "0") {
+          try {
+            startDailySecurityScan().catch((e) =>
+              console.warn("[security-scorecard] Start failed:", e.message),
+            );
+            console.log("Phase 36.5: Security scorecard daily scan enabled");
+          } catch (e) {
+            console.warn("[security-scorecard] Start failed:", e.message);
+          }
         }
         console.log("Phase 33: WebSocket real-time sync enabled at /ws");
         console.log("Phase 34: Health probes at /health/live, /health/ready");

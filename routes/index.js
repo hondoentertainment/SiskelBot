@@ -32,6 +32,10 @@
  *   federation.js    - /api/federation/*
  *   mcp.js           - /mcp, /mcp/sse
  *   slack-discord.js - /api/integrations/slack/*, /api/integrations/discord/*, /api/integrations/bots/*
+ *   voice.js         - /api/voice/transcribe, /api/voice/synthesize, /api/voice/capabilities
+ *   slo.js           - /api/slo, /api/slo/:name, /api/slo/:name/burndown
+ *   synthetic.js     - /api/synthetic/checks, history, stats, manual runs
+ *   runbooks.js      - /api/runbooks, generate, report (on-call automation)
  */
 
 import mountAuthRoutes from "./auth.js";
@@ -57,10 +61,103 @@ import { mountFederationRoutes } from "./federation.js";
 import { mountMcpRoutes } from "./mcp.js";
 import { mountSlackDiscordRoutes } from "./slack-discord.js";
 import { mountMemoryRoutes } from "./memory.js";
+import { mountReasoningMemoryRoutes } from "./reasoning-memory.js";
 import { mountRbacRoutes } from "./rbac.js";
 import { mountAnalyticsRoutes } from "./analytics.js";
 import { mountModelQualityRoutes } from "./model-quality.js";
 import { mountCollaborationRoutes } from "./collaboration.js";
+import { mountPresenceRoutes } from "./presence.js";
+import { mountScheduledAgentRoutes } from "./scheduled-agents.js";
+import { mountBillingRoutes } from "./billing.js";
+import { mountBrandingRoutes } from "./branding.js";
+import { mountSecurityRoutes } from "./security.js";
+import { mountSecurityScorecardRoutes } from "./security-scorecard.js";
+import { mountFeedbackRoutes } from "./feedback.js";
+import { mountVoiceRoutes } from "./voice.js";
+import { mountVoiceRealtimeRoutes } from "./voice-realtime.js";
+import { mountVoiceCloningRoutes } from "./voice-cloning.js";
+import { mountVoiceCommandRoutes } from "./voice-commands.js";
+import { mountDiarizationRoutes } from "./diarization.js";
+import mountTraceExplorerRoutes from "./traces.js";
+import { mountSLORoutes } from "./slo.js";
+import { mountSyntheticRoutes } from "./synthetic.js";
+import { mountRunbookRoutes } from "./runbooks.js";
+import { mountPromptEvolutionRoutes } from "./prompt-evolution.js";
+import { mountToolDiscoveryRoutes } from "./tool-discovery.js";
+import { mountToolRagRoutes } from "./tool-rag.js";
+import { mountToolDisclosureRoutes } from "./tool-disclosure.js";
+import { mountExplainabilityRoutes } from "./explainability.js";
+import { mountComplianceRoutes } from "./compliance.js";
+import { mountRecipeMarketplaceRoutes } from "./recipe-marketplace.js";
+import { mountAgentMarketplaceRoutes } from "./agent-marketplace.js";
+import { mountPluginCertificationRoutes } from "./plugin-certification.js";
+import { mountDeveloperPortalRoutes } from "./developer-portal.js";
+import { mountReferralRoutes } from "./referrals.js";
+import { mountTemplateGalleryRoutes } from "./template-gallery.js";
+import { mountEdgeCacheRoutes } from "./edge-cache.js";
+import mountQueryAnalyzerRoutes from "./query-analyzer.js";
+import { mountServiceAuthRoutes } from "./service-auth.js";
+import { mountSecretRotationRoutes } from "./secret-rotation.js";
+import { mountExperimentRoutes } from "./experiments.js";
+import { mountMobileRoutes } from "./mobile.js";
+import mountModelRegistryRoutes from "./model-registry.js";
+import { mountLoraAdapterRoutes } from "./lora-adapters.js";
+import { mountFineTuningRoutes } from "./fine-tuning.js";
+import mountPushNotificationRoutes from "./push-notifications.js";
+import { mountWebAuthnRoutes } from "./webauthn.js";
+import { mountLdapRoutes } from "./ldap.js";
+import { mountHSMRoutes } from "./hsm.js";
+import { mountCohortAnalysisRoutes } from "./cohort-analysis.js";
+import { mountFunnelRoutes } from "./funnels.js";
+import { mountDashboardRoutes } from "./dashboards.js";
+import { mountAnomalyRoutes } from "./anomalies.js";
+import { mountGeoRoutingRoutes } from "./geo-routing.js";
+import { mountMultiRegionRoutes } from "./multi-region.js";
+import mountOfflineModelsRoutes from "./offline-models.js";
+import { mountCrdtRoutes } from "./crdt.js";
+import mountDataWarehouseRoutes from "./data-warehouse.js";
+import { mountAnnotationRoutes } from "./annotations.js";
+import { mountDataResidencyRoutes } from "./data-residency.js";
+import { mountScreenShareRoutes } from "./screen-share.js";
+import { mountJitProvisioningRoutes } from "./jit-provisioning.js";
+import { mountEntitlementReviewRoutes } from "./entitlement-reviews.js";
+import { mountHierarchyRoutes } from "./hierarchy.js";
+import { mountGroupSyncRoutes } from "./group-sync.js";
+import { mountAgentNegotiationRoutes } from "./agent-negotiation.js";
+import { mountLongMissionRoutes } from "./long-missions.js";
+import { mountScimRoutes } from "./scim.js";
+import { mountAgentConsensusRoutes } from "./agent-consensus.js";
+import { mountMeetingBotRoutes } from "./meeting-bot.js";
+import { mountBpeTokenizerRoutes } from "./bpe-tokenizer.js";
+import { mountPreferenceDatasetRoutes } from "./preference-datasets.js";
+import { mountGBrainRoutes } from "./gbrain.js";
+import { mountFederatedTrainingRoutes } from "./federated-training.js";
+import { mountFlConsortiumRoutes } from "./fl-consortium.js";
+import { mountPrivacyAccountingRoutes } from "./privacy-accounting.js";
+import { mountSecureAggregationRoutes } from "./secure-aggregation.js";
+import { mountDifferentialPrivacyRoutes } from "./differential-privacy.js";
+import { mountPqJwtRoutes } from "./pq-jwt.js";
+import { mountPqMigrationRoutes } from "./pq-migration.js";
+import { mountPqTlsRoutes } from "./pq-tls.js";
+import { mountPqDilithiumRoutes } from "./pq-dilithium.js";
+import { mountPqKyberRoutes } from "./pq-kyber.js";
+import { mountXrRoutes } from "./xr.js";
+import { mountNftGatingRoutes } from "./nft-gating.js";
+import { mountCryptoPaymentRoutes } from "./crypto-payments.js";
+import { mountWalletAuthRoutes } from "./wallet-auth.js";
+import { mountDecentralizedStorageRoutes } from "./decentralized-storage.js";
+import { mountAuditAnchorRoutes } from "./audit-anchor.js";
+import { mountVrRoomsRoutes } from "./vr-rooms.js";
+import { mountAvatarAgentsRoutes } from "./avatar-agents.js";
+import { mountSpatialGraphRoutes } from "./spatial-graph.js";
+import { mountGestureControlRoutes } from "./gesture-control.js";
+import { mountJailbreakDetectorRoutes } from "./jailbreak-detector.js";
+import { mountConstitutionalAiRoutes } from "./constitutional-ai.js";
+import { mountSelfConsistencyRoutes } from "./self-consistency.js";
+import { mountVerificationLoopRoutes } from "./verification-loop.js";
+import { mountTreeOfThoughtRoutes } from "./tree-of-thought.js";
+import { mountGraphOfThoughtRoutes } from "./graph-of-thought.js";
+import { mountToolGraphRoutes } from "./tool-graph.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -87,10 +184,103 @@ const mountFunctions = [
   mountMcpRoutes,
   mountSlackDiscordRoutes,
   mountMemoryRoutes,
+  mountReasoningMemoryRoutes,
   mountRbacRoutes,
   mountAnalyticsRoutes,
   mountModelQualityRoutes,
   mountCollaborationRoutes,
+  mountPresenceRoutes,
+  mountScheduledAgentRoutes,
+  mountBillingRoutes,
+  mountBrandingRoutes,
+  mountSecurityRoutes,
+  mountSecurityScorecardRoutes,
+  mountFeedbackRoutes,
+  mountVoiceRoutes,
+  mountVoiceRealtimeRoutes,
+  mountVoiceCloningRoutes,
+  mountVoiceCommandRoutes,
+  mountDiarizationRoutes,
+  mountTraceExplorerRoutes,
+  mountSLORoutes,
+  mountSyntheticRoutes,
+  mountRunbookRoutes,
+  mountPromptEvolutionRoutes,
+  mountToolDiscoveryRoutes,
+  mountToolRagRoutes,
+  mountToolDisclosureRoutes,
+  mountExplainabilityRoutes,
+  mountComplianceRoutes,
+  mountRecipeMarketplaceRoutes,
+  mountAgentMarketplaceRoutes,
+  mountPluginCertificationRoutes,
+  mountDeveloperPortalRoutes,
+  mountReferralRoutes,
+  mountTemplateGalleryRoutes,
+  mountEdgeCacheRoutes,
+  mountQueryAnalyzerRoutes,
+  mountServiceAuthRoutes,
+  mountSecretRotationRoutes,
+  mountExperimentRoutes,
+  mountMobileRoutes,
+  mountModelRegistryRoutes,
+  mountLoraAdapterRoutes,
+  mountFineTuningRoutes,
+  mountPushNotificationRoutes,
+  mountWebAuthnRoutes,
+  mountLdapRoutes,
+  mountHSMRoutes,
+  mountCohortAnalysisRoutes,
+  mountFunnelRoutes,
+  mountDashboardRoutes,
+  mountAnomalyRoutes,
+  mountGeoRoutingRoutes,
+  mountMultiRegionRoutes,
+  mountOfflineModelsRoutes,
+  mountCrdtRoutes,
+  mountDataWarehouseRoutes,
+  mountAnnotationRoutes,
+  mountDataResidencyRoutes,
+  mountScreenShareRoutes,
+  mountJitProvisioningRoutes,
+  mountEntitlementReviewRoutes,
+  mountHierarchyRoutes,
+  mountGroupSyncRoutes,
+  mountAgentNegotiationRoutes,
+  mountLongMissionRoutes,
+  mountScimRoutes,
+  mountAgentConsensusRoutes,
+  mountMeetingBotRoutes,
+  mountBpeTokenizerRoutes,
+  mountPreferenceDatasetRoutes,
+  mountGBrainRoutes,
+  mountFederatedTrainingRoutes,
+  mountFlConsortiumRoutes,
+  mountPrivacyAccountingRoutes,
+  mountSecureAggregationRoutes,
+  mountDifferentialPrivacyRoutes,
+  mountPqJwtRoutes,
+  mountPqMigrationRoutes,
+  mountPqTlsRoutes,
+  mountPqDilithiumRoutes,
+  mountPqKyberRoutes,
+  mountXrRoutes,
+  mountNftGatingRoutes,
+  mountCryptoPaymentRoutes,
+  mountWalletAuthRoutes,
+  mountDecentralizedStorageRoutes,
+  mountAuditAnchorRoutes,
+  mountVrRoomsRoutes,
+  mountAvatarAgentsRoutes,
+  mountSpatialGraphRoutes,
+  mountGestureControlRoutes,
+  mountJailbreakDetectorRoutes,
+  mountConstitutionalAiRoutes,
+  mountSelfConsistencyRoutes,
+  mountVerificationLoopRoutes,
+  mountTreeOfThoughtRoutes,
+  mountGraphOfThoughtRoutes,
+  mountToolGraphRoutes,
 ];
 
 /**

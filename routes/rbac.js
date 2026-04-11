@@ -10,7 +10,6 @@
  */
 import {
   PERMISSIONS,
-  ROLES,
   listRoles,
   getUserRole,
   setUserRole,

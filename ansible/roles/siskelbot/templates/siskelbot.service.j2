@@ -1,0 +1,39 @@
+[Unit]
+Description=SiskelBot
+Documentation=https://github.com/your-org/SiskelBot
+After=network.target{% if enable_postgres | bool %} postgresql.service{% endif %}{% if enable_redis | bool %} redis-server.service{% endif %}
+
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ siskelbot_user }}
+Group={{ siskelbot_group }}
+WorkingDirectory={{ siskelbot_install_dir }}
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+EnvironmentFile={{ siskelbot_install_dir }}/.env
+
+# Logging
+StandardOutput=append:{{ siskelbot_log_dir }}/siskelbot.log
+StandardError=append:{{ siskelbot_log_dir }}/siskelbot.err.log
+SyslogIdentifier=siskelbot
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths={{ siskelbot_install_dir }} {{ siskelbot_data_dir }} {{ siskelbot_log_dir }}
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+# Resource limits
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

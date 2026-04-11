@@ -1,0 +1,25 @@
+title: "[Idea] "
+labels: [idea]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea for SiskelBot? Share it here! For concrete, well-scoped feature
+        requests, consider opening a Feature Request issue instead.
+  - type: textarea
+    id: idea
+    attributes:
+      label: Describe your idea
+      placeholder: What would you like to see in SiskelBot?
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      placeholder: Why would this be useful? What problem does it solve?
+  - type: textarea
+    id: details
+    attributes:
+      label: Additional details
+      placeholder: Any mockups, references, or further context

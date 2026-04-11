@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>SiskelBot - Developer Portal</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    a { color: #60a5fa; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 2px solid #60a5fa;
+      outline-offset: 2px;
+    }
+    header {
+      padding: 0.75rem 1rem;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    header h1 { margin: 0; font-size: 1.125rem; font-weight: 600; }
+    header .spacer { flex: 1; }
+    main {
+      padding: 1rem;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .section {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .section h2 {
+      margin: 0 0 0.75rem 0;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0.75rem;
+    }
+    .stat {
+      padding: 0.75rem 1rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+    }
+    .stat .label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      color: #94a3b8;
+      letter-spacing: 0.08em;
+    }
+    .stat .value {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: #e2e8f0;
+      margin-top: 0.25rem;
+    }
+    .stat .sub {
+      font-size: 0.75rem;
+      color: #64748b;
+    }
+    .progress {
+      margin-top: 0.5rem;
+      height: 6px;
+      width: 100%;
+      background: #334155;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .progress .bar {
+      height: 100%;
+      background: linear-gradient(90deg, #60a5fa, #3b82f6);
+      transition: width 200ms;
+    }
+
+    label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.25rem; }
+    input, select {
+      width: 100%;
+      padding: 0.55rem 0.75rem;
+      background: #0f172a;
+      color: #e2e8f0;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      font-size: 0.9rem;
+    }
+    .row { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: flex-end; }
+    .row > .field { flex: 1 1 200px; min-width: 0; }
+
+    button {
+      padding: 0.55rem 1rem;
+      border-radius: 6px;
+      border: 1px solid #334155;
+      background: #334155;
+      color: #e2e8f0;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    button:hover { background: #475569; }
+    button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+    button.primary:hover { background: #1d4ed8; }
+    button.danger { background: #b91c1c; border-color: #b91c1c; color: #fff; }
+    button.danger:hover { background: #991b1b; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    th, td {
+      padding: 0.5rem 0.75rem;
+      text-align: left;
+      border-bottom: 1px solid #334155;
+    }
+    th { color: #94a3b8; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    td code { background: #0f172a; padding: 0.15rem 0.4rem; border-radius: 3px; font-family: ui-monospace, monospace; font-size: 0.8rem; }
+
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .badge.free { background: #334155; color: #cbd5e1; }
+    .badge.pro { background: #1e40af; color: #bfdbfe; }
+    .badge.enterprise { background: #6b21a8; color: #f0abfc; }
+    .badge.revoked { background: #7f1d1d; color: #fecaca; }
+
+    .notice {
+      margin-top: 0.75rem;
+      padding: 0.75rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-left: 3px solid #60a5fa;
+      border-radius: 4px;
+      font-size: 0.85rem;
+    }
+    .notice.success { border-left-color: #22c55e; }
+    .notice.error { border-left-color: #ef4444; }
+
+    .key-display {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.6rem 0.8rem;
+      background: #0f172a;
+      border: 1px solid #f59e0b;
+      border-radius: 6px;
+      margin-top: 0.5rem;
+      font-family: ui-monospace, monospace;
+      font-size: 0.85rem;
+      word-break: break-all;
+    }
+
+    .hidden { display: none; }
+    .muted { color: #64748b; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SiskelBot Developer Portal</h1>
+    <div class="spacer"></div>
+    <a href="/docs" target="_blank">API Docs</a>
+    <a href="/">Main App</a>
+    <button id="logout-btn" class="hidden">Logout</button>
+  </header>
+
+  <main>
+    <div id="auth-view">
+      <div class="section">
+        <h2>Sign In</h2>
+        <p class="muted">Paste your existing Developer ID to return to your dashboard.</p>
+        <div class="row">
+          <div class="field">
+            <label for="login-id">Developer ID</label>
+            <input id="login-id" placeholder="dev_..." autocomplete="off">
+          </div>
+          <button class="primary" id="login-btn">Continue</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Sign Up</h2>
+        <p class="muted">Register for a free developer account. You'll receive a verification token (via email when configured).</p>
+        <div class="row">
+          <div class="field">
+            <label for="signup-email">Email</label>
+            <input id="signup-email" type="email" placeholder="you@example.com" autocomplete="email">
+          </div>
+          <div class="field">
+            <label for="signup-name">Name</label>
+            <input id="signup-name" placeholder="Your name" autocomplete="name">
+          </div>
+          <button class="primary" id="signup-btn">Create Account</button>
+        </div>
+        <div id="signup-notice" class="notice hidden"></div>
+      </div>
+
+      <div class="section" id="verify-section">
+        <h2>Verify Account</h2>
+        <div class="row">
+          <div class="field">
+            <label for="verify-id">Developer ID</label>
+            <input id="verify-id" placeholder="dev_...">
+          </div>
+          <div class="field">
+            <label for="verify-token">Verification Token</label>
+            <input id="verify-token" placeholder="token">
+          </div>
+          <button class="primary" id="verify-btn">Verify</button>
+        </div>
+        <div id="verify-notice" class="notice hidden"></div>
+      </div>
+    </div>
+
+    <div id="dashboard-view" class="hidden">
+      <div class="section">
+        <h2>Developer Profile</h2>
+        <div class="grid">
+          <div class="stat">
+            <div class="label">Name</div>
+            <div class="value" id="dev-name">-</div>
+            <div class="sub" id="dev-email">-</div>
+          </div>
+          <div class="stat">
+            <div class="label">Tier</div>
+            <div class="value"><span id="dev-tier" class="badge free">free</span></div>
+            <div class="sub" id="dev-tier-name"></div>
+          </div>
+          <div class="stat">
+            <div class="label">Verified</div>
+            <div class="value" id="dev-verified">-</div>
+          </div>
+          <div class="stat">
+            <div class="label">Active Keys</div>
+            <div class="value" id="dev-key-count">0</div>
+            <div class="sub" id="dev-key-max"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Usage This Month</h2>
+        <div class="grid">
+          <div class="stat">
+            <div class="label">Requests</div>
+            <div class="value" id="usage-requests">0</div>
+            <div class="sub" id="usage-period"></div>
+            <div class="progress"><div class="bar" id="usage-bar" style="width: 0%"></div></div>
+          </div>
+          <div class="stat">
+            <div class="label">Remaining</div>
+            <div class="value" id="usage-remaining">0</div>
+            <div class="sub" id="usage-limit"></div>
+          </div>
+          <div class="stat">
+            <div class="label">Rate Limit</div>
+            <div class="value" id="usage-rate">60/min</div>
+          </div>
+          <div class="stat">
+            <div class="label">Next Reset</div>
+            <div class="value" id="usage-reset">-</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>API Keys</h2>
+        <div class="row">
+          <div class="field">
+            <label for="new-key-label">Label</label>
+            <input id="new-key-label" placeholder="production integration">
+          </div>
+          <button class="primary" id="create-key-btn">Create Key</button>
+        </div>
+        <div id="new-key-notice" class="hidden"></div>
+        <table style="margin-top: 1rem;">
+          <thead>
+            <tr>
+              <th>Label</th>
+              <th>Key</th>
+              <th>Tier</th>
+              <th>Created</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="keys-body">
+            <tr><td colspan="6" class="muted">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section">
+        <h2>Upgrade Tier</h2>
+        <p class="muted">Choose a higher tier for more requests and features.</p>
+        <div class="row">
+          <div class="field">
+            <label for="upgrade-select">New Tier</label>
+            <select id="upgrade-select">
+              <option value="free">Free Developer</option>
+              <option value="pro">Pro Developer</option>
+              <option value="enterprise">Enterprise Developer</option>
+            </select>
+          </div>
+          <button class="primary" id="upgrade-btn">Upgrade</button>
+        </div>
+        <div id="upgrade-notice" class="notice hidden"></div>
+      </div>
+
+      <div class="section">
+        <h2>Documentation</h2>
+        <p>Use your key with <code>Authorization: Bearer &lt;key&gt;</code> or <code>x-api-key</code>.</p>
+        <p>See the <a href="/docs" target="_blank">OpenAPI docs</a> for the full endpoint reference.</p>
+      </div>
+    </div>
+  </main>
+
+  <script type="module">
+    const LS_KEY = "siskelbot:developerId";
+    const api = async (path, options = {}) => {
+      const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+      const devId = localStorage.getItem(LS_KEY);
+      if (devId) headers["x-developer-id"] = devId;
+      const resp = await fetch(`/api/v1${path}`, { ...options, headers });
+      const text = await resp.text();
+      let body = null;
+      try { body = text ? JSON.parse(text) : null; } catch { body = { raw: text }; }
+      if (!resp.ok) {
+        const err = new Error(body?.error?.message || body?.message || `HTTP ${resp.status}`);
+        err.status = resp.status;
+        err.body = body;
+        throw err;
+      }
+      return body;
+    };
+
+    const show = (el) => el.classList.remove("hidden");
+    const hide = (el) => el.classList.add("hidden");
+    const setNotice = (el, message, cls = "") => {
+      el.textContent = message;
+      el.className = `notice ${cls}`.trim();
+      show(el);
+    };
+
+    const authView = document.getElementById("auth-view");
+    const dashView = document.getElementById("dashboard-view");
+    const logoutBtn = document.getElementById("logout-btn");
+
+    function enterDashboard() {
+      hide(authView);
+      show(dashView);
+      show(logoutBtn);
+      refreshDashboard();
+    }
+    function enterAuth() {
+      show(authView);
+      hide(dashView);
+      hide(logoutBtn);
+    }
+
+    logoutBtn.addEventListener("click", () => {
+      localStorage.removeItem(LS_KEY);
+      enterAuth();
+    });
+
+    document.getElementById("signup-btn").addEventListener("click", async () => {
+      const email = document.getElementById("signup-email").value.trim();
+      const name = document.getElementById("signup-name").value.trim();
+      const notice = document.getElementById("signup-notice");
+      try {
+        const res = await api("/developer/register", {
+          method: "POST",
+          body: JSON.stringify({ email, name }),
+        });
+        const token = res.verificationToken ? ` Verification token: ${res.verificationToken}` : "";
+        setNotice(
+          notice,
+          `Signed up. Developer ID: ${res.developerId}.${token}`,
+          "success",
+        );
+        document.getElementById("verify-id").value = res.developerId;
+        if (res.verificationToken) document.getElementById("verify-token").value = res.verificationToken;
+      } catch (err) {
+        setNotice(notice, err.message, "error");
+      }
+    });
+
+    document.getElementById("verify-btn").addEventListener("click", async () => {
+      const developerId = document.getElementById("verify-id").value.trim();
+      const token = document.getElementById("verify-token").value.trim();
+      const notice = document.getElementById("verify-notice");
+      try {
+        await api("/developer/verify", {
+          method: "POST",
+          body: JSON.stringify({ developerId, token }),
+        });
+        localStorage.setItem(LS_KEY, developerId);
+        setNotice(notice, "Verified. Redirecting…", "success");
+        setTimeout(enterDashboard, 400);
+      } catch (err) {
+        setNotice(notice, err.message, "error");
+      }
+    });
+
+    document.getElementById("login-btn").addEventListener("click", async () => {
+      const id = document.getElementById("login-id").value.trim();
+      if (!id) return;
+      localStorage.setItem(LS_KEY, id);
+      try {
+        await api("/developer/me");
+        enterDashboard();
+      } catch (err) {
+        alert(err.message);
+        localStorage.removeItem(LS_KEY);
+      }
+    });
+
+    async function refreshDashboard() {
+      try {
+        const [me, usage, keysResp] = await Promise.all([
+          api("/developer/me"),
+          api("/developer/usage"),
+          api("/developer/keys"),
+        ]);
+        renderProfile(me);
+        renderUsage(usage, me.tier);
+        renderKeys(keysResp.keys || []);
+      } catch (err) {
+        alert("Failed to load dashboard: " + err.message);
+        enterAuth();
+      }
+    }
+
+    function renderProfile(me) {
+      document.getElementById("dev-name").textContent = me.developer.name;
+      document.getElementById("dev-email").textContent = me.developer.email;
+      const tierEl = document.getElementById("dev-tier");
+      tierEl.textContent = me.developer.tier;
+      tierEl.className = `badge ${me.developer.tier}`;
+      document.getElementById("dev-tier-name").textContent = me.tier?.name || "";
+      document.getElementById("dev-verified").textContent = me.developer.verified ? "Yes" : "No";
+      document.getElementById("dev-key-count").textContent = me.developer.keyCount;
+      const max = me.tier?.maxKeysPerDeveloper;
+      document.getElementById("dev-key-max").textContent = max === Infinity || max == null ? "unlimited" : `of ${max} allowed`;
+    }
+
+    function renderUsage(usage, tierInfo) {
+      const cur = usage.currentMonth || {};
+      document.getElementById("usage-requests").textContent = (cur.requests || 0).toLocaleString();
+      document.getElementById("usage-period").textContent = `Period: ${usage.period}`;
+      const limit = cur.limit;
+      const limitText = limit === Infinity || limit == null ? "unlimited" : limit.toLocaleString();
+      document.getElementById("usage-limit").textContent = `of ${limitText}`;
+      const remaining = cur.remaining;
+      document.getElementById("usage-remaining").textContent =
+        remaining === Infinity || remaining == null ? "\u221e" : remaining.toLocaleString();
+      const pct = limit && limit !== Infinity ? Math.min(100, (cur.requests / limit) * 100) : 0;
+      document.getElementById("usage-bar").style.width = `${pct}%`;
+      const rate = tierInfo?.rateLimitPerMinute ?? 60;
+      document.getElementById("usage-rate").textContent = `${rate}/min`;
+      if (cur.resetAt) {
+        document.getElementById("usage-reset").textContent = new Date(cur.resetAt).toLocaleDateString();
+      }
+    }
+
+    function renderKeys(keys) {
+      const body = document.getElementById("keys-body");
+      if (!keys.length) {
+        body.innerHTML = '<tr><td colspan="6" class="muted">No API keys yet. Create one above.</td></tr>';
+        return;
+      }
+      body.innerHTML = "";
+      for (const k of keys) {
+        const tr = document.createElement("tr");
+        const revoked = Boolean(k.revokedAt);
+        tr.innerHTML = `
+          <td>${escapeHtml(k.label)}</td>
+          <td><code>${escapeHtml(k.masked)}</code></td>
+          <td><span class="badge ${k.tier}">${k.tier}</span></td>
+          <td>${new Date(k.createdAt).toLocaleDateString()}</td>
+          <td>${revoked ? '<span class="badge revoked">revoked</span>' : "active"}</td>
+          <td></td>
+        `;
+        const actionCell = tr.lastElementChild;
+        if (!revoked) {
+          const btn = document.createElement("button");
+          btn.className = "danger";
+          btn.textContent = "Revoke";
+          btn.addEventListener("click", () => revokeKey(k.keyId));
+          actionCell.appendChild(btn);
+        }
+        body.appendChild(tr);
+      }
+    }
+
+    async function revokeKey(keyId) {
+      if (!confirm("Revoke this key? This cannot be undone.")) return;
+      try {
+        await api(`/developer/keys/${encodeURIComponent(keyId)}`, { method: "DELETE" });
+        refreshDashboard();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    document.getElementById("create-key-btn").addEventListener("click", async () => {
+      const label = document.getElementById("new-key-label").value.trim();
+      const notice = document.getElementById("new-key-notice");
+      notice.className = "";
+      notice.innerHTML = "";
+      try {
+        const res = await api("/developer/keys", {
+          method: "POST",
+          body: JSON.stringify({ label }),
+        });
+        const warn = document.createElement("div");
+        warn.className = "notice success";
+        warn.innerHTML =
+          `<strong>Copy this key now — it will not be shown again:</strong>` +
+          `<div class="key-display">${escapeHtml(res.key)}</div>`;
+        notice.replaceWith(warn);
+        warn.id = "new-key-notice";
+        document.getElementById("new-key-label").value = "";
+        refreshDashboard();
+      } catch (err) {
+        setNotice(notice, err.message, "error");
+      }
+    });
+
+    document.getElementById("upgrade-btn").addEventListener("click", async () => {
+      const tier = document.getElementById("upgrade-select").value;
+      const notice = document.getElementById("upgrade-notice");
+      try {
+        const res = await api("/developer/upgrade", {
+          method: "POST",
+          body: JSON.stringify({ tier }),
+        });
+        setNotice(notice, `Tier changed from ${res.previousTier} to ${res.tier}.`, "success");
+        refreshDashboard();
+      } catch (err) {
+        setNotice(notice, err.message, "error");
+      }
+    });
+
+    function escapeHtml(s) {
+      return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+      })[c]);
+    }
+
+    // Bootstrap
+    if (localStorage.getItem(LS_KEY)) {
+      api("/developer/me").then(enterDashboard).catch(() => {
+        localStorage.removeItem(LS_KEY);
+        enterAuth();
+      });
+    } else {
+      enterAuth();
+    }
+  </script>
+</body>
+</html>

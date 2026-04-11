@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, mkdirSync, existsSync } from "fs";
+import { writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 
 const testDataDir = "/tmp/audit-query-test-" + Date.now();

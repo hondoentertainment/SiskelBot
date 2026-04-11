@@ -1,6 +1,6 @@
 {
   "name": "experimentagent",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Siskel Bot — realtime streaming assistant proxy for Ollama, vLLM, or OpenAI",
   "type": "module",
   "main": "server.js",
@@ -40,7 +40,8 @@
     "eval:ci": "node scripts/run-eval-ci.mjs",
     "test:load": "node scripts/load-test.mjs",
     "openapi:generate": "node scripts/generate-openapi.mjs",
-    "eval:live": "node scripts/run-eval-live.mjs"
+    "eval:live": "node scripts/run-eval-live.mjs",
+    "test:integration": "node scripts/integration-test.mjs"
   },
   "engines": {
     "node": ">=18"

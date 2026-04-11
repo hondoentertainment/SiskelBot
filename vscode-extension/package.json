@@ -2,7 +2,7 @@
   "name": "siskelbot-vscode",
   "displayName": "SiskelBot",
   "description": "SiskelBot assistant integration for VS Code",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "publisher": "siskelbot",
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Other"],

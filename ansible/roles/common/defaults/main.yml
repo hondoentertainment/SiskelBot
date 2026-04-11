@@ -1,0 +1,32 @@
+---
+# Defaults for the common role.
+siskelbot_user: "siskelbot"
+siskelbot_group: "siskelbot"
+
+enable_firewall: true
+enable_ssh_hardening: true
+
+common_base_packages:
+  - curl
+  - wget
+  - git
+  - ca-certificates
+  - gnupg
+  - lsb-release
+  - build-essential
+  - python3
+  - python3-pip
+  - python3-psycopg2
+  - unzip
+  - jq
+  - htop
+  - ufw
+  - certbot
+  - rsync
+  - logrotate
+  - tzdata
+
+common_firewall_ports:
+  - { port: 22, proto: tcp, rule: allow, comment: "SSH" }
+  - { port: 80, proto: tcp, rule: allow, comment: "HTTP" }
+  - { port: 443, proto: tcp, rule: allow, comment: "HTTPS" }

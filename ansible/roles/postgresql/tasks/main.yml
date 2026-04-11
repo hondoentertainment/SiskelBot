@@ -1,0 +1,97 @@
+---
+# Install PostgreSQL and create the SiskelBot database and user.
+
+- name: Ensure /etc/apt/keyrings exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download PostgreSQL APT signing key
+  ansible.builtin.get_url:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    dest: /etc/apt/keyrings/postgresql.asc
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add PostgreSQL apt repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/postgresql.asc] https://apt.postgresql.org/pub/repos/apt {{ ansible_facts['distribution_release'] }}-pgdg main"
+    filename: pgdg
+    state: present
+    update_cache: true
+
+- name: Install PostgreSQL {{ postgres_version }}
+  ansible.builtin.apt:
+    name:
+      - "postgresql-{{ postgres_version }}"
+      - "postgresql-client-{{ postgres_version }}"
+      - "postgresql-contrib-{{ postgres_version }}"
+      - "python3-psycopg2"
+    state: present
+    update_cache: true
+
+- name: Ensure PostgreSQL is started and enabled
+  ansible.builtin.service:
+    name: postgresql
+    state: started
+    enabled: true
+
+- name: Set PostgreSQL listen_addresses
+  ansible.builtin.lineinfile:
+    path: "/etc/postgresql/{{ postgres_version }}/main/postgresql.conf"
+    regexp: "^#?listen_addresses\\s*="
+    line: "listen_addresses = '{{ postgres_listen_addresses }}'"
+    state: present
+  notify: restart postgresql
+
+- name: Configure pg_hba.conf for local SCRAM auth
+  ansible.builtin.copy:
+    dest: "/etc/postgresql/{{ postgres_version }}/main/pg_hba.conf"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+    content: |
+      # Managed by Ansible -- do not edit manually
+      local   all             postgres                                peer
+      local   all             all                                     scram-sha-256
+      host    all             all             127.0.0.1/32            scram-sha-256
+      host    all             all             ::1/128                 scram-sha-256
+  notify: restart postgresql
+
+- name: Flush handlers to ensure PostgreSQL is restarted before DB ops
+  ansible.builtin.meta: flush_handlers
+
+- name: Create SiskelBot database user
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    name: "{{ postgres_user }}"
+    password: "{{ postgres_password }}"
+    state: present
+    encrypted: true
+
+- name: Create SiskelBot database
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_db:
+    name: "{{ postgres_db }}"
+    owner: "{{ postgres_user }}"
+    encoding: "{{ postgres_encoding }}"
+    lc_collate: "{{ postgres_locale }}"
+    lc_ctype: "{{ postgres_locale }}"
+    template: template0
+    state: present
+
+- name: Grant all privileges on database to user
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_privs:
+    db: "{{ postgres_db }}"
+    role: "{{ postgres_user }}"
+    type: database
+    priv: ALL
+    state: present

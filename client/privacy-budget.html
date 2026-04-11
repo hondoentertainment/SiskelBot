@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>Privacy Budget — SiskelBot</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background: #0f172a;
+      color: #e2e8f0;
+      line-height: 1.5;
+    }
+    a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+      outline: 2px solid #60a5fa;
+      outline-offset: 2px;
+    }
+    header {
+      padding: 1rem 1.5rem;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    header h1 { margin: 0; font-size: 1.25rem; font-weight: 700; }
+    header .subtitle { color: #94a3b8; font-size: 0.85rem; }
+    header nav a { color: #60a5fa; text-decoration: none; margin-left: 1rem; }
+    main {
+      padding: 1.5rem;
+      max-width: 1200px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 1.5rem;
+    }
+    @media (max-width: 800px) { main { grid-template-columns: 1fr; } }
+    .panel {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .panel h2 {
+      margin: 0 0 0.75rem 0;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #94a3b8;
+    }
+    .ledger-list { list-style: none; padding: 0; margin: 0; }
+    .ledger-list li {
+      padding: 0.75rem;
+      border-radius: 6px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      margin-bottom: 0.5rem;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .ledger-list li:hover { background: #0f172a; border-color: #475569; }
+    .ledger-list li.active { background: #1e3a5f; border-color: #60a5fa; }
+    .ledger-list li.frozen { opacity: 0.6; }
+    .ledger-name { font-size: 0.9rem; font-weight: 500; }
+    .ledger-meta { color: #94a3b8; font-size: 0.75rem; margin-top: 0.15rem; }
+    .gauge-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 0;
+    }
+    .gauge {
+      position: relative;
+      width: 240px;
+      height: 140px;
+    }
+    .gauge svg { width: 100%; height: 100%; }
+    .gauge-label {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      text-align: center;
+    }
+    .gauge-label .value {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+    .gauge-label .unit { font-size: 0.75rem; color: #94a3b8; }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.75rem;
+    }
+    .metric {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 0.75rem;
+    }
+    .metric .label { font-size: 0.7rem; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.05em; }
+    .metric .value { font-size: 1.1rem; font-weight: 600; color: #f8fafc; margin-top: 0.25rem; font-variant-numeric: tabular-nums; }
+    .progress-bar {
+      height: 10px;
+      background: #0f172a;
+      border-radius: 5px;
+      overflow: hidden;
+      border: 1px solid #334155;
+      margin-top: 0.25rem;
+    }
+    .progress-bar > div {
+      height: 100%;
+      background: linear-gradient(90deg, #34d399, #fbbf24 70%, #f87171);
+      width: 0%;
+      transition: width 0.4s ease;
+    }
+    .alert {
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      font-size: 0.85rem;
+      display: none;
+    }
+    .alert.visible { display: block; }
+    .alert.warn { background: #78350f; color: #fde68a; border: 1px solid #f59e0b; }
+    .alert.danger { background: #7f1d1d; color: #fecaca; border: 1px solid #f87171; }
+    .alert.info { background: #1e3a5f; color: #bfdbfe; border: 1px solid #60a5fa; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      font-variant-numeric: tabular-nums;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.5rem 0.6rem;
+      border-bottom: 1px solid #334155;
+    }
+    th { color: #94a3b8; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em; font-weight: 600; }
+    td.num { text-align: right; }
+    tbody tr:hover { background: #0f172a; }
+    button {
+      background: #60a5fa;
+      color: #0f172a;
+      border: none;
+      padding: 0.45rem 0.9rem;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+    button:hover { background: #93c5fd; }
+    button.secondary { background: #334155; color: #e2e8f0; }
+    button.secondary:hover { background: #475569; }
+    button.danger { background: #dc2626; color: #fff; }
+    button.danger:hover { background: #ef4444; }
+    .toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+    form.inline { display: grid; gap: 0.5rem; }
+    form.inline label { font-size: 0.75rem; color: #94a3b8; }
+    form.inline input, form.inline select {
+      background: #0f172a;
+      color: #e2e8f0;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 0.45rem 0.6rem;
+      font-size: 0.85rem;
+      width: 100%;
+    }
+    form.inline input:focus, form.inline select:focus { border-color: #60a5fa; outline: none; }
+    .empty { color: #64748b; font-size: 0.85rem; font-style: italic; }
+    .badge {
+      display: inline-block;
+      padding: 0.1rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .badge.active { background: #064e3b; color: #d1fae5; border: 1px solid #34d399; }
+    .badge.frozen { background: #7f1d1d; color: #fecaca; border: 1px solid #f87171; }
+    .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Privacy Budget</h1>
+      <div class="subtitle">Differential privacy (ε, δ) accounting ledger</div>
+    </div>
+    <nav>
+      <a href="/">Chat</a>
+      <a href="/admin.html">Admin</a>
+    </nav>
+  </header>
+  <main>
+    <aside>
+      <section class="panel">
+        <h2>New Ledger</h2>
+        <form class="inline" id="createForm">
+          <label>Name
+            <input type="text" name="name" placeholder="Training run A" required>
+          </label>
+          <label>Total ε (epsilon)
+            <input type="number" name="epsilon" step="0.01" min="0" value="1.0" required>
+          </label>
+          <label>Total δ (delta)
+            <input type="number" name="delta" step="any" min="0" max="0.999" value="0.00001" required>
+          </label>
+          <button type="submit">Create ledger</button>
+        </form>
+      </section>
+      <section class="panel">
+        <h2>Ledgers</h2>
+        <ul class="ledger-list" id="ledgerList">
+          <li class="empty">Loading...</li>
+        </ul>
+      </section>
+    </aside>
+    <section>
+      <div class="alert" id="alertBox"></div>
+      <div class="panel" id="summary">
+        <h2>Select a ledger</h2>
+        <p class="empty">Create or pick a ledger from the sidebar.</p>
+      </div>
+      <div class="panel" id="spendPanel" style="display:none;">
+        <h2>Record Privacy Loss</h2>
+        <form class="inline" id="recordForm" style="grid-template-columns: 1fr 1fr 1fr auto; align-items:end;">
+          <label>ε spent
+            <input type="number" name="epsilon" step="any" min="0" value="0.1" required>
+          </label>
+          <label>δ spent
+            <input type="number" name="delta" step="any" min="0" value="0.000001" required>
+          </label>
+          <label>Operation
+            <input type="text" name="operation" placeholder="dp-sgd epoch 1" required>
+          </label>
+          <button type="submit">Record</button>
+        </form>
+        <div class="toolbar" style="margin-top:0.75rem;">
+          <button class="secondary" id="exportJsonBtn">Export JSON</button>
+          <button class="secondary" id="exportCsvBtn">Export CSV</button>
+          <button class="danger" id="freezeBtn">Freeze Ledger</button>
+          <button class="secondary" id="deleteBtn">Delete</button>
+        </div>
+      </div>
+      <div class="panel" id="historyPanel" style="display:none;">
+        <h2>Spend History</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Operation</th>
+              <th class="num">ε</th>
+              <th class="num">δ</th>
+              <th class="num">cum ε</th>
+              <th class="num">cum δ</th>
+            </tr>
+          </thead>
+          <tbody id="historyBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script type="module">
+    const apiBase = "/api/v1";
+    let ledgers = [];
+    let currentId = null;
+
+    async function api(path, options = {}) {
+      const res = await fetch(apiBase + path, {
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        ...options,
+      });
+      if (!res.ok) {
+        let msg = `${res.status} ${res.statusText}`;
+        try {
+          const body = await res.json();
+          if (body && body.message) msg = body.message;
+          else if (body && body.error) msg = body.error;
+        } catch { /* ignore */ }
+        throw new Error(msg);
+      }
+      return res.json();
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]),
+      );
+    }
+
+    function showAlert(type, message) {
+      const el = document.getElementById("alertBox");
+      el.className = `alert visible ${type}`;
+      el.textContent = message;
+    }
+    function hideAlert() {
+      document.getElementById("alertBox").classList.remove("visible");
+    }
+
+    async function loadLedgers() {
+      const data = await api("/privacy/ledgers");
+      ledgers = data.ledgers || [];
+      renderLedgerList();
+    }
+
+    function renderLedgerList() {
+      const list = document.getElementById("ledgerList");
+      list.innerHTML = "";
+      if (ledgers.length === 0) {
+        list.innerHTML = '<li class="empty">No ledgers yet.</li>';
+        return;
+      }
+      for (const l of ledgers) {
+        const li = document.createElement("li");
+        li.className = [
+          l.id === currentId ? "active" : "",
+          l.frozen ? "frozen" : "",
+        ].filter(Boolean).join(" ");
+        const pctEps = l.budget.epsilon > 0 ? (l.spent.epsilon / l.budget.epsilon) * 100 : 0;
+        li.innerHTML = `
+          <div class="ledger-name">${escapeHtml(l.name || l.id)}</div>
+          <div class="ledger-meta">
+            ε ${l.spent.epsilon.toFixed(3)} / ${l.budget.epsilon.toFixed(3)}
+            (${pctEps.toFixed(1)}%)
+            ${l.frozen ? '<span class="badge frozen">Frozen</span>' : '<span class="badge active">Active</span>'}
+          </div>
+        `;
+        li.addEventListener("click", () => selectLedger(l.id));
+        list.appendChild(li);
+      }
+    }
+
+    function gaugeSVG(pct) {
+      const clamped = Math.max(0, Math.min(1, pct));
+      // Half-circle gauge from 180° to 360°
+      const r = 80;
+      const cx = 120;
+      const cy = 120;
+      const startAngle = Math.PI; // 180°
+      const endAngle = Math.PI + Math.PI * clamped;
+      const x1 = cx + r * Math.cos(startAngle);
+      const y1 = cy + r * Math.sin(startAngle);
+      const x2 = cx + r * Math.cos(endAngle);
+      const y2 = cy + r * Math.sin(endAngle);
+      const largeArc = clamped > 0.5 ? 1 : 0;
+      const color = clamped < 0.7 ? "#34d399" : clamped < 0.9 ? "#fbbf24" : "#f87171";
+      const bg = `<path d="M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}" stroke="#334155" stroke-width="14" fill="none" stroke-linecap="round"/>`;
+      const fg = clamped > 0
+        ? `<path d="M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}" stroke="${color}" stroke-width="14" fill="none" stroke-linecap="round"/>`
+        : "";
+      return `<svg viewBox="0 0 240 140">${bg}${fg}</svg>`;
+    }
+
+    async function selectLedger(id) {
+      currentId = id;
+      renderLedgerList();
+      hideAlert();
+      const { ledger } = await api(`/privacy/ledgers/${id}`);
+      const status = await api(`/privacy/ledgers/${id}/remaining`);
+      renderSummary(ledger, status);
+      renderHistory(ledger);
+      document.getElementById("spendPanel").style.display = "";
+      document.getElementById("historyPanel").style.display = "";
+
+      const pct = status.utilization.epsilon;
+      if (ledger.frozen) {
+        showAlert("danger", `Ledger is frozen: ${ledger.frozenReason || "budget exhausted"}. No further operations allowed.`);
+      } else if (pct >= 0.9) {
+        showAlert("danger", `Critical: ${(pct * 100).toFixed(1)}% of ε budget consumed.`);
+      } else if (pct >= 0.7) {
+        showAlert("warn", `Warning: approaching ε budget limit (${(pct * 100).toFixed(1)}% used).`);
+      } else {
+        showAlert("info", `Healthy: ${(pct * 100).toFixed(1)}% of ε budget consumed.`);
+      }
+    }
+
+    function renderSummary(ledger, status) {
+      const summary = document.getElementById("summary");
+      const pct = status.utilization.epsilon;
+      summary.innerHTML = `
+        <h2>${escapeHtml(ledger.name || ledger.id)}</h2>
+        <div class="gauge-wrap">
+          <div class="gauge">
+            ${gaugeSVG(pct)}
+            <div class="gauge-label">
+              <div class="value">${(pct * 100).toFixed(1)}%</div>
+              <div class="unit">of ε budget consumed</div>
+            </div>
+          </div>
+        </div>
+        <div class="metrics">
+          <div class="metric">
+            <div class="label">ε budget</div>
+            <div class="value">${ledger.budget.epsilon.toFixed(4)}</div>
+          </div>
+          <div class="metric">
+            <div class="label">ε spent</div>
+            <div class="value">${ledger.spent.epsilon.toFixed(4)}</div>
+          </div>
+          <div class="metric">
+            <div class="label">ε remaining</div>
+            <div class="value">${status.remaining.epsilon.toFixed(4)}</div>
+            <div class="progress-bar"><div style="width:${(pct * 100).toFixed(1)}%"></div></div>
+          </div>
+          <div class="metric">
+            <div class="label">δ budget</div>
+            <div class="value mono">${ledger.budget.delta.toExponential(2)}</div>
+          </div>
+          <div class="metric">
+            <div class="label">δ spent</div>
+            <div class="value mono">${ledger.spent.delta.toExponential(2)}</div>
+          </div>
+          <div class="metric">
+            <div class="label">δ remaining</div>
+            <div class="value mono">${status.remaining.delta.toExponential(2)}</div>
+          </div>
+          <div class="metric">
+            <div class="label">Operations</div>
+            <div class="value">${ledger.entries.length}</div>
+          </div>
+          <div class="metric">
+            <div class="label">Status</div>
+            <div class="value">
+              ${ledger.frozen ? '<span class="badge frozen">Frozen</span>' : '<span class="badge active">Active</span>'}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderHistory(ledger) {
+      const tbody = document.getElementById("historyBody");
+      tbody.innerHTML = "";
+      if (!ledger.entries || ledger.entries.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty">No spend entries yet.</td></tr>';
+        return;
+      }
+      let cumEps = 0;
+      let cumDelta = 0;
+      for (const entry of ledger.entries) {
+        cumEps += entry.epsilon;
+        cumDelta += entry.delta;
+        const tr = document.createElement("tr");
+        const when = new Date(entry.at).toLocaleString();
+        const op = entry.operation?.label || "";
+        tr.innerHTML = `
+          <td>${escapeHtml(when)}</td>
+          <td>${escapeHtml(op)}</td>
+          <td class="num mono">${entry.epsilon.toFixed(4)}</td>
+          <td class="num mono">${entry.delta.toExponential(2)}</td>
+          <td class="num mono">${cumEps.toFixed(4)}</td>
+          <td class="num mono">${cumDelta.toExponential(2)}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
+    document.getElementById("createForm").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const form = new FormData(ev.target);
+      try {
+        const { ledger } = await api("/privacy/ledgers", {
+          method: "POST",
+          body: JSON.stringify({
+            name: form.get("name"),
+            epsilon: Number(form.get("epsilon")),
+            delta: Number(form.get("delta")),
+          }),
+        });
+        ev.target.reset();
+        await loadLedgers();
+        selectLedger(ledger.id);
+      } catch (err) {
+        showAlert("danger", "Create failed: " + err.message);
+      }
+    });
+
+    document.getElementById("recordForm").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      if (!currentId) return;
+      const form = new FormData(ev.target);
+      try {
+        await api(`/privacy/ledgers/${currentId}/record`, {
+          method: "POST",
+          body: JSON.stringify({
+            epsilon: Number(form.get("epsilon")),
+            delta: Number(form.get("delta")),
+            operation: { label: form.get("operation") },
+          }),
+        });
+        await loadLedgers();
+        await selectLedger(currentId);
+      } catch (err) {
+        showAlert("danger", "Record failed: " + err.message);
+      }
+    });
+
+    document.getElementById("exportJsonBtn").addEventListener("click", () => {
+      if (!currentId) return;
+      window.open(`${apiBase}/privacy/ledgers/${currentId}/export?format=json`, "_blank");
+    });
+    document.getElementById("exportCsvBtn").addEventListener("click", () => {
+      if (!currentId) return;
+      window.open(`${apiBase}/privacy/ledgers/${currentId}/export?format=csv`, "_blank");
+    });
+
+    document.getElementById("freezeBtn").addEventListener("click", async () => {
+      if (!currentId) return;
+      if (!confirm("Freeze this ledger? No further operations can be recorded.")) return;
+      try {
+        await api(`/privacy/ledgers/${currentId}/freeze`, {
+          method: "POST",
+          body: JSON.stringify({ reason: "manual freeze via UI" }),
+        });
+        await loadLedgers();
+        await selectLedger(currentId);
+      } catch (err) {
+        showAlert("danger", "Freeze failed: " + err.message);
+      }
+    });
+
+    document.getElementById("deleteBtn").addEventListener("click", async () => {
+      if (!currentId) return;
+      if (!confirm("Delete this ledger permanently? This cannot be undone.")) return;
+      try {
+        await api(`/privacy/ledgers/${currentId}`, { method: "DELETE" });
+        currentId = null;
+        document.getElementById("summary").innerHTML = '<h2>Select a ledger</h2><p class="empty">Create or pick a ledger from the sidebar.</p>';
+        document.getElementById("spendPanel").style.display = "none";
+        document.getElementById("historyPanel").style.display = "none";
+        hideAlert();
+        await loadLedgers();
+      } catch (err) {
+        showAlert("danger", "Delete failed: " + err.message);
+      }
+    });
+
+    loadLedgers().catch((err) => showAlert("danger", "Load failed: " + err.message));
+  </script>
+</body>
+</html>

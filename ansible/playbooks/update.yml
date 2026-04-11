@@ -1,0 +1,90 @@
+---
+# Update an existing SiskelBot install to the latest commit on the configured branch.
+# Performs: git pull, npm ci, re-render .env, restart service, health check.
+#
+# Usage:
+#   ansible-playbook playbooks/update.yml
+#   ansible-playbook playbooks/update.yml -e siskelbot_branch=release/1.2
+
+- name: Update SiskelBot
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars_files:
+    - ../roles/siskelbot/defaults/main.yml
+
+  tasks:
+    - name: Record running version before update
+      ansible.builtin.command: git rev-parse HEAD
+      args:
+        chdir: "{{ siskelbot_install_dir }}"
+      become_user: "{{ siskelbot_user }}"
+      register: old_rev
+      changed_when: false
+      failed_when: false
+
+    - name: Fetch latest from remote
+      become_user: "{{ siskelbot_user }}"
+      ansible.builtin.git:
+        repo: "{{ siskelbot_repo }}"
+        dest: "{{ siskelbot_install_dir }}"
+        version: "{{ siskelbot_branch }}"
+        force: true
+      register: git_pull
+
+    - name: Record new version
+      ansible.builtin.command: git rev-parse HEAD
+      args:
+        chdir: "{{ siskelbot_install_dir }}"
+      become_user: "{{ siskelbot_user }}"
+      register: new_rev
+      changed_when: false
+
+    - name: Install dependencies (npm ci)
+      become_user: "{{ siskelbot_user }}"
+      ansible.builtin.command:
+        cmd: npm ci --omit=dev
+        chdir: "{{ siskelbot_install_dir }}"
+      environment:
+        NODE_ENV: "{{ siskelbot_node_env }}"
+      when: old_rev.stdout != new_rev.stdout
+
+    - name: Run database migrations if present
+      become_user: "{{ siskelbot_user }}"
+      ansible.builtin.command:
+        cmd: node bin/siskelbot.js migrate
+        chdir: "{{ siskelbot_install_dir }}"
+      environment:
+        NODE_ENV: "{{ siskelbot_node_env }}"
+      when: old_rev.stdout != new_rev.stdout
+      failed_when: false
+      changed_when: false
+
+    - name: Re-render .env file
+      ansible.builtin.template:
+        src: ../roles/siskelbot/templates/env.j2
+        dest: "{{ siskelbot_install_dir }}/.env"
+        owner: "{{ siskelbot_user }}"
+        group: "{{ siskelbot_group }}"
+        mode: "0600"
+      no_log: true
+
+    - name: Restart SiskelBot service
+      ansible.builtin.systemd:
+        name: siskelbot
+        state: restarted
+        daemon_reload: true
+
+    - name: Wait for health endpoint
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ siskelbot_port }}/health"
+        status_code: 200
+      register: health_check
+      retries: 30
+      delay: 2
+      until: health_check.status == 200
+
+    - name: Report update result
+      ansible.builtin.debug:
+        msg: "Updated SiskelBot from {{ old_rev.stdout | default('unknown') }} to {{ new_rev.stdout }}"

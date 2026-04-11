@@ -1,0 +1,27 @@
+name = "siskelbot-edge"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+workers_dev = false
+
+# Origin URL — overridable per environment via `wrangler secret put` if needed.
+[vars]
+ORIGIN_URL = "https://api.siskelbot.example.com"
+
+# Route(s) on which the worker is invoked. Replace with your own zone.
+[[routes]]
+pattern = "siskelbot.example.com/*"
+zone_name = "siskelbot.example.com"
+
+# Optional: separate staging environment.
+[env.staging]
+name = "siskelbot-edge-staging"
+[env.staging.vars]
+ORIGIN_URL = "https://staging.api.siskelbot.example.com"
+[[env.staging.routes]]
+pattern = "staging.siskelbot.example.com/*"
+zone_name = "siskelbot.example.com"
+
+# Observability — Workers Analytics Engine binding (optional).
+# [[analytics_engine_datasets]]
+# binding = "EDGE_ANALYTICS"
+# dataset = "siskelbot_edge_cache"

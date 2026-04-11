@@ -132,6 +132,54 @@ Commands:
   config                      Show current config (backend, url, auth status)
     --url, --api-key, --json
 
+  fine-tune export            Export conversations to JSONL for fine-tuning
+    --format <fmt>            Format: openai (default), alpaca, sharegpt
+    --min-rating <n>          Only include conversations with feedback >= n (1-5)
+    --date-from <iso>         Only include conversations created on/after date
+    --date-to <iso>           Only include conversations created on/before date
+    --max-examples <n>        Maximum examples to export
+    --output <file>           Write to file instead of stdout
+    --url, --api-key, --workspace, --json
+  fine-tune create            Create a fine-tune job
+    --file <path>             JSONL training file path (required)
+    --model <name>            Base model (e.g. gpt-4o-mini) (required)
+    --suffix <s>              Optional suffix for the fine-tuned model
+    --validation-file <path>  Optional validation JSONL file path
+    --provider <p>            Provider: openai (default) or local
+    --url, --api-key, --workspace, --json
+  fine-tune list              List fine-tune jobs in the workspace
+    --url, --api-key, --workspace, --json
+  fine-tune status <jobId>    Show status of a fine-tune job
+    --url, --api-key, --workspace, --json
+
+  models list                  List offline model catalog (and what's downloaded)
+    --downloaded              Show only downloaded models
+    --recommend               Show device recommendations
+    --ram <gb>                Device RAM in GB (with --recommend)
+    --storage <gb>            Device storage in GB (with --recommend)
+    --json
+  models download <id>         Download a model from the offline catalog
+    --skip-checksum           Skip SHA-256 verification (placeholder catalog)
+    --json
+  models remove <id>           Delete a downloaded model
+    --json
+  models verify <id>           Re-hash a downloaded model and verify integrity
+    --json
+  models bundle                Create an offline bundle (tarball) for distribution
+    --models <id1,id2,...>    Comma-separated model ids (required)
+    --output <path>           Output path for the .tar.gz file (required)
+    --json
+
+  tokenize                     Byte-Pair Encoding tokenizer (Karpathy's minBPE)
+    --text "..."              Tokenize the given text using the last trained model
+    --train <file>            Train a new tokenizer on the contents of <file>
+    --vocab-size <n>          Target vocab size (>= 256, default 512)
+    --model <path>            Path to a .model file to load (or save to with --train)
+    --kind basic|regex        Tokenizer kind (default: regex)
+    --decode "1,2,3"          Decode a comma-separated list of ids back to text
+    --count                   Just print the token count for --text
+    --json                    Machine-readable output
+
 Environment:
   SISKELBOT_URL               Base URL (default: http://localhost:3000)
   SISKELBOT_API_KEY           API key (also API_KEY)
@@ -674,6 +722,381 @@ async function cmdExport(baseUrl, apiKey, conversationId, workspace, json) {
   }
 }
 
+async function cmdFineTuneExport(baseUrl, apiKey, workspace, json) {
+  const format = getFlag("--format") || "openai";
+  const minRating = getFlag("--min-rating");
+  const dateFrom = getFlag("--date-from");
+  const dateTo = getFlag("--date-to");
+  const maxExamples = getFlag("--max-examples");
+  const output = getFlag("--output");
+
+  const body = { workspace, format };
+  if (minRating != null) body.minRating = Number(minRating);
+  if (dateFrom) body.dateFrom = dateFrom;
+  if (dateTo) body.dateTo = dateTo;
+  if (maxExamples != null) body.maxExamples = Number(maxExamples);
+
+  try {
+    const data = await apiPost(baseUrl, apiKey, "/api/v1/fine-tune/export", body);
+    if (output) {
+      writeFileSync(output, data.jsonl || "");
+      if (json) {
+        console.log(JSON.stringify({ exported: output, exampleCount: data.exampleCount, estimatedTokens: data.estimatedTokens, format: data.format }));
+      } else {
+        console.log(`Exported ${data.exampleCount} example(s) (~${data.estimatedTokens} tokens) to ${output}`);
+      }
+      return;
+    }
+    if (json) {
+      console.log(JSON.stringify(data, null, 2));
+      return;
+    }
+    console.log(`Format: ${data.format}`);
+    console.log(`Examples: ${data.exampleCount}`);
+    console.log(`Estimated tokens: ${data.estimatedTokens}`);
+    if (data.jsonl) {
+      process.stdout.write(data.jsonl + "\n");
+    }
+  } catch (e) {
+    if (e.message?.includes("Connection refused")) err(e.message, 1);
+    err(e.message || String(e), 1);
+  }
+}
+
+async function cmdFineTuneCreate(baseUrl, apiKey, workspace, json) {
+  const filePath = getFlag("--file");
+  const model = getFlag("--model");
+  const suffix = getFlag("--suffix");
+  const provider = getFlag("--provider") || "openai";
+  const validationPath = getFlag("--validation-file");
+  if (!filePath) err("--file <path> is required (JSONL training file)");
+  if (!model) err("--model <name> is required");
+
+  let trainingContent;
+  try {
+    trainingContent = readFileSync(resolve(process.cwd(), filePath), "utf8");
+  } catch {
+    err(`Cannot read training file: ${filePath}`);
+  }
+  let validationContent;
+  if (validationPath) {
+    try {
+      validationContent = readFileSync(resolve(process.cwd(), validationPath), "utf8");
+    } catch {
+      err(`Cannot read validation file: ${validationPath}`);
+    }
+  }
+
+  const body = {
+    workspace,
+    model,
+    provider,
+    trainingFile: trainingContent,
+  };
+  if (validationContent) body.validationFile = validationContent;
+  if (suffix) body.suffix = suffix;
+
+  try {
+    const data = await apiPost(baseUrl, apiKey, "/api/v1/fine-tune/jobs", body);
+    if (json) {
+      console.log(JSON.stringify(data, null, 2));
+      return;
+    }
+    console.log(`Fine-tune job created: ${data.jobId} (status: ${data.status}, provider: ${data.provider})`);
+  } catch (e) {
+    if (e.message?.includes("Connection refused")) err(e.message, 1);
+    err(e.message || String(e), 1);
+  }
+}
+
+async function cmdFineTuneList(baseUrl, apiKey, workspace, json) {
+  try {
+    const data = await apiGet(baseUrl, apiKey, "/api/v1/fine-tune/jobs", workspace);
+    if (json) {
+      console.log(JSON.stringify(data, null, 2));
+      return;
+    }
+    const items = data?.items || [];
+    if (items.length === 0) {
+      console.log("No fine-tune jobs.");
+      return;
+    }
+    for (const j of items) {
+      console.log(`- ${j.jobId}  ${j.model}  ${j.status}  (${j.provider})  ${j.createdAt}`);
+    }
+  } catch (e) {
+    if (e.message?.includes("Connection refused")) err(e.message, 1);
+    err(e.message || String(e), 1);
+  }
+}
+
+async function cmdFineTuneStatus(baseUrl, apiKey, jobId, workspace, json) {
+  if (!jobId) err("Usage: siskelbot fine-tune status <jobId>");
+  try {
+    const data = await apiGet(baseUrl, apiKey, `/api/v1/fine-tune/jobs/${encodeURIComponent(jobId)}`, workspace);
+    if (json) {
+      console.log(JSON.stringify(data, null, 2));
+      return;
+    }
+    console.log(`Job: ${data.jobId}`);
+    console.log(`Model: ${data.model}`);
+    console.log(`Status: ${data.status}`);
+    console.log(`Provider: ${data.provider}`);
+    console.log(`Created: ${data.createdAt}`);
+    if (data.fineTunedModel) console.log(`Fine-tuned model: ${data.fineTunedModel}`);
+  } catch (e) {
+    if (e.message?.includes("Connection refused")) err(e.message, 1);
+    err(e.message || String(e), 1);
+  }
+}
+
+function formatBytes(n) {
+  if (!Number.isFinite(n) || n <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  let v = n;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i += 1;
+  }
+  return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+async function cmdModelsList(json) {
+  const showDownloaded = hasFlag("--downloaded");
+  const recommend = hasFlag("--recommend");
+  const mod = await import("../lib/offline-models.js");
+
+  if (recommend) {
+    const ramGB = Number(getFlag("--ram") || 0);
+    const storageGB = Number(getFlag("--storage") || 0);
+    const result = await mod.getModelRecommendations({ ramGB, storageGB });
+    if (json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    console.log(`Device: ${ramGB || "?"}GB RAM, ${storageGB || "?"}GB storage`);
+    console.log("\nRecommended:");
+    if (result.recommended.length === 0) console.log("  (none fit)");
+    for (const m of result.recommended) {
+      console.log(`  - ${m.id}  ${m.name}  ${formatBytes(m.sizeBytes)}  [${(m.capabilities || []).join(",")}]`);
+    }
+    if (result.excluded.length > 0) {
+      console.log("\nExcluded:");
+      for (const e of result.excluded) {
+        console.log(`  - ${e.id}: ${e.reasons.join("; ")}`);
+      }
+    }
+    return;
+  }
+
+  if (showDownloaded) {
+    const items = await mod.listDownloadedModels();
+    if (json) {
+      console.log(JSON.stringify({ items }, null, 2));
+      return;
+    }
+    if (items.length === 0) {
+      console.log("No models downloaded.");
+      return;
+    }
+    for (const m of items) {
+      console.log(`- ${m.id}  ${m.name}  ${formatBytes(m.sizeBytes)}  ${m.path}`);
+    }
+    return;
+  }
+
+  const items = await mod.listAvailableModels();
+  if (json) {
+    console.log(JSON.stringify({ items }, null, 2));
+    return;
+  }
+  console.log("Offline model catalog:");
+  for (const m of items) {
+    console.log(`- ${m.id}  ${m.name}  ${formatBytes(m.sizeBytes)}  [${m.capabilities.join(",")}]  (min ${m.minRamGB}GB RAM)`);
+  }
+}
+
+async function cmdModelsDownload(id, json) {
+  if (!id) err("Usage: siskelbot models download <model-id>");
+  const mod = await import("../lib/offline-models.js");
+  const skipChecksum = hasFlag("--skip-checksum");
+
+  let lastPercent = -1;
+  try {
+    const result = await mod.downloadModel(id, {
+      skipChecksum,
+      onProgress: ({ percent, received, total }) => {
+        if (json) return;
+        if (percent !== lastPercent) {
+          lastPercent = percent;
+          process.stdout.write(`\r  ${percent}%  ${formatBytes(received)} / ${formatBytes(total)}      `);
+        }
+      },
+    });
+    if (json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    process.stdout.write("\n");
+    console.log(`Downloaded: ${result.path}`);
+    console.log(`Size:       ${formatBytes(result.size)}`);
+    console.log(`SHA-256:    ${result.checksum}`);
+  } catch (e) {
+    if (!json) process.stdout.write("\n");
+    err(e.message || String(e));
+  }
+}
+
+async function cmdModelsRemove(id, json) {
+  if (!id) err("Usage: siskelbot models remove <model-id>");
+  const mod = await import("../lib/offline-models.js");
+  const result = await mod.deleteDownloadedModel(id);
+  if (json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  console.log(result.deleted ? `Removed: ${result.path}` : `Not found: ${result.path}`);
+}
+
+async function cmdModelsVerify(id, json) {
+  if (!id) err("Usage: siskelbot models verify <model-id>");
+  const mod = await import("../lib/offline-models.js");
+  const result = await mod.verifyModelIntegrity(id);
+  if (json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  console.log(`OK:       ${result.ok}`);
+  console.log(`Checksum: ${result.checksum || "(n/a)"}`);
+  console.log(`Expected: ${result.expected || "(n/a)"}`);
+  if (result.reason) console.log(`Note:     ${result.reason}`);
+}
+
+async function cmdModelsBundle(json) {
+  const modelsFlag = getFlag("--models");
+  const output = getFlag("--output");
+  if (!modelsFlag) err("Usage: siskelbot models bundle --models <id1,id2,...> --output <path>");
+  if (!output) err("--output <path> is required");
+  const ids = modelsFlag.split(",").map((s) => s.trim()).filter(Boolean);
+  if (ids.length === 0) err("--models cannot be empty");
+  const mod = await import("../lib/offline-models.js");
+  try {
+    const result = await mod.createOfflineBundle(ids, output);
+    if (json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    console.log(`Bundle:   ${result.path}`);
+    console.log(`Models:   ${result.models.join(", ")}`);
+    console.log(`Total:    ${formatBytes(result.totalBytes)}`);
+    if (result.warning) console.log(`Warning:  ${result.warning}`);
+    if (result.manifestPath) console.log(`Manifest: ${result.manifestPath}`);
+  } catch (e) {
+    err(e.message || String(e));
+  }
+}
+
+async function cmdTokenize(json) {
+  const mod = await import("../lib/bpe-tokenizer.js");
+  const kindFlag = getFlag("--kind");
+  const kind = kindFlag === "basic" ? "basic" : "regex";
+  const modelPath = getFlag("--model");
+  const trainFile = getFlag("--train");
+  const text = getFlag("--text");
+  const decodeArg = getFlag("--decode");
+  const vocabFlag = getFlag("--vocab-size");
+  const vocabSize = vocabFlag ? Number(vocabFlag) : 512;
+  const countOnly = hasFlag("--count");
+
+  if (!trainFile && !text && !decodeArg) {
+    err(
+      'Usage: siskelbot tokenize --text "hello" | --train <file> --vocab-size 1024 | --decode "1,2,3"',
+    );
+  }
+  if (vocabFlag && (!Number.isFinite(vocabSize) || vocabSize < 256)) {
+    err("--vocab-size must be an integer >= 256");
+  }
+
+  const tokenizer =
+    kind === "basic" ? new mod.BasicBPETokenizer() : new mod.RegexBPETokenizer();
+
+  if (trainFile) {
+    if (!existsSync(trainFile)) err(`File not found: ${trainFile}`);
+    const corpus = readFileSync(trainFile, "utf8");
+    const started = Date.now();
+    tokenizer.train(corpus, Math.floor(vocabSize), false);
+    const elapsed = Date.now() - started;
+    if (modelPath) tokenizer.save(modelPath);
+    if (json) {
+      console.log(
+        JSON.stringify(
+          {
+            kind,
+            vocabSize: tokenizer.getVocabSize(),
+            merges: tokenizer.merges.size,
+            elapsedMs: elapsed,
+            model: modelPath || null,
+            corpusBytes: Buffer.byteLength(corpus, "utf8"),
+          },
+          null,
+          2,
+        ),
+      );
+    } else {
+      console.log(`Trained ${kind} tokenizer`);
+      console.log(`  corpus:    ${Buffer.byteLength(corpus, "utf8")} bytes`);
+      console.log(`  vocabSize: ${tokenizer.getVocabSize()}`);
+      console.log(`  merges:    ${tokenizer.merges.size}`);
+      console.log(`  elapsed:   ${elapsed} ms`);
+      if (modelPath) console.log(`  saved to:  ${modelPath}`);
+    }
+    if (!text && !decodeArg) return;
+  } else if (modelPath) {
+    if (!existsSync(modelPath)) err(`Model file not found: ${modelPath}`);
+    tokenizer.load(modelPath);
+  }
+
+  if (text) {
+    if (tokenizer.getVocabSize() === 256 && !trainFile && !modelPath) {
+      if (!json) {
+        console.error(
+          "warning: tokenizer has no merges — encoding falls back to raw bytes.",
+        );
+      }
+    }
+    const ids = tokenizer.encode(text);
+    if (countOnly) {
+      if (json) console.log(JSON.stringify({ count: ids.length }));
+      else console.log(ids.length);
+      return;
+    }
+    const decoded = tokenizer.decode(ids);
+    if (json) {
+      console.log(
+        JSON.stringify({ ids, count: ids.length, decoded }, null, 2),
+      );
+    } else {
+      console.log(`tokens (${ids.length}): ${ids.join(" ")}`);
+      console.log(`decoded: ${decoded}`);
+    }
+  }
+
+  if (decodeArg) {
+    const ids = decodeArg
+      .split(/[,\s]+/)
+      .filter(Boolean)
+      .map((s) => {
+        const n = Number(s);
+        if (!Number.isInteger(n) || n < 0) err(`invalid id: ${s}`);
+        return n;
+      });
+    const out = tokenizer.decode(ids);
+    if (json) console.log(JSON.stringify({ ids, text: out }, null, 2));
+    else console.log(out);
+  }
+}
+
 async function main() {
   const { args, json } = parseArgs();
   const baseUrl = getUrl();
@@ -718,6 +1141,21 @@ async function main() {
       await cmdSearch(baseUrl, apiKey, args[1], workspace, json);
     } else if (cmd === "export") {
       await cmdExport(baseUrl, apiKey, args[1], workspace, json);
+    } else if (cmd === "fine-tune") {
+      if (sub === "export") await cmdFineTuneExport(baseUrl, apiKey, workspace, json);
+      else if (sub === "create") await cmdFineTuneCreate(baseUrl, apiKey, workspace, json);
+      else if (sub === "list") await cmdFineTuneList(baseUrl, apiKey, workspace, json);
+      else if (sub === "status") await cmdFineTuneStatus(baseUrl, apiKey, args[2], workspace, json);
+      else err("Usage: siskelbot fine-tune export|create|list|status <jobId>");
+    } else if (cmd === "models") {
+      if (sub === "list" || sub === undefined) await cmdModelsList(json);
+      else if (sub === "download") await cmdModelsDownload(args[2], json);
+      else if (sub === "remove") await cmdModelsRemove(args[2], json);
+      else if (sub === "verify") await cmdModelsVerify(args[2], json);
+      else if (sub === "bundle") await cmdModelsBundle(json);
+      else err("Usage: siskelbot models list|download|remove|verify|bundle");
+    } else if (cmd === "tokenize") {
+      await cmdTokenize(json);
     } else {
       err(`Unknown command: ${cmd}. Run with --help for usage.`);
     }

@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>Agent Marketplace - Siskel Bot</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    a { color: #60a5fa; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible {
+      outline: 2px solid #60a5fa;
+      outline-offset: 2px;
+    }
+    header {
+      padding: 0.75rem 1rem;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      justify-content: space-between;
+    }
+    header h1 { margin: 0; font-size: 1.125rem; font-weight: 600; }
+    .header-actions { display: flex; gap: 0.5rem; align-items: center; }
+
+    main {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 1rem;
+      padding: 1rem;
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+    @media (max-width: 720px) { main { grid-template-columns: 1fr; } }
+
+    .sidebar {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 0.75rem;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .sidebar h3 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      color: #64748b;
+      margin: 0 0 0.5rem;
+      letter-spacing: 0.05em;
+    }
+    .sidebar button.cat {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: none;
+      color: #cbd5e1;
+      padding: 0.375rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.875rem;
+      cursor: pointer;
+    }
+    .sidebar button.cat:hover { background: #334155; }
+    .sidebar button.cat.active { background: #1e3a8a; color: #93c5fd; }
+
+    .content { min-width: 0; }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .toolbar input[type="search"] {
+      flex: 1;
+      min-width: 200px;
+      padding: 0.5rem 0.75rem;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.875rem;
+    }
+    .toolbar select {
+      padding: 0.5rem;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.875rem;
+    }
+
+    .section { margin-bottom: 1.75rem; }
+    .section-title {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #f1f5f9;
+      margin: 0 0 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .agent-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+    .agent-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.1s;
+    }
+    .agent-card:hover { border-color: #60a5fa; transform: translateY(-1px); }
+
+    .agent-name {
+      font-size: 1rem;
+      font-weight: 600;
+      margin: 0;
+      color: #f1f5f9;
+    }
+    .agent-author { font-size: 0.75rem; color: #64748b; }
+    .agent-description {
+      font-size: 0.8125rem;
+      color: #94a3b8;
+      margin: 0;
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .agent-meta {
+      display: flex;
+      gap: 0.75rem;
+      font-size: 0.75rem;
+      color: #64748b;
+      flex-wrap: wrap;
+      margin-top: auto;
+    }
+
+    .badge {
+      font-size: 0.6875rem;
+      padding: 0.125rem 0.5rem;
+      border-radius: 999px;
+      background: #334155;
+      color: #94a3b8;
+      text-transform: capitalize;
+      display: inline-block;
+    }
+    .badge.category { background: #1e3a8a; color: #93c5fd; }
+    .badge.tag { background: #312e81; color: #c4b5fd; }
+    .badge.featured { background: #92400e; color: #fcd34d; }
+
+    .rep-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.6875rem;
+      padding: 0.125rem 0.5rem;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+    .rep-badge.new { background: #334155; color: #94a3b8; }
+    .rep-badge.emerging { background: #1e3a8a; color: #93c5fd; }
+    .rep-badge.trusted { background: #065f46; color: #6ee7b7; }
+    .rep-badge.verified { background: #581c87; color: #d8b4fe; }
+
+    .btn {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: white;
+      background: #2563eb;
+    }
+    .btn:hover { background: #1d4ed8; }
+    .btn.secondary { background: #334155; color: #e2e8f0; }
+    .btn.secondary:hover { background: #475569; }
+    .btn.success { background: #047857; }
+    .btn.success:hover { background: #065f46; }
+    .btn.danger { background: #b91c1c; }
+    .btn.danger:hover { background: #991b1b; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: #64748b;
+    }
+    .error-msg { color: #f87171; margin-top: 0.5rem; font-size: 0.875rem; }
+
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 1.5rem;
+      max-width: 760px;
+      width: 100%;
+      max-height: 88vh;
+      overflow-y: auto;
+    }
+    .modal h2 { margin: 0 0 0.25rem; color: #f1f5f9; }
+    .modal h3 {
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      color: #94a3b8;
+      letter-spacing: 0.05em;
+      margin: 1rem 0 0.5rem;
+    }
+    .system-prompt {
+      background: #0f172a;
+      border-radius: 6px;
+      padding: 0.75rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.8125rem;
+      color: #cbd5e1;
+      max-height: 240px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .modal-actions {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: flex-end;
+      margin-top: 1.25rem;
+      flex-wrap: wrap;
+    }
+    .form-row { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.75rem; }
+    .form-row label { font-size: 0.8125rem; color: #94a3b8; }
+    .form-row input, .form-row textarea, .form-row select {
+      padding: 0.5rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.875rem;
+      font-family: inherit;
+    }
+    .form-row textarea { min-height: 100px; resize: vertical; }
+
+    .reviews-list { display: flex; flex-direction: column; gap: 0.5rem; }
+    .review-item {
+      background: #0f172a;
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.8125rem;
+    }
+    .review-stars { color: #fcd34d; }
+
+    .star-input {
+      display: flex;
+      gap: 0.25rem;
+      font-size: 1.5rem;
+      cursor: pointer;
+      color: #475569;
+    }
+    .star-input span:hover, .star-input span.active { color: #fcd34d; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Agent Marketplace</h1>
+    <div class="header-actions">
+      <a href="/">Home</a>
+      <button class="btn" id="publish-btn">Publish agent</button>
+    </div>
+  </header>
+
+  <main>
+    <aside class="sidebar">
+      <h3>Categories</h3>
+      <button class="cat active" data-category="">All</button>
+      <button class="cat" data-category="research">Research</button>
+      <button class="cat" data-category="coding">Coding</button>
+      <button class="cat" data-category="writing">Writing</button>
+      <button class="cat" data-category="analysis">Analysis</button>
+      <button class="cat" data-category="support">Support</button>
+      <button class="cat" data-category="automation">Automation</button>
+      <button class="cat" data-category="creative">Creative</button>
+      <button class="cat" data-category="data">Data</button>
+      <button class="cat" data-category="education">Education</button>
+      <button class="cat" data-category="other">Other</button>
+    </aside>
+
+    <section class="content">
+      <div class="toolbar">
+        <input type="search" id="search-input" placeholder="Search agents..." aria-label="Search agents">
+        <select id="sort-by">
+          <option value="newest">Newest</option>
+          <option value="reputation">Top reputation</option>
+          <option value="rating">Top rated</option>
+          <option value="installs">Most installed</option>
+          <option value="name">Name</option>
+        </select>
+      </div>
+
+      <div class="section" id="featured-section">
+        <div class="section-title">Featured agents</div>
+        <div id="featured-list" class="agent-grid">
+          <div class="empty-state">Loading featured...</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">All agents</div>
+        <div id="agent-list" class="agent-grid">
+          <div class="empty-state">Loading agents...</div>
+        </div>
+      </div>
+      <div id="error" class="error-msg" hidden></div>
+    </section>
+  </main>
+
+  <!-- Detail modal -->
+  <div class="modal-backdrop" id="detail-modal" role="dialog" aria-modal="true">
+    <div class="modal">
+      <h2 id="detail-name"></h2>
+      <p id="detail-author" class="agent-author"></p>
+      <p id="detail-description"></p>
+      <div id="detail-meta" class="agent-meta"></div>
+
+      <h3>System prompt</h3>
+      <pre class="system-prompt" id="detail-prompt"></pre>
+
+      <h3>Tools</h3>
+      <div id="detail-tools"></div>
+
+      <h3>Rate this agent</h3>
+      <div class="star-input" id="rating-stars" aria-label="Star rating">
+        <span data-rating="1">☆</span>
+        <span data-rating="2">☆</span>
+        <span data-rating="3">☆</span>
+        <span data-rating="4">☆</span>
+        <span data-rating="5">☆</span>
+      </div>
+      <div class="form-row">
+        <label for="rating-review">Optional review</label>
+        <textarea id="rating-review" placeholder="Share your experience..."></textarea>
+      </div>
+      <button class="btn secondary" id="submit-rating">Submit rating</button>
+
+      <h3>Reviews</h3>
+      <div class="reviews-list" id="reviews-list"></div>
+
+      <div class="modal-actions">
+        <button class="btn danger" id="modal-report">Report</button>
+        <button class="btn secondary" id="modal-close">Close</button>
+        <button class="btn success" id="modal-install">Install to workspace</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Publish modal -->
+  <div class="modal-backdrop" id="publish-modal" role="dialog" aria-modal="true">
+    <div class="modal">
+      <h2>Publish an agent</h2>
+      <form id="publish-form">
+        <div class="form-row">
+          <label for="pub-name">Name</label>
+          <input id="pub-name" required maxlength="128">
+        </div>
+        <div class="form-row">
+          <label for="pub-description">Description</label>
+          <textarea id="pub-description" maxlength="2048"></textarea>
+        </div>
+        <div class="form-row">
+          <label for="pub-category">Category</label>
+          <select id="pub-category">
+            <option value="research">Research</option>
+            <option value="coding">Coding</option>
+            <option value="writing">Writing</option>
+            <option value="analysis">Analysis</option>
+            <option value="support">Support</option>
+            <option value="automation">Automation</option>
+            <option value="creative">Creative</option>
+            <option value="data">Data</option>
+            <option value="education">Education</option>
+            <option value="other" selected>Other</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="pub-tags">Tags (comma-separated)</label>
+          <input id="pub-tags" placeholder="e.g. research, summarization">
+        </div>
+        <div class="form-row">
+          <label for="pub-model">Model</label>
+          <input id="pub-model" placeholder="e.g. gpt-4o-mini">
+        </div>
+        <div class="form-row">
+          <label for="pub-tools">Tools (comma-separated)</label>
+          <input id="pub-tools" placeholder="e.g. web_search, search_context">
+        </div>
+        <div class="form-row">
+          <label for="pub-system">System prompt</label>
+          <textarea id="pub-system" required placeholder="You are a helpful agent that..."></textarea>
+        </div>
+        <div class="form-row">
+          <label for="pub-license">License</label>
+          <input id="pub-license" value="MIT">
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn secondary" id="publish-cancel">Cancel</button>
+          <button type="submit" class="btn">Publish</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = "/api/v1/agent-marketplace";
+    let currentCategory = "";
+    let currentAgent = null;
+    let selectedRating = 0;
+
+    const featuredEl = document.getElementById("featured-list");
+    const listEl = document.getElementById("agent-list");
+    const errorEl = document.getElementById("error");
+    const searchInput = document.getElementById("search-input");
+    const sortBy = document.getElementById("sort-by");
+
+    async function fetchJSON(url, options = {}) {
+      const res = await fetch(url, {
+        headers: { "Content-Type": "application/json" },
+        ...options,
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(`${res.status} ${res.statusText} ${text}`);
+      }
+      return res.json();
+    }
+
+    function showError(msg) { errorEl.textContent = msg; errorEl.hidden = false; }
+    function clearError() { errorEl.hidden = true; }
+
+    function escapeHtml(s) {
+      return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[c]));
+    }
+
+    function reputationBadgeHtml(score, badge) {
+      const tier = badge || "new";
+      return `<span class="rep-badge ${tier}" title="Reputation ${score || 0}/100">${tier} ${score || 0}</span>`;
+    }
+
+    function agentCard(a) {
+      const author = (a.publisher && a.publisher.name) || "anonymous";
+      const tags = (a.tags || []).slice(0, 3)
+        .map((t) => `<span class="badge tag">${escapeHtml(t)}</span>`)
+        .join("");
+      return `
+        <div class="agent-card" data-id="${escapeHtml(a.marketplaceId)}">
+          <h3 class="agent-name">${escapeHtml(a.name)}</h3>
+          <div class="agent-author">by ${escapeHtml(author)}</div>
+          <p class="agent-description">${escapeHtml(a.description || "")}</p>
+          <div>
+            <span class="badge category">${escapeHtml(a.category || "other")}</span>
+            ${tags}
+            ${a.featured ? '<span class="badge featured">★ Featured</span>' : ""}
+          </div>
+          <div>${reputationBadgeHtml(a.reputationScore, a.reputationBadge)}</div>
+          <div class="agent-meta">
+            <span>★ ${(a.avgRating || 0).toFixed(1)} (${a.ratingCount || 0})</span>
+            <span>↓ ${a.installs || 0}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderInto(target, items) {
+      if (!items || items.length === 0) {
+        target.innerHTML = '<div class="empty-state">No agents found.</div>';
+        return;
+      }
+      target.innerHTML = items.map(agentCard).join("");
+      for (const card of target.querySelectorAll(".agent-card")) {
+        card.addEventListener("click", () => openDetail(card.dataset.id));
+      }
+    }
+
+    async function loadFeatured() {
+      try {
+        const data = await fetchJSON(`${API_BASE}/featured`);
+        renderInto(featuredEl, data.items || []);
+      } catch (err) {
+        featuredEl.innerHTML = '<div class="empty-state">No featured agents.</div>';
+      }
+    }
+
+    async function loadList() {
+      try {
+        listEl.innerHTML = '<div class="empty-state">Loading...</div>';
+        clearError();
+        const params = new URLSearchParams();
+        if (currentCategory) params.set("category", currentCategory);
+        if (sortBy.value) params.set("sortBy", sortBy.value);
+        const data = await fetchJSON(`${API_BASE}?${params}`);
+        renderInto(listEl, data.items || []);
+      } catch (err) {
+        showError("Failed to load agents: " + err.message);
+        listEl.innerHTML = '<div class="empty-state">Error loading agents.</div>';
+      }
+    }
+
+    async function searchAgents(q) {
+      if (!q || !q.trim()) { loadList(); return; }
+      try {
+        const data = await fetchJSON(`${API_BASE}/search?q=${encodeURIComponent(q)}`);
+        renderInto(listEl, data.items || []);
+      } catch (err) {
+        showError("Search failed: " + err.message);
+      }
+    }
+
+    async function openDetail(id) {
+      try {
+        const agent = await fetchJSON(`${API_BASE}/${encodeURIComponent(id)}`);
+        currentAgent = agent;
+        selectedRating = 0;
+        updateRatingStars(0);
+        document.getElementById("detail-name").textContent = agent.name;
+        document.getElementById("detail-author").textContent =
+          "by " + ((agent.publisher && agent.publisher.name) || "anonymous");
+        document.getElementById("detail-description").textContent = agent.description || "";
+        document.getElementById("detail-meta").innerHTML = `
+          <span class="badge category">${escapeHtml(agent.category || "other")}</span>
+          ${reputationBadgeHtml(agent.reputationScore, agent.reputationBadge)}
+          <span>★ ${(agent.avgRating || 0).toFixed(1)} (${agent.ratingCount || 0})</span>
+          <span>↓ ${agent.installs || 0} installs</span>
+          <span>Model: ${escapeHtml(agent.model || "default")}</span>
+          <span>License: ${escapeHtml(agent.license || "MIT")}</span>
+        `;
+        document.getElementById("detail-prompt").textContent = agent.systemPrompt || "(none)";
+        const tools = agent.tools || [];
+        document.getElementById("detail-tools").innerHTML = tools.length
+          ? tools.map((t) => `<span class="badge tag">${escapeHtml(t)}</span>`).join(" ")
+          : '<span class="agent-author">No tools declared</span>';
+
+        const ratings = await fetchJSON(`${API_BASE}/${encodeURIComponent(id)}/ratings`);
+        const reviewsEl = document.getElementById("reviews-list");
+        if (!ratings.reviews || ratings.reviews.length === 0) {
+          reviewsEl.innerHTML = '<div class="agent-author">No reviews yet.</div>';
+        } else {
+          reviewsEl.innerHTML = ratings.reviews.map((r) => `
+            <div class="review-item">
+              <div><span class="review-stars">${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</span> by ${escapeHtml(r.userId)}</div>
+              <div>${escapeHtml(r.review)}</div>
+            </div>
+          `).join("");
+        }
+
+        document.getElementById("detail-modal").classList.add("open");
+      } catch (err) {
+        showError("Failed to load agent: " + err.message);
+      }
+    }
+
+    function closeDetail() {
+      document.getElementById("detail-modal").classList.remove("open");
+      currentAgent = null;
+    }
+
+    function updateRatingStars(rating) {
+      const stars = document.querySelectorAll("#rating-stars span");
+      stars.forEach((s) => {
+        const value = Number(s.dataset.rating);
+        if (value <= rating) {
+          s.textContent = "★";
+          s.classList.add("active");
+        } else {
+          s.textContent = "☆";
+          s.classList.remove("active");
+        }
+      });
+    }
+
+    async function submitRating() {
+      if (!currentAgent || selectedRating < 1) {
+        showError("Select a rating first.");
+        return;
+      }
+      try {
+        const review = document.getElementById("rating-review").value;
+        await fetchJSON(`${API_BASE}/${encodeURIComponent(currentAgent.marketplaceId)}/rate`, {
+          method: "POST",
+          body: JSON.stringify({ rating: selectedRating, review }),
+        });
+        alert("Thanks for rating!");
+        openDetail(currentAgent.marketplaceId);
+      } catch (err) {
+        showError("Rating failed: " + err.message);
+      }
+    }
+
+    async function installCurrent() {
+      if (!currentAgent) return;
+      try {
+        const result = await fetchJSON(
+          `${API_BASE}/${encodeURIComponent(currentAgent.marketplaceId)}/install`,
+          { method: "POST", body: JSON.stringify({ workspace: "default" }) }
+        );
+        alert(`Installed as agent ${result.installedAgentId}`);
+        closeDetail();
+        loadList();
+      } catch (err) {
+        showError("Install failed: " + err.message);
+      }
+    }
+
+    async function reportCurrent() {
+      if (!currentAgent) return;
+      const reason = prompt("Reason: spam, abusive, malicious, broken, copyright, other");
+      if (!reason) return;
+      try {
+        await fetchJSON(
+          `${API_BASE}/${encodeURIComponent(currentAgent.marketplaceId)}/report`,
+          { method: "POST", body: JSON.stringify({ reason }) }
+        );
+        alert("Report submitted. Thank you.");
+      } catch (err) {
+        showError("Report failed: " + err.message);
+      }
+    }
+
+    function openPublish() {
+      document.getElementById("publish-modal").classList.add("open");
+    }
+    function closePublish() {
+      document.getElementById("publish-modal").classList.remove("open");
+    }
+
+    async function submitPublish(e) {
+      e.preventDefault();
+      const body = {
+        name: document.getElementById("pub-name").value.trim(),
+        description: document.getElementById("pub-description").value.trim(),
+        category: document.getElementById("pub-category").value,
+        tags: document.getElementById("pub-tags").value.split(",").map((t) => t.trim()).filter(Boolean),
+        model: document.getElementById("pub-model").value.trim(),
+        tools: document.getElementById("pub-tools").value.split(",").map((t) => t.trim()).filter(Boolean),
+        systemPrompt: document.getElementById("pub-system").value,
+        license: document.getElementById("pub-license").value.trim() || "MIT",
+      };
+      try {
+        await fetchJSON(API_BASE, { method: "POST", body: JSON.stringify(body) });
+        closePublish();
+        loadList();
+        loadFeatured();
+      } catch (err) {
+        showError("Publish failed: " + err.message);
+      }
+    }
+
+    // Wire up category sidebar
+    for (const btn of document.querySelectorAll(".cat")) {
+      btn.addEventListener("click", () => {
+        for (const b of document.querySelectorAll(".cat")) b.classList.remove("active");
+        btn.classList.add("active");
+        currentCategory = btn.dataset.category;
+        loadList();
+      });
+    }
+
+    // Wire up rating stars
+    document.querySelectorAll("#rating-stars span").forEach((s) => {
+      s.addEventListener("click", () => {
+        selectedRating = Number(s.dataset.rating);
+        updateRatingStars(selectedRating);
+      });
+    });
+
+    searchInput.addEventListener("input", (e) => {
+      clearTimeout(searchInput._timer);
+      searchInput._timer = setTimeout(() => searchAgents(e.target.value), 250);
+    });
+    sortBy.addEventListener("change", loadList);
+
+    document.getElementById("modal-close").addEventListener("click", closeDetail);
+    document.getElementById("modal-install").addEventListener("click", installCurrent);
+    document.getElementById("modal-report").addEventListener("click", reportCurrent);
+    document.getElementById("submit-rating").addEventListener("click", submitRating);
+    document.getElementById("publish-btn").addEventListener("click", openPublish);
+    document.getElementById("publish-cancel").addEventListener("click", closePublish);
+    document.getElementById("publish-form").addEventListener("submit", submitPublish);
+    document.getElementById("detail-modal").addEventListener("click", (e) => {
+      if (e.target.id === "detail-modal") closeDetail();
+    });
+    document.getElementById("publish-modal").addEventListener("click", (e) => {
+      if (e.target.id === "publish-modal") closePublish();
+    });
+
+    loadFeatured();
+    loadList();
+  </script>
+</body>
+</html>

@@ -1,0 +1,230 @@
+# Default values for siskelbot.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/hondoentertainment/siskelbot
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+service:
+  type: ClusterIP
+  port: 3000
+  targetPort: 3000
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: siskelbot.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+    # - secretName: siskelbot-tls
+    #   hosts:
+    #     - siskelbot.example.com
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+  # Custom metrics (requires Prometheus Adapter)
+  customMetrics: []
+    # - type: Pods
+    #   pods:
+    #     metric:
+    #       name: http_requests_per_second
+    #     target:
+    #       type: AverageValue
+    #       averageValue: "100"
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+  # maxUnavailable: 1
+
+# Environment variables passed directly to the container
+env:
+  - name: NODE_ENV
+    value: production
+  - name: PORT
+    value: "3000"
+  - name: BACKEND
+    value: openai
+  - name: ENABLE_METRICS
+    value: "1"
+  - name: STORAGE_PATH
+    value: /data
+
+# Environment variables from Secrets or ConfigMaps
+envFrom:
+  secretRefs: []
+    # - name: siskelbot-secrets
+  configMapRefs: []
+    # - name: siskelbot-config
+
+# Secret values to create a managed Secret (base64 will be applied by Helm)
+secrets: {}
+  # OPENAI_API_KEY: ""
+  # API_KEY: ""
+  # ADMIN_API_KEY: ""
+  # SESSION_SECRET: ""
+  # DATABASE_URL: ""
+
+# ConfigMap values
+config: {}
+  # LOG_LEVEL: info
+  # OLLAMA_URL: http://ollama:11434
+
+persistence:
+  enabled: false
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+  mountPath: /data
+  annotations: {}
+
+postgresql:
+  enabled: false
+  host: ""
+  port: 5432
+  database: siskelbot
+  username: siskelbot
+  # Password should be provided via existingSecret
+  existingSecret: ""
+  existingSecretPasswordKey: password
+
+redis:
+  enabled: false
+  host: ""
+  port: 6379
+  existingSecret: ""
+  existingSecretPasswordKey: password
+
+metrics:
+  enabled: true
+  port: 3000
+  path: /metrics
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+    namespace: ""
+
+networkPolicy:
+  enabled: false
+  ingressRules: []
+    # - from:
+    #     - namespaceSelector:
+    #         matchLabels:
+    #           name: ingress-nginx
+  egressRules: []
+    # - to:
+    #     - namespaceSelector: {}
+    #   ports:
+    #     - protocol: TCP
+    #       port: 443
+
+livenessProbe:
+  httpGet:
+    path: /health/live
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+readinessProbe:
+  httpGet:
+    path: /health/ready
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+startupProbe:
+  httpGet:
+    path: /health/live
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 5
+  failureThreshold: 30
+  successThreshold: 1
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Extra volumes and mounts for advanced use cases
+extraVolumes: []
+extraVolumeMounts: []
+
+# Topology spread constraints for HA
+topologySpreadConstraints: []
+
+# Priority class name
+priorityClassName: ""
+
+# Termination grace period
+terminationGracePeriodSeconds: 30
+
+# Update strategy for the Deployment
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0

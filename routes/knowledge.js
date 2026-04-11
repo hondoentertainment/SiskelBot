@@ -2,6 +2,15 @@ import { validate } from "../lib/validate.js";
 import { getWorkspaceChunkingConfig, setWorkspaceChunkingConfig, VALID_STRATEGIES } from "../lib/knowledge-chunking-config.js";
 import { autoDetectAndParse } from "../lib/knowledge-parsers.js";
 import { getWorkspaceKnowledgeGraph } from "../lib/knowledge-graph-store.js";
+import { hybridSearch } from "../lib/hybrid-search.js";
+import { globalEmbeddingCache } from "../lib/embedding-cache.js";
+import {
+  saveDocumentVersion,
+  getDocumentHistory,
+  getDocumentVersion,
+  rollbackDocument,
+  diffVersions,
+} from "../lib/document-versioning.js";
 
 export default function mountKnowledgeRoutes(app, deps) {
   const {
@@ -9,6 +18,7 @@ export default function mountKnowledgeRoutes(app, deps) {
     apiError,
     logRequest,
     chatAuth,
+    adminAuth,
     requireScope,
     embeddingsRateLimiter,
     knowledgeIndexRateLimiter,
@@ -61,6 +71,17 @@ export default function mountKnowledgeRoutes(app, deps) {
     }
   });
 
+  // Phase 35.2: GET /api/v1/embeddings/cache/stats — admin endpoint for embedding cache stats.
+  apiRoute("get", "/embeddings/cache/stats", adminAuth, requireScope("admin"), logRequest, async (req, res) => {
+    try {
+      const stats = globalEmbeddingCache.stats();
+      return res.json({ ok: true, stats });
+    } catch (err) {
+      console.error("Embedding cache stats error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
   apiRoute("post", "/knowledge/index",
     knowledgeIndexRateLimiter,
     requireScope("write"),
@@ -102,10 +123,24 @@ export default function mountKnowledgeRoutes(app, deps) {
     try {
       const q = (req.query?.q ?? "").toString();
       const workspace = sanitizeWorkspace(req.query?.workspace);
+      const mode = req.query?.mode || null;
       const semantic = req.query?.semantic === "1" || req.query?.semantic === "true";
+
+      // Phase 27: Support mode=hybrid|keyword|semantic via hybridSearch
+      if (mode === "hybrid" || mode === "keyword" || mode === "semantic") {
+        const limit = Math.min(Math.max(parseInt(req.query?.limit, 10) || 10, 1), 50);
+        const result = await hybridSearch(q, workspace, { mode, limit });
+        if (result.error) {
+          const status = result.code === "EMBEDDINGS_UNAVAILABLE" ? 503 : 400;
+          return res.status(status).json({ error: result.error, code: result.code });
+        }
+        return res.json(result);
+      }
+
+      // Legacy: semantic=1 flag
       const result = semantic
         ? await knowledgeSemanticSearch({ query: q, workspace })
-        : knowledgeSearch({ query: q, workspace });
+        : await knowledgeSearch({ query: q, workspace });
       if (result.error) {
         const status = result.code === "EMBEDDINGS_UNAVAILABLE" ? 503 : 400;
         return res.status(status).json({ error: result.error, code: result.code, hint: result.hint });
@@ -430,6 +465,82 @@ export default function mountKnowledgeRoutes(app, deps) {
       res.json({ found: true, path: pathEntities, relations: result.relations });
     } catch (err) {
       console.error("Knowledge graph path error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  // --- Phase 27: Document versioning endpoints ---
+
+  // GET /api/v1/documents/:id/versions — version history
+  apiRoute("get", "/documents/:id/versions", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const docId = req.params.id;
+      const limit = Math.min(Math.max(parseInt(req.query?.limit, 10) || 50, 1), 100);
+      const history = await getDocumentHistory(docId, limit, { workspace });
+      if (history.error) {
+        return apiError(res, 400, history.code || "INVALID_INPUT", history.error);
+      }
+      res.json({ docId, versions: history });
+    } catch (err) {
+      console.error("Document versions list error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  // GET /api/v1/documents/:id/versions/:versionId — specific version
+  apiRoute("get", "/documents/:id/versions/:versionId", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const result = await getDocumentVersion(req.params.id, req.params.versionId, { workspace });
+      if (result.error) {
+        const status = result.code === "NOT_FOUND" ? 404 : 400;
+        return apiError(res, status, result.code, result.error);
+      }
+      res.json(result);
+    } catch (err) {
+      console.error("Document version get error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  // POST /api/v1/documents/:id/rollback — rollback to version
+  apiRoute("post", "/documents/:id/rollback", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.body?.workspace);
+      const versionId = req.body?.versionId;
+      if (!versionId) {
+        return apiError(res, 400, "INVALID_INPUT", "versionId is required in request body");
+      }
+      const result = await rollbackDocument(req.params.id, versionId, { workspace });
+      if (result.error) {
+        const status = result.code === "NOT_FOUND" ? 404 : 400;
+        return apiError(res, status, result.code, result.error);
+      }
+      res.json(result);
+    } catch (err) {
+      console.error("Document rollback error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  // GET /api/v1/documents/:id/diff?v1=...&v2=... — diff between versions
+  apiRoute("get", "/documents/:id/diff", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const v1 = req.query?.v1;
+      const v2 = req.query?.v2;
+      if (!v1 || !v2) {
+        return apiError(res, 400, "INVALID_INPUT", "v1 and v2 query params are required", "Use ?v1=versionId&v2=versionId.");
+      }
+      const result = await diffVersions(req.params.id, v1, v2, { workspace });
+      if (result.error) {
+        const status = result.code === "NOT_FOUND" ? 404 : 400;
+        return apiError(res, status, result.code, result.error);
+      }
+      res.json(result);
+    } catch (err) {
+      console.error("Document diff error:", err.message);
       return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
     }
   });

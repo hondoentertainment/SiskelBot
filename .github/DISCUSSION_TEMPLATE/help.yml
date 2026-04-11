@@ -1,0 +1,30 @@
+title: "[Help] "
+labels: [help]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Need help with SiskelBot? Describe your question below. Please check the
+        [docs](../docs/) and existing discussions before posting.
+  - type: textarea
+    id: question
+    attributes:
+      label: What do you need help with?
+      placeholder: Describe your question or problem
+    validations:
+      required: true
+  - type: textarea
+    id: what-tried
+    attributes:
+      label: What have you tried?
+      placeholder: Describe any steps you've already taken
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: |
+        - SiskelBot version:
+        - Node.js version:
+        - Backend (Ollama/vLLM/OpenAI):
+        - Storage backend:
+        - OS:

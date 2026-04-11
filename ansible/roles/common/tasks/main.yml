@@ -1,0 +1,117 @@
+---
+# Common role: base packages, user, firewall, SSH hardening.
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Upgrade all packages (safe)
+  ansible.builtin.apt:
+    upgrade: safe
+  register: apt_upgrade_result
+  retries: 3
+  delay: 10
+  until: apt_upgrade_result is success
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name: "{{ common_base_packages }}"
+    state: present
+
+- name: Set system timezone to UTC
+  community.general.timezone:
+    name: UTC
+  ignore_errors: true
+
+- name: Create siskelbot group
+  ansible.builtin.group:
+    name: "{{ siskelbot_group }}"
+    state: present
+    system: true
+
+- name: Create siskelbot user
+  ansible.builtin.user:
+    name: "{{ siskelbot_user }}"
+    group: "{{ siskelbot_group }}"
+    system: true
+    shell: /bin/bash
+    home: "/home/{{ siskelbot_user }}"
+    create_home: true
+    state: present
+
+- name: Ensure /etc/sudoers.d exists
+  ansible.builtin.file:
+    path: /etc/sudoers.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# ----- Firewall (ufw) -----
+
+- name: Configure ufw default policies
+  community.general.ufw:
+    direction: "{{ item.direction }}"
+    policy: "{{ item.policy }}"
+  loop:
+    - { direction: incoming, policy: deny }
+    - { direction: outgoing, policy: allow }
+  when: enable_firewall | bool
+
+- name: Allow required ports through ufw
+  community.general.ufw:
+    rule: "{{ item.rule }}"
+    port: "{{ item.port }}"
+    proto: "{{ item.proto }}"
+    comment: "{{ item.comment }}"
+  loop: "{{ common_firewall_ports }}"
+  when: enable_firewall | bool
+
+- name: Enable ufw
+  community.general.ufw:
+    state: enabled
+    logging: "on"
+  when: enable_firewall | bool
+
+# ----- SSH hardening -----
+
+- name: Disable root SSH login
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^#?PermitRootLogin"
+    line: "PermitRootLogin no"
+    state: present
+    validate: "sshd -t -f %s"
+  when: enable_ssh_hardening | bool
+  notify: restart ssh
+
+- name: Disable SSH password authentication
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^#?PasswordAuthentication"
+    line: "PasswordAuthentication no"
+    state: present
+    validate: "sshd -t -f %s"
+  when: enable_ssh_hardening | bool
+  notify: restart ssh
+
+- name: Disable SSH challenge-response authentication
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^#?ChallengeResponseAuthentication"
+    line: "ChallengeResponseAuthentication no"
+    state: present
+    validate: "sshd -t -f %s"
+  when: enable_ssh_hardening | bool
+  notify: restart ssh
+
+- name: Enable SSH pubkey authentication
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^#?PubkeyAuthentication"
+    line: "PubkeyAuthentication yes"
+    state: present
+    validate: "sshd -t -f %s"
+  when: enable_ssh_hardening | bool
+  notify: restart ssh

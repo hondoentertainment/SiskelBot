@@ -48,10 +48,6 @@
 
     function noop() {}
 
-    function makeId(name) {
-      return "tool-" + name + "-" + Date.now();
-    }
-
     function createEventEl(cls, iconHtml, bodyHtml) {
       var el = document.createElement("div");
       el.className = "tool-event " + cls;
@@ -80,7 +76,7 @@
        * @param {object} args
        */
       onToolStart: function (name, args) {
-        var argsStr = "";
+        var argsStr;
         try { argsStr = JSON.stringify(args); } catch (_) { argsStr = "{}"; }
         var body =
           '<span class="tool-name">' + escapeHtml(name) + "</span>" +
@@ -151,7 +147,7 @@
         var details = el.querySelector(".tool-details-content");
         var toggle = el.querySelector(".tool-details-toggle");
         if (details && toggle) {
-          var resultStr = "";
+          var resultStr;
           try { resultStr = JSON.stringify(result, null, 2); } catch (_) { resultStr = String(result); }
           details.textContent = truncate(resultStr, 1000);
           toggle.textContent = "[show result]";

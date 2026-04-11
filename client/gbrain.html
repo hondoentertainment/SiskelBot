@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>GBrain - SiskelBot</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    a { color: #60a5fa; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible {
+      outline: 2px solid #60a5fa;
+      outline-offset: 2px;
+    }
+    header {
+      padding: 0.9rem 1.25rem;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    header nav {
+      display: flex;
+      gap: 1rem;
+      font-size: 0.875rem;
+    }
+    .brain-status {
+      margin-left: auto;
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      font-size: 0.8125rem;
+      color: #94a3b8;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .brain-status::before {
+      content: "";
+      width: 0.6rem;
+      height: 0.6rem;
+      border-radius: 50%;
+      background: #64748b;
+      transition: background 200ms ease;
+    }
+    .brain-status.online::before { background: #22c55e; box-shadow: 0 0 8px #22c55e66; }
+    .brain-status.offline::before { background: #ef4444; }
+    .brain-status.loading::before { background: #fbbf24; }
+
+    main {
+      padding: 1.25rem;
+      max-width: 1400px;
+      margin: 0 auto;
+      display: grid;
+      gap: 1.25rem;
+    }
+
+    section {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 1.25rem;
+    }
+    section h2 {
+      margin: 0 0 1rem;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #cbd5e1;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    /* Two-column layout above large screens */
+    @media (min-width: 960px) {
+      main {
+        grid-template-columns: 1.25fr 1fr;
+      }
+      main > .full {
+        grid-column: 1 / -1;
+      }
+    }
+
+    /* Cortex map */
+    .cortex-map {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .cortex-map svg {
+      width: 100%;
+      max-width: 520px;
+      height: auto;
+      display: block;
+    }
+    .cortex-label {
+      font-size: 11px;
+      fill: #cbd5e1;
+      font-family: inherit;
+    }
+    .cortex-node {
+      cursor: pointer;
+      transition: transform 150ms ease, filter 150ms ease;
+      transform-origin: center;
+      transform-box: fill-box;
+    }
+    .cortex-node:hover {
+      filter: brightness(1.2);
+    }
+    .cortex-core-label {
+      fill: #f1f5f9;
+      font-size: 13px;
+      font-weight: 600;
+      text-anchor: middle;
+      dominant-baseline: middle;
+    }
+
+    /* State grid */
+    .state-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 0.75rem;
+    }
+    .stat-card {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 0.9rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .stat-card .label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      color: #94a3b8;
+      letter-spacing: 0.05em;
+    }
+    .stat-card .value {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: #f1f5f9;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Bar chart */
+    .bar-chart {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+    .bar-row {
+      display: grid;
+      grid-template-columns: 140px 1fr 48px;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.8125rem;
+    }
+    .bar-row .bar-label {
+      color: #cbd5e1;
+      text-transform: capitalize;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .bar-row .bar-count {
+      color: #94a3b8;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .bar-track {
+      height: 10px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 999px;
+      overflow: hidden;
+      position: relative;
+    }
+    .bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #3b82f6, #60a5fa);
+      border-radius: 999px;
+      transition: width 400ms ease;
+    }
+
+    /* Thoughts feed */
+    .thought-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      max-height: 420px;
+      overflow-y: auto;
+      padding-right: 0.25rem;
+    }
+    .thought-item {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 0.7rem 0.9rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+      font-size: 0.8125rem;
+    }
+    .thought-item header {
+      padding: 0;
+      background: none;
+      border: none;
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .thought-item h1 {
+      display: none;
+    }
+    .thought-item .strategy {
+      background: #1e3a8a;
+      color: #bfdbfe;
+      padding: 0.1rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .thought-item .confidence {
+      color: #a3e635;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .thought-item .ts {
+      color: #64748b;
+      font-size: 0.7rem;
+      margin-left: auto;
+    }
+    .thought-item .task {
+      color: #e2e8f0;
+      line-height: 1.4;
+    }
+    .thought-item.success { border-left: 3px solid #22c55e; }
+    .thought-item.failure { border-left: 3px solid #ef4444; }
+
+    /* Think panel */
+    .think-panel textarea {
+      width: 100%;
+      min-height: 110px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      color: #e2e8f0;
+      padding: 0.75rem;
+      font-family: inherit;
+      font-size: 0.875rem;
+      resize: vertical;
+    }
+    .think-panel button {
+      margin-top: 0.6rem;
+      padding: 0.55rem 1.25rem;
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+    .think-panel button:hover:not(:disabled) { background: #2563eb; }
+    .think-panel button:disabled { background: #334155; cursor: not-allowed; }
+    .think-panel pre {
+      margin-top: 0.75rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 0.75rem;
+      overflow: auto;
+      color: #a3e635;
+      font-size: 0.8125rem;
+      max-height: 360px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .empty {
+      color: #64748b;
+      font-style: italic;
+      padding: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>GBrain Cortex</h1>
+    <nav>
+      <a href="/">Chat</a>
+      <a href="/admin.html">Admin</a>
+      <a href="/observability.html">Observability</a>
+    </nav>
+    <div class="brain-status loading" id="brain-status">Loading...</div>
+  </header>
+
+  <main>
+    <section class="cortex-map full">
+      <h2>Cortex Map</h2>
+      <div id="cortex-map"></div>
+    </section>
+
+    <section>
+      <h2>Brain State</h2>
+      <div class="state-grid">
+        <div class="stat-card"><span class="label">Total Thoughts</span><span class="value" id="total-thoughts">0</span></div>
+        <div class="stat-card"><span class="label">Success Rate</span><span class="value" id="success-rate">0%</span></div>
+        <div class="stat-card"><span class="label">Avg Confidence</span><span class="value" id="avg-confidence">0</span></div>
+        <div class="stat-card"><span class="label">Memory Entries</span><span class="value" id="memory-entries">0</span></div>
+      </div>
+    </section>
+
+    <section class="chart-card">
+      <h2>Strategy Distribution</h2>
+      <div class="bar-chart" id="strategy-chart">
+        <div class="empty">No data yet.</div>
+      </div>
+    </section>
+
+    <section class="thoughts-feed full">
+      <h2>Recent Thoughts</h2>
+      <div class="thought-list" id="thought-list">
+        <div class="empty">No thoughts recorded yet.</div>
+      </div>
+    </section>
+
+    <section class="think-panel full">
+      <h2>Test GBrain</h2>
+      <textarea id="test-input" placeholder="Enter a task... (e.g. 'Summarize the latest PRs')"></textarea>
+      <button id="think-btn" type="button">Think</button>
+      <pre id="think-result" aria-live="polite"></pre>
+    </section>
+  </main>
+
+  <script>
+    // --------------------------------------------------------------------
+    // API helpers
+    // --------------------------------------------------------------------
+    const API = "/api/v1/gbrain";
+
+    async function apiGet(path) {
+      const res = await fetch(API + path, { credentials: "same-origin" });
+      if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`);
+      return res.json();
+    }
+    async function apiPost(path, body) {
+      const res = await fetch(API + path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify(body || {}),
+      });
+      if (!res.ok) {
+        let err;
+        try { err = await res.json(); } catch { err = { error: res.statusText }; }
+        throw new Error(err.error || `POST ${path} failed: ${res.status}`);
+      }
+      return res.json();
+    }
+
+    // --------------------------------------------------------------------
+    // Fallback cortex list — used when /cortices endpoint is unavailable.
+    // --------------------------------------------------------------------
+    const FALLBACK_CORTICES = [
+      { id: "perception", name: "Perception", color: "#60a5fa", description: "Parse input" },
+      { id: "memory", name: "Memory", color: "#a78bfa", description: "Recall context" },
+      { id: "reasoning", name: "Reasoning", color: "#f472b6", description: "Plan & analyze" },
+      { id: "planning", name: "Planning", color: "#34d399", description: "Decompose tasks" },
+      { id: "execution", name: "Execution", color: "#fbbf24", description: "Run tools" },
+      { id: "reflection", name: "Reflection", color: "#f87171", description: "Self-critique" },
+      { id: "learning", name: "Learning", color: "#22d3ee", description: "Adapt from outcomes" },
+      { id: "emotion", name: "Emotion", color: "#fb923c", description: "Affect & priority" },
+    ];
+
+    // --------------------------------------------------------------------
+    // Cortex map rendering — pure SVG, no libraries.
+    // --------------------------------------------------------------------
+    function renderCortexMap(cortices, activeMap = {}) {
+      const svgNS = "http://www.w3.org/2000/svg";
+      const size = 520;
+      const cx = size / 2;
+      const cy = size / 2;
+      const outerR = 200;
+      const nodeR = 42;
+
+      const svg = document.createElementNS(svgNS, "svg");
+      svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
+      svg.setAttribute("role", "img");
+      svg.setAttribute("aria-label", "GBrain cortex map");
+
+      // Background ring
+      const ring = document.createElementNS(svgNS, "circle");
+      ring.setAttribute("cx", cx);
+      ring.setAttribute("cy", cy);
+      ring.setAttribute("r", outerR);
+      ring.setAttribute("fill", "none");
+      ring.setAttribute("stroke", "#334155");
+      ring.setAttribute("stroke-dasharray", "4 6");
+      ring.setAttribute("stroke-width", "1.5");
+      svg.appendChild(ring);
+
+      // Core
+      const core = document.createElementNS(svgNS, "circle");
+      core.setAttribute("cx", cx);
+      core.setAttribute("cy", cy);
+      core.setAttribute("r", 52);
+      core.setAttribute("fill", "#0f172a");
+      core.setAttribute("stroke", "#60a5fa");
+      core.setAttribute("stroke-width", "2");
+      svg.appendChild(core);
+
+      const coreLabel = document.createElementNS(svgNS, "text");
+      coreLabel.setAttribute("x", cx);
+      coreLabel.setAttribute("y", cy);
+      coreLabel.setAttribute("class", "cortex-core-label");
+      coreLabel.textContent = "GBrain";
+      svg.appendChild(coreLabel);
+
+      const list = Array.isArray(cortices) && cortices.length ? cortices : FALLBACK_CORTICES;
+      const n = list.length;
+
+      list.forEach((cx0, i) => {
+        const theta = (i / n) * Math.PI * 2 - Math.PI / 2;
+        const x = cx + Math.cos(theta) * outerR;
+        const y = cy + Math.sin(theta) * outerR;
+        const color = cx0.color || "#60a5fa";
+
+        // Connector
+        const line = document.createElementNS(svgNS, "line");
+        line.setAttribute("x1", cx);
+        line.setAttribute("y1", cy);
+        line.setAttribute("x2", x);
+        line.setAttribute("y2", y);
+        line.setAttribute("stroke", color);
+        line.setAttribute("stroke-width", "1.2");
+        line.setAttribute("opacity", "0.35");
+        svg.appendChild(line);
+
+        const key = cx0.id || cx0.name || String(i);
+        const activity = Number(activeMap[key] || activeMap[(cx0.name || "").toLowerCase()] || 0);
+        const normalized = Math.max(0, Math.min(1, activity));
+        const glowR = nodeR + 6 + normalized * 10;
+
+        // Glow halo
+        const halo = document.createElementNS(svgNS, "circle");
+        halo.setAttribute("cx", x);
+        halo.setAttribute("cy", y);
+        halo.setAttribute("r", glowR);
+        halo.setAttribute("fill", color);
+        halo.setAttribute("opacity", normalized > 0 ? 0.15 + normalized * 0.2 : 0.08);
+        svg.appendChild(halo);
+
+        // Node
+        const node = document.createElementNS(svgNS, "circle");
+        node.setAttribute("cx", x);
+        node.setAttribute("cy", y);
+        node.setAttribute("r", nodeR);
+        node.setAttribute("fill", "#1e293b");
+        node.setAttribute("stroke", color);
+        node.setAttribute("stroke-width", normalized > 0 ? "3" : "1.8");
+        node.setAttribute("class", "cortex-node");
+        const title = document.createElementNS(svgNS, "title");
+        title.textContent = `${cx0.name || cx0.id}${cx0.description ? " — " + cx0.description : ""}`;
+        node.appendChild(title);
+        svg.appendChild(node);
+
+        // Label
+        const label = document.createElementNS(svgNS, "text");
+        label.setAttribute("x", x);
+        label.setAttribute("y", y + 4);
+        label.setAttribute("text-anchor", "middle");
+        label.setAttribute("class", "cortex-label");
+        label.textContent = (cx0.name || cx0.id || "").slice(0, 10);
+        svg.appendChild(label);
+      });
+
+      const container = document.getElementById("cortex-map");
+      container.innerHTML = "";
+      container.appendChild(svg);
+    }
+
+    // --------------------------------------------------------------------
+    // Strategy distribution bar chart
+    // --------------------------------------------------------------------
+    function renderStrategyChart(distribution) {
+      const el = document.getElementById("strategy-chart");
+      const entries = Object.entries(distribution || {}).filter(([, v]) => Number(v) > 0);
+      if (!entries.length) {
+        el.innerHTML = '<div class="empty">No data yet.</div>';
+        return;
+      }
+      entries.sort((a, b) => Number(b[1]) - Number(a[1]));
+      const max = Math.max(...entries.map(([, v]) => Number(v)));
+      el.innerHTML = "";
+      for (const [name, count] of entries) {
+        const pct = Math.round((Number(count) / max) * 100);
+        const row = document.createElement("div");
+        row.className = "bar-row";
+        row.innerHTML = `
+          <span class="bar-label">${escapeHtml(name)}</span>
+          <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+          <span class="bar-count">${Number(count).toLocaleString()}</span>
+        `;
+        el.appendChild(row);
+      }
+    }
+
+    // --------------------------------------------------------------------
+    // Thought list
+    // --------------------------------------------------------------------
+    function renderThoughts(thoughts) {
+      const el = document.getElementById("thought-list");
+      if (!Array.isArray(thoughts) || !thoughts.length) {
+        el.innerHTML = '<div class="empty">No thoughts recorded yet.</div>';
+        return;
+      }
+      el.innerHTML = "";
+      for (const t of thoughts) {
+        const strategy = t.strategy || t.cortex || t.plan?.strategy || "unknown";
+        const confidence = typeof t.confidence === "number"
+          ? t.confidence.toFixed(2)
+          : (t.plan?.confidence != null ? Number(t.plan.confidence).toFixed(2) : "");
+        const task = typeof t.task === "string"
+          ? t.task
+          : (t.task?.text || t.task?.prompt || JSON.stringify(t.task || "").slice(0, 240));
+        const ts = t.createdAt || t.ts || t.timestamp;
+        const when = ts ? new Date(ts).toLocaleTimeString() : "";
+        const outcomeClass = t.success === true ? "success" : (t.success === false ? "failure" : "");
+
+        const item = document.createElement("div");
+        item.className = `thought-item ${outcomeClass}`.trim();
+        item.innerHTML = `
+          <header>
+            <span class="strategy">${escapeHtml(String(strategy))}</span>
+            ${confidence ? `<span class="confidence">${escapeHtml(confidence)}</span>` : ""}
+            <span class="ts">${escapeHtml(when)}</span>
+          </header>
+          <div class="task">${escapeHtml(String(task || "(no task)"))}</div>
+        `;
+        el.appendChild(item);
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? "").replace(/[&<>"']/g, ch => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+      }[ch]));
+    }
+
+    // --------------------------------------------------------------------
+    // State refresh
+    // --------------------------------------------------------------------
+    function formatPercent(n) {
+      if (n == null || Number.isNaN(Number(n))) return "0%";
+      const v = Number(n);
+      if (v <= 1) return `${Math.round(v * 100)}%`;
+      return `${Math.round(v)}%`;
+    }
+
+    async function refresh() {
+      const statusEl = document.getElementById("brain-status");
+      try {
+        const [state, thoughtsResp, corticesResp] = await Promise.all([
+          apiGet("/state").catch(() => null),
+          apiGet("/thoughts?limit=20").catch(() => null),
+          apiGet("/cortices").catch(() => null),
+        ]);
+
+        if (!state) {
+          statusEl.className = "brain-status offline";
+          statusEl.textContent = "Offline";
+        } else {
+          statusEl.className = "brain-status online";
+          statusEl.textContent = "Online";
+        }
+
+        const totalThoughts = state?.totalThoughts ?? state?.thoughtCount ?? state?.thoughts?.length ?? 0;
+        const successRate = state?.successRate ?? state?.success_rate ?? 0;
+        const avgConfidence = state?.avgConfidence ?? state?.averageConfidence ?? 0;
+        const memoryEntries = state?.memoryEntries ?? state?.memory?.size ?? state?.memoryCount ?? 0;
+
+        document.getElementById("total-thoughts").textContent = Number(totalThoughts).toLocaleString();
+        document.getElementById("success-rate").textContent = formatPercent(successRate);
+        document.getElementById("avg-confidence").textContent =
+          typeof avgConfidence === "number" ? avgConfidence.toFixed(2) : "0";
+        document.getElementById("memory-entries").textContent = Number(memoryEntries).toLocaleString();
+
+        const distribution = state?.strategyDistribution || state?.strategies || {};
+        renderStrategyChart(distribution);
+
+        const thoughts = thoughtsResp?.thoughts || [];
+        renderThoughts(thoughts);
+
+        const cortices = corticesResp?.cortices || state?.cortices || FALLBACK_CORTICES;
+        const activity = state?.cortexActivity || state?.activity || {};
+        renderCortexMap(cortices, activity);
+      } catch (err) {
+        statusEl.className = "brain-status offline";
+        statusEl.textContent = "Offline";
+        console.warn("[gbrain] refresh failed:", err);
+        renderCortexMap(FALLBACK_CORTICES, {});
+      }
+    }
+
+    // --------------------------------------------------------------------
+    // Test panel
+    // --------------------------------------------------------------------
+    document.getElementById("think-btn").addEventListener("click", async () => {
+      const btn = document.getElementById("think-btn");
+      const input = document.getElementById("test-input");
+      const out = document.getElementById("think-result");
+      const task = input.value.trim();
+      if (!task) {
+        out.textContent = "Please enter a task.";
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = "Thinking...";
+      out.textContent = "";
+      try {
+        const result = await apiPost("/think", { task });
+        out.textContent = JSON.stringify(result, null, 2);
+        // Refresh state so new thought shows up.
+        refresh();
+      } catch (err) {
+        out.textContent = "Error: " + err.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Think";
+      }
+    });
+
+    // Render an initial placeholder map immediately so the page doesn't look
+    // empty while we wait for the first state fetch.
+    renderCortexMap(FALLBACK_CORTICES, {});
+
+    // Kick off first refresh + poll every 10s.
+    refresh();
+    setInterval(refresh, 10_000);
+  </script>
+</body>
+</html>

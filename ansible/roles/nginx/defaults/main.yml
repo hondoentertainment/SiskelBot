@@ -1,0 +1,9 @@
+---
+siskelbot_domain: "siskelbot.example.com"
+siskelbot_admin_email: "admin@example.com"
+siskelbot_port: 3000
+enable_ssl: true
+
+nginx_client_max_body_size: "50m"
+nginx_proxy_read_timeout: "300s"
+nginx_proxy_send_timeout: "300s"

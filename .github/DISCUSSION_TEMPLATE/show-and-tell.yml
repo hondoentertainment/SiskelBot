@@ -1,0 +1,24 @@
+title: "[Show & Tell] "
+labels: [show-and-tell]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Built something cool with SiskelBot? Share it with the community!
+  - type: textarea
+    id: project
+    attributes:
+      label: What did you build?
+      placeholder: Describe your project, plugin, integration, or workflow
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How does it work?
+      placeholder: A brief explanation of how you built it or how it uses SiskelBot
+  - type: textarea
+    id: links
+    attributes:
+      label: Links and resources
+      placeholder: Repository URL, demo link, screenshots, etc.

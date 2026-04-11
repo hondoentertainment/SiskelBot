@@ -1,0 +1,65 @@
+---
+# SiskelBot Ansible inventory example
+#
+# Copy this file to inventory.yml and edit with your server details.
+#
+# Usage:
+#   cp inventory.example.yml inventory.yml
+#   $EDITOR inventory.yml
+#   ansible-playbook site.yml
+
+all:
+  hosts:
+    siskelbot-1:
+      ansible_host: 1.2.3.4
+      ansible_user: ubuntu
+      # ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+      # ansible_python_interpreter: /usr/bin/python3
+  vars:
+    # Application version and source
+    siskelbot_version: "1.0.0"
+    siskelbot_repo: "https://github.com/your-org/SiskelBot.git"
+    siskelbot_branch: "main"
+
+    # Deployment paths and user
+    siskelbot_install_dir: "/opt/siskelbot"
+    siskelbot_data_dir: "/var/lib/siskelbot"
+    siskelbot_log_dir: "/var/log/siskelbot"
+    siskelbot_user: "siskelbot"
+    siskelbot_group: "siskelbot"
+
+    # Public host / reverse proxy
+    siskelbot_domain: "siskelbot.example.com"
+    siskelbot_admin_email: "admin@example.com"
+    siskelbot_port: 3000
+
+    # Backend selection: ollama | vllm | openai
+    siskelbot_backend: "ollama"
+    siskelbot_ollama_url: "http://localhost:11434"
+    siskelbot_openai_api_key: ""
+
+    # Secrets (override via vault or extra vars in production)
+    siskelbot_session_secret: "change-me-to-a-long-random-string"
+    siskelbot_api_key: "change-me-api-key"
+    siskelbot_admin_api_key: "change-me-admin-key"
+
+    # Feature toggles
+    enable_postgres: true
+    enable_redis: true
+    enable_ssl: true
+    enable_firewall: true
+    enable_ssh_hardening: true
+
+    # PostgreSQL
+    postgres_version: "16"
+    postgres_db: "siskelbot"
+    postgres_user: "siskelbot"
+    postgres_password: "change-me-postgres-password"
+
+    # Redis
+    redis_bind: "127.0.0.1"
+    redis_port: 6379
+    redis_password: "change-me-redis-password"
+
+    # Node.js
+    nodejs_version: "20"

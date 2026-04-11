@@ -1,0 +1,95 @@
+---
+# Install and configure Nginx as a reverse proxy with optional Let's Encrypt SSL.
+
+- name: Install nginx
+  ansible.builtin.apt:
+    name:
+      - nginx
+      - python3-certbot-nginx
+    state: present
+    update_cache: true
+
+- name: Ensure nginx is started and enabled
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: true
+
+- name: Remove default nginx site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: reload nginx
+
+- name: Create snippets directory
+  ansible.builtin.file:
+    path: /etc/nginx/snippets
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install WebSocket upgrade map
+  ansible.builtin.copy:
+    dest: /etc/nginx/conf.d/siskelbot-upgrade.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible
+      map $http_upgrade $connection_upgrade {
+          default upgrade;
+          ''      close;
+      }
+  notify: reload nginx
+
+- name: Deploy SiskelBot nginx vhost
+  ansible.builtin.template:
+    src: siskelbot.conf.j2
+    dest: /etc/nginx/sites-available/siskelbot.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: reload nginx
+
+- name: Enable SiskelBot nginx vhost
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/siskelbot.conf
+    dest: /etc/nginx/sites-enabled/siskelbot.conf
+    state: link
+    force: true
+  notify: reload nginx
+
+- name: Flush handlers so nginx is reloaded before certbot runs
+  ansible.builtin.meta: flush_handlers
+
+- name: Check if Let's Encrypt certificate already exists
+  ansible.builtin.stat:
+    path: "/etc/letsencrypt/live/{{ siskelbot_domain }}/fullchain.pem"
+  register: le_cert
+
+- name: Obtain Let's Encrypt certificate (certbot --nginx)
+  ansible.builtin.command: >
+    certbot --nginx
+    --non-interactive
+    --agree-tos
+    --email {{ siskelbot_admin_email }}
+    --domains {{ siskelbot_domain }}
+    --redirect
+  when:
+    - enable_ssl | bool
+    - not le_cert.stat.exists
+  register: certbot_result
+  changed_when: "'Successfully deployed certificate' in certbot_result.stdout or 'Successfully received certificate' in certbot_result.stdout"
+
+- name: Enable certbot systemd timer for auto-renewal
+  ansible.builtin.service:
+    name: certbot.timer
+    enabled: true
+    state: started
+  when: enable_ssl | bool
+  ignore_errors: true
+
+- name: Validate nginx config
+  ansible.builtin.command: nginx -t
+  changed_when: false

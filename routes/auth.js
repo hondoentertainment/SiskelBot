@@ -1,6 +1,4 @@
 import passport from "passport";
-import { configCache } from "../lib/cache.js";
-import { cacheResponse } from "../lib/cache-middleware.js";
 
 export default function mountAuthRoutes(app, deps) {
   const {
@@ -73,6 +71,7 @@ export default function mountAuthRoutes(app, deps) {
       legacySwarmSpecialists: getSwarmSelectableSpecialistNames(),
       streamSwarmSynth: STREAM_SWARM_SYNTH,
       agentPlanReflect: process.env.AGENT_PLAN_REFLECT === "1",
+      agentReflectionEnabled: process.env.AGENT_REFLECTION === "1",
       agentHooksConfigured: Boolean((process.env.AGENT_HOOKS_MODULE || "").trim()),
       agentBudgetToolCalls: MAX_AGENT_TOOL_CALLS_ENV || null,
       agentBudgetWallMs: AGENT_MAX_WALL_MS_ENV || null,

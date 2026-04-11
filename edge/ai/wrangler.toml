@@ -1,0 +1,38 @@
+name = "siskelbot-edge-ai"
+main = "cloudflare-ai-worker.js"
+compatibility_date = "2024-01-01"
+workers_dev = false
+
+# AI binding — required for env.AI.run(...) calls.
+[ai]
+binding = "AI"
+
+# Origin URL — overridable per environment via `wrangler secret put` if needed.
+[vars]
+ORIGIN_URL = "https://api.siskelbot.example.com"
+
+# Production route on which the edge AI worker is invoked. The worker
+# only handles /v1/chat/completions/edge and /api/v1/embeddings/edge —
+# everything else is forwarded to ORIGIN_URL untouched, so it is safe to
+# bind the worker to a wildcard pattern.
+[[routes]]
+pattern = "ai.siskelbot.example.com/*"
+zone_name = "siskelbot.example.com"
+
+# Optional: separate staging environment.
+[env.staging]
+name = "siskelbot-edge-ai-staging"
+[env.staging.vars]
+ORIGIN_URL = "https://staging.api.siskelbot.example.com"
+[env.staging.ai]
+binding = "AI"
+[[env.staging.routes]]
+pattern = "staging.ai.siskelbot.example.com/*"
+zone_name = "siskelbot.example.com"
+
+# Observability — Workers Analytics Engine binding (optional, for
+# tracking edge-vs-origin split). Uncomment and create the dataset in
+# your Cloudflare account before enabling.
+# [[analytics_engine_datasets]]
+# binding = "EDGE_AI_ANALYTICS"
+# dataset = "siskelbot_edge_ai"

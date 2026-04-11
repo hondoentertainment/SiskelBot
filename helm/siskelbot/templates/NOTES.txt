@@ -1,0 +1,68 @@
+SiskelBot has been installed!
+
+Chart:   {{ .Chart.Name }}-{{ .Chart.Version }}
+Release: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+
+1. Get the application URL:
+{{- if .Values.ingress.enabled }}
+{{- range $host := .Values.ingress.hosts }}
+  {{- range .paths }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+{{- end }}
+{{- else if contains "NodePort" .Values.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "siskelbot.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.service.type }}
+  NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+        You can watch its status by running:
+        kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "siskelbot.fullname" . }}
+
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "siskelbot.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo http://$SERVICE_IP:{{ .Values.service.port }}
+{{- else if contains "ClusterIP" .Values.service.type }}
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "siskelbot.fullname" . }} 3000:{{ .Values.service.port }}
+  echo "Visit http://127.0.0.1:3000 to use SiskelBot"
+{{- end }}
+
+2. Check pod status:
+  kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "siskelbot.name" . }},app.kubernetes.io/instance={{ .Release.Name }}"
+
+3. Tail the logs:
+  kubectl logs --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "siskelbot.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -f
+
+4. Health endpoints:
+  - Liveness:  /health/live
+  - Readiness: /health/ready
+{{- if .Values.metrics.enabled }}
+  - Metrics:   {{ .Values.metrics.path }}
+{{- end }}
+
+{{- if not .Values.ingress.enabled }}
+
+NOTE: Ingress is disabled. To expose SiskelBot externally, enable the ingress
+      in values.yaml or use `--set ingress.enabled=true` and configure the host.
+{{- end }}
+
+{{- if and (not .Values.autoscaling.enabled) (gt (int .Values.replicaCount) 1) }}
+
+TIP: For production, enable autoscaling with `--set autoscaling.enabled=true`.
+{{- end }}
+
+{{- if not .Values.persistence.enabled }}
+
+WARNING: Persistence is disabled. Workspace data will be lost when pods restart.
+         Enable persistence with `--set persistence.enabled=true` for production.
+{{- end }}
+
+{{- if not .Values.secrets }}
+
+REMINDER: No secrets were provided. Make sure to configure secrets such as
+          OPENAI_API_KEY, API_KEY, ADMIN_API_KEY, and SESSION_SECRET via
+          --set-string secrets.OPENAI_API_KEY=... or an existing Secret via
+          envFrom.secretRefs.
+{{- end }}
+
+For full docs, see: https://github.com/hondoentertainment/SiskelBot

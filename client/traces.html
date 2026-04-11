@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>Siskel Bot - Trace Explorer</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 2px solid #60a5fa;
+      outline-offset: 2px;
+    }
+    header {
+      padding: 0.75rem 1rem;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    header h1 { margin: 0; font-size: 1.125rem; font-weight: 600; }
+    header a { color: #60a5fa; text-decoration: none; }
+    header a:hover { text-decoration: underline; }
+    main { padding: 1rem; max-width: 1400px; margin: 0 auto; }
+
+    .section {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .section h2 {
+      margin: 0 0 0.75rem 0;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #94a3b8;
+    }
+
+    .stats {
+      display: grid;
+      gap: 0.75rem;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      margin-bottom: 1rem;
+    }
+    .stat {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+    }
+    .stat .label { font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat .value { font-size: 1.4rem; font-weight: 700; margin-top: 0.25rem; }
+
+    .filters {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.75rem;
+    }
+    .filters input, .filters select {
+      padding: 0.4rem 0.6rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.85rem;
+    }
+    .filters button {
+      padding: 0.4rem 0.9rem;
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .filters button:hover { background: #2563eb; }
+    .filters .refresh-toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    th, td {
+      padding: 0.5rem 0.75rem;
+      text-align: left;
+      border-bottom: 1px solid #334155;
+    }
+    th { color: #94a3b8; font-weight: 500; }
+    tr.trace-row { cursor: pointer; }
+    tr.trace-row:hover td { background: #243244; }
+    tr.trace-row.active td { background: #1e3a5f; }
+
+    .pill {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 10px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .pill.ok { background: #064e3b; color: #34d399; }
+    .pill.error { background: #7f1d1d; color: #fca5a5; }
+    .pill.unset { background: #334155; color: #94a3b8; }
+
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.78rem; }
+    .muted { color: #64748b; }
+
+    /* Waterfall */
+    #trace-detail { display: none; }
+    #trace-detail.visible { display: block; }
+    .trace-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+    .trace-header-row h2 { margin: 0; }
+    .close-btn {
+      background: none;
+      border: 1px solid #334155;
+      color: #94a3b8;
+      padding: 0.3rem 0.7rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+    .close-btn:hover { background: #334155; color: #e2e8f0; }
+
+    .waterfall {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.78rem;
+    }
+    .wf-row {
+      display: grid;
+      grid-template-columns: minmax(280px, 35%) 1fr;
+      gap: 0.75rem;
+      padding: 0.25rem 0;
+      border-bottom: 1px solid #1e293b;
+      align-items: center;
+    }
+    .wf-name {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: #e2e8f0;
+    }
+    .wf-name.error { color: #fca5a5; }
+    .wf-name .depth { color: #475569; }
+    .wf-name .service { color: #64748b; margin-left: 0.3rem; font-size: 0.7rem; }
+    .wf-bar-track {
+      position: relative;
+      height: 16px;
+      background: #0f172a;
+      border-radius: 2px;
+    }
+    .wf-bar {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      background: #34d399;
+      border-radius: 2px;
+      min-width: 2px;
+    }
+    .wf-bar.error { background: #f87171; }
+    .wf-bar.unset { background: #64748b; }
+    .wf-duration {
+      position: absolute;
+      top: 0;
+      left: calc(100% + 6px);
+      line-height: 16px;
+      color: #94a3b8;
+      white-space: nowrap;
+      font-size: 0.7rem;
+    }
+
+    .details-panel {
+      margin-top: 0.75rem;
+      padding: 0.75rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.75rem;
+      max-height: 280px;
+      overflow: auto;
+      display: none;
+    }
+    .details-panel.visible { display: block; }
+    .details-panel pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
+
+    .empty {
+      text-align: center;
+      padding: 2rem;
+      color: #64748b;
+    }
+    .banner {
+      background: #422006;
+      border: 1px solid #92400e;
+      color: #fcd34d;
+      padding: 0.6rem 0.9rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Trace Explorer</h1>
+    <a href="/">Chat</a>
+    <a href="/observability.html">Observability</a>
+    <a href="/admin">Admin</a>
+  </header>
+
+  <main>
+    <div id="disabled-banner" class="banner" style="display:none">
+      In-process trace explorer is disabled. Start the server with <code>TRACE_EXPLORER=1</code>
+      (and <code>OTEL_ENABLED=1</code>) to capture spans. For production, export via OTLP to Jaeger/Tempo/Honeycomb.
+    </div>
+
+    <div class="stats" id="stats">
+      <div class="stat"><div class="label">Traces</div><div class="value" id="stat-traces">--</div></div>
+      <div class="stat"><div class="label">Spans</div><div class="value" id="stat-spans">--</div></div>
+      <div class="stat"><div class="label">Errors</div><div class="value" id="stat-errors">--</div></div>
+      <div class="stat"><div class="label">Services</div><div class="value" id="stat-services">--</div></div>
+    </div>
+
+    <div class="section">
+      <h2>Recent Traces</h2>
+      <div class="filters">
+        <input type="text" id="f-name" placeholder="Name contains...">
+        <input type="text" id="f-service" placeholder="Service">
+        <select id="f-status">
+          <option value="">Any status</option>
+          <option value="ok">OK</option>
+          <option value="error">Error</option>
+          <option value="unset">Unset</option>
+        </select>
+        <input type="number" id="f-min-duration" placeholder="Min duration (ms)" min="0">
+        <button id="apply-filters">Apply</button>
+        <label class="refresh-toggle">
+          <input type="checkbox" id="auto-refresh" checked> Auto-refresh 10s
+        </label>
+      </div>
+      <div id="trace-list-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Trace ID</th>
+              <th>Name</th>
+              <th>Service</th>
+              <th>Spans</th>
+              <th>Duration</th>
+              <th>Status</th>
+              <th>When</th>
+            </tr>
+          </thead>
+          <tbody id="trace-list"></tbody>
+        </table>
+        <div id="empty-msg" class="empty" style="display:none">
+          No traces captured yet. Issue a request against the API to populate the explorer.
+        </div>
+      </div>
+    </div>
+
+    <div class="section" id="trace-detail">
+      <div class="trace-header-row">
+        <h2 id="trace-detail-title">Trace</h2>
+        <button class="close-btn" id="close-detail">Close</button>
+      </div>
+      <div class="muted mono" id="trace-detail-meta"></div>
+      <div class="waterfall" id="waterfall"></div>
+      <div class="details-panel" id="span-details">
+        <pre id="span-details-pre"></pre>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const state = {
+      traces: [],
+      selectedTraceId: null,
+      refreshTimer: null,
+      baseTime: 0,
+      totalDuration: 0,
+    };
+
+    function fmtDuration(ms) {
+      if (ms == null || !isFinite(ms)) return "--";
+      if (ms < 1) return (ms * 1000).toFixed(0) + "us";
+      if (ms < 1000) return ms.toFixed(1) + "ms";
+      return (ms / 1000).toFixed(2) + "s";
+    }
+
+    function fmtAgo(ts) {
+      if (!ts) return "--";
+      const diff = Date.now() - ts;
+      if (diff < 1000) return "just now";
+      if (diff < 60_000) return Math.floor(diff / 1000) + "s ago";
+      if (diff < 3600_000) return Math.floor(diff / 60_000) + "m ago";
+      return Math.floor(diff / 3600_000) + "h ago";
+    }
+
+    function shortId(id) {
+      if (!id) return "";
+      return id.length > 16 ? id.slice(0, 16) : id;
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    async function fetchJson(url) {
+      const res = await fetch(url, { credentials: "same-origin" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.json();
+    }
+
+    async function loadStats() {
+      try {
+        const s = await fetchJson("/api/v1/traces/explorer/stats");
+        document.getElementById("stat-traces").textContent = s.totalTraces ?? 0;
+        document.getElementById("stat-spans").textContent = s.totalSpans ?? 0;
+        document.getElementById("stat-errors").textContent = (s.byStatus && s.byStatus.error) || 0;
+        document.getElementById("stat-services").textContent = s.byService
+          ? Object.keys(s.byService).length
+          : 0;
+        document.getElementById("disabled-banner").style.display = s.enabled ? "none" : "block";
+      } catch (e) {
+        console.warn("Failed to load stats:", e);
+      }
+    }
+
+    async function loadTraces() {
+      try {
+        const params = new URLSearchParams();
+        const name = document.getElementById("f-name").value.trim();
+        const service = document.getElementById("f-service").value.trim();
+        const status = document.getElementById("f-status").value;
+        const minDur = document.getElementById("f-min-duration").value;
+        if (name) params.set("name", name);
+        if (service) params.set("service", service);
+        if (status) params.set("status", status);
+        if (minDur) params.set("minDuration", minDur);
+        params.set("limit", "100");
+
+        const data = await fetchJson("/api/v1/traces/explorer?" + params.toString());
+        state.traces = data.traces || [];
+        renderTraceList();
+      } catch (e) {
+        console.warn("Failed to load traces:", e);
+      }
+    }
+
+    function renderTraceList() {
+      const tbody = document.getElementById("trace-list");
+      const empty = document.getElementById("empty-msg");
+      tbody.innerHTML = "";
+      if (state.traces.length === 0) {
+        empty.style.display = "block";
+        return;
+      }
+      empty.style.display = "none";
+      for (const t of state.traces) {
+        const tr = document.createElement("tr");
+        tr.className = "trace-row" + (t.traceId === state.selectedTraceId ? " active" : "");
+        tr.dataset.traceId = t.traceId;
+        tr.innerHTML = `
+          <td class="mono">${escapeHtml(shortId(t.traceId))}</td>
+          <td>${escapeHtml(t.name)}</td>
+          <td class="muted">${escapeHtml(t.service || "")}</td>
+          <td>${t.spanCount}</td>
+          <td>${fmtDuration(t.duration)}</td>
+          <td><span class="pill ${escapeHtml(t.status || "unset")}">${escapeHtml(t.status || "unset")}</span></td>
+          <td class="muted">${fmtAgo(t.endTime)}</td>
+        `;
+        tr.addEventListener("click", () => selectTrace(t.traceId));
+        tbody.appendChild(tr);
+      }
+    }
+
+    async function selectTrace(traceId) {
+      state.selectedTraceId = traceId;
+      renderTraceList();
+      try {
+        const tree = await fetchJson("/api/v1/traces/explorer/" + encodeURIComponent(traceId) + "/tree");
+        renderWaterfall(tree);
+      } catch (e) {
+        console.warn("Failed to load trace tree:", e);
+      }
+    }
+
+    function renderWaterfall(tree) {
+      const panel = document.getElementById("trace-detail");
+      panel.classList.add("visible");
+      document.getElementById("trace-detail-title").textContent = "Trace " + shortId(tree.traceId);
+      document.getElementById("trace-detail-meta").textContent =
+        `${tree.spanCount} spans · ${fmtDuration(tree.duration)} · started ${fmtAgo(tree.startTime)}`;
+
+      state.baseTime = tree.startTime;
+      state.totalDuration = Math.max(1, tree.duration);
+
+      const container = document.getElementById("waterfall");
+      container.innerHTML = "";
+
+      function walk(node, depth) {
+        const offset = Math.max(0, node.startTime - state.baseTime);
+        const leftPct = (offset / state.totalDuration) * 100;
+        const widthPct = Math.max(0.4, (node.duration / state.totalDuration) * 100);
+        const row = document.createElement("div");
+        row.className = "wf-row";
+        row.innerHTML = `
+          <div class="wf-name ${node.status === "error" ? "error" : ""}">
+            <span class="depth">${"│ ".repeat(depth)}</span>${escapeHtml(node.name)}
+            <span class="service">${escapeHtml(node.service || "")}</span>
+          </div>
+          <div class="wf-bar-track">
+            <div class="wf-bar ${escapeHtml(node.status || "unset")}"
+                 style="left:${leftPct.toFixed(2)}%;width:${widthPct.toFixed(2)}%"></div>
+            <div class="wf-duration" style="left:${(leftPct + widthPct).toFixed(2)}%">${fmtDuration(node.duration)}</div>
+          </div>
+        `;
+        row.addEventListener("click", () => showSpanDetails(node));
+        container.appendChild(row);
+        if (node.children && node.children.length) {
+          for (const child of node.children) walk(child, depth + 1);
+        }
+      }
+
+      for (const root of tree.roots || []) walk(root, 0);
+      document.getElementById("span-details").classList.remove("visible");
+    }
+
+    function showSpanDetails(node) {
+      const panel = document.getElementById("span-details");
+      const pre = document.getElementById("span-details-pre");
+      const view = {
+        name: node.name,
+        spanId: node.spanId,
+        parentSpanId: node.parentSpanId,
+        service: node.service,
+        status: node.status,
+        statusMessage: node.statusMessage,
+        duration: fmtDuration(node.duration),
+        startTime: new Date(node.startTime).toISOString(),
+        endTime: new Date(node.endTime).toISOString(),
+        attributes: node.attributes,
+        events: node.events,
+      };
+      pre.textContent = JSON.stringify(view, null, 2);
+      panel.classList.add("visible");
+    }
+
+    function closeDetail() {
+      document.getElementById("trace-detail").classList.remove("visible");
+      state.selectedTraceId = null;
+      renderTraceList();
+    }
+
+    function applyFilters() {
+      loadTraces();
+    }
+
+    function setupAutoRefresh() {
+      const checkbox = document.getElementById("auto-refresh");
+      function start() {
+        if (state.refreshTimer) clearInterval(state.refreshTimer);
+        state.refreshTimer = setInterval(() => {
+          loadStats();
+          loadTraces();
+        }, 10_000);
+      }
+      function stop() {
+        if (state.refreshTimer) clearInterval(state.refreshTimer);
+        state.refreshTimer = null;
+      }
+      checkbox.addEventListener("change", () => (checkbox.checked ? start() : stop()));
+      if (checkbox.checked) start();
+    }
+
+    document.getElementById("apply-filters").addEventListener("click", applyFilters);
+    document.getElementById("close-detail").addEventListener("click", closeDetail);
+    ["f-name", "f-service", "f-min-duration"].forEach((id) => {
+      document.getElementById(id).addEventListener("keydown", (e) => {
+        if (e.key === "Enter") applyFilters();
+      });
+    });
+    document.getElementById("f-status").addEventListener("change", applyFilters);
+
+    loadStats();
+    loadTraces();
+    setupAutoRefresh();
+  </script>
+</body>
+</html>

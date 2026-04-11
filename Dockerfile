@@ -32,6 +32,7 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY package.json ./
 COPY server.js ./
 COPY lib/ ./lib/
+COPY routes/ ./routes/
 COPY client/ ./client/
 COPY bin/ ./bin/
 COPY scripts/ ./scripts/

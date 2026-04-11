@@ -54,6 +54,54 @@ All queries reference the exact metric names exported by `lib/metrics.js`:
 - **instance** -- Filter by Prometheus `instance` label (multi-select, defaults to All)
 - **datasource** -- Select Prometheus data source
 
+## Alerting Rules
+
+Pre-built alerting rules are provided in `alerts.json` for Grafana 10+ unified alerting.
+
+### Import Alerts
+
+**Via provisioning (recommended):**
+
+1. Copy `alerts.json` to your Grafana provisioning directory:
+   ```bash
+   cp grafana/alerts.json /etc/grafana/provisioning/alerting/siskelbot-alerts.json
+   ```
+2. Restart Grafana. The alert rules will be created automatically.
+
+**Via the Grafana UI:**
+
+1. Navigate to **Alerting > Alert rules**
+2. Click **Import** or create a new rule group named "SiskelBot Alerts"
+3. Paste the rules from `alerts.json` into the JSON editor
+
+**Via the Grafana HTTP API:**
+
+```bash
+curl -X POST http://localhost:3000/api/v1/provisioning/alert-rules \
+  -H "Authorization: Bearer $GRAFANA_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d @grafana/alerts.json
+```
+
+### Alert Rules
+
+| Rule | Condition | Severity | For |
+|------|-----------|----------|-----|
+| **Error Rate Spike** | 5xx error rate > 5% of total requests | critical | 5m |
+| **Latency Degradation** | p95 request latency > 5 seconds | warning | 5m |
+| **Quota Exhaustion** | Any workspace > 90% token quota | warning | 5m |
+| **Circuit Breaker Open** | Any backend circuit breaker opens | critical | 0s (instant) |
+| **Agent Tool Timeouts** | Tool timeouts > 10 per minute | warning | 1m |
+| **Webhook DLQ Growth** | Dead-letter queue size > 50 | warning | 5m |
+
+### Notification Channels
+
+After importing alerts, configure contact points in **Alerting > Contact points** to route notifications to Slack, email, PagerDuty, or other channels. The rules include labels (`severity`, `category`) you can use for routing policies.
+
+### Custom Metrics Note
+
+The quota exhaustion alert uses `siskelbot_workspace_tokens_used` and `siskelbot_workspace_quota_limit` metrics. The webhook DLQ alert uses `siskelbot_webhook_dlq_size`. If these metrics are not yet exported by your SiskelBot instance, add custom instrumentation in `lib/metrics.js` or monitor via the admin API (`/api/admin/quotas`).
+
 ## Notes
 
 - Rate-limit tracking uses HTTP 429 status codes from `http_requests_total` since SiskelBot does not export a dedicated rate-limit counter.

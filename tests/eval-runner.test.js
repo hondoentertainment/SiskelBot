@@ -83,7 +83,7 @@ test("parseSseEvalResponse handles empty input", () => {
 });
 
 test("runEvalSet with mock API runs chat cases", async () => {
-  const mockFetch = async (url, opts) => {
+  const mockFetch = async (_url, _opts) => {
     return {
       ok: true,
       headers: {

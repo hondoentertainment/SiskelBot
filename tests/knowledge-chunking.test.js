@@ -35,8 +35,6 @@ test("chunkPlainText respects overlap parameter", () => {
   assert.ok(chunks.length >= 2);
   // Check overlap: end of chunk N should overlap with start of chunk N+1
   if (chunks.length >= 2) {
-    const endOfFirst = chunks[0].slice(-100);
-    const startOfSecond = chunks[1].slice(0, 200);
     // There should be some shared content due to overlap
     // (not guaranteed to be exact due to break-at logic, but they should be close)
     assert.ok(chunks[0].length > 0);
