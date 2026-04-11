@@ -28,8 +28,6 @@ import * as meetAdapter from "../lib/meeting-adapters/google-meet.js";
 import * as teamsAdapter from "../lib/meeting-adapters/teams.js";
 import * as webexAdapter from "../lib/meeting-adapters/webex.js";
 
-const TEST_WS = "test-meeting-ws-" + Date.now();
-
 function uniqueWs(suffix) {
   return `test-meeting-ws-${suffix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
