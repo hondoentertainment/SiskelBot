@@ -156,6 +156,7 @@ const mountFunctions = [
   mountModelRegistryRoutes,
   mountLoraAdapterRoutes,
   mountFineTuningRoutes,
+  mountPushNotificationRoutes,
 ];
 
 /**
