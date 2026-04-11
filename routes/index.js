@@ -85,6 +85,7 @@ import { mountRunbookRoutes } from "./runbooks.js";
 import { mountPromptEvolutionRoutes } from "./prompt-evolution.js";
 import { mountToolDiscoveryRoutes } from "./tool-discovery.js";
 import { mountToolRagRoutes } from "./tool-rag.js";
+import { mountToolDisclosureRoutes } from "./tool-disclosure.js";
 import { mountExplainabilityRoutes } from "./explainability.js";
 import { mountComplianceRoutes } from "./compliance.js";
 import { mountRecipeMarketplaceRoutes } from "./recipe-marketplace.js";
@@ -207,6 +208,7 @@ const mountFunctions = [
   mountPromptEvolutionRoutes,
   mountToolDiscoveryRoutes,
   mountToolRagRoutes,
+  mountToolDisclosureRoutes,
   mountExplainabilityRoutes,
   mountComplianceRoutes,
   mountRecipeMarketplaceRoutes,
