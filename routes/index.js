@@ -90,6 +90,8 @@ import { mountEdgeCacheRoutes } from "./edge-cache.js";
 import mountQueryAnalyzerRoutes from "./query-analyzer.js";
 import { mountServiceAuthRoutes } from "./service-auth.js";
 import { mountSecretRotationRoutes } from "./secret-rotation.js";
+import { mountExperimentRoutes } from "./experiments.js";
+import { mountMobileRoutes } from "./mobile.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -145,6 +147,7 @@ const mountFunctions = [
   mountQueryAnalyzerRoutes,
   mountServiceAuthRoutes,
   mountSecretRotationRoutes,
+  mountExperimentRoutes,
 ];
 
 /**
