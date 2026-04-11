@@ -248,38 +248,89 @@ export function mountMobileRoutes(app, deps) {
         try {
           const body = call.body;
           const sub = await new Promise((resolve) => {
+            let done = false;
+            const finish = (payload) => {
+              if (done) return;
+              done = true;
+              resolve(payload);
+            };
+            // Safety net - prevent batch from hanging on a bad handler
+            const timer = setTimeout(() => {
+              finish({ status: 504, body: { error: "Subrequest timeout", code: "TIMEOUT" } });
+            }, 5000);
+            const resolveWith = (payload) => {
+              clearTimeout(timer);
+              finish(payload);
+            };
             const chunks = [];
             const subRes = {
               statusCode: 200,
               _headers: {},
-              setHeader(k, v) { this._headers[String(k).toLowerCase()] = v; },
+              locals: {},
+              setHeader(k, v) { this._headers[String(k).toLowerCase()] = v; return this; },
               getHeader(k) { return this._headers[String(k).toLowerCase()]; },
-              removeHeader(k) { delete this._headers[String(k).toLowerCase()]; },
-              flushHeaders() {},
+              getHeaderNames() { return Object.keys(this._headers); },
+              hasHeader(k) { return Object.prototype.hasOwnProperty.call(this._headers, String(k).toLowerCase()); },
+              removeHeader(k) { delete this._headers[String(k).toLowerCase()]; return this; },
+              flushHeaders() { this.headersSent = true; },
+              writeHead(code, headers) {
+                this.statusCode = code;
+                if (headers && typeof headers === "object") {
+                  for (const [k, v] of Object.entries(headers)) this.setHeader(k, v);
+                }
+                this.headersSent = true;
+                return this;
+              },
               status(code) { this.statusCode = code; return this; },
+              type() { return this; },
+              set(k, v) { this.setHeader(k, v); return this; },
+              header(k, v) { this.setHeader(k, v); return this; },
+              vary() { return this; },
+              links() { return this; },
+              cookie() { return this; },
+              clearCookie() { return this; },
               json(obj) {
                 chunks.push(Buffer.from(JSON.stringify(obj)));
-                resolve({ status: this.statusCode, body: obj });
+                this.headersSent = true;
+                resolveWith({ status: this.statusCode, body: obj });
                 return this;
               },
               send(data) {
                 if (data !== undefined) chunks.push(Buffer.from(typeof data === "string" ? data : JSON.stringify(data)));
-                let parsed = null;
+                let parsed;
                 try { parsed = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch (_) { parsed = chunks.length ? Buffer.concat(chunks).toString("utf8") : null; }
-                resolve({ status: this.statusCode, body: parsed });
+                this.headersSent = true;
+                resolveWith({ status: this.statusCode, body: parsed });
                 return this;
               },
               end(data) {
-                if (data !== undefined) chunks.push(Buffer.from(typeof data === "string" ? data : JSON.stringify(data)));
-                let parsed = null;
+                if (data !== undefined) chunks.push(Buffer.from(typeof data === "string" ? data : Buffer.isBuffer(data) ? data : JSON.stringify(data)));
+                let parsed;
                 try { parsed = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch (_) { parsed = chunks.length ? Buffer.concat(chunks).toString("utf8") : null; }
-                resolve({ status: this.statusCode, body: parsed });
+                this.headersSent = true;
+                resolveWith({ status: this.statusCode, body: parsed });
                 return this;
               },
               headersSent: false,
-              on() {},
-              once() {},
+              finished: false,
+              writable: true,
+              on() { return this; },
+              once() { return this; },
+              addListener() { return this; },
+              removeListener() { return this; },
+              removeAllListeners() { return this; },
+              emit() { return false; },
               write(chunk) { if (chunk) chunks.push(Buffer.from(typeof chunk === "string" ? chunk : chunk)); return true; },
+              sendStatus(code) {
+                this.statusCode = code;
+                resolveWith({ status: code, body: null });
+                return this;
+              },
+              redirect(...args) {
+                const code = typeof args[0] === "number" ? args[0] : 302;
+                resolveWith({ status: code, body: null });
+                return this;
+              },
             };
             // Build a plain object request. We can't extend IncomingMessage
             // because several of its properties (like `path`) are getters and
@@ -301,6 +352,7 @@ export function mountMobileRoutes(app, deps) {
                 "x-api-key": apiKeyHeader,
                 "x-user-api-key": userKeyHeader,
               },
+              rawHeaders: [],
               cookies: req.cookies || {},
               signedCookies: req.signedCookies || {},
               session: req.session,
@@ -310,26 +362,47 @@ export function mountMobileRoutes(app, deps) {
               apiKeyId: req.apiKeyId,
               authenticatedViaDeploymentKey: req.authenticatedViaDeploymentKey,
               app: req.app,
+              // Skip body parser re-parse (already parsed)
+              _body: true,
+              readable: false,
+              complete: true,
               get(header) {
                 return this.headers[String(header).toLowerCase()];
               },
               header(h) { return this.get(h); },
               accepts() { return true; },
-              is() { return false; },
-              on() {},
-              once() {},
-              removeListener() {},
-              unpipe() {},
+              acceptsCharsets() { return true; },
+              acceptsEncodings() { return true; },
+              acceptsLanguages() { return true; },
+              is(type) {
+                const ct = this.headers["content-type"] || "";
+                return typeof type === "string" ? ct.includes(type) : false;
+              },
+              on() { return this; },
+              once() { return this; },
+              addListener() { return this; },
+              removeListener() { return this; },
+              removeAllListeners() { return this; },
+              emit() { return false; },
+              pipe() { return this; },
+              unpipe() { return this; },
+              pause() { return this; },
+              resume() { return this; },
+              setTimeout() { return this; },
               connection: req.connection,
               socket: req.socket,
             };
-            app._router.handle(subReq, subRes, (err) => {
-              if (err) {
-                resolve({ status: 500, body: { error: err.message || "Internal error", code: "INTERNAL_ERROR" } });
-              } else {
-                resolve({ status: subRes.statusCode, body: null });
-              }
-            });
+            try {
+              app._router.handle(subReq, subRes, (err) => {
+                if (err) {
+                  resolveWith({ status: 500, body: { error: err.message || "Internal error", code: "INTERNAL_ERROR" } });
+                } else if (!done) {
+                  resolveWith({ status: subRes.statusCode || 404, body: { error: "Not found", code: "NOT_FOUND" } });
+                }
+              });
+            } catch (err) {
+              resolveWith({ status: 500, body: { error: err.message, code: "INTERNAL_ERROR" } });
+            }
           });
           results.push(sub);
         } catch (err) {
