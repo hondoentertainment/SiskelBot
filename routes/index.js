@@ -77,6 +77,7 @@ import { mountVoiceRoutes } from "./voice.js";
 import { mountVoiceRealtimeRoutes } from "./voice-realtime.js";
 import { mountVoiceCloningRoutes } from "./voice-cloning.js";
 import { mountVoiceCommandRoutes } from "./voice-commands.js";
+import { mountDiarizationRoutes } from "./diarization.js";
 import mountTraceExplorerRoutes from "./traces.js";
 import { mountSLORoutes } from "./slo.js";
 import { mountSyntheticRoutes } from "./synthetic.js";
@@ -101,6 +102,7 @@ import { mountLoraAdapterRoutes } from "./lora-adapters.js";
 import { mountFineTuningRoutes } from "./fine-tuning.js";
 import mountPushNotificationRoutes from "./push-notifications.js";
 import { mountWebAuthnRoutes } from "./webauthn.js";
+import { mountLdapRoutes } from "./ldap.js";
 import { mountHSMRoutes } from "./hsm.js";
 import { mountCohortAnalysisRoutes } from "./cohort-analysis.js";
 import { mountFunnelRoutes } from "./funnels.js";
@@ -114,6 +116,8 @@ import mountDataWarehouseRoutes from "./data-warehouse.js";
 import { mountAnnotationRoutes } from "./annotations.js";
 import { mountDataResidencyRoutes } from "./data-residency.js";
 import { mountScreenShareRoutes } from "./screen-share.js";
+import { mountJitProvisioningRoutes } from "./jit-provisioning.js";
+import { mountEntitlementReviewRoutes } from "./entitlement-reviews.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -156,6 +160,7 @@ const mountFunctions = [
   mountVoiceRealtimeRoutes,
   mountVoiceCloningRoutes,
   mountVoiceCommandRoutes,
+  mountDiarizationRoutes,
   mountTraceExplorerRoutes,
   mountSLORoutes,
   mountSyntheticRoutes,
@@ -180,6 +185,7 @@ const mountFunctions = [
   mountFineTuningRoutes,
   mountPushNotificationRoutes,
   mountWebAuthnRoutes,
+  mountLdapRoutes,
   mountHSMRoutes,
   mountCohortAnalysisRoutes,
   mountFunnelRoutes,
@@ -193,6 +199,8 @@ const mountFunctions = [
   mountAnnotationRoutes,
   mountDataResidencyRoutes,
   mountScreenShareRoutes,
+  mountJitProvisioningRoutes,
+  mountEntitlementReviewRoutes,
 ];
 
 /**
