@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>SiskelBot - Diarized Transcript Viewer</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    a { color: #60a5fa; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    button:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 2px solid #60a5fa;
+      outline-offset: 2px;
+    }
+
+    header {
+      padding: 0.75rem 1rem;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    header h1 { margin: 0; font-size: 1.125rem; font-weight: 600; }
+    header .nav { margin-left: auto; display: flex; gap: 1rem; }
+
+    main {
+      padding: 1rem;
+      max-width: 1100px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1rem;
+    }
+    .panel h2 {
+      margin: 0 0 0.75rem 0;
+      font-size: 0.95rem;
+      color: #cbd5e1;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    button {
+      background: #334155;
+      color: #e2e8f0;
+      border: 1px solid #475569;
+      border-radius: 6px;
+      padding: 0.5rem 0.875rem;
+      font-size: 0.875rem;
+      cursor: pointer;
+    }
+    button:hover { background: #475569; }
+    button.primary { background: #2563eb; border-color: #1d4ed8; }
+    button.primary:hover { background: #1d4ed8; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    input[type="file"], select, input[type="text"] {
+      width: 100%;
+      padding: 0.5rem;
+      background: #0f172a;
+      color: #e2e8f0;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      font-size: 0.875rem;
+    }
+
+    .speaker-list { display: flex; flex-direction: column; gap: 0.5rem; }
+    .speaker-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .speaker-row:hover { border-color: #475569; }
+    .speaker-row.active { border-color: #60a5fa; background: #1e3a8a33; }
+    .speaker-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .speaker-name { flex: 1; font-size: 0.875rem; }
+    .speaker-duration { font-size: 0.75rem; color: #94a3b8; }
+
+    .transcript {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+    .segment {
+      padding: 0.625rem 0.75rem;
+      background: #0f172a;
+      border-left: 3px solid #475569;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .segment:hover { background: #1e293b; }
+    .segment.active { background: #1e3a8a55; }
+    .segment.dimmed { opacity: 0.3; }
+    .segment-meta {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      margin-bottom: 0.25rem;
+    }
+    .segment-speaker { font-weight: 600; }
+    .segment-text { font-size: 0.9rem; color: #e2e8f0; line-height: 1.5; }
+
+    .upload-row {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    audio { width: 100%; margin-top: 1rem; }
+
+    .actions {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-top: 1rem;
+    }
+
+    .empty {
+      color: #94a3b8;
+      text-align: center;
+      padding: 2rem 1rem;
+      font-size: 0.875rem;
+    }
+
+    .error {
+      background: #7f1d1d;
+      color: #fecaca;
+      padding: 0.75rem;
+      border-radius: 6px;
+      margin: 0.5rem 0;
+      font-size: 0.875rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Diarized Transcript Viewer</h1>
+    <nav class="nav">
+      <a href="/">Chat</a>
+      <a href="/admin.html">Admin</a>
+    </nav>
+  </header>
+
+  <main>
+    <aside>
+      <div class="panel">
+        <h2>Audio Source</h2>
+        <div class="upload-row">
+          <input type="file" id="audioFile" accept="audio/*">
+          <select id="provider">
+            <option value="">default provider</option>
+            <option value="openai">openai</option>
+            <option value="assemblyai">assemblyai</option>
+            <option value="deepgram">deepgram</option>
+            <option value="pyannote">pyannote</option>
+          </select>
+          <input type="text" id="expectedSpeakers" placeholder="expected speakers (e.g. 2)">
+          <button class="primary" id="diarizeBtn">Diarize</button>
+        </div>
+        <audio id="player" controls></audio>
+      </div>
+
+      <div class="panel" style="margin-top: 1rem;">
+        <h2>Speakers</h2>
+        <div id="speakerList" class="speaker-list">
+          <div class="empty">No transcript loaded</div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top: 1rem;">
+        <h2>Export</h2>
+        <div class="actions">
+          <button id="exportSrt" disabled>SRT</button>
+          <button id="exportVtt" disabled>VTT</button>
+          <button id="exportTxt" disabled>TXT</button>
+          <button id="exportJson" disabled>JSON</button>
+        </div>
+      </div>
+    </aside>
+
+    <section class="panel">
+      <h2>Transcript</h2>
+      <div id="errorBox"></div>
+      <div id="transcript" class="transcript">
+        <div class="empty">Upload audio and click Diarize to view transcript.</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const SPEAKER_COLORS = [
+      "#60a5fa", "#34d399", "#fbbf24", "#f87171",
+      "#a78bfa", "#22d3ee", "#fb923c", "#f472b6"
+    ];
+
+    const state = {
+      jobId: null,
+      segments: [],
+      speakers: [],
+      filterSpeaker: null,
+      audioUrl: null,
+    };
+
+    const $ = (id) => document.getElementById(id);
+
+    function speakerColor(name) {
+      const idx = state.speakers.findIndex((s) => s.id === name);
+      return SPEAKER_COLORS[idx >= 0 ? idx % SPEAKER_COLORS.length : 0];
+    }
+
+    function showError(msg) {
+      $("errorBox").innerHTML = `<div class="error">${escapeHtml(msg)}</div>`;
+      setTimeout(() => { $("errorBox").innerHTML = ""; }, 6000);
+    }
+
+    function escapeHtml(s) {
+      return String(s || "").replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+      }[c]));
+    }
+
+    function formatTime(seconds) {
+      const s = Math.max(0, Number(seconds) || 0);
+      const m = Math.floor(s / 60);
+      const sec = Math.floor(s % 60);
+      return `${m}:${sec.toString().padStart(2, "0")}`;
+    }
+
+    function renderSpeakers() {
+      const list = $("speakerList");
+      if (!state.speakers.length) {
+        list.innerHTML = '<div class="empty">No speakers detected</div>';
+        return;
+      }
+      list.innerHTML = state.speakers.map((s) => `
+        <div class="speaker-row ${state.filterSpeaker === s.id ? "active" : ""}" data-speaker="${escapeHtml(s.id)}">
+          <span class="speaker-dot" style="background: ${speakerColor(s.id)};"></span>
+          <span class="speaker-name">${escapeHtml(s.id)}</span>
+          <span class="speaker-duration">${formatTime(s.totalDuration)}</span>
+        </div>
+      `).join("");
+      list.querySelectorAll(".speaker-row").forEach((row) => {
+        row.addEventListener("click", () => {
+          const sp = row.dataset.speaker;
+          state.filterSpeaker = state.filterSpeaker === sp ? null : sp;
+          renderSpeakers();
+          renderTranscript();
+        });
+      });
+    }
+
+    function renderTranscript() {
+      const container = $("transcript");
+      if (!state.segments.length) {
+        container.innerHTML = '<div class="empty">No segments</div>';
+        return;
+      }
+      container.innerHTML = state.segments.map((seg, i) => {
+        const dimmed = state.filterSpeaker && state.filterSpeaker !== seg.speaker;
+        const color = speakerColor(seg.speaker);
+        return `
+          <div class="segment ${dimmed ? "dimmed" : ""}" data-idx="${i}" style="border-left-color: ${color};">
+            <div class="segment-meta">
+              <span class="segment-speaker" style="color: ${color};">${escapeHtml(seg.speaker)}</span>
+              <span>${formatTime(seg.start)} - ${formatTime(seg.end)}</span>
+            </div>
+            <div class="segment-text">${escapeHtml(seg.text)}</div>
+          </div>
+        `;
+      }).join("");
+      container.querySelectorAll(".segment").forEach((el) => {
+        el.addEventListener("click", () => {
+          const idx = Number(el.dataset.idx);
+          const seg = state.segments[idx];
+          if (seg && $("player").src) {
+            $("player").currentTime = seg.start || 0;
+            $("player").play().catch(() => {});
+          }
+        });
+      });
+    }
+
+    async function diarize() {
+      const file = $("audioFile").files[0];
+      if (!file) {
+        showError("Please choose an audio file first.");
+        return;
+      }
+      const fd = new FormData();
+      fd.append("audio", file);
+      const provider = $("provider").value;
+      if (provider) fd.append("provider", provider);
+      const expected = $("expectedSpeakers").value;
+      if (expected) fd.append("expectedSpeakers", expected);
+
+      $("diarizeBtn").disabled = true;
+      $("diarizeBtn").textContent = "Diarizing...";
+
+      try {
+        const res = await fetch("/api/v1/voice/diarize", { method: "POST", body: fd });
+        const data = await res.json();
+        if (!res.ok) {
+          showError(data?.error?.message || data?.error || `HTTP ${res.status}`);
+          return;
+        }
+        state.jobId = data.jobId;
+        state.segments = Array.isArray(data.segments) ? data.segments : [];
+        state.speakers = Array.isArray(data.speakers) ? data.speakers : [];
+        state.filterSpeaker = null;
+
+        if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
+        state.audioUrl = URL.createObjectURL(file);
+        $("player").src = state.audioUrl;
+
+        renderSpeakers();
+        renderTranscript();
+
+        ["exportSrt", "exportVtt", "exportTxt", "exportJson"].forEach((id) => {
+          $(id).disabled = false;
+        });
+      } catch (err) {
+        showError(err.message || "diarization failed");
+      } finally {
+        $("diarizeBtn").disabled = false;
+        $("diarizeBtn").textContent = "Diarize";
+      }
+    }
+
+    async function exportFormat(format) {
+      if (!state.jobId) return;
+      try {
+        const res = await fetch(`/api/v1/voice/diarize/${state.jobId}/export?format=${format}`);
+        if (!res.ok) {
+          showError(`export failed: HTTP ${res.status}`);
+          return;
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `transcript.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        showError(err.message || "export failed");
+      }
+    }
+
+    $("diarizeBtn").addEventListener("click", diarize);
+    $("exportSrt").addEventListener("click", () => exportFormat("srt"));
+    $("exportVtt").addEventListener("click", () => exportFormat("vtt"));
+    $("exportTxt").addEventListener("click", () => exportFormat("txt"));
+    $("exportJson").addEventListener("click", () => exportFormat("json"));
+  </script>
+</body>
+</html>

@@ -87,6 +87,7 @@ import { mountToolDiscoveryRoutes } from "./tool-discovery.js";
 import { mountExplainabilityRoutes } from "./explainability.js";
 import { mountComplianceRoutes } from "./compliance.js";
 import { mountRecipeMarketplaceRoutes } from "./recipe-marketplace.js";
+import { mountAgentMarketplaceRoutes } from "./agent-marketplace.js";
 import { mountPluginCertificationRoutes } from "./plugin-certification.js";
 import { mountDeveloperPortalRoutes } from "./developer-portal.js";
 import { mountReferralRoutes } from "./referrals.js";
@@ -118,6 +119,9 @@ import { mountDataResidencyRoutes } from "./data-residency.js";
 import { mountScreenShareRoutes } from "./screen-share.js";
 import { mountJitProvisioningRoutes } from "./jit-provisioning.js";
 import { mountEntitlementReviewRoutes } from "./entitlement-reviews.js";
+import { mountHierarchyRoutes } from "./hierarchy.js";
+import { mountGroupSyncRoutes } from "./group-sync.js";
+import { mountAgentNegotiationRoutes } from "./agent-negotiation.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -170,6 +174,7 @@ const mountFunctions = [
   mountExplainabilityRoutes,
   mountComplianceRoutes,
   mountRecipeMarketplaceRoutes,
+  mountAgentMarketplaceRoutes,
   mountPluginCertificationRoutes,
   mountDeveloperPortalRoutes,
   mountReferralRoutes,
@@ -201,6 +206,9 @@ const mountFunctions = [
   mountScreenShareRoutes,
   mountJitProvisioningRoutes,
   mountEntitlementReviewRoutes,
+  mountHierarchyRoutes,
+  mountGroupSyncRoutes,
+  mountAgentNegotiationRoutes,
 ];
 
 /**
