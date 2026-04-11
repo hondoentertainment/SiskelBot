@@ -3,6 +3,11 @@ import { validate } from "../lib/validate.js";
 import { detectPromptInjection, sanitizeInput } from "../lib/prompt-guard.js";
 import { checkOutputSafety } from "../lib/output-guard.js";
 import { estimateRequestCost, checkCostLimit, recordCost } from "../lib/cost-controls.js";
+import {
+  getActiveAdapter,
+  buildModelNameWithAdapter,
+  recordAdapterUsage,
+} from "../lib/lora-adapters.js";
 
 const ENABLE_PROMPT_GUARD = process.env.ENABLE_PROMPT_GUARD === "1";
 const ENABLE_OUTPUT_GUARD = process.env.ENABLE_OUTPUT_GUARD === "1";
@@ -130,7 +135,26 @@ export default function mountChatRoutes(app, deps) {
 
       const config = buildProxyConfig(activeBackend);
       const url = `${config.baseUrl}${config.path}`;
-      const model = req.body?.model || MODEL_PRESETS[activeBackend]?.[0] || "unknown";
+      let model = req.body?.model || MODEL_PRESETS[activeBackend]?.[0] || "unknown";
+
+      // Phase 38.5: LoRA adapter — if the workspace has an active adapter,
+      // rewrite the outgoing model name (OpenAI) or attach adapter_name (vLLM).
+      let activeAdapter = null;
+      try {
+        activeAdapter = await getActiveAdapter(workspace);
+      } catch (_) {}
+      if (activeAdapter) {
+        const resolved = buildModelNameWithAdapter(model, activeAdapter);
+        if (resolved?.model) {
+          model = resolved.model;
+          req.body.model = resolved.model;
+        }
+        if (resolved?.extras && typeof resolved.extras === "object") {
+          req.body = { ...req.body, ...resolved.extras };
+        }
+        res.setHeader("X-Active-Adapter", activeAdapter.id);
+      }
+
       const agentMode = req.body?.agentMode === true;
       const swarmMode = req.body?.swarmMode === true;
       const hasTools = Array.isArray(req.body?.tools) && req.body.tools.length > 0;

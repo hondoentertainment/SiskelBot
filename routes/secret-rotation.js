@@ -46,7 +46,8 @@ export function mountSecretRotationRoutes(app, deps) {
         notify: Array.isArray(body.notify) ? body.notify : undefined,
       });
       // Do NOT return the raw secret value in the API response — only metadata.
-      const { newValue, ...safe } = result;
+      // eslint-disable-next-line no-unused-vars
+      const { newValue: _newValue, ...safe } = result;
       res.json(safe);
     } catch (err) {
       return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
