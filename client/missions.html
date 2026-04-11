@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>SiskelBot - Long-Running Missions</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 2rem;
+      line-height: 1.5;
+    }
+
+    header {
+      max-width: 1200px;
+      margin: 0 auto 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    header h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: #f8fafc;
+    }
+
+    .meta {
+      font-size: 0.85rem;
+      color: #94a3b8;
+    }
+
+    .toolbar {
+      max-width: 1200px;
+      margin: 0 auto 1.5rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+    }
+
+    button, select, input[type="text"], input[type="number"], textarea {
+      padding: 0.55rem 1rem;
+      background: #1e293b;
+      color: #e2e8f0;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-family: inherit;
+    }
+
+    button { cursor: pointer; }
+    button.primary { background: #1d4ed8; border-color: #2563eb; color: #f8fafc; }
+    button.primary:hover { background: #2563eb; }
+    button.danger { background: #b91c1c; border-color: #dc2626; color: #f8fafc; }
+    button.danger:hover { background: #dc2626; }
+    button:hover { border-color: #64748b; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .layout {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 1.25rem;
+    }
+
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 0.9rem 1.1rem;
+      background: #0f172a;
+      border-bottom: 1px solid #334155;
+      font-size: 0.8rem;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .panel-body { padding: 1rem 1.1rem; }
+
+    .mission-item {
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid #334155;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .mission-item:hover { background: #273449; }
+    .mission-item.active { background: #1e3a5f; border-left: 3px solid #3b82f6; }
+    .mission-item .name { font-weight: 600; color: #f1f5f9; margin-bottom: 0.25rem; }
+    .mission-item .meta-line {
+      display: flex;
+      gap: 0.6rem;
+      align-items: center;
+      font-size: 0.78rem;
+      color: #94a3b8;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .badge.pending { background: #475569; color: #f1f5f9; }
+    .badge.running { background: #1d4ed8; color: #f8fafc; }
+    .badge.paused { background: #b45309; color: #fef3c7; }
+    .badge.completed { background: #166534; color: #d1fae5; }
+    .badge.failed { background: #991b1b; color: #fee2e2; }
+    .badge.aborted { background: #7c2d12; color: #fed7aa; }
+
+    .progress-track {
+      height: 8px;
+      background: #0f172a;
+      border-radius: 999px;
+      overflow: hidden;
+      margin: 0.4rem 0;
+    }
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #3b82f6, #60a5fa);
+      transition: width 0.4s ease;
+    }
+
+    .detail h2 { font-size: 1.2rem; color: #f8fafc; margin-bottom: 0.4rem; }
+    .detail .goal {
+      color: #cbd5e1;
+      font-size: 0.92rem;
+      padding: 0.6rem 0.9rem;
+      background: #0f172a;
+      border-left: 3px solid #3b82f6;
+      border-radius: 4px;
+      margin: 0.6rem 0 1rem;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 0.75rem;
+      margin: 1rem 0;
+    }
+    .stat {
+      background: #0f172a;
+      padding: 0.8rem;
+      border-radius: 8px;
+      border: 1px solid #334155;
+    }
+    .stat .label {
+      font-size: 0.7rem;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .stat .value {
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: #f1f5f9;
+      margin-top: 0.2rem;
+    }
+
+    .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.75rem 0; }
+
+    .checkpoint-list, .log-list {
+      max-height: 300px;
+      overflow-y: auto;
+      background: #0f172a;
+      border-radius: 8px;
+      border: 1px solid #334155;
+    }
+    .checkpoint-item, .log-item {
+      padding: 0.6rem 0.9rem;
+      border-bottom: 1px solid #1e293b;
+      font-size: 0.85rem;
+      display: flex;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    .checkpoint-item:last-child, .log-item:last-child { border-bottom: none; }
+    .checkpoint-item .ts, .log-item .ts { color: #64748b; font-size: 0.75rem; font-family: ui-monospace, monospace; }
+    .log-item .type {
+      color: #60a5fa;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-weight: 600;
+    }
+
+    .section { margin: 1.25rem 0; }
+    .section h3 {
+      font-size: 0.78rem;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .empty {
+      padding: 2rem;
+      text-align: center;
+      color: #64748b;
+      font-size: 0.9rem;
+    }
+
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.65);
+      display: none; align-items: center; justify-content: center; z-index: 50;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 1.5rem;
+      max-width: 520px;
+      width: 90%;
+    }
+    .modal h2 { font-size: 1.1rem; margin-bottom: 1rem; color: #f8fafc; }
+    .form-row { margin-bottom: 0.85rem; }
+    .form-row label {
+      display: block;
+      font-size: 0.8rem;
+      color: #94a3b8;
+      margin-bottom: 0.3rem;
+    }
+    .form-row input, .form-row textarea {
+      width: 100%;
+    }
+    .form-row textarea { min-height: 80px; resize: vertical; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Long-Running Missions</h1>
+    <div class="meta" id="meta">Autonomous agents running over hours/days</div>
+  </header>
+
+  <div class="toolbar">
+    <button class="primary" id="newMissionBtn">+ New Mission</button>
+    <select id="statusFilter">
+      <option value="">All statuses</option>
+      <option value="pending">Pending</option>
+      <option value="running">Running</option>
+      <option value="paused">Paused</option>
+      <option value="completed">Completed</option>
+      <option value="failed">Failed</option>
+      <option value="aborted">Aborted</option>
+    </select>
+    <button id="refreshBtn">Refresh</button>
+  </div>
+
+  <div class="layout">
+    <div class="panel">
+      <div class="panel-header">
+        <span>Missions</span>
+        <span id="missionCount">0</span>
+      </div>
+      <div id="missionList"></div>
+    </div>
+
+    <div class="panel detail">
+      <div class="panel-header">
+        <span>Detail</span>
+        <span id="detailStatus"></span>
+      </div>
+      <div class="panel-body" id="detailBody">
+        <div class="empty">Select a mission to view details.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="newModal">
+    <div class="modal">
+      <h2>Create Mission</h2>
+      <div class="form-row">
+        <label for="newName">Name</label>
+        <input type="text" id="newName" placeholder="e.g. Research competitive landscape" />
+      </div>
+      <div class="form-row">
+        <label for="newGoal">Goal</label>
+        <textarea id="newGoal" placeholder="Describe what the agent should accomplish"></textarea>
+      </div>
+      <div class="form-row">
+        <label for="newDuration">Max duration (hours)</label>
+        <input type="number" id="newDuration" value="24" min="1" />
+      </div>
+      <div class="form-row">
+        <label for="newMaxToolCalls">Max tool calls</label>
+        <input type="number" id="newMaxToolCalls" value="5000" min="1" />
+      </div>
+      <div class="form-row">
+        <label for="newMaxCost">Max cost (USD)</label>
+        <input type="number" id="newMaxCost" value="100" min="0" />
+      </div>
+      <div class="modal-actions">
+        <button id="cancelNewBtn">Cancel</button>
+        <button class="primary" id="createMissionBtn">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let selectedId = null;
+    let pollHandle = null;
+
+    function fmtDuration(ms) {
+      if (!ms || ms <= 0) return "0s";
+      const s = Math.floor(ms / 1000);
+      if (s < 60) return s + "s";
+      const m = Math.floor(s / 60);
+      if (m < 60) return m + "m " + (s % 60) + "s";
+      const h = Math.floor(m / 60);
+      return h + "h " + (m % 60) + "m";
+    }
+
+    function escapeHtml(str) {
+      if (str == null) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    async function api(path, options = {}) {
+      const res = await fetch("/api/v1" + path, {
+        headers: { "Content-Type": "application/json" },
+        ...options,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || res.statusText);
+      }
+      return res.json();
+    }
+
+    async function loadMissions() {
+      const status = document.getElementById("statusFilter").value;
+      const qs = status ? "?status=" + encodeURIComponent(status) : "";
+      const data = await api("/missions" + qs);
+      const list = document.getElementById("missionList");
+      const missions = data.missions || [];
+      document.getElementById("missionCount").textContent = missions.length;
+      if (!missions.length) {
+        list.innerHTML = '<div class="empty">No missions yet.</div>';
+        return;
+      }
+      list.innerHTML = missions
+        .map(
+          (m) => `
+        <div class="mission-item ${m.missionId === selectedId ? "active" : ""}" data-id="${m.missionId}">
+          <div class="name">${escapeHtml(m.name)}</div>
+          <div class="meta-line">
+            <span class="badge ${m.status}">${m.status}</span>
+            <span>${(Math.round((m.progress || 0) * 100))}%</span>
+          </div>
+          <div class="progress-track"><div class="progress-bar" style="width:${Math.round((m.progress || 0) * 100)}%"></div></div>
+        </div>`
+        )
+        .join("");
+      list.querySelectorAll(".mission-item").forEach((el) => {
+        el.addEventListener("click", () => selectMission(el.dataset.id));
+      });
+    }
+
+    async function selectMission(id) {
+      selectedId = id;
+      await loadMissions();
+      await renderDetail(id);
+    }
+
+    async function renderDetail(id) {
+      const body = document.getElementById("detailBody");
+      const statusEl = document.getElementById("detailStatus");
+      try {
+        const [statusRes, cpRes, histRes] = await Promise.all([
+          api("/missions/" + id + "/status"),
+          api("/missions/" + id + "/checkpoints"),
+          api("/missions/" + id + "/history?limit=50"),
+        ]);
+        const s = statusRes.status;
+        statusEl.innerHTML = `<span class="badge ${s.status}">${s.status}</span>`;
+        const pct = Math.round((s.progress || 0) * 100);
+        body.innerHTML = `
+          <h2>${escapeHtml(s.name)}</h2>
+          <div class="goal">${escapeHtml(s.goal)}</div>
+          <div class="progress-track"><div class="progress-bar" style="width:${pct}%"></div></div>
+          <div style="font-size:0.85rem;color:#94a3b8;margin-top:0.3rem;">
+            <strong>${pct}%</strong> &middot; ${escapeHtml(s.currentStep || "—")}
+          </div>
+          <div class="stats-grid">
+            <div class="stat"><div class="label">Elapsed</div><div class="value">${fmtDuration(s.elapsedTime)}</div></div>
+            <div class="stat"><div class="label">Remaining (est)</div><div class="value">${s.estimatedRemaining != null ? fmtDuration(s.estimatedRemaining) : "—"}</div></div>
+            <div class="stat"><div class="label">Tool Calls</div><div class="value">${s.toolCallsCount || 0}</div></div>
+            <div class="stat"><div class="label">Iterations</div><div class="value">${s.iterationsCount || 0}</div></div>
+            <div class="stat"><div class="label">Cost (USD)</div><div class="value">$${(s.costUsd || 0).toFixed(2)}</div></div>
+            <div class="stat"><div class="label">Checkpoints</div><div class="value">${(s.checkpoints || []).length}</div></div>
+          </div>
+
+          <div class="actions">
+            ${s.status === "pending" || s.status === "paused" ? `<button class="primary" data-act="start">Start</button>` : ""}
+            ${s.status === "running" ? `<button data-act="pause">Pause</button>` : ""}
+            ${s.status === "paused" ? `<button class="primary" data-act="resume">Resume</button>` : ""}
+            ${s.status === "running" || s.status === "paused" ? `<button data-act="checkpoint">Checkpoint Now</button>` : ""}
+            ${s.status !== "completed" && s.status !== "aborted" && s.status !== "failed" ? `<button class="danger" data-act="abort">Abort</button>` : ""}
+            <button data-act="delete" class="danger">Delete</button>
+          </div>
+
+          <div class="section">
+            <h3>Checkpoints (${(cpRes.checkpoints || []).length})</h3>
+            <div class="checkpoint-list">
+              ${
+                (cpRes.checkpoints || []).length
+                  ? cpRes.checkpoints
+                      .map(
+                        (c) => `
+                <div class="checkpoint-item">
+                  <div>${escapeHtml(c.checkpointId)}</div>
+                  <div>
+                    <span class="ts">${escapeHtml(c.savedAt)}</span>
+                    <button data-restore="${escapeHtml(c.checkpointId)}" style="margin-left:0.5rem;font-size:0.75rem;padding:0.25rem 0.5rem;">Restore</button>
+                  </div>
+                </div>`
+                      )
+                      .join("")
+                  : '<div class="empty">No checkpoints yet.</div>'
+              }
+            </div>
+          </div>
+
+          <div class="section">
+            <h3>Activity Log</h3>
+            <div class="log-list">
+              ${
+                (histRes.events || []).length
+                  ? histRes.events
+                      .map(
+                        (e) => `
+                <div class="log-item">
+                  <div><span class="type">${escapeHtml(e.type)}</span> ${escapeHtml(e.message || "")}</div>
+                  <div class="ts">${escapeHtml(e.timestamp)}</div>
+                </div>`
+                      )
+                      .join("")
+                  : '<div class="empty">No activity yet.</div>'
+              }
+            </div>
+          </div>
+        `;
+
+        body.querySelectorAll("button[data-act]").forEach((btn) => {
+          btn.addEventListener("click", () => handleAction(id, btn.dataset.act));
+        });
+        body.querySelectorAll("button[data-restore]").forEach((btn) => {
+          btn.addEventListener("click", () => handleRestore(id, btn.dataset.restore));
+        });
+      } catch (err) {
+        body.innerHTML = '<div class="empty">Error: ' + escapeHtml(err.message) + '</div>';
+      }
+    }
+
+    async function handleAction(id, action) {
+      try {
+        if (action === "start") await api("/missions/" + id + "/start", { method: "POST" });
+        if (action === "pause") await api("/missions/" + id + "/pause", { method: "POST", body: "{}" });
+        if (action === "resume") await api("/missions/" + id + "/resume", { method: "POST" });
+        if (action === "abort") {
+          if (!confirm("Abort this mission?")) return;
+          await api("/missions/" + id + "/abort", { method: "POST", body: "{}" });
+        }
+        if (action === "checkpoint") await api("/missions/" + id + "/checkpoints", { method: "POST" });
+        if (action === "delete") {
+          if (!confirm("Delete this mission permanently?")) return;
+          await api("/missions/" + id, { method: "DELETE" });
+          selectedId = null;
+          document.getElementById("detailBody").innerHTML = '<div class="empty">Select a mission to view details.</div>';
+          document.getElementById("detailStatus").innerHTML = "";
+        }
+        await loadMissions();
+        if (selectedId) await renderDetail(selectedId);
+      } catch (err) {
+        alert("Action failed: " + err.message);
+      }
+    }
+
+    async function handleRestore(id, checkpointId) {
+      if (!confirm("Restore this mission from checkpoint " + checkpointId + "? It will be paused.")) return;
+      try {
+        await api("/missions/" + id + "/restore/" + checkpointId, { method: "POST" });
+        await renderDetail(id);
+      } catch (err) {
+        alert("Restore failed: " + err.message);
+      }
+    }
+
+    function openNewModal() { document.getElementById("newModal").classList.add("open"); }
+    function closeNewModal() { document.getElementById("newModal").classList.remove("open"); }
+
+    async function createMission() {
+      const name = document.getElementById("newName").value.trim();
+      const goal = document.getElementById("newGoal").value.trim();
+      if (!name || !goal) {
+        alert("Name and goal are required");
+        return;
+      }
+      const body = {
+        name,
+        goal,
+        maxDurationHours: Number(document.getElementById("newDuration").value) || 24,
+        constraints: {
+          maxToolCalls: Number(document.getElementById("newMaxToolCalls").value) || 5000,
+          maxCostUsd: Number(document.getElementById("newMaxCost").value) || 100,
+        },
+      };
+      try {
+        const res = await api("/missions", { method: "POST", body: JSON.stringify(body) });
+        closeNewModal();
+        document.getElementById("newName").value = "";
+        document.getElementById("newGoal").value = "";
+        await loadMissions();
+        if (res.missionId) selectMission(res.missionId);
+      } catch (err) {
+        alert("Create failed: " + err.message);
+      }
+    }
+
+    document.getElementById("newMissionBtn").addEventListener("click", openNewModal);
+    document.getElementById("cancelNewBtn").addEventListener("click", closeNewModal);
+    document.getElementById("createMissionBtn").addEventListener("click", createMission);
+    document.getElementById("refreshBtn").addEventListener("click", () => {
+      loadMissions();
+      if (selectedId) renderDetail(selectedId);
+    });
+    document.getElementById("statusFilter").addEventListener("change", loadMissions);
+
+    // Live updates: poll every 5 seconds
+    function startPolling() {
+      if (pollHandle) clearInterval(pollHandle);
+      pollHandle = setInterval(() => {
+        loadMissions();
+        if (selectedId) renderDetail(selectedId);
+      }, 5000);
+    }
+
+    loadMissions();
+    startPolling();
+  </script>
+</body>
+</html>

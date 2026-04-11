@@ -124,6 +124,8 @@ import { mountGroupSyncRoutes } from "./group-sync.js";
 import { mountAgentNegotiationRoutes } from "./agent-negotiation.js";
 import { mountLongMissionRoutes } from "./long-missions.js";
 import { mountScimRoutes } from "./scim.js";
+import { mountAgentConsensusRoutes } from "./agent-consensus.js";
+import { mountMeetingBotRoutes } from "./meeting-bot.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -213,6 +215,8 @@ const mountFunctions = [
   mountAgentNegotiationRoutes,
   mountLongMissionRoutes,
   mountScimRoutes,
+  mountAgentConsensusRoutes,
+  mountMeetingBotRoutes,
 ];
 
 /**
