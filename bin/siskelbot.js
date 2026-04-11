@@ -170,6 +170,16 @@ Commands:
     --output <path>           Output path for the .tar.gz file (required)
     --json
 
+  tokenize                     Byte-Pair Encoding tokenizer (Karpathy's minBPE)
+    --text "..."              Tokenize the given text using the last trained model
+    --train <file>            Train a new tokenizer on the contents of <file>
+    --vocab-size <n>          Target vocab size (>= 256, default 512)
+    --model <path>            Path to a .model file to load (or save to with --train)
+    --kind basic|regex        Tokenizer kind (default: regex)
+    --decode "1,2,3"          Decode a comma-separated list of ids back to text
+    --count                   Just print the token count for --text
+    --json                    Machine-readable output
+
 Environment:
   SISKELBOT_URL               Base URL (default: http://localhost:3000)
   SISKELBOT_API_KEY           API key (also API_KEY)
@@ -987,6 +997,106 @@ async function cmdModelsBundle(json) {
   }
 }
 
+async function cmdTokenize(json) {
+  const mod = await import("../lib/bpe-tokenizer.js");
+  const kindFlag = getFlag("--kind");
+  const kind = kindFlag === "basic" ? "basic" : "regex";
+  const modelPath = getFlag("--model");
+  const trainFile = getFlag("--train");
+  const text = getFlag("--text");
+  const decodeArg = getFlag("--decode");
+  const vocabFlag = getFlag("--vocab-size");
+  const vocabSize = vocabFlag ? Number(vocabFlag) : 512;
+  const countOnly = hasFlag("--count");
+
+  if (!trainFile && !text && !decodeArg) {
+    err(
+      'Usage: siskelbot tokenize --text "hello" | --train <file> --vocab-size 1024 | --decode "1,2,3"',
+    );
+  }
+  if (vocabFlag && (!Number.isFinite(vocabSize) || vocabSize < 256)) {
+    err("--vocab-size must be an integer >= 256");
+  }
+
+  const tokenizer =
+    kind === "basic" ? new mod.BasicBPETokenizer() : new mod.RegexBPETokenizer();
+
+  if (trainFile) {
+    if (!existsSync(trainFile)) err(`File not found: ${trainFile}`);
+    const corpus = readFileSync(trainFile, "utf8");
+    const started = Date.now();
+    tokenizer.train(corpus, Math.floor(vocabSize), false);
+    const elapsed = Date.now() - started;
+    if (modelPath) tokenizer.save(modelPath);
+    if (json) {
+      console.log(
+        JSON.stringify(
+          {
+            kind,
+            vocabSize: tokenizer.getVocabSize(),
+            merges: tokenizer.merges.size,
+            elapsedMs: elapsed,
+            model: modelPath || null,
+            corpusBytes: Buffer.byteLength(corpus, "utf8"),
+          },
+          null,
+          2,
+        ),
+      );
+    } else {
+      console.log(`Trained ${kind} tokenizer`);
+      console.log(`  corpus:    ${Buffer.byteLength(corpus, "utf8")} bytes`);
+      console.log(`  vocabSize: ${tokenizer.getVocabSize()}`);
+      console.log(`  merges:    ${tokenizer.merges.size}`);
+      console.log(`  elapsed:   ${elapsed} ms`);
+      if (modelPath) console.log(`  saved to:  ${modelPath}`);
+    }
+    if (!text && !decodeArg) return;
+  } else if (modelPath) {
+    if (!existsSync(modelPath)) err(`Model file not found: ${modelPath}`);
+    tokenizer.load(modelPath);
+  }
+
+  if (text) {
+    if (tokenizer.getVocabSize() === 256 && !trainFile && !modelPath) {
+      if (!json) {
+        console.error(
+          "warning: tokenizer has no merges — encoding falls back to raw bytes.",
+        );
+      }
+    }
+    const ids = tokenizer.encode(text);
+    if (countOnly) {
+      if (json) console.log(JSON.stringify({ count: ids.length }));
+      else console.log(ids.length);
+      return;
+    }
+    const decoded = tokenizer.decode(ids);
+    if (json) {
+      console.log(
+        JSON.stringify({ ids, count: ids.length, decoded }, null, 2),
+      );
+    } else {
+      console.log(`tokens (${ids.length}): ${ids.join(" ")}`);
+      console.log(`decoded: ${decoded}`);
+    }
+  }
+
+  if (decodeArg) {
+    const ids = decodeArg
+      .split(/[,\s]+/)
+      .filter(Boolean)
+      .map((s) => {
+        const n = Number(s);
+        if (!Number.isInteger(n) || n < 0) err(`invalid id: ${s}`);
+        return n;
+      });
+    const out = tokenizer.decode(ids);
+    if (json) console.log(JSON.stringify({ ids, text: out }, null, 2));
+    else console.log(out);
+  }
+}
+
 async function main() {
   const { args, json } = parseArgs();
   const baseUrl = getUrl();
@@ -1044,6 +1154,8 @@ async function main() {
       else if (sub === "verify") await cmdModelsVerify(args[2], json);
       else if (sub === "bundle") await cmdModelsBundle(json);
       else err("Usage: siskelbot models list|download|remove|verify|bundle");
+    } else if (cmd === "tokenize") {
+      await cmdTokenize(json);
     } else {
       err(`Unknown command: ${cmd}. Run with --help for usage.`);
     }

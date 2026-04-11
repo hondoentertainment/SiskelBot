@@ -126,6 +126,8 @@ import { mountLongMissionRoutes } from "./long-missions.js";
 import { mountScimRoutes } from "./scim.js";
 import { mountAgentConsensusRoutes } from "./agent-consensus.js";
 import { mountMeetingBotRoutes } from "./meeting-bot.js";
+import { mountBpeTokenizerRoutes } from "./bpe-tokenizer.js";
+import { mountPreferenceDatasetRoutes } from "./preference-datasets.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -217,6 +219,8 @@ const mountFunctions = [
   mountScimRoutes,
   mountAgentConsensusRoutes,
   mountMeetingBotRoutes,
+  mountBpeTokenizerRoutes,
+  mountPreferenceDatasetRoutes,
 ];
 
 /**
