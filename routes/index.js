@@ -74,6 +74,9 @@ import { mountSecurityRoutes } from "./security.js";
 import { mountSecurityScorecardRoutes } from "./security-scorecard.js";
 import { mountFeedbackRoutes } from "./feedback.js";
 import { mountVoiceRoutes } from "./voice.js";
+import { mountVoiceRealtimeRoutes } from "./voice-realtime.js";
+import { mountVoiceCloningRoutes } from "./voice-cloning.js";
+import { mountVoiceCommandRoutes } from "./voice-commands.js";
 import mountTraceExplorerRoutes from "./traces.js";
 import { mountSLORoutes } from "./slo.js";
 import { mountSyntheticRoutes } from "./synthetic.js";
@@ -150,6 +153,9 @@ const mountFunctions = [
   mountSecurityScorecardRoutes,
   mountFeedbackRoutes,
   mountVoiceRoutes,
+  mountVoiceRealtimeRoutes,
+  mountVoiceCloningRoutes,
+  mountVoiceCommandRoutes,
   mountTraceExplorerRoutes,
   mountSLORoutes,
   mountSyntheticRoutes,
