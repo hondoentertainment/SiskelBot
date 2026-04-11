@@ -1,0 +1,32 @@
+{
+  "name": "@siskelbot/mobile-sdk",
+  "version": "1.0.0",
+  "description": "Mobile SDK for embedding SiskelBot",
+  "main": "index.js",
+  "types": "types.d.ts",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/"
+  },
+  "keywords": [
+    "siskelbot",
+    "ai",
+    "mobile",
+    "react-native",
+    "chat",
+    "streaming",
+    "sdk"
+  ],
+  "author": "SiskelBot",
+  "license": "MIT",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "index.js",
+    "src/",
+    "types.d.ts",
+    "README.md"
+  ]
+}
