@@ -20,8 +20,6 @@ const {
   pauseMission,
   resumeMission,
   abortMission,
-  completeMission,
-  failMission,
   createCheckpoint,
   listCheckpoints,
   restoreFromCheckpoint,
