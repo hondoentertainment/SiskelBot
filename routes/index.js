@@ -159,6 +159,106 @@ import { mountTreeOfThoughtRoutes } from "./tree-of-thought.js";
 import { mountGraphOfThoughtRoutes } from "./graph-of-thought.js";
 import { mountToolGraphRoutes } from "./tool-graph.js";
 import { mountVideoUnderstandingRoutes } from "./video-understanding.js";
+// Phases 51-55 gap fills
+import { mountRedTeamRoutes } from "./red-team.js";
+import { mountNeuroSymbolicRoutes } from "./neuro-symbolic.js";
+import { mountToolDepGraphRoutes } from "./tool-dep-graph.js";
+import { mountToolDisclosureProgressiveRoutes } from "./tool-disclosure-progressive.js";
+import { mountSchemaRepairRoutes } from "./schema-repair.js";
+import { mountDocLayoutRoutes } from "./doc-layout.js";
+import { mountShellAgentRoutes } from "./shell-agent.js";
+import { mountFilesystemAgentRoutes } from "./filesystem-agent.js";
+import { mountMobileAutomationRoutes } from "./mobile-automation.js";
+// Phase 56 — Training Environments
+import { mountAgentSandboxRoutes } from "./agent-sandbox.js";
+import { mountBenchmarkRunnerRoutes } from "./benchmark-runner.js";
+import { mountSyntheticTasksRoutes } from "./synthetic-tasks.js";
+import { mountCurriculumSchedulerRoutes } from "./curriculum-scheduler.js";
+import { mountRewardModelRoutes } from "./reward-model.js";
+// Phase 57 — Data Engineering
+import { mountDataPipelineRoutes } from "./data-pipeline.js";
+import { mountDataQualityRoutes } from "./data-quality.js";
+import { mountSchemaEvolutionRoutes } from "./schema-evolution.js";
+import { mountDataLineageRoutes } from "./data-lineage.js";
+import { mountFeatureStoreRoutes } from "./feature-store.js";
+// Phase 58 — Cost & Efficiency
+import { mountCostRouterRoutes } from "./cost-router.js";
+import { mountSpeculativeDecodingRoutes } from "./speculative-decoding.js";
+import { mountPromptCompressionRoutes } from "./prompt-compression.js";
+import { mountDistillationRoutes } from "./distillation.js";
+import { mountQuantizationRoutes } from "./quantization.js";
+// Phase 59 — Reliability Engineering
+import { mountChaosRoutes } from "./chaos.js";
+import { mountLoadSheddingRoutes } from "./load-shedding.js";
+import { mountDegradationRoutes } from "./degradation.js";
+import { mountCanaryRoutes } from "./canary.js";
+import { mountErrorBudgetRoutes } from "./error-budget.js";
+// Phase 60 — Observability Pro
+import { mountContinuousProfilingRoutes } from "./continuous-profiling.js";
+import { mountMemoryLeakRoutes } from "./memory-leak.js";
+import { mountStepLatencyRoutes } from "./step-latency.js";
+import { mountLogAnalysisRoutes } from "./log-analysis.js";
+import { mountStatusPageRoutes } from "./status-page.js";
+// Phase 61 — Developer Platform
+import { mountApiPlaygroundRoutes } from "./api-playground.js";
+import { mountWebhookInspectorRoutes } from "./webhook-inspector.js";
+import { mountIntegrationHarnessRoutes } from "./integration-harness.js";
+import { mountLocalDevEnvRoutes } from "./local-dev-env.js";
+import { mountSchemaRegistryRoutes } from "./schema-registry.js";
+// Phase 62 — Customer Support
+import { mountIntentClassificationRoutes } from "./intent-classification.js";
+import { mountTicketRoutingRoutes } from "./ticket-routing.js";
+import { mountResponseDraftingRoutes } from "./response-drafting.js";
+import { mountEscalationRulesRoutes } from "./escalation-rules.js";
+import { mountCsatRoutes } from "./csat.js";
+// Phase 63 — Code Generation
+import { mountRepoRagRoutes } from "./repo-rag.js";
+import { mountPrReviewRoutes } from "./pr-review.js";
+import { mountTestGenerationRoutes } from "./test-generation.js";
+import { mountRefactoringRoutes } from "./refactoring.js";
+import { mountMigrationAssistantRoutes } from "./migration-assistant.js";
+// Phase 64 — Research
+import { mountLiteratureSearchRoutes } from "./literature-search.js";
+import { mountPaperSummaryRoutes } from "./paper-summary.js";
+import { mountCitationGraphRoutes } from "./citation-graph.js";
+import { mountExperimentTrackingRoutes } from "./experiment-tracking.js";
+import { mountReproducibilityRoutes } from "./reproducibility.js";
+// Phase 65 — Enterprise Governance
+import { mountModelApprovalsRoutes } from "./model-approvals.js";
+import { mountUsagePoliciesRoutes } from "./usage-policies.js";
+import { mountBudgetAllocationRoutes } from "./budget-allocation.js";
+import { mountAuditReportsRoutes } from "./audit-reports.js";
+import { mountAiRiskScoringRoutes } from "./ai-risk-scoring.js";
+// Phase 66 — Multi-Tenancy Hardening
+import { mountResourceIsolationRoutes } from "./resource-isolation.js";
+import { mountNoisyNeighborRoutes } from "./noisy-neighbor.js";
+import { mountFairRateLimitsRoutes } from "./fair-rate-limits.js";
+import { mountTenantEncryptionRoutes } from "./tenant-encryption.js";
+import { mountTenantMigrationRoutes } from "./tenant-migration.js";
+// Phase 67 — Content Moderation
+import { mountCsamDetectionRoutes } from "./csam-detection.js";
+import { mountCopyrightDetectionRoutes } from "./copyright-detection.js";
+import { mountMisinfoChecksRoutes } from "./misinfo-checks.js";
+import { mountBrandSafetyRoutes } from "./brand-safety.js";
+import { mountHitlModerationRoutes } from "./hitl-moderation.js";
+// Phase 68 — Knowledge Augmentation
+import { mountWebIngestionRoutes } from "./web-ingestion.js";
+import { mountWikiRetrievalRoutes } from "./wiki-retrieval.js";
+import { mountFactVerificationRoutes } from "./fact-verification.js";
+import { mountSourceCredibilityRoutes } from "./source-credibility.js";
+import { mountFreshnessSlaRoutes } from "./freshness-sla.js";
+// Phase 69 — Personalization
+import { mountPreferenceModelingRoutes } from "./preference-modeling.js";
+import { mountAdaptiveUiRoutes } from "./adaptive-ui.js";
+import { mountRecommendationEngineRoutes } from "./recommendation-engine.js";
+import { mountPersonalizedPromptsRoutes } from "./personalized-prompts.js";
+import { mountOptinFinetuneRoutes } from "./optin-finetune.js";
+// Phase 70 — Accessibility
+import { mountScreenReaderRoutes } from "./screen-reader.js";
+import { mountHighContrastThemesRoutes } from "./high-contrast-themes.js";
+import { mountKeyboardNavRoutes } from "./keyboard-nav.js";
+import { mountVoiceOnlyRoutes } from "./voice-only.js";
+import { mountPlainLanguageRoutes } from "./plain-language.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -283,6 +383,106 @@ const mountFunctions = [
   mountGraphOfThoughtRoutes,
   mountToolGraphRoutes,
   mountVideoUnderstandingRoutes,
+  // Phases 51-55 gap fills
+  mountRedTeamRoutes,
+  mountNeuroSymbolicRoutes,
+  mountToolDepGraphRoutes,
+  mountToolDisclosureProgressiveRoutes,
+  mountSchemaRepairRoutes,
+  mountDocLayoutRoutes,
+  mountShellAgentRoutes,
+  mountFilesystemAgentRoutes,
+  mountMobileAutomationRoutes,
+  // Phase 56 — Training Environments
+  mountAgentSandboxRoutes,
+  mountBenchmarkRunnerRoutes,
+  mountSyntheticTasksRoutes,
+  mountCurriculumSchedulerRoutes,
+  mountRewardModelRoutes,
+  // Phase 57 — Data Engineering
+  mountDataPipelineRoutes,
+  mountDataQualityRoutes,
+  mountSchemaEvolutionRoutes,
+  mountDataLineageRoutes,
+  mountFeatureStoreRoutes,
+  // Phase 58 — Cost & Efficiency
+  mountCostRouterRoutes,
+  mountSpeculativeDecodingRoutes,
+  mountPromptCompressionRoutes,
+  mountDistillationRoutes,
+  mountQuantizationRoutes,
+  // Phase 59 — Reliability Engineering
+  mountChaosRoutes,
+  mountLoadSheddingRoutes,
+  mountDegradationRoutes,
+  mountCanaryRoutes,
+  mountErrorBudgetRoutes,
+  // Phase 60 — Observability Pro
+  mountContinuousProfilingRoutes,
+  mountMemoryLeakRoutes,
+  mountStepLatencyRoutes,
+  mountLogAnalysisRoutes,
+  mountStatusPageRoutes,
+  // Phase 61 — Developer Platform
+  mountApiPlaygroundRoutes,
+  mountWebhookInspectorRoutes,
+  mountIntegrationHarnessRoutes,
+  mountLocalDevEnvRoutes,
+  mountSchemaRegistryRoutes,
+  // Phase 62 — Customer Support
+  mountIntentClassificationRoutes,
+  mountTicketRoutingRoutes,
+  mountResponseDraftingRoutes,
+  mountEscalationRulesRoutes,
+  mountCsatRoutes,
+  // Phase 63 — Code Generation
+  mountRepoRagRoutes,
+  mountPrReviewRoutes,
+  mountTestGenerationRoutes,
+  mountRefactoringRoutes,
+  mountMigrationAssistantRoutes,
+  // Phase 64 — Research
+  mountLiteratureSearchRoutes,
+  mountPaperSummaryRoutes,
+  mountCitationGraphRoutes,
+  mountExperimentTrackingRoutes,
+  mountReproducibilityRoutes,
+  // Phase 65 — Enterprise Governance
+  mountModelApprovalsRoutes,
+  mountUsagePoliciesRoutes,
+  mountBudgetAllocationRoutes,
+  mountAuditReportsRoutes,
+  mountAiRiskScoringRoutes,
+  // Phase 66 — Multi-Tenancy Hardening
+  mountResourceIsolationRoutes,
+  mountNoisyNeighborRoutes,
+  mountFairRateLimitsRoutes,
+  mountTenantEncryptionRoutes,
+  mountTenantMigrationRoutes,
+  // Phase 67 — Content Moderation
+  mountCsamDetectionRoutes,
+  mountCopyrightDetectionRoutes,
+  mountMisinfoChecksRoutes,
+  mountBrandSafetyRoutes,
+  mountHitlModerationRoutes,
+  // Phase 68 — Knowledge Augmentation
+  mountWebIngestionRoutes,
+  mountWikiRetrievalRoutes,
+  mountFactVerificationRoutes,
+  mountSourceCredibilityRoutes,
+  mountFreshnessSlaRoutes,
+  // Phase 69 — Personalization
+  mountPreferenceModelingRoutes,
+  mountAdaptiveUiRoutes,
+  mountRecommendationEngineRoutes,
+  mountPersonalizedPromptsRoutes,
+  mountOptinFinetuneRoutes,
+  // Phase 70 — Accessibility
+  mountScreenReaderRoutes,
+  mountHighContrastThemesRoutes,
+  mountKeyboardNavRoutes,
+  mountVoiceOnlyRoutes,
+  mountPlainLanguageRoutes,
 ];
 
 /**

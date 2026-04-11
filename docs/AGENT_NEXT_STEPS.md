@@ -1,6 +1,6 @@
 # Siskel Bot — recommended next steps
 
-**Last updated:** April 2026
+**Last updated:** April 2026 (phases 51–70 landed)
 
 ---
 
@@ -40,13 +40,13 @@ All items from the original P0–P3 roadmap have been implemented:
 
 ### P0 — Immediate / high leverage
 
-1. **Extract route handlers from `server.js`** — At 3,954 lines, `server.js` is the largest maintainability bottleneck. Extract route groups into `routes/chat.js`, `routes/admin.js`, `routes/knowledge.js`, `routes/eval.js`, `routes/ocr.js`, and `routes/agents.js`. Keep `server.js` as the composition root that mounts sub-routers. This unblocks parallel development and simplifies code review.
+1. **Connect phase 52 reasoning modules to the agent loop** — `lib/tree-of-thought.js`, `lib/self-consistency.js`, `lib/graph-of-thought.js`, `lib/verification-loop.js`, and the new `lib/neuro-symbolic.js` are exposed as HTTP endpoints but not referenced by `lib/agent-loop.js`. Wire them as selectable reasoning strategies on the agent session (`reasoning: "tot" | "self-consistency" | "got" | "neuro-symbolic"`).
 
-2. **Fix stale OCR test** — `tests/server.test.js:711` still asserts that `POST /api/ocr` returns 501, but the endpoint is now implemented (Tesseract.js). Update the test to validate actual OCR functionality (upload an image, assert extracted text).
+2. **Integrate phase 51 safety into the chat pipeline** — `routes/chat.js` still streams output without running it through `lib/jailbreak-detector.js`, `lib/output-classifiers.js`, `lib/constitutional-ai.js`, or the new `lib/red-team.js`. Add a streaming safety filter that can block/deflect/redact mid-stream.
 
-3. **Client SPA code splitting** — The main `client/index.html` is ~276KB of inline HTML/JS. Introduce esbuild or a lightweight bundler to split JS into cacheable modules. This improves load times, enables browser caching, and makes the frontend easier to develop and test.
+3. **Run safety-evals in CI** — `lib/safety-evals.js` provides `runAllSets` and `compareToBaseline`. Add a `npm run eval:safety` script and a GitHub Action that compares against the stored baseline and fails CI on regression.
 
-4. **Increase E2E test coverage** — The Playwright suite exists but covers only foundational paths. Add tests for: conversation branching, plugin marketplace install flow, eval harness execution, workspace template cloning, and admin dashboard CRUD operations.
+4. **E2E smoke for new phase routes** — The 84 new phase 51-70 route modules are mounted but uncovered by `scripts/smoke-test.js`. Add a smoke check that hits at least one endpoint per phase to catch accidental regressions from route renames.
 
 ### P1 — Near-term (next 1–2 iterations)
 
@@ -80,11 +80,11 @@ All items from the original P0–P3 roadmap have been implemented:
 
 ## Technical debt & quality
 
-- **`server.js` is 3,954 lines** — See P0.1 above. This is the single highest-impact refactor.
-- **82 lib files with no barrel exports** — Add `lib/index.js` barrel files per domain (e.g., `lib/agent/index.js`) to simplify imports and establish module boundaries.
-- **44 test files, no coverage tracking** — Add `c8` or `istanbul` for code coverage reporting in CI. Set a coverage floor (e.g., 70%) and ratchet up over time.
+- **`server.js` is now 1,073 lines** — Down from 3,954. Further decomposition is low priority.
+- **Pre-existing ESLint errors in `client/`, `edge/`, `mobile/`, `mobile-sdk/`, and two reasoning lib modules** — 70 errors total (all pre-existing, none introduced by phase 51–70 work). These need a separate cleanup pass.
+- **Test coverage tracking** — `c8` is wired (`npm run test:coverage`) with thresholds in `.c8rc.json`; phase 51–70 modules added ~1,040 tests.
 - **No linting for client JS** — ESLint only covers server-side code. Extend to `client/` with browser-appropriate rules.
-- **Docker image size** — Audit and reduce the Alpine image layers. Consider multi-stage build optimization and `.dockerignore` review.
+- **Docker image size** — Audit and reduce the Alpine image layers.
 
 ---
 
