@@ -36,7 +36,6 @@ const {
   listSCIMUsers,
   createSCIMGroup,
   getSCIMGroup,
-  updateSCIMGroup,
   patchSCIMGroup,
   deleteSCIMGroup,
   listSCIMGroups,
@@ -46,7 +45,7 @@ const {
   _resetSCIMForTesting,
 } = await import("../lib/scim.js");
 
-const { validateSCIMToken, scimAuthMiddleware, scimErrorBody } = await import("../lib/scim-auth.js");
+const { validateSCIMToken, scimErrorBody } = await import("../lib/scim-auth.js");
 const { mountScimRoutes } = await import("../routes/scim.js");
 
 test.after(() => {
