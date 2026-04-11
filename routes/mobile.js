@@ -281,10 +281,15 @@ export function mountMobileRoutes(app, deps) {
               once() {},
               write(chunk) { if (chunk) chunks.push(Buffer.from(typeof chunk === "string" ? chunk : chunk)); return true; },
             };
-            const subReq = Object.assign(Object.create(req), {
+            // Build a plain object request. We can't extend IncomingMessage
+            // because several of its properties (like `path`) are getters and
+            // setting them throws. A plain object with the fields Express
+            // middlewares inspect is enough for internal routing.
+            const subReq = {
               method,
               url: path,
               originalUrl: path,
+              baseUrl: "",
               path: path.split("?")[0],
               query: parseQuery(path),
               body: body || {},
@@ -296,8 +301,28 @@ export function mountMobileRoutes(app, deps) {
                 "x-api-key": apiKeyHeader,
                 "x-user-api-key": userKeyHeader,
               },
+              cookies: req.cookies || {},
+              signedCookies: req.signedCookies || {},
+              session: req.session,
+              user: req.user,
+              userId: req.userId,
+              apiKeyScopes: req.apiKeyScopes,
+              apiKeyId: req.apiKeyId,
+              authenticatedViaDeploymentKey: req.authenticatedViaDeploymentKey,
               app: req.app,
-            });
+              get(header) {
+                return this.headers[String(header).toLowerCase()];
+              },
+              header(h) { return this.get(h); },
+              accepts() { return true; },
+              is() { return false; },
+              on() {},
+              once() {},
+              removeListener() {},
+              unpipe() {},
+              connection: req.connection,
+              socket: req.socket,
+            };
             app._router.handle(subReq, subRes, (err) => {
               if (err) {
                 resolve({ status: 500, body: { error: err.message || "Internal error", code: "INTERNAL_ERROR" } });
