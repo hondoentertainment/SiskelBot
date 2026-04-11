@@ -1037,6 +1037,13 @@ async function main() {
       else if (sub === "list") await cmdFineTuneList(baseUrl, apiKey, workspace, json);
       else if (sub === "status") await cmdFineTuneStatus(baseUrl, apiKey, args[2], workspace, json);
       else err("Usage: siskelbot fine-tune export|create|list|status <jobId>");
+    } else if (cmd === "models") {
+      if (sub === "list" || sub === undefined) await cmdModelsList(json);
+      else if (sub === "download") await cmdModelsDownload(args[2], json);
+      else if (sub === "remove") await cmdModelsRemove(args[2], json);
+      else if (sub === "verify") await cmdModelsVerify(args[2], json);
+      else if (sub === "bundle") await cmdModelsBundle(json);
+      else err("Usage: siskelbot models list|download|remove|verify|bundle");
     } else {
       err(`Unknown command: ${cmd}. Run with --help for usage.`);
     }

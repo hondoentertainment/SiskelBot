@@ -109,6 +109,7 @@ import mountOfflineModelsRoutes from "./offline-models.js";
 import { mountCrdtRoutes } from "./crdt.js";
 import mountDataWarehouseRoutes from "./data-warehouse.js";
 import { mountAnnotationRoutes } from "./annotations.js";
+import { mountDataResidencyRoutes } from "./data-residency.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -182,6 +183,8 @@ const mountFunctions = [
   mountOfflineModelsRoutes,
   mountCrdtRoutes,
   mountDataWarehouseRoutes,
+  mountAnnotationRoutes,
+  mountDataResidencyRoutes,
 ];
 
 /**
