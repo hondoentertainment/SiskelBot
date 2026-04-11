@@ -148,6 +148,7 @@ import { mountAuditAnchorRoutes } from "./audit-anchor.js";
 import { mountVrRoomsRoutes } from "./vr-rooms.js";
 import { mountAvatarAgentsRoutes } from "./avatar-agents.js";
 import { mountSpatialGraphRoutes } from "./spatial-graph.js";
+import { mountGestureControlRoutes } from "./gesture-control.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -261,6 +262,7 @@ const mountFunctions = [
   mountVrRoomsRoutes,
   mountAvatarAgentsRoutes,
   mountSpatialGraphRoutes,
+  mountGestureControlRoutes,
 ];
 
 /**
