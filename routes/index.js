@@ -84,6 +84,7 @@ import { mountSyntheticRoutes } from "./synthetic.js";
 import { mountRunbookRoutes } from "./runbooks.js";
 import { mountPromptEvolutionRoutes } from "./prompt-evolution.js";
 import { mountToolDiscoveryRoutes } from "./tool-discovery.js";
+import { mountToolRagRoutes } from "./tool-rag.js";
 import { mountExplainabilityRoutes } from "./explainability.js";
 import { mountComplianceRoutes } from "./compliance.js";
 import { mountRecipeMarketplaceRoutes } from "./recipe-marketplace.js";
@@ -149,6 +150,13 @@ import { mountVrRoomsRoutes } from "./vr-rooms.js";
 import { mountAvatarAgentsRoutes } from "./avatar-agents.js";
 import { mountSpatialGraphRoutes } from "./spatial-graph.js";
 import { mountGestureControlRoutes } from "./gesture-control.js";
+import { mountJailbreakDetectorRoutes } from "./jailbreak-detector.js";
+import { mountConstitutionalAiRoutes } from "./constitutional-ai.js";
+import { mountSelfConsistencyRoutes } from "./self-consistency.js";
+import { mountVerificationLoopRoutes } from "./verification-loop.js";
+import { mountTreeOfThoughtRoutes } from "./tree-of-thought.js";
+import { mountGraphOfThoughtRoutes } from "./graph-of-thought.js";
+import { mountToolGraphRoutes } from "./tool-graph.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -198,6 +206,7 @@ const mountFunctions = [
   mountRunbookRoutes,
   mountPromptEvolutionRoutes,
   mountToolDiscoveryRoutes,
+  mountToolRagRoutes,
   mountExplainabilityRoutes,
   mountComplianceRoutes,
   mountRecipeMarketplaceRoutes,
@@ -263,6 +272,13 @@ const mountFunctions = [
   mountAvatarAgentsRoutes,
   mountSpatialGraphRoutes,
   mountGestureControlRoutes,
+  mountJailbreakDetectorRoutes,
+  mountConstitutionalAiRoutes,
+  mountSelfConsistencyRoutes,
+  mountVerificationLoopRoutes,
+  mountTreeOfThoughtRoutes,
+  mountGraphOfThoughtRoutes,
+  mountToolGraphRoutes,
 ];
 
 /**
