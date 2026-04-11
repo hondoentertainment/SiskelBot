@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>SiskelBot - Screen Share</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      padding: 1rem 1.5rem;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    header h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: #f8fafc;
+    }
+    header .meta {
+      font-size: 0.85rem;
+      color: #94a3b8;
+    }
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      gap: 1rem;
+      padding: 1rem 1.5rem;
+      max-width: 1400px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; }
+    }
+    .video-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .video-card .video-wrap {
+      background: #020617;
+      aspect-ratio: 16 / 9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #475569;
+      font-size: 0.95rem;
+    }
+    .video-card video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
+    .video-card .controls {
+      padding: 1rem;
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      align-items: center;
+      border-top: 1px solid #334155;
+    }
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .panel {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 1rem;
+    }
+    .panel h2 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #cbd5e1;
+      margin-bottom: 0.75rem;
+    }
+    .viewer-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .viewer-list li {
+      padding: 0.5rem 0.75rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .viewer-list .role {
+      color: #94a3b8;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .empty {
+      color: #64748b;
+      font-size: 0.85rem;
+      font-style: italic;
+    }
+    button {
+      font-family: inherit;
+      font-size: 0.9rem;
+      padding: 0.55rem 1rem;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: #334155;
+      color: #f1f5f9;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    button:hover:not(:disabled) {
+      background: #475569;
+      border-color: #475569;
+    }
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    button.primary {
+      background: #2563eb;
+      border-color: #2563eb;
+    }
+    button.primary:hover:not(:disabled) {
+      background: #1d4ed8;
+      border-color: #1d4ed8;
+    }
+    button.danger {
+      background: #b91c1c;
+      border-color: #b91c1c;
+    }
+    button.danger:hover:not(:disabled) {
+      background: #991b1b;
+      border-color: #991b1b;
+    }
+    .status {
+      font-size: 0.85rem;
+      padding: 0.5rem 0.75rem;
+      border-radius: 6px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      color: #94a3b8;
+    }
+    .status.live {
+      color: #6ee7b7;
+      border-color: #065f46;
+      background: #064e3b;
+    }
+    .status.error {
+      color: #fca5a5;
+      border-color: #7f1d1d;
+      background: #7f1d1d40;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 0.55rem 0.75rem;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: #0f172a;
+      color: #f1f5f9;
+      font-family: inherit;
+      font-size: 0.9rem;
+      margin-top: 0.5rem;
+    }
+    input[type="text"]:focus {
+      outline: 2px solid #60a5fa;
+      outline-offset: 1px;
+    }
+    .stats {
+      font-family: ui-monospace, "SF Mono", monospace;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      white-space: pre-wrap;
+      max-height: 160px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Screen Share</h1>
+    <div class="meta">Pair-program with agents over WebRTC</div>
+  </header>
+
+  <main>
+    <section class="video-card">
+      <div class="video-wrap" id="videoWrap">
+        <span id="videoPlaceholder">No active share. Click "Start sharing" to begin.</span>
+        <video id="remoteVideo" autoplay playsinline style="display:none"></video>
+      </div>
+      <div class="controls">
+        <button id="startBtn" class="primary">Start sharing</button>
+        <button id="stopBtn" class="danger" disabled>End session</button>
+        <span id="status" class="status">Idle</span>
+      </div>
+    </section>
+
+    <aside class="sidebar">
+      <div class="panel">
+        <h2>Join an existing share</h2>
+        <input type="text" id="roomIdInput" placeholder="Room id">
+        <button id="joinBtn" style="margin-top:0.5rem;width:100%">Join</button>
+      </div>
+
+      <div class="panel">
+        <h2>Viewers</h2>
+        <ul class="viewer-list" id="viewerList">
+          <li class="empty">Nobody is watching yet.</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h2>Connection stats</h2>
+        <div class="stats" id="stats">No active connection.</div>
+      </div>
+    </aside>
+  </main>
+
+  <script type="module">
+    import { createScreenShareClient } from './js/screen-share.js';
+
+    // Minimal in-page WebSocket manager. Real apps reuse window.SiskelWS.
+    function createSimpleWsManager() {
+      const handlers = new Set();
+      let ws = null;
+      let sessionId = null;
+      let connected = false;
+
+      async function connect() {
+        if (connected) return;
+        const tokenRes = await fetch('/api/v1/ws-token').catch(() => null);
+        if (!tokenRes || !tokenRes.ok) throw new Error('Unable to fetch WS token');
+        const { url } = await tokenRes.json();
+        ws = new WebSocket(url);
+        await new Promise((resolve, reject) => {
+          ws.addEventListener('open', () => { connected = true; resolve(); });
+          ws.addEventListener('error', reject);
+        });
+        ws.addEventListener('message', (event) => {
+          let msg;
+          try { msg = JSON.parse(event.data); } catch (_) { return; }
+          if (msg.type === 'session_id' && msg.sessionId) sessionId = msg.sessionId;
+          handlers.forEach((cb) => { try { cb(msg); } catch (_) {} });
+        });
+      }
+
+      return {
+        connect,
+        get sessionId() { return sessionId; },
+        send(msg) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); },
+        onMessage(cb) {
+          handlers.add(cb);
+          return () => handlers.delete(cb);
+        },
+      };
+    }
+
+    const wsManager = (typeof window !== 'undefined' && window.SiskelWS) || createSimpleWsManager();
+    const client = createScreenShareClient(wsManager);
+
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const joinBtn = document.getElementById('joinBtn');
+    const roomInput = document.getElementById('roomIdInput');
+    const status = document.getElementById('status');
+    const placeholder = document.getElementById('videoPlaceholder');
+    const video = document.getElementById('remoteVideo');
+    const viewerList = document.getElementById('viewerList');
+    const statsEl = document.getElementById('stats');
+
+    const viewers = new Map();
+
+    function setStatus(text, kind) {
+      status.textContent = text;
+      status.className = 'status' + (kind ? ' ' + kind : '');
+    }
+
+    function renderViewers() {
+      viewerList.innerHTML = '';
+      if (viewers.size === 0) {
+        const li = document.createElement('li');
+        li.className = 'empty';
+        li.textContent = 'Nobody is watching yet.';
+        viewerList.appendChild(li);
+        return;
+      }
+      for (const [sid, info] of viewers.entries()) {
+        const li = document.createElement('li');
+        const name = document.createElement('span');
+        name.textContent = info.userId || sid.slice(0, 8);
+        const role = document.createElement('span');
+        role.className = 'role';
+        role.textContent = info.role || 'viewer';
+        li.appendChild(name);
+        li.appendChild(role);
+        viewerList.appendChild(li);
+      }
+    }
+
+    function showStream(stream) {
+      placeholder.style.display = 'none';
+      video.style.display = 'block';
+      video.srcObject = stream;
+    }
+
+    function clearStream() {
+      placeholder.style.display = 'block';
+      video.style.display = 'none';
+      video.srcObject = null;
+    }
+
+    client.onPeerJoined(({ sessionId: sid, userId }) => {
+      viewers.set(sid, { userId, role: 'viewer' });
+      renderViewers();
+    });
+    client.onPeerLeft(({ sessionId: sid }) => {
+      viewers.delete(sid);
+      renderViewers();
+    });
+    client.onStream(({ stream }) => {
+      showStream(stream);
+    });
+    client.onError((err) => {
+      setStatus('Error: ' + (err.message || err), 'error');
+    });
+
+    async function refreshStats() {
+      try {
+        const stats = await client.getStats();
+        statsEl.textContent = JSON.stringify(stats, null, 2);
+      } catch (_) {}
+    }
+    setInterval(refreshStats, 2000);
+
+    startBtn.addEventListener('click', async () => {
+      try {
+        setStatus('Requesting screen capture...');
+        if (typeof wsManager.connect === 'function') await wsManager.connect();
+        const stream = await client.startShare({ title: 'Pair programming session' });
+        showStream(stream);
+        setStatus('Live - room ' + (client.roomId || ''), 'live');
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+      } catch (err) {
+        setStatus('Failed: ' + err.message, 'error');
+      }
+    });
+
+    stopBtn.addEventListener('click', () => {
+      client.stopShare();
+      clearStream();
+      viewers.clear();
+      renderViewers();
+      setStatus('Idle');
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+    });
+
+    joinBtn.addEventListener('click', async () => {
+      const id = (roomInput.value || '').trim();
+      if (!id) {
+        setStatus('Enter a room id to join', 'error');
+        return;
+      }
+      try {
+        setStatus('Joining ' + id + '...');
+        if (typeof wsManager.connect === 'function') await wsManager.connect();
+        const stream = await client.joinShare(id);
+        showStream(stream);
+        setStatus('Watching ' + id, 'live');
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+      } catch (err) {
+        setStatus('Join failed: ' + err.message, 'error');
+      }
+    });
+  </script>
+</body>
+</html>
