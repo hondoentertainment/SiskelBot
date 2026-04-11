@@ -82,9 +82,9 @@ test("generateJs produces a fetch snippet with JSON body", () => {
     body: { foo: 1 },
   });
   assert.ok(js.includes("await fetch"));
-  assert.ok(js.includes(`"method": "POST"`));
+  assert.ok(js.includes(`method: "POST"`));
   assert.ok(js.includes(`Content-Type`));
-  assert.ok(js.includes(`"body"`));
+  assert.ok(js.includes(`body:`));
 });
 
 test("generatePython produces requests code with JSON body", () => {
