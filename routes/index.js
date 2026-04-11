@@ -145,6 +145,8 @@ import { mountCryptoPaymentRoutes } from "./crypto-payments.js";
 import { mountWalletAuthRoutes } from "./wallet-auth.js";
 import { mountDecentralizedStorageRoutes } from "./decentralized-storage.js";
 import { mountAuditAnchorRoutes } from "./audit-anchor.js";
+import { mountVrRoomsRoutes } from "./vr-rooms.js";
+import { mountAvatarAgentsRoutes } from "./avatar-agents.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -255,6 +257,7 @@ const mountFunctions = [
   mountWalletAuthRoutes,
   mountDecentralizedStorageRoutes,
   mountAuditAnchorRoutes,
+  mountVrRoomsRoutes,
 ];
 
 /**
