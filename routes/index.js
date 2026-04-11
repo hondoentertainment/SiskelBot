@@ -122,6 +122,8 @@ import { mountEntitlementReviewRoutes } from "./entitlement-reviews.js";
 import { mountHierarchyRoutes } from "./hierarchy.js";
 import { mountGroupSyncRoutes } from "./group-sync.js";
 import { mountAgentNegotiationRoutes } from "./agent-negotiation.js";
+import { mountLongMissionRoutes } from "./long-missions.js";
+import { mountScimRoutes } from "./scim.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -209,6 +211,8 @@ const mountFunctions = [
   mountHierarchyRoutes,
   mountGroupSyncRoutes,
   mountAgentNegotiationRoutes,
+  mountLongMissionRoutes,
+  mountScimRoutes,
 ];
 
 /**
