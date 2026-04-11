@@ -129,6 +129,7 @@ import { mountMeetingBotRoutes } from "./meeting-bot.js";
 import { mountBpeTokenizerRoutes } from "./bpe-tokenizer.js";
 import { mountPreferenceDatasetRoutes } from "./preference-datasets.js";
 import { mountGBrainRoutes } from "./gbrain.js";
+import { mountFederatedTrainingRoutes } from "./federated-training.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -223,6 +224,7 @@ const mountFunctions = [
   mountBpeTokenizerRoutes,
   mountPreferenceDatasetRoutes,
   mountGBrainRoutes,
+  mountFederatedTrainingRoutes,
 ];
 
 /**
