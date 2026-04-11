@@ -40,7 +40,8 @@ test("applyOp clamps out-of-bounds insert positions", () => {
 
 test("applyOp clamps out-of-bounds delete ranges", () => {
   assert.equal(applyOp("abc", createDeleteOp(1, 100, "a")), "a");
-  assert.equal(applyOp("abc", createDeleteOp(-1, 2, "a")), "bc");
+  // Negative position clamps to 0 then deletes the requested length.
+  assert.equal(applyOp("abc", createDeleteOp(-1, 2, "a")), "c");
 });
 
 // ---- transformOp: insert vs insert ----

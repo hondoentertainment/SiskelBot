@@ -110,6 +110,7 @@ import { mountCrdtRoutes } from "./crdt.js";
 import mountDataWarehouseRoutes from "./data-warehouse.js";
 import { mountAnnotationRoutes } from "./annotations.js";
 import { mountDataResidencyRoutes } from "./data-residency.js";
+import { mountScreenShareRoutes } from "./screen-share.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -185,6 +186,7 @@ const mountFunctions = [
   mountDataWarehouseRoutes,
   mountAnnotationRoutes,
   mountDataResidencyRoutes,
+  mountScreenShareRoutes,
 ];
 
 /**
