@@ -131,6 +131,7 @@ import { mountPreferenceDatasetRoutes } from "./preference-datasets.js";
 import { mountGBrainRoutes } from "./gbrain.js";
 import { mountFederatedTrainingRoutes } from "./federated-training.js";
 import { mountFlConsortiumRoutes } from "./fl-consortium.js";
+import { mountPrivacyAccountingRoutes } from "./privacy-accounting.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -227,6 +228,7 @@ const mountFunctions = [
   mountGBrainRoutes,
   mountFederatedTrainingRoutes,
   mountFlConsortiumRoutes,
+  mountPrivacyAccountingRoutes,
 ];
 
 /**
