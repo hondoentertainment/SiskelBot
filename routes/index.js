@@ -98,6 +98,8 @@ import { mountFineTuningRoutes } from "./fine-tuning.js";
 import mountPushNotificationRoutes from "./push-notifications.js";
 import { mountWebAuthnRoutes } from "./webauthn.js";
 import { mountHSMRoutes } from "./hsm.js";
+import { mountCohortAnalysisRoutes } from "./cohort-analysis.js";
+import { mountFunnelRoutes } from "./funnels.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -161,6 +163,8 @@ const mountFunctions = [
   mountPushNotificationRoutes,
   mountWebAuthnRoutes,
   mountHSMRoutes,
+  mountCohortAnalysisRoutes,
+  mountFunnelRoutes,
 ];
 
 /**

@@ -52,6 +52,7 @@ import { startPromptEvolutionScheduler } from "./lib/prompt-evolution.js";
 import { userAuth, isAuthConfigured } from "./lib/auth.js";
 import { recordUsage, getSummary, getTotalTokensInWindow, getRecordsForPeriod, estimate } from "./lib/usage-tracker.js";
 import { getDashboard, exportToCsv, exportToJson } from "./lib/analytics.js";
+import { recordUserActivity as recordCohortActivity } from "./lib/cohort-analysis.js";
 import { emitEvent, listWebhooks, addWebhook, removeWebhook, validateWebhookUrl } from "./lib/webhooks.js";
 import { list as listNotifications, markRead as markNotificationRead, markAllRead as markAllNotificationsRead } from "./lib/notifications.js";
 import { isQuotaConfigured, checkQuota, getWorkspaceQuota, getWorkspaceTokensUsed, isQuotaAdmin, setWorkspaceQuotaOverride, getQuotaOverrides } from "./lib/quotas.js";
@@ -676,6 +677,11 @@ function logRequest(req, res, next) {
       globalSLOTracker.recordEvent("latency_ms", durationMs);
     } catch (_) {
       // never fail a request because of SLO bookkeeping
+    }
+    // Phase 39.1: Cohort activity tracking for authenticated users.
+    if (req.userId && req.userId !== "anonymous" && res.statusCode < 500) {
+      const ws = req.workspace || req.headers["x-workspace-id"] || "default";
+      void recordCohortActivity(req.userId, ws, "request").catch(() => {});
     }
   });
   next();
