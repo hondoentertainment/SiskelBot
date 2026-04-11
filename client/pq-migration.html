@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>Post-Quantum Migration &mdash; SiskelBot</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background: #0f172a;
+      color: #e2e8f0;
+      line-height: 1.5;
+    }
+    a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+      outline: 2px solid #60a5fa;
+      outline-offset: 2px;
+    }
+    header {
+      padding: 1rem 1.5rem;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    header h1 { margin: 0; font-size: 1.25rem; font-weight: 700; }
+    header .subtitle { color: #94a3b8; font-size: 0.85rem; }
+    header nav a { color: #60a5fa; text-decoration: none; margin-left: 1rem; }
+    main {
+      padding: 1.5rem;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .panel {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .panel h2 {
+      margin: 0 0 0.75rem 0;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #94a3b8;
+    }
+    .status-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 0.75rem;
+    }
+    .card {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 0.9rem;
+    }
+    .card .label { font-size: 0.7rem; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.05em; }
+    .card .value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #f8fafc;
+      margin-top: 0.25rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .card.good .value { color: #34d399; }
+    .card.warn .value { color: #fbbf24; }
+    .card.danger .value { color: #f87171; }
+    .progress-bar {
+      height: 10px;
+      background: #0f172a;
+      border-radius: 5px;
+      overflow: hidden;
+      border: 1px solid #334155;
+      margin-top: 0.5rem;
+    }
+    .progress-bar > div {
+      height: 100%;
+      background: linear-gradient(90deg, #34d399, #60a5fa);
+      width: 0%;
+      transition: width 0.4s ease;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      font-variant-numeric: tabular-nums;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.5rem 0.6rem;
+      border-bottom: 1px solid #334155;
+      vertical-align: top;
+    }
+    th { color: #94a3b8; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em; font-weight: 600; }
+    tbody tr:hover { background: #0f172a; }
+    .toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+    button {
+      background: #60a5fa;
+      color: #0f172a;
+      border: none;
+      padding: 0.45rem 0.9rem;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+    button:hover { background: #93c5fd; }
+    button.secondary { background: #334155; color: #e2e8f0; }
+    button.secondary:hover { background: #475569; }
+    button.danger { background: #dc2626; color: #fff; }
+    button.danger:hover { background: #ef4444; }
+    button.small { padding: 0.25rem 0.55rem; font-size: 0.72rem; }
+    .alert {
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      font-size: 0.85rem;
+      display: none;
+    }
+    .alert.visible { display: block; }
+    .alert.warn { background: #78350f; color: #fde68a; border: 1px solid #f59e0b; }
+    .alert.danger { background: #7f1d1d; color: #fecaca; border: 1px solid #f87171; }
+    .alert.info { background: #1e3a5f; color: #bfdbfe; border: 1px solid #60a5fa; }
+    .alert.good { background: #064e3b; color: #d1fae5; border: 1px solid #34d399; }
+    .badge {
+      display: inline-block;
+      padding: 0.1rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .badge.rotated { background: #064e3b; color: #d1fae5; border: 1px solid #34d399; }
+    .badge.classical { background: #7f1d1d; color: #fecaca; border: 1px solid #f87171; }
+    .badge.in_progress { background: #78350f; color: #fde68a; border: 1px solid #f59e0b; }
+    .badge.failed { background: #7f1d1d; color: #fecaca; border: 1px solid #f87171; }
+    .badge.rolled_back { background: #334155; color: #e2e8f0; border: 1px solid #64748b; }
+    .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.78rem; }
+    .empty { color: #64748b; font-size: 0.85rem; font-style: italic; }
+    pre.report {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 0.75rem;
+      overflow: auto;
+      max-height: 360px;
+      font-size: 0.75rem;
+    }
+    ul.risks { margin: 0.25rem 0 0 1rem; padding: 0; font-size: 0.75rem; color: #94a3b8; }
+    ul.steps { margin: 0; padding-left: 1rem; font-size: 0.75rem; color: #cbd5e1; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Post-Quantum Migration</h1>
+      <div class="subtitle">Rotate classical keys to NIST post-quantum equivalents</div>
+    </div>
+    <nav>
+      <a href="/">Chat</a>
+      <a href="/admin.html">Admin</a>
+    </nav>
+  </header>
+  <main>
+    <div class="alert" id="alertBox"></div>
+
+    <section class="panel">
+      <h2>Migration Status</h2>
+      <div class="status-cards" id="statusCards">
+        <div class="card"><div class="label">Total keys</div><div class="value" id="statTotal">&mdash;</div></div>
+        <div class="card good"><div class="label">Migrated</div><div class="value" id="statMigrated">&mdash;</div></div>
+        <div class="card warn"><div class="label">Pending</div><div class="value" id="statPending">&mdash;</div></div>
+        <div class="card"><div class="label">In progress</div><div class="value" id="statInProgress">&mdash;</div></div>
+        <div class="card danger"><div class="label">Failed</div><div class="value" id="statFailed">&mdash;</div></div>
+        <div class="card"><div class="label">% complete</div><div class="value" id="statPercent">&mdash;</div></div>
+      </div>
+      <div class="progress-bar"><div id="statProgress"></div></div>
+      <div class="toolbar" style="margin-top: 0.75rem;">
+        <button id="refreshBtn">Refresh</button>
+        <button class="secondary" id="scanBtn">Run Scan</button>
+        <button class="secondary" id="planBtn">Generate Plan</button>
+        <button class="secondary" id="reportBtn">Full Report</button>
+        <button class="secondary" id="readinessBtn">Check Readiness</button>
+      </div>
+    </section>
+
+    <section class="panel" id="planPanel" style="display:none;">
+      <h2>Migration Plan</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Key ID</th>
+            <th>From</th>
+            <th>To</th>
+            <th>Steps</th>
+            <th>Risks</th>
+            <th>Est. time</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="planBody"></tbody>
+      </table>
+    </section>
+
+    <section class="panel" id="inventoryPanel" style="display:none;">
+      <h2>Key Inventory</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Key ID</th>
+            <th>Algorithm</th>
+            <th>Location</th>
+            <th>Status</th>
+            <th>Rotated At</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="inventoryBody"></tbody>
+      </table>
+    </section>
+
+    <section class="panel" id="reportPanel" style="display:none;">
+      <h2>Report</h2>
+      <pre class="report" id="reportPre"></pre>
+    </section>
+  </main>
+
+  <script type="module">
+    const apiBase = "/api/v1";
+
+    async function api(path, options = {}) {
+      const res = await fetch(apiBase + path, {
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        ...options,
+      });
+      if (!res.ok) {
+        let msg = `${res.status} ${res.statusText}`;
+        try {
+          const body = await res.json();
+          if (body && body.message) msg = body.message;
+          else if (body && body.error) msg = body.error;
+        } catch { /* ignore */ }
+        throw new Error(msg);
+      }
+      return res.json();
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]),
+      );
+    }
+
+    function showAlert(type, message) {
+      const el = document.getElementById("alertBox");
+      el.className = `alert visible ${type}`;
+      el.textContent = message;
+    }
+
+    function hideAlert() {
+      document.getElementById("alertBox").classList.remove("visible");
+    }
+
+    async function loadStatus() {
+      try {
+        const { status } = await api("/pq/migration/status");
+        document.getElementById("statTotal").textContent = status.total;
+        document.getElementById("statMigrated").textContent = status.migrated;
+        document.getElementById("statPending").textContent = status.pending;
+        document.getElementById("statInProgress").textContent = status.inProgress;
+        document.getElementById("statFailed").textContent = status.failed;
+        document.getElementById("statPercent").textContent = `${status.percentComplete}%`;
+        document.getElementById("statProgress").style.width = `${Math.min(100, status.percentComplete)}%`;
+      } catch (err) {
+        showAlert("danger", "Status load failed: " + err.message);
+      }
+    }
+
+    async function runScan() {
+      try {
+        const { keys, count } = await api("/pq/migration/scan", { method: "POST", body: "{}" });
+        showAlert("info", `Scan complete: ${count} classical key(s) discovered`);
+        renderInventory(keys.map((k) => ({
+          keyId: k.keyId,
+          algorithm: k.algorithm,
+          location: k.location,
+          status: "classical",
+          rotatedAt: null,
+        })));
+        await loadStatus();
+      } catch (err) {
+        showAlert("danger", "Scan failed: " + err.message);
+      }
+    }
+
+    async function generatePlan() {
+      try {
+        const { plan, targetLevel } = await api("/pq/migration/plan", {
+          method: "POST",
+          body: JSON.stringify({ targetLevel: "ml-dsa-65" }),
+        });
+        renderPlan(plan);
+        showAlert("info", `Plan generated with ${plan.length} rotation(s) targeting ${targetLevel}`);
+      } catch (err) {
+        showAlert("danger", "Plan failed: " + err.message);
+      }
+    }
+
+    function renderPlan(plan) {
+      const panel = document.getElementById("planPanel");
+      const body = document.getElementById("planBody");
+      body.innerHTML = "";
+      if (!plan || plan.length === 0) {
+        body.innerHTML = '<tr><td colspan="7" class="empty">No rotations needed.</td></tr>';
+        panel.style.display = "";
+        return;
+      }
+      for (const p of plan) {
+        const tr = document.createElement("tr");
+        const steps = p.steps.map((s) => `<li>${escapeHtml(s)}</li>`).join("");
+        const risks = p.risks.map((r) => `<li>${escapeHtml(r)}</li>`).join("");
+        tr.innerHTML = `
+          <td class="mono">${escapeHtml(p.keyId)}</td>
+          <td class="mono">${escapeHtml(p.from)}</td>
+          <td class="mono">${escapeHtml(p.to)}</td>
+          <td><ul class="steps">${steps}</ul></td>
+          <td><ul class="risks">${risks}</ul></td>
+          <td class="mono">${Math.round(p.estimatedTime / 1000)}s</td>
+          <td><button class="small" data-rotate="${escapeHtml(p.keyId)}">Rotate</button></td>
+        `;
+        body.appendChild(tr);
+      }
+      panel.style.display = "";
+      body.querySelectorAll("button[data-rotate]").forEach((btn) => {
+        btn.addEventListener("click", () => rotate(btn.getAttribute("data-rotate")));
+      });
+    }
+
+    function renderInventory(items) {
+      const panel = document.getElementById("inventoryPanel");
+      const body = document.getElementById("inventoryBody");
+      body.innerHTML = "";
+      if (!items || items.length === 0) {
+        body.innerHTML = '<tr><td colspan="6" class="empty">No keys discovered yet.</td></tr>';
+        panel.style.display = "";
+        return;
+      }
+      for (const k of items) {
+        const tr = document.createElement("tr");
+        const rotatedAt = k.rotatedAt ? new Date(k.rotatedAt).toLocaleString() : "&mdash;";
+        const statusBadge = `<span class="badge ${escapeHtml(k.status)}">${escapeHtml(k.status)}</span>`;
+        const action = k.status === "rotated"
+          ? `<button class="small secondary" data-rollback="${escapeHtml(k.keyId)}">Rollback</button>`
+          : `<button class="small" data-rotate="${escapeHtml(k.keyId)}">Rotate</button>`;
+        tr.innerHTML = `
+          <td class="mono">${escapeHtml(k.keyId)}</td>
+          <td class="mono">${escapeHtml(k.algorithm)}</td>
+          <td>${escapeHtml(k.location)}</td>
+          <td>${statusBadge}</td>
+          <td class="mono">${rotatedAt}</td>
+          <td>${action}</td>
+        `;
+        body.appendChild(tr);
+      }
+      panel.style.display = "";
+      body.querySelectorAll("button[data-rotate]").forEach((btn) => {
+        btn.addEventListener("click", () => rotate(btn.getAttribute("data-rotate")));
+      });
+      body.querySelectorAll("button[data-rollback]").forEach((btn) => {
+        btn.addEventListener("click", () => rollback(btn.getAttribute("data-rollback")));
+      });
+    }
+
+    async function rotate(keyId) {
+      if (!confirm(`Rotate key "${keyId}" to ml-dsa-65? The classical key will be retained for rollback.`)) return;
+      try {
+        const result = await api(`/pq/migration/rotate/${encodeURIComponent(keyId)}`, {
+          method: "POST",
+          body: JSON.stringify({ targetLevel: "ml-dsa-65" }),
+        });
+        showAlert("good", `Rotated ${keyId} -> ${result.newKeyId}`);
+        await loadStatus();
+        await loadFullReport(true);
+      } catch (err) {
+        showAlert("danger", "Rotate failed: " + err.message);
+      }
+    }
+
+    async function rollback(keyId) {
+      if (!confirm(`Rollback key "${keyId}" to the classical key?`)) return;
+      try {
+        await api(`/pq/migration/rollback/${encodeURIComponent(keyId)}`, { method: "POST" });
+        showAlert("warn", `Rolled back ${keyId}`);
+        await loadStatus();
+        await loadFullReport(true);
+      } catch (err) {
+        showAlert("danger", "Rollback failed: " + err.message);
+      }
+    }
+
+    async function loadFullReport(silent = false) {
+      try {
+        const { report } = await api("/pq/migration/report");
+        document.getElementById("reportPre").textContent = JSON.stringify(report, null, 2);
+        document.getElementById("reportPanel").style.display = "";
+        renderInventory(report.inventory);
+        if (!silent) {
+          if (report.readiness.ready) {
+            showAlert("good", "PQ modules ready. Migration report generated.");
+          } else {
+            showAlert("warn", `Missing PQ modules: ${report.readiness.missing.join(", ")}`);
+          }
+        }
+      } catch (err) {
+        showAlert("danger", "Report failed: " + err.message);
+      }
+    }
+
+    async function checkReadiness() {
+      try {
+        const { readiness } = await api("/pq/migration/readiness");
+        if (readiness.ready) {
+          showAlert("good", "All PQ modules present and ready");
+        } else {
+          showAlert("warn", `Missing: ${readiness.missing.join(", ")}. ${readiness.warnings.join(" | ")}`);
+        }
+      } catch (err) {
+        showAlert("danger", "Readiness check failed: " + err.message);
+      }
+    }
+
+    document.getElementById("refreshBtn").addEventListener("click", () => {
+      hideAlert();
+      loadStatus();
+      loadFullReport(true);
+    });
+    document.getElementById("scanBtn").addEventListener("click", () => { hideAlert(); runScan(); });
+    document.getElementById("planBtn").addEventListener("click", () => { hideAlert(); generatePlan(); });
+    document.getElementById("reportBtn").addEventListener("click", () => { hideAlert(); loadFullReport(false); });
+    document.getElementById("readinessBtn").addEventListener("click", () => { hideAlert(); checkReadiness(); });
+
+    loadStatus().then(() => loadFullReport(true));
+  </script>
+</body>
+</html>
