@@ -410,7 +410,7 @@ test("resetLearning scoped to workspace only clears that workspace", async () =>
 test("integrateWithAgentLoop records outcomes for a successful run", async () => {
   freshStore();
   const fakeLoop = {
-    async runAgentLoop(opts) {
+    async runAgentLoop(_opts) {
       return { result: "ok", cost: 0.02 };
     },
   };
@@ -447,7 +447,7 @@ test("integrateWithAgentLoop records failure on thrown error", async () => {
 test("integrateWithSwarm records specialists and strategy weight", async () => {
   freshStore();
   const fakeSwarm = {
-    async runSwarmDirect(specialists, query, opts) {
+    async runSwarmDirect(_specialists, _query, _opts) {
       return { ok: true };
     },
   };
@@ -465,7 +465,7 @@ test("integrateWithSwarm records specialists and strategy weight", async () => {
 test("integrateWithHierarchy records model performance", async () => {
   freshStore();
   const fakeHierarchy = {
-    async executeHierarchy(task, opts) {
+    async executeHierarchy(_task, _opts) {
       return { ok: true };
     },
   };
@@ -482,7 +482,7 @@ test("integrateWithHierarchy records model performance", async () => {
 test("integrateWithConsensus records outcomes", async () => {
   freshStore();
   const fakeConsensus = {
-    async executeConsensus(prompt, opts) {
+    async executeConsensus(_prompt, _opts) {
       return { ok: true };
     },
   };

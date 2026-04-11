@@ -209,11 +209,9 @@ test("aggregateMaskedUpdates recovers the plain sum when all clients reveal seed
 test("aggregateMaskedUpdates recovers the sum when one client drops out", async () => {
   const s = await createSession(["a", "b", "c", "d"], 2);
   // All four clients generate shares.
-  const shareSets = {};
   const seeds = {};
   for (const id of ["a", "b", "c", "d"]) {
     const r = await generateKeyShares(s.id, id);
-    shareSets[id] = r.shares;
     seeds[id] = r.seed;
   }
   const values = { a: 10n, b: 20n, c: 30n, d: 40n };

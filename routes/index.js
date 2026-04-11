@@ -132,6 +132,7 @@ import { mountGBrainRoutes } from "./gbrain.js";
 import { mountFederatedTrainingRoutes } from "./federated-training.js";
 import { mountFlConsortiumRoutes } from "./fl-consortium.js";
 import { mountPrivacyAccountingRoutes } from "./privacy-accounting.js";
+import { mountSecureAggregationRoutes } from "./secure-aggregation.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -229,6 +230,7 @@ const mountFunctions = [
   mountFederatedTrainingRoutes,
   mountFlConsortiumRoutes,
   mountPrivacyAccountingRoutes,
+  mountSecureAggregationRoutes,
 ];
 
 /**
