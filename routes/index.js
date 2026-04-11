@@ -147,6 +147,7 @@ import { mountDecentralizedStorageRoutes } from "./decentralized-storage.js";
 import { mountAuditAnchorRoutes } from "./audit-anchor.js";
 import { mountVrRoomsRoutes } from "./vr-rooms.js";
 import { mountAvatarAgentsRoutes } from "./avatar-agents.js";
+import { mountSpatialGraphRoutes } from "./spatial-graph.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -259,6 +260,7 @@ const mountFunctions = [
   mountAuditAnchorRoutes,
   mountVrRoomsRoutes,
   mountAvatarAgentsRoutes,
+  mountSpatialGraphRoutes,
 ];
 
 /**
