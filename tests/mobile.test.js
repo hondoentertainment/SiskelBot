@@ -284,17 +284,19 @@ test("POST /api/v1/mobile/test-notification requires admin auth when ADMIN_API_K
 });
 
 test("POST /api/v1/mobile/test-notification rejects missing userId", async () => {
-  const app = await loadApp({ BACKEND: "ollama" });
+  const app = await loadApp({ BACKEND: "ollama", ADMIN_API_KEY: "admin-secret" });
   const res = await request(app)
     .post("/api/v1/mobile/test-notification")
+    .set("x-admin-api-key", "admin-secret")
     .send({ title: "hi" });
   assert.equal(res.status, 400);
 });
 
 test("POST /api/v1/mobile/test-notification returns zero counts when no devices registered", async () => {
-  const app = await loadApp({ BACKEND: "ollama" });
+  const app = await loadApp({ BACKEND: "ollama", ADMIN_API_KEY: "admin-secret" });
   const res = await request(app)
     .post("/api/v1/mobile/test-notification")
+    .set("x-admin-api-key", "admin-secret")
     .send({ userId: "unknown-user-" + Date.now(), title: "hi", body: "there" });
   assert.equal(res.status, 200);
   assert.equal(res.body.sent, 0);

@@ -96,6 +96,7 @@ import mountModelRegistryRoutes from "./model-registry.js";
 import { mountLoraAdapterRoutes } from "./lora-adapters.js";
 import { mountFineTuningRoutes } from "./fine-tuning.js";
 import mountPushNotificationRoutes from "./push-notifications.js";
+import { mountWebAuthnRoutes } from "./webauthn.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -157,6 +158,7 @@ const mountFunctions = [
   mountLoraAdapterRoutes,
   mountFineTuningRoutes,
   mountPushNotificationRoutes,
+  mountWebAuthnRoutes,
 ];
 
 /**
