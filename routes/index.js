@@ -137,10 +137,12 @@ import { mountDifferentialPrivacyRoutes } from "./differential-privacy.js";
 import { mountPqJwtRoutes } from "./pq-jwt.js";
 import { mountPqMigrationRoutes } from "./pq-migration.js";
 import { mountPqTlsRoutes } from "./pq-tls.js";
+import { mountPqDilithiumRoutes } from "./pq-dilithium.js";
 import { mountXrRoutes } from "./xr.js";
 import { mountNftGatingRoutes } from "./nft-gating.js";
 import { mountCryptoPaymentRoutes } from "./crypto-payments.js";
 import { mountWalletAuthRoutes } from "./wallet-auth.js";
+import { mountDecentralizedStorageRoutes } from "./decentralized-storage.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -243,10 +245,12 @@ const mountFunctions = [
   mountPqJwtRoutes,
   mountPqMigrationRoutes,
   mountPqTlsRoutes,
+  mountPqDilithiumRoutes,
   mountXrRoutes,
   mountNftGatingRoutes,
   mountCryptoPaymentRoutes,
   mountWalletAuthRoutes,
+  mountDecentralizedStorageRoutes,
 ];
 
 /**
