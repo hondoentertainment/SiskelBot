@@ -134,6 +134,9 @@ import { mountFlConsortiumRoutes } from "./fl-consortium.js";
 import { mountPrivacyAccountingRoutes } from "./privacy-accounting.js";
 import { mountSecureAggregationRoutes } from "./secure-aggregation.js";
 import { mountDifferentialPrivacyRoutes } from "./differential-privacy.js";
+import { mountPqJwtRoutes } from "./pq-jwt.js";
+import { mountPqMigrationRoutes } from "./pq-migration.js";
+import { mountPqTlsRoutes } from "./pq-tls.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -233,6 +236,9 @@ const mountFunctions = [
   mountPrivacyAccountingRoutes,
   mountSecureAggregationRoutes,
   mountDifferentialPrivacyRoutes,
+  mountPqJwtRoutes,
+  mountPqMigrationRoutes,
+  mountPqTlsRoutes,
 ];
 
 /**
