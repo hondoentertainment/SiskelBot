@@ -66,6 +66,7 @@ import { mountRbacRoutes } from "./rbac.js";
 import { mountAnalyticsRoutes } from "./analytics.js";
 import { mountModelQualityRoutes } from "./model-quality.js";
 import { mountCollaborationRoutes } from "./collaboration.js";
+import { mountPresenceRoutes } from "./presence.js";
 import { mountScheduledAgentRoutes } from "./scheduled-agents.js";
 import { mountBillingRoutes } from "./billing.js";
 import { mountBrandingRoutes } from "./branding.js";
@@ -100,6 +101,9 @@ import { mountWebAuthnRoutes } from "./webauthn.js";
 import { mountHSMRoutes } from "./hsm.js";
 import { mountCohortAnalysisRoutes } from "./cohort-analysis.js";
 import { mountFunnelRoutes } from "./funnels.js";
+import { mountDashboardRoutes } from "./dashboards.js";
+import { mountAnomalyRoutes } from "./anomalies.js";
+import { mountGeoRoutingRoutes } from "./geo-routing.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -131,6 +135,7 @@ const mountFunctions = [
   mountAnalyticsRoutes,
   mountModelQualityRoutes,
   mountCollaborationRoutes,
+  mountPresenceRoutes,
   mountScheduledAgentRoutes,
   mountBillingRoutes,
   mountBrandingRoutes,
@@ -165,6 +170,9 @@ const mountFunctions = [
   mountHSMRoutes,
   mountCohortAnalysisRoutes,
   mountFunnelRoutes,
+  mountDashboardRoutes,
+  mountAnomalyRoutes,
+  mountGeoRoutingRoutes,
 ];
 
 /**
