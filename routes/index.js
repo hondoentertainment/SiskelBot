@@ -138,6 +138,7 @@ import { mountPqJwtRoutes } from "./pq-jwt.js";
 import { mountPqMigrationRoutes } from "./pq-migration.js";
 import { mountPqTlsRoutes } from "./pq-tls.js";
 import { mountPqDilithiumRoutes } from "./pq-dilithium.js";
+import { mountPqKyberRoutes } from "./pq-kyber.js";
 import { mountXrRoutes } from "./xr.js";
 import { mountNftGatingRoutes } from "./nft-gating.js";
 import { mountCryptoPaymentRoutes } from "./crypto-payments.js";
@@ -246,6 +247,7 @@ const mountFunctions = [
   mountPqMigrationRoutes,
   mountPqTlsRoutes,
   mountPqDilithiumRoutes,
+  mountPqKyberRoutes,
   mountXrRoutes,
   mountNftGatingRoutes,
   mountCryptoPaymentRoutes,
