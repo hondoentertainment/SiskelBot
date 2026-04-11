@@ -258,6 +258,7 @@ const mountFunctions = [
   mountDecentralizedStorageRoutes,
   mountAuditAnchorRoutes,
   mountVrRoomsRoutes,
+  mountAvatarAgentsRoutes,
 ];
 
 /**
