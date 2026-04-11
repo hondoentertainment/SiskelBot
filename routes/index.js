@@ -104,6 +104,11 @@ import { mountFunnelRoutes } from "./funnels.js";
 import { mountDashboardRoutes } from "./dashboards.js";
 import { mountAnomalyRoutes } from "./anomalies.js";
 import { mountGeoRoutingRoutes } from "./geo-routing.js";
+import { mountMultiRegionRoutes } from "./multi-region.js";
+import mountOfflineModelsRoutes from "./offline-models.js";
+import { mountCrdtRoutes } from "./crdt.js";
+import mountDataWarehouseRoutes from "./data-warehouse.js";
+import { mountAnnotationRoutes } from "./annotations.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -173,6 +178,10 @@ const mountFunctions = [
   mountDashboardRoutes,
   mountAnomalyRoutes,
   mountGeoRoutingRoutes,
+  mountMultiRegionRoutes,
+  mountOfflineModelsRoutes,
+  mountCrdtRoutes,
+  mountDataWarehouseRoutes,
 ];
 
 /**

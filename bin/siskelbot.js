@@ -152,6 +152,24 @@ Commands:
   fine-tune status <jobId>    Show status of a fine-tune job
     --url, --api-key, --workspace, --json
 
+  models list                  List offline model catalog (and what's downloaded)
+    --downloaded              Show only downloaded models
+    --recommend               Show device recommendations
+    --ram <gb>                Device RAM in GB (with --recommend)
+    --storage <gb>            Device storage in GB (with --recommend)
+    --json
+  models download <id>         Download a model from the offline catalog
+    --skip-checksum           Skip SHA-256 verification (placeholder catalog)
+    --json
+  models remove <id>           Delete a downloaded model
+    --json
+  models verify <id>           Re-hash a downloaded model and verify integrity
+    --json
+  models bundle                Create an offline bundle (tarball) for distribution
+    --models <id1,id2,...>    Comma-separated model ids (required)
+    --output <path>           Output path for the .tar.gz file (required)
+    --json
+
 Environment:
   SISKELBOT_URL               Base URL (default: http://localhost:3000)
   SISKELBOT_API_KEY           API key (also API_KEY)
@@ -819,6 +837,153 @@ async function cmdFineTuneStatus(baseUrl, apiKey, jobId, workspace, json) {
   } catch (e) {
     if (e.message?.includes("Connection refused")) err(e.message, 1);
     err(e.message || String(e), 1);
+  }
+}
+
+function formatBytes(n) {
+  if (!Number.isFinite(n) || n <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  let v = n;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i += 1;
+  }
+  return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+async function cmdModelsList(json) {
+  const showDownloaded = hasFlag("--downloaded");
+  const recommend = hasFlag("--recommend");
+  const mod = await import("../lib/offline-models.js");
+
+  if (recommend) {
+    const ramGB = Number(getFlag("--ram") || 0);
+    const storageGB = Number(getFlag("--storage") || 0);
+    const result = await mod.getModelRecommendations({ ramGB, storageGB });
+    if (json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    console.log(`Device: ${ramGB || "?"}GB RAM, ${storageGB || "?"}GB storage`);
+    console.log("\nRecommended:");
+    if (result.recommended.length === 0) console.log("  (none fit)");
+    for (const m of result.recommended) {
+      console.log(`  - ${m.id}  ${m.name}  ${formatBytes(m.sizeBytes)}  [${(m.capabilities || []).join(",")}]`);
+    }
+    if (result.excluded.length > 0) {
+      console.log("\nExcluded:");
+      for (const e of result.excluded) {
+        console.log(`  - ${e.id}: ${e.reasons.join("; ")}`);
+      }
+    }
+    return;
+  }
+
+  if (showDownloaded) {
+    const items = await mod.listDownloadedModels();
+    if (json) {
+      console.log(JSON.stringify({ items }, null, 2));
+      return;
+    }
+    if (items.length === 0) {
+      console.log("No models downloaded.");
+      return;
+    }
+    for (const m of items) {
+      console.log(`- ${m.id}  ${m.name}  ${formatBytes(m.sizeBytes)}  ${m.path}`);
+    }
+    return;
+  }
+
+  const items = await mod.listAvailableModels();
+  if (json) {
+    console.log(JSON.stringify({ items }, null, 2));
+    return;
+  }
+  console.log("Offline model catalog:");
+  for (const m of items) {
+    console.log(`- ${m.id}  ${m.name}  ${formatBytes(m.sizeBytes)}  [${m.capabilities.join(",")}]  (min ${m.minRamGB}GB RAM)`);
+  }
+}
+
+async function cmdModelsDownload(id, json) {
+  if (!id) err("Usage: siskelbot models download <model-id>");
+  const mod = await import("../lib/offline-models.js");
+  const skipChecksum = hasFlag("--skip-checksum");
+
+  let lastPercent = -1;
+  try {
+    const result = await mod.downloadModel(id, {
+      skipChecksum,
+      onProgress: ({ percent, received, total }) => {
+        if (json) return;
+        if (percent !== lastPercent) {
+          lastPercent = percent;
+          process.stdout.write(`\r  ${percent}%  ${formatBytes(received)} / ${formatBytes(total)}      `);
+        }
+      },
+    });
+    if (json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    process.stdout.write("\n");
+    console.log(`Downloaded: ${result.path}`);
+    console.log(`Size:       ${formatBytes(result.size)}`);
+    console.log(`SHA-256:    ${result.checksum}`);
+  } catch (e) {
+    if (!json) process.stdout.write("\n");
+    err(e.message || String(e));
+  }
+}
+
+async function cmdModelsRemove(id, json) {
+  if (!id) err("Usage: siskelbot models remove <model-id>");
+  const mod = await import("../lib/offline-models.js");
+  const result = await mod.deleteDownloadedModel(id);
+  if (json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  console.log(result.deleted ? `Removed: ${result.path}` : `Not found: ${result.path}`);
+}
+
+async function cmdModelsVerify(id, json) {
+  if (!id) err("Usage: siskelbot models verify <model-id>");
+  const mod = await import("../lib/offline-models.js");
+  const result = await mod.verifyModelIntegrity(id);
+  if (json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  console.log(`OK:       ${result.ok}`);
+  console.log(`Checksum: ${result.checksum || "(n/a)"}`);
+  console.log(`Expected: ${result.expected || "(n/a)"}`);
+  if (result.reason) console.log(`Note:     ${result.reason}`);
+}
+
+async function cmdModelsBundle(json) {
+  const modelsFlag = getFlag("--models");
+  const output = getFlag("--output");
+  if (!modelsFlag) err("Usage: siskelbot models bundle --models <id1,id2,...> --output <path>");
+  if (!output) err("--output <path> is required");
+  const ids = modelsFlag.split(",").map((s) => s.trim()).filter(Boolean);
+  if (ids.length === 0) err("--models cannot be empty");
+  const mod = await import("../lib/offline-models.js");
+  try {
+    const result = await mod.createOfflineBundle(ids, output);
+    if (json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    console.log(`Bundle:   ${result.path}`);
+    console.log(`Models:   ${result.models.join(", ")}`);
+    console.log(`Total:    ${formatBytes(result.totalBytes)}`);
+    if (result.warning) console.log(`Warning:  ${result.warning}`);
+    if (result.manifestPath) console.log(`Manifest: ${result.manifestPath}`);
+  } catch (e) {
+    err(e.message || String(e));
   }
 }
 

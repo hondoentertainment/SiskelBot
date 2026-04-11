@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>SiskelBot Dashboard Builder</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { color-scheme: dark; }
+    body { font-family: system-ui, -apple-system, sans-serif; min-height: 100vh; background: #0f172a; color: #e2e8f0; display: flex; flex-direction: column; }
+
+    /* Header */
+    .header { padding: 0.75rem 1.25rem; background: #1e293b; border-bottom: 1px solid #334155; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; position: sticky; top: 0; z-index: 50; }
+    .header h1 { font-size: 1.0625rem; font-weight: 700; }
+    .header-left { display: flex; align-items: center; gap: 1rem; }
+    .header-controls { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+    .header a { color: #60a5fa; text-decoration: none; font-size: 0.8125rem; }
+    .header a:hover { text-decoration: underline; }
+
+    button, .btn { padding: 0.4rem 0.75rem; background: #334155; border: 1px solid #475569; border-radius: 6px; color: #e2e8f0; font-size: 0.8125rem; cursor: pointer; font-weight: 500; }
+    button:hover, .btn:hover { background: #475569; }
+    button.primary { background: #2563eb; border-color: #3b82f6; }
+    button.primary:hover { background: #3b82f6; }
+    button.danger { background: #7f1d1d; border-color: #991b1b; }
+    button.danger:hover { background: #991b1b; }
+
+    select, input[type="text"], input[type="number"], textarea { padding: 0.4rem 0.6rem; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; font-size: 0.8125rem; width: 100%; font-family: inherit; }
+    select:focus, input:focus, textarea:focus { outline: 2px solid #60a5fa; outline-offset: 1px; }
+    textarea { min-height: 80px; resize: vertical; }
+    label { display: block; font-size: 0.75rem; color: #94a3b8; margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .field { margin-bottom: 0.75rem; }
+
+    /* Layout */
+    .main { flex: 1; display: grid; grid-template-columns: 240px 1fr 280px; gap: 0; overflow: hidden; }
+    .sidebar { background: #1e293b; border-right: 1px solid #334155; overflow-y: auto; padding: 1rem; }
+    .sidebar.right { border-right: none; border-left: 1px solid #334155; }
+    .sidebar h3 { font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.75rem; }
+    .canvas { background: #0f172a; padding: 1.25rem; overflow-y: auto; position: relative; }
+
+    /* Widget palette */
+    .widget-pallette { display: flex; flex-direction: column; gap: 0.5rem; }
+    .palette-item { padding: 0.625rem 0.75rem; background: #0f172a; border: 1px solid #334155; border-radius: 6px; cursor: grab; transition: border-color 0.15s; }
+    .palette-item:hover { border-color: #3b82f6; }
+    .palette-item:active { cursor: grabbing; }
+    .palette-item .pal-name { font-size: 0.8125rem; font-weight: 600; }
+    .palette-item .pal-desc { font-size: 0.6875rem; color: #64748b; margin-top: 0.125rem; }
+
+    /* Dashboard list */
+    .dash-list { display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 1rem; }
+    .dash-item { padding: 0.5rem 0.625rem; background: #0f172a; border: 1px solid #334155; border-radius: 6px; cursor: pointer; font-size: 0.8125rem; }
+    .dash-item:hover { border-color: #475569; }
+    .dash-item.active { border-color: #3b82f6; background: #1e3a8a33; }
+
+    /* Canvas grid */
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 0.75rem; min-height: 200px; }
+    .widget { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 0.875rem; position: relative; cursor: pointer; min-height: 120px; }
+    .widget:hover { border-color: #475569; }
+    .widget.selected { border-color: #3b82f6; box-shadow: 0 0 0 2px #1e3a8a; }
+    .widget-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+    .widget-title { font-size: 0.8125rem; font-weight: 600; color: #e2e8f0; }
+    .widget-actions { display: flex; gap: 0.25rem; }
+    .widget-actions button { padding: 0.125rem 0.375rem; font-size: 0.6875rem; }
+    .widget-body { font-size: 0.8125rem; color: #cbd5e1; }
+
+    /* Metric card */
+    .metric-value { font-size: 1.875rem; font-weight: 700; color: #f1f5f9; }
+    .metric-label { font-size: 0.6875rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.25rem; }
+
+    /* Bars */
+    .bar-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.375rem; font-size: 0.75rem; }
+    .bar-row .bar-label { flex: 0 0 80px; color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar-row .bar-track { flex: 1; height: 6px; background: #334155; border-radius: 3px; overflow: hidden; }
+    .bar-row .bar-fill { height: 100%; background: #3b82f6; }
+    .bar-row .bar-val { flex: 0 0 50px; text-align: right; color: #cbd5e1; }
+
+    /* Tables */
+    table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+    th, td { padding: 0.375rem 0.5rem; text-align: left; border-bottom: 1px solid #334155; }
+    th { color: #64748b; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.6875rem; }
+
+    /* Empty canvas */
+    .empty { text-align: center; padding: 3rem 1rem; color: #64748b; }
+    .empty h2 { font-size: 1rem; color: #94a3b8; margin-bottom: 0.5rem; }
+
+    /* Toast */
+    .toast { position: fixed; top: 1rem; right: 1rem; padding: 0.75rem 1rem; background: #1e293b; border: 1px solid #334155; border-radius: 6px; font-size: 0.8125rem; box-shadow: 0 4px 12px rgba(0,0,0,0.4); z-index: 100; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+    .toast.show { opacity: 1; }
+    .toast.error { border-color: #991b1b; }
+    .toast.success { border-color: #15803d; }
+
+    @media (max-width: 900px) {
+      .main { grid-template-columns: 1fr; }
+      .sidebar, .sidebar.right { border-left: none; border-right: none; border-bottom: 1px solid #334155; max-height: 200px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-left">
+      <h1>Dashboard Builder</h1>
+      <a href="/">Chat</a>
+      <a href="/analytics.html">Analytics</a>
+    </div>
+    <div class="header-controls">
+      <input type="text" id="workspaceInput" placeholder="workspace" value="default" style="width: 140px;">
+      <button id="newDashBtn">New Dashboard</button>
+      <button id="saveBtn" class="primary">Save</button>
+      <button id="shareBtn">Share</button>
+      <button id="deleteBtn" class="danger">Delete</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <!-- Left: Dashboards + Widget palette -->
+    <aside class="sidebar">
+      <h3>Dashboards</h3>
+      <div class="dash-list" id="dashList"></div>
+
+      <h3 style="margin-top: 1.25rem;">Widget Palette</h3>
+      <div class="widget-pallette" id="palette"></div>
+    </aside>
+
+    <!-- Center: Canvas -->
+    <section class="canvas">
+      <div class="field" style="max-width: 600px;">
+        <label>Dashboard Name</label>
+        <input type="text" id="dashNameInput" placeholder="Untitled Dashboard">
+      </div>
+      <div class="field" style="max-width: 600px;">
+        <label>Description</label>
+        <textarea id="dashDescInput" placeholder="What is this dashboard for?"></textarea>
+      </div>
+      <div id="canvasGrid" class="grid">
+        <div class="empty" style="grid-column: 1 / -1;">
+          <h2>No widgets yet</h2>
+          <div>Click a widget in the palette to add it.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right: Widget config -->
+    <aside class="sidebar right">
+      <h3>Widget Config</h3>
+      <div id="configPanel">
+        <div style="font-size: 0.8125rem; color: #64748b;">Select a widget to configure it.</div>
+      </div>
+    </aside>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    // ─── State ─────────────────────────────────────────────
+    let widgetTypes = {};
+    let dashboards = [];
+    let currentDashboard = null;
+    let selectedWidgetId = null;
+
+    // ─── API helpers ───────────────────────────────────────
+    async function api(path, options = {}) {
+      const res = await fetch(`/api/v1${path}`, {
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        ...options,
+      });
+      if (!res.ok) {
+        let msg = `HTTP ${res.status}`;
+        try { const e = await res.json(); msg = e.message || e.error || msg; } catch (_) {}
+        throw new Error(msg);
+      }
+      return res.json();
+    }
+
+    function toast(message, type = "info") {
+      const el = document.getElementById("toast");
+      el.textContent = message;
+      el.className = `toast show ${type}`;
+      setTimeout(() => { el.className = "toast"; }, 2400);
+    }
+
+    // ─── Init ─────────────────────────────────────────────
+    async function init() {
+      try {
+        const r = await api("/dashboards/widgets/types");
+        widgetTypes = r.types || {};
+      } catch (err) {
+        toast(`Failed to load widget types: ${err.message}`, "error");
+      }
+      renderPalette();
+      await loadDashboards();
+      bindEvents();
+    }
+
+    function bindEvents() {
+      document.getElementById("workspaceInput").addEventListener("change", loadDashboards);
+      document.getElementById("newDashBtn").addEventListener("click", newDashboard);
+      document.getElementById("saveBtn").addEventListener("click", saveDashboard);
+      document.getElementById("shareBtn").addEventListener("click", shareDashboard);
+      document.getElementById("deleteBtn").addEventListener("click", deleteCurrent);
+    }
+
+    // ─── Palette ──────────────────────────────────────────
+    function renderPalette() {
+      const el = document.getElementById("palette");
+      el.innerHTML = "";
+      Object.entries(widgetTypes).forEach(([type, def]) => {
+        const item = document.createElement("div");
+        item.className = "palette-item";
+        item.innerHTML = `
+          <div class="pal-name">${escapeHtml(def.name)}</div>
+          <div class="pal-desc">${escapeHtml(def.description || "")}</div>`;
+        item.addEventListener("click", () => addWidget(type));
+        el.appendChild(item);
+      });
+    }
+
+    // ─── Dashboards ───────────────────────────────────────
+    async function loadDashboards() {
+      const workspace = document.getElementById("workspaceInput").value || "default";
+      try {
+        const r = await api(`/dashboards?workspace=${encodeURIComponent(workspace)}`);
+        dashboards = r.dashboards || [];
+        renderDashList();
+        if (dashboards.length > 0 && !currentDashboard) {
+          await openDashboard(dashboards[0].id);
+        } else if (dashboards.length === 0) {
+          newDashboard();
+        }
+      } catch (err) {
+        toast(`Failed to load dashboards: ${err.message}`, "error");
+      }
+    }
+
+    function renderDashList() {
+      const el = document.getElementById("dashList");
+      el.innerHTML = "";
+      if (dashboards.length === 0) {
+        el.innerHTML = '<div style="font-size: 0.75rem; color: #64748b;">No dashboards yet.</div>';
+        return;
+      }
+      dashboards.forEach((d) => {
+        const item = document.createElement("div");
+        item.className = "dash-item" + (currentDashboard && currentDashboard.id === d.id ? " active" : "");
+        item.textContent = d.name;
+        item.addEventListener("click", () => openDashboard(d.id));
+        el.appendChild(item);
+      });
+    }
+
+    async function openDashboard(id) {
+      try {
+        currentDashboard = await api(`/dashboards/${encodeURIComponent(id)}`);
+        selectedWidgetId = null;
+        document.getElementById("dashNameInput").value = currentDashboard.name || "";
+        document.getElementById("dashDescInput").value = currentDashboard.description || "";
+        renderDashList();
+        renderCanvas();
+        renderConfigPanel();
+      } catch (err) {
+        toast(`Failed to open: ${err.message}`, "error");
+      }
+    }
+
+    function newDashboard() {
+      currentDashboard = {
+        id: null,
+        workspaceId: document.getElementById("workspaceInput").value || "default",
+        name: "Untitled Dashboard",
+        description: "",
+        layout: { widgets: [] },
+      };
+      selectedWidgetId = null;
+      document.getElementById("dashNameInput").value = currentDashboard.name;
+      document.getElementById("dashDescInput").value = "";
+      renderDashList();
+      renderCanvas();
+      renderConfigPanel();
+    }
+
+    async function saveDashboard() {
+      if (!currentDashboard) return;
+      currentDashboard.name = document.getElementById("dashNameInput").value || "Untitled Dashboard";
+      currentDashboard.description = document.getElementById("dashDescInput").value || "";
+      const workspace = document.getElementById("workspaceInput").value || "default";
+      try {
+        if (currentDashboard.id) {
+          const updated = await api(`/dashboards/${encodeURIComponent(currentDashboard.id)}`, {
+            method: "PUT",
+            body: JSON.stringify({
+              name: currentDashboard.name,
+              description: currentDashboard.description,
+              layout: currentDashboard.layout,
+            }),
+          });
+          currentDashboard = updated;
+        } else {
+          const created = await api(`/dashboards`, {
+            method: "POST",
+            body: JSON.stringify({
+              workspace,
+              name: currentDashboard.name,
+              description: currentDashboard.description,
+              layout: currentDashboard.layout,
+            }),
+          });
+          currentDashboard = created;
+        }
+        await loadDashboards();
+        toast("Saved", "success");
+      } catch (err) {
+        toast(`Save failed: ${err.message}`, "error");
+      }
+    }
+
+    async function deleteCurrent() {
+      if (!currentDashboard || !currentDashboard.id) {
+        currentDashboard = null;
+        renderCanvas();
+        renderDashList();
+        return;
+      }
+      if (!confirm(`Delete dashboard "${currentDashboard.name}"?`)) return;
+      try {
+        await api(`/dashboards/${encodeURIComponent(currentDashboard.id)}`, { method: "DELETE" });
+        currentDashboard = null;
+        await loadDashboards();
+        toast("Deleted", "success");
+      } catch (err) {
+        toast(`Delete failed: ${err.message}`, "error");
+      }
+    }
+
+    async function shareDashboard() {
+      if (!currentDashboard || !currentDashboard.id) {
+        toast("Save the dashboard first", "error");
+        return;
+      }
+      const token = currentDashboard.shareToken;
+      if (!token) {
+        toast("No share token available", "error");
+        return;
+      }
+      const url = `${location.origin}/dashboard-view.html?token=${encodeURIComponent(token)}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        toast("Share link copied to clipboard", "success");
+      } catch (_) {
+        prompt("Share link:", url);
+      }
+    }
+
+    // ─── Widgets ──────────────────────────────────────────
+    function addWidget(type) {
+      if (!currentDashboard) newDashboard();
+      const def = widgetTypes[type];
+      if (!def) return;
+      const widget = {
+        id: `w_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+        type,
+        title: def.name,
+        position: { x: 0, y: 0, w: 4, h: 3 },
+        config: JSON.parse(JSON.stringify(def.config || {})),
+      };
+      currentDashboard.layout.widgets.push(widget);
+      selectedWidgetId = widget.id;
+      renderCanvas();
+      renderConfigPanel();
+    }
+
+    function removeWidget(id) {
+      if (!currentDashboard) return;
+      currentDashboard.layout.widgets = currentDashboard.layout.widgets.filter((w) => w.id !== id);
+      if (selectedWidgetId === id) selectedWidgetId = null;
+      renderCanvas();
+      renderConfigPanel();
+    }
+
+    async function renderCanvas() {
+      const grid = document.getElementById("canvasGrid");
+      grid.innerHTML = "";
+      const widgets = currentDashboard?.layout?.widgets || [];
+      if (widgets.length === 0) {
+        grid.innerHTML = '<div class="empty" style="grid-column: 1 / -1;"><h2>No widgets yet</h2><div>Click a widget in the palette to add it.</div></div>';
+        return;
+      }
+      // Fetch widget data if dashboard saved
+      let widgetData = {};
+      if (currentDashboard.id) {
+        try {
+          const r = await api(`/dashboards/${encodeURIComponent(currentDashboard.id)}/data`);
+          for (const w of r.widgets || []) widgetData[w.widgetId] = w;
+        } catch (_) {}
+      }
+      widgets.forEach((w) => {
+        const card = document.createElement("div");
+        card.className = "widget" + (selectedWidgetId === w.id ? " selected" : "");
+        const colSpan = Math.min(12, Math.max(2, w.position.w || 4));
+        card.style.gridColumn = `span ${colSpan}`;
+        card.innerHTML = `
+          <div class="widget-header">
+            <div class="widget-title">${escapeHtml(w.title || w.type)}</div>
+            <div class="widget-actions">
+              <button data-act="del">×</button>
+            </div>
+          </div>
+          <div class="widget-body" id="body-${w.id}"></div>`;
+        card.addEventListener("click", (ev) => {
+          if (ev.target.dataset.act === "del") { removeWidget(w.id); return; }
+          selectedWidgetId = w.id;
+          renderCanvas();
+          renderConfigPanel();
+        });
+        grid.appendChild(card);
+        const bodyEl = card.querySelector(`#body-${CSS.escape(w.id)}`);
+        renderWidgetBody(bodyEl, w, widgetData[w.id]);
+      });
+    }
+
+    function renderWidgetBody(el, widget, rendered) {
+      const data = rendered?.data;
+      if (!data) {
+        el.innerHTML = '<div style="color:#64748b;font-size:0.75rem;">No preview (save dashboard to load data)</div>';
+        return;
+      }
+      switch (widget.type) {
+        case "metric_card":
+          el.innerHTML = `<div class="metric-value">${formatNumber(data.value, data.format)}</div><div class="metric-label">${escapeHtml(data.metric)} · ${escapeHtml(data.period)}</div>`;
+          break;
+        case "line_chart": {
+          const points = data.points || [];
+          if (points.length === 0) { el.innerHTML = '<div style="color:#64748b;">No data</div>'; break; }
+          const max = Math.max(1, ...points.map((p) => p.y));
+          const w = 300, h = 80;
+          const step = points.length > 1 ? w / (points.length - 1) : w;
+          const path = points.map((p, i) => `${i === 0 ? "M" : "L"}${i * step},${h - (p.y / max) * h}`).join(" ");
+          el.innerHTML = `<svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}"><path d="${path}" fill="none" stroke="#3b82f6" stroke-width="2"/></svg>`;
+          break;
+        }
+        case "bar_chart": {
+          const bars = data.bars || [];
+          if (bars.length === 0) { el.innerHTML = '<div style="color:#64748b;">No data</div>'; break; }
+          const max = Math.max(1, ...bars.map((b) => b.value));
+          el.innerHTML = bars.slice(0, 6).map((b) => `
+            <div class="bar-row">
+              <div class="bar-label" title="${escapeHtml(b.label)}">${escapeHtml(b.label)}</div>
+              <div class="bar-track"><div class="bar-fill" style="width:${(b.value / max) * 100}%"></div></div>
+              <div class="bar-val">${formatNumber(b.value)}</div>
+            </div>`).join("");
+          break;
+        }
+        case "table": {
+          const rows = data.rows || [];
+          const cols = data.columns || ["name", "requests"];
+          if (rows.length === 0) { el.innerHTML = '<div style="color:#64748b;">No data</div>'; break; }
+          const head = cols.map((c) => `<th>${escapeHtml(c)}</th>`).join("");
+          const body = rows.map((r) => `<tr>${cols.map((c) => `<td>${escapeHtml(String(r[c] ?? ""))}</td>`).join("")}</tr>`).join("");
+          el.innerHTML = `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+          break;
+        }
+        case "text":
+          el.innerHTML = `<div style="white-space: pre-wrap;">${escapeHtml(data.content || "")}</div>`;
+          break;
+        case "iframe":
+          el.innerHTML = data.url
+            ? `<iframe src="${escapeHtml(data.url)}" style="width:100%;height:${Number(data.height) || 200}px;border:1px solid #334155;border-radius:4px;"></iframe>`
+            : '<div style="color:#64748b;">No URL configured</div>';
+          break;
+        case "status":
+          el.innerHTML = `<div style="display:flex;align-items:center;gap:0.5rem;"><span style="width:10px;height:10px;border-radius:50%;background:#34d399;display:inline-block;"></span><span>${escapeHtml(data.service)}</span></div><div class="metric-label">${escapeHtml(data.endpoint)}</div>`;
+          break;
+        default:
+          el.textContent = JSON.stringify(data);
+      }
+    }
+
+    // ─── Config panel ─────────────────────────────────────
+    function renderConfigPanel() {
+      const el = document.getElementById("configPanel");
+      if (!currentDashboard || !selectedWidgetId) {
+        el.innerHTML = '<div style="font-size: 0.8125rem; color: #64748b;">Select a widget to configure it.</div>';
+        return;
+      }
+      const widget = currentDashboard.layout.widgets.find((w) => w.id === selectedWidgetId);
+      if (!widget) { el.innerHTML = '<div style="color:#64748b;">Widget not found.</div>'; return; }
+      const def = widgetTypes[widget.type] || { name: widget.type };
+      let html = `
+        <div class="field"><label>Type</label><div style="font-size:0.8125rem;">${escapeHtml(def.name)}</div></div>
+        <div class="field"><label>Title</label><input type="text" id="cfg-title" value="${escapeHtml(widget.title || "")}"></div>
+        <div class="field"><label>Width (1-12)</label><input type="number" id="cfg-w" min="1" max="12" value="${Number(widget.position.w) || 4}"></div>
+      `;
+      // Config fields based on widget type
+      const cfgEntries = Object.entries(widget.config || {});
+      cfgEntries.forEach(([key, val]) => {
+        const fieldId = `cfg-${key}`;
+        if (typeof val === "boolean") {
+          html += `<div class="field"><label>${escapeHtml(key)}</label><select id="${fieldId}"><option value="true" ${val ? "selected" : ""}>true</option><option value="false" ${!val ? "selected" : ""}>false</option></select></div>`;
+        } else if (typeof val === "number") {
+          html += `<div class="field"><label>${escapeHtml(key)}</label><input type="number" id="${fieldId}" value="${val}"></div>`;
+        } else if (Array.isArray(val)) {
+          html += `<div class="field"><label>${escapeHtml(key)} (csv)</label><input type="text" id="${fieldId}" value="${escapeHtml(val.join(","))}"></div>`;
+        } else {
+          html += `<div class="field"><label>${escapeHtml(key)}</label><input type="text" id="${fieldId}" value="${escapeHtml(String(val ?? ""))}"></div>`;
+        }
+      });
+      html += `<button id="cfg-apply" class="primary" style="width:100%;margin-top:0.5rem;">Apply</button>`;
+      el.innerHTML = html;
+      document.getElementById("cfg-apply").addEventListener("click", () => {
+        widget.title = document.getElementById("cfg-title").value;
+        widget.position.w = Math.max(1, Math.min(12, Number(document.getElementById("cfg-w").value) || 4));
+        cfgEntries.forEach(([key, val]) => {
+          const inputEl = document.getElementById(`cfg-${key}`);
+          if (!inputEl) return;
+          let v = inputEl.value;
+          if (typeof val === "boolean") v = v === "true";
+          else if (typeof val === "number") v = Number(v);
+          else if (Array.isArray(val)) v = v.split(",").map((s) => s.trim()).filter(Boolean);
+          widget.config[key] = v;
+        });
+        renderCanvas();
+        toast("Widget updated", "success");
+      });
+    }
+
+    // ─── Helpers ──────────────────────────────────────────
+    function escapeHtml(s) {
+      return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    function formatNumber(n, format) {
+      const num = Number(n) || 0;
+      if (format === "currency") return `$${num.toFixed(2)}`;
+      if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`;
+      if (num >= 1_000) return `${(num / 1_000).toFixed(1)}k`;
+      return String(num);
+    }
+
+    init();
+  </script>
+</body>
+</html>
