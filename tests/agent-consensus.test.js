@@ -116,13 +116,13 @@ test("majorityVote returns empty for empty input", async () => {
 
 test("weightedVote weights by per-agent weight array", async () => {
   const responses = [
-    { text: "answer A is best", agentId: "a" },
-    { text: "answer A is best", agentId: "b" },
-    { text: "answer B is correct", agentId: "c" },
+    { text: "alpha alpha alpha alpha", agentId: "a" },
+    { text: "alpha alpha alpha alpha", agentId: "b" },
+    { text: "zeta zeta zeta zeta", agentId: "c" },
   ];
-  // Agent c has very high weight: B should win.
-  const r = await weightedVote(responses, [1, 1, 10], { threshold: 0.4 });
-  assert.match(r.consensus, /B/);
+  // Agent c has very high weight: zeta should win.
+  const r = await weightedVote(responses, [1, 1, 10], { threshold: 0.5 });
+  assert.match(r.consensus, /zeta/);
   assert.ok(r.winningWeight > r.totalWeight / 2);
 });
 
@@ -315,19 +315,19 @@ test("executeConsensus with llm_judge strategy uses judge result", async () => {
 
 test("executeConsensus with weighted strategy uses provided weights", async () => {
   const agents = [
-    makeAgent("w1", "answer A"),
-    makeAgent("w2", "answer A"),
-    makeAgent("w3", "answer B"),
+    makeAgent("w1", "alpha alpha alpha alpha"),
+    makeAgent("w2", "alpha alpha alpha alpha"),
+    makeAgent("w3", "zeta zeta zeta zeta"),
   ];
   const run = await executeConsensus("which?", {
     agents,
     strategy: "weighted",
     weights: [1, 1, 100],
     quorum: 2,
-    threshold: 0.4,
+    threshold: 0.5,
     persist: false,
   });
-  assert.match(run.consensus, /B/);
+  assert.match(run.consensus, /zeta/);
 });
 
 test("executeConsensus with ranked_choice strategy uses Borda count", async () => {
