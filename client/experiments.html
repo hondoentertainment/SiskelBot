@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>Siskel Bot - Experiment Tracking</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 2px solid #60a5fa;
+      outline-offset: 2px;
+    }
+    header {
+      padding: 0.75rem 1rem;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    header h1 { margin: 0; font-size: 1.125rem; font-weight: 600; }
+    header a { color: #60a5fa; text-decoration: none; }
+    header a:hover { text-decoration: underline; }
+
+    main {
+      padding: 1rem;
+      max-width: 1600px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; }
+    }
+
+    .section {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .section h2 {
+      margin: 0 0 0.75rem 0;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .exp-list { max-height: 520px; overflow: auto; }
+    .exp-item {
+      padding: 0.6rem 0.75rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      margin-bottom: 0.4rem;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .exp-item:hover { background: #243244; }
+    .exp-item.active { background: #1e3a5f; border-color: #3b82f6; }
+    .exp-item .exp-name { font-size: 0.9rem; color: #e2e8f0; font-weight: 500; }
+    .exp-item .exp-meta { font-size: 0.72rem; color: #64748b; margin-top: 2px; }
+
+    .controls {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .controls input, .controls select, .controls button {
+      padding: 0.4rem 0.6rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.85rem;
+    }
+    .controls button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    .controls button:hover { background: #2563eb; }
+    .controls button.secondary {
+      background: #334155;
+    }
+    .controls button.secondary:hover { background: #475569; }
+
+    table.runs-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    table.runs-table th, table.runs-table td {
+      padding: 0.5rem 0.6rem;
+      border-bottom: 1px solid #334155;
+      text-align: left;
+    }
+    table.runs-table th {
+      background: #0f172a;
+      color: #94a3b8;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      user-select: none;
+    }
+    table.runs-table th:hover { color: #e2e8f0; }
+    table.runs-table tr:hover td { background: #243244; }
+    table.runs-table td.num {
+      font-family: ui-monospace, Menlo, monospace;
+      text-align: right;
+    }
+    .status-pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+    .status-pill.running { background: #1e3a5f; color: #60a5fa; }
+    .status-pill.completed { background: #064e3b; color: #34d399; }
+    .status-pill.failed { background: #7f1d1d; color: #fca5a5; }
+    .status-pill.aborted { background: #78350f; color: #fbbf24; }
+
+    .run-checkbox { cursor: pointer; }
+
+    .comparison {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 0.75rem;
+      margin-top: 0.75rem;
+    }
+    .comparison h3 {
+      margin: 0 0 0.5rem 0;
+      font-size: 0.82rem;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .comparison table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    .comparison table th, .comparison table td {
+      padding: 0.4rem 0.5rem;
+      border-bottom: 1px solid #1e293b;
+      text-align: left;
+    }
+    .comparison table th {
+      font-size: 0.7rem;
+      color: #64748b;
+      font-weight: 500;
+    }
+    .comparison table td.num {
+      font-family: ui-monospace, Menlo, monospace;
+      text-align: right;
+    }
+
+    .chart-panel {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 0.75rem;
+      margin-top: 0.75rem;
+    }
+    .chart-panel h3 {
+      margin: 0 0 0.5rem 0;
+      font-size: 0.82rem;
+      color: #94a3b8;
+    }
+    .chart-svg { width: 100%; height: 200px; }
+
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: #64748b;
+    }
+    .error-banner {
+      background: #7f1d1d;
+      color: #fecaca;
+      padding: 0.6rem 0.8rem;
+      border-radius: 6px;
+      margin-bottom: 0.75rem;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Experiment Tracking</h1>
+    <a href="/">Home</a>
+    <a href="/observability.html">Observability</a>
+    <a href="/eval.html">Evals</a>
+  </header>
+  <main>
+    <aside>
+      <div class="section">
+        <h2>Experiments</h2>
+        <div class="controls">
+          <input id="workspace-input" placeholder="workspace" value="default" style="flex:1;">
+          <button id="reload-btn">Reload</button>
+        </div>
+        <div class="controls">
+          <input id="new-exp-name" placeholder="New experiment name" style="flex:1;">
+          <button id="create-exp-btn">Create</button>
+        </div>
+        <div id="exp-list" class="exp-list"></div>
+      </div>
+    </aside>
+    <section>
+      <div id="error-container"></div>
+      <div class="section">
+        <h2 id="runs-heading">Runs</h2>
+        <div class="controls">
+          <select id="status-filter">
+            <option value="">All statuses</option>
+            <option value="running">Running</option>
+            <option value="completed">Completed</option>
+            <option value="failed">Failed</option>
+            <option value="aborted">Aborted</option>
+          </select>
+          <select id="sort-by">
+            <option value="startedAt">Started at</option>
+            <option value="duration">Duration</option>
+            <option value="status">Status</option>
+          </select>
+          <select id="sort-order">
+            <option value="desc">Desc</option>
+            <option value="asc">Asc</option>
+          </select>
+          <button id="apply-filter-btn">Apply</button>
+          <button id="compare-btn" class="secondary">Compare selected</button>
+        </div>
+        <div id="runs-container">
+          <div class="empty-state">Select an experiment to view runs.</div>
+        </div>
+      </div>
+      <div id="comparison-container"></div>
+      <div id="history-container"></div>
+    </section>
+  </main>
+
+  <script>
+    const state = {
+      workspace: "default",
+      experiments: [],
+      activeExperimentId: null,
+      runs: [],
+      selectedRuns: new Set(),
+    };
+
+    const $ = (id) => document.getElementById(id);
+
+    function showError(msg) {
+      const el = $("error-container");
+      el.innerHTML = `<div class="error-banner">${escapeHtml(msg)}</div>`;
+      setTimeout(() => { el.innerHTML = ""; }, 4000);
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    function formatDuration(ms) {
+      if (ms == null) return "—";
+      if (ms < 1000) return `${ms}ms`;
+      if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+      return `${(ms / 60_000).toFixed(1)}m`;
+    }
+
+    function formatDate(iso) {
+      if (!iso) return "—";
+      try {
+        const d = new Date(iso);
+        return d.toLocaleString();
+      } catch {
+        return iso;
+      }
+    }
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, {
+        headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+        ...options,
+      });
+      const text = await res.text();
+      let data = null;
+      try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
+      if (!res.ok) {
+        const msg = data?.error?.message || data?.message || `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+      return data;
+    }
+
+    async function loadExperiments() {
+      const ws = encodeURIComponent(state.workspace);
+      try {
+        const data = await api(`/api/v1/experiments?workspace=${ws}`);
+        state.experiments = data.experiments || [];
+        renderExperiments();
+      } catch (err) {
+        showError(`Load experiments failed: ${err.message}`);
+      }
+    }
+
+    function renderExperiments() {
+      const list = $("exp-list");
+      if (state.experiments.length === 0) {
+        list.innerHTML = `<div class="empty-state">No experiments yet.</div>`;
+        return;
+      }
+      list.innerHTML = state.experiments.map((e) => `
+        <div class="exp-item${e.id === state.activeExperimentId ? " active" : ""}" data-id="${escapeHtml(e.id)}">
+          <div class="exp-name">${escapeHtml(e.name)}</div>
+          <div class="exp-meta">${e.runCount || 0} runs · ${formatDate(e.createdAt)}</div>
+        </div>
+      `).join("");
+      list.querySelectorAll(".exp-item").forEach((el) => {
+        el.addEventListener("click", () => {
+          state.activeExperimentId = el.dataset.id;
+          state.selectedRuns.clear();
+          renderExperiments();
+          loadRuns();
+        });
+      });
+    }
+
+    async function createExperiment() {
+      const name = $("new-exp-name").value.trim();
+      if (!name) { showError("Name is required"); return; }
+      try {
+        await api("/api/v1/experiments", {
+          method: "POST",
+          body: JSON.stringify({ name, workspace: state.workspace }),
+        });
+        $("new-exp-name").value = "";
+        await loadExperiments();
+      } catch (err) {
+        showError(`Create failed: ${err.message}`);
+      }
+    }
+
+    async function loadRuns() {
+      if (!state.activeExperimentId) return;
+      const ws = encodeURIComponent(state.workspace);
+      const status = $("status-filter").value;
+      const sortBy = $("sort-by").value;
+      const sortOrder = $("sort-order").value;
+      const qs = new URLSearchParams({ workspace: state.workspace, sortBy, sortOrder });
+      if (status) qs.set("status", status);
+      try {
+        const data = await api(`/api/v1/experiments/${encodeURIComponent(state.activeExperimentId)}/runs?${qs.toString()}`);
+        state.runs = data.runs || [];
+        renderRuns();
+      } catch (err) {
+        showError(`Load runs failed: ${err.message}`);
+      }
+    }
+
+    function renderRuns() {
+      const container = $("runs-container");
+      const exp = state.experiments.find((e) => e.id === state.activeExperimentId);
+      $("runs-heading").textContent = exp ? `Runs — ${exp.name}` : "Runs";
+      if (state.runs.length === 0) {
+        container.innerHTML = `<div class="empty-state">No runs yet for this experiment.</div>`;
+        return;
+      }
+      // Collect metric keys across runs for column display.
+      const metricKeys = new Set();
+      for (const run of state.runs) {
+        for (const k of Object.keys(run.metrics || {})) metricKeys.add(k);
+      }
+      const metricCols = [...metricKeys].slice(0, 6);
+
+      const rows = state.runs.map((run) => {
+        const latest = (k) => {
+          const s = run.metrics?.[k];
+          return Array.isArray(s) && s.length ? s[s.length - 1].value.toFixed(4) : "—";
+        };
+        const checked = state.selectedRuns.has(run.id) ? "checked" : "";
+        return `<tr>
+          <td><input type="checkbox" class="run-checkbox" data-id="${escapeHtml(run.id)}" ${checked}></td>
+          <td><code style="font-size:0.75rem;color:#94a3b8">${escapeHtml(run.id.slice(0, 8))}</code></td>
+          <td>${escapeHtml(run.name || "—")}</td>
+          <td><span class="status-pill ${run.status}">${run.status}</span></td>
+          <td class="num">${formatDuration(run.duration)}</td>
+          <td>${formatDate(run.startedAt)}</td>
+          ${metricCols.map((k) => `<td class="num">${latest(k)}</td>`).join("")}
+        </tr>`;
+      }).join("");
+
+      container.innerHTML = `<table class="runs-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Run</th>
+            <th>Name</th>
+            <th>Status</th>
+            <th>Duration</th>
+            <th>Started</th>
+            ${metricCols.map((k) => `<th>${escapeHtml(k)}</th>`).join("")}
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+
+      container.querySelectorAll(".run-checkbox").forEach((cb) => {
+        cb.addEventListener("change", (e) => {
+          const id = e.target.dataset.id;
+          if (e.target.checked) state.selectedRuns.add(id);
+          else state.selectedRuns.delete(id);
+        });
+      });
+    }
+
+    async function compareSelected() {
+      const ids = [...state.selectedRuns];
+      if (ids.length < 2) {
+        showError("Select at least 2 runs to compare");
+        return;
+      }
+      try {
+        const data = await api("/api/v1/runs/compare", {
+          method: "POST",
+          body: JSON.stringify({ runIds: ids }),
+        });
+        renderComparison(data);
+        await renderMetricHistories(ids, data);
+      } catch (err) {
+        showError(`Compare failed: ${err.message}`);
+      }
+    }
+
+    function renderComparison(data) {
+      const container = $("comparison-container");
+      if (!data || (!Object.keys(data.params).length && !Object.keys(data.metrics).length)) {
+        container.innerHTML = `<div class="section"><h2>Comparison</h2><div class="empty-state">No data.</div></div>`;
+        return;
+      }
+      const runHeaders = data.runs.map((r) => `<th>${escapeHtml(r.name || r.id.slice(0, 8))}</th>`).join("");
+
+      const paramRows = Object.entries(data.params).map(([key, vals]) => {
+        const cells = data.runs.map((r) => `<td class="num">${escapeHtml(vals[r.id] ?? "—")}</td>`).join("");
+        return `<tr><td>${escapeHtml(key)}</td>${cells}</tr>`;
+      }).join("");
+
+      const metricRows = Object.entries(data.metrics).map(([key, vals]) => {
+        const cells = data.runs.map((r) => `<td class="num">${vals[r.id] != null ? Number(vals[r.id]).toFixed(4) : "—"}</td>`).join("");
+        return `<tr><td>${escapeHtml(key)}</td>${cells}</tr>`;
+      }).join("");
+
+      container.innerHTML = `<div class="section">
+        <h2>Comparison</h2>
+        ${paramRows ? `<div class="comparison">
+          <h3>Parameters</h3>
+          <table><thead><tr><th>Key</th>${runHeaders}</tr></thead><tbody>${paramRows}</tbody></table>
+        </div>` : ""}
+        ${metricRows ? `<div class="comparison">
+          <h3>Metrics (latest value)</h3>
+          <table><thead><tr><th>Metric</th>${runHeaders}</tr></thead><tbody>${metricRows}</tbody></table>
+        </div>` : ""}
+      </div>`;
+    }
+
+    async function renderMetricHistories(runIds, compareData) {
+      const metricKeys = Object.keys(compareData?.metrics || {});
+      if (metricKeys.length === 0) {
+        $("history-container").innerHTML = "";
+        return;
+      }
+      const histories = {};
+      for (const rid of runIds) {
+        histories[rid] = {};
+        for (const m of metricKeys) {
+          try {
+            const data = await api(`/api/v1/runs/${encodeURIComponent(rid)}/metrics/${encodeURIComponent(m)}`);
+            histories[rid][m] = data.points || [];
+          } catch {
+            histories[rid][m] = [];
+          }
+        }
+      }
+
+      const palette = ["#60a5fa", "#34d399", "#fbbf24", "#f87171", "#a78bfa", "#fb923c"];
+      const chartsHtml = metricKeys.map((m) => {
+        const svg = buildLineChart(runIds, m, histories, palette);
+        return `<div class="chart-panel">
+          <h3>${escapeHtml(m)}</h3>
+          ${svg}
+        </div>`;
+      }).join("");
+
+      $("history-container").innerHTML = `<div class="section"><h2>Metric History</h2>${chartsHtml}</div>`;
+    }
+
+    function buildLineChart(runIds, metric, histories, palette) {
+      const width = 600;
+      const height = 200;
+      const pad = { top: 10, right: 120, bottom: 24, left: 40 };
+      const plotW = width - pad.left - pad.right;
+      const plotH = height - pad.top - pad.bottom;
+
+      let minV = Infinity, maxV = -Infinity;
+      let minS = Infinity, maxS = -Infinity;
+      for (const rid of runIds) {
+        for (const p of histories[rid]?.[metric] || []) {
+          if (p.value < minV) minV = p.value;
+          if (p.value > maxV) maxV = p.value;
+          if (p.step < minS) minS = p.step;
+          if (p.step > maxS) maxS = p.step;
+        }
+      }
+      if (!Number.isFinite(minV) || !Number.isFinite(maxV)) {
+        return `<svg viewBox="0 0 ${width} ${height}" class="chart-svg"><text x="${width/2}" y="${height/2}" fill="#64748b" text-anchor="middle" font-size="12">No data</text></svg>`;
+      }
+      if (minV === maxV) { minV -= 1; maxV += 1; }
+      if (minS === maxS) { minS -= 0.5; maxS += 0.5; }
+
+      const xScale = (s) => pad.left + ((s - minS) / (maxS - minS)) * plotW;
+      const yScale = (v) => pad.top + plotH - ((v - minV) / (maxV - minV)) * plotH;
+
+      const axes = `
+        <line x1="${pad.left}" y1="${pad.top + plotH}" x2="${pad.left + plotW}" y2="${pad.top + plotH}" stroke="#334155" />
+        <line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${pad.top + plotH}" stroke="#334155" />
+        <text x="${pad.left - 6}" y="${pad.top + 10}" fill="#64748b" text-anchor="end" font-size="10">${maxV.toFixed(3)}</text>
+        <text x="${pad.left - 6}" y="${pad.top + plotH}" fill="#64748b" text-anchor="end" font-size="10">${minV.toFixed(3)}</text>
+      `;
+
+      const lines = runIds.map((rid, idx) => {
+        const pts = histories[rid]?.[metric] || [];
+        if (pts.length === 0) return "";
+        const color = palette[idx % palette.length];
+        const d = pts.map((p, i) => `${i === 0 ? "M" : "L"}${xScale(p.step)},${yScale(p.value)}`).join(" ");
+        const dots = pts.map((p) => `<circle cx="${xScale(p.step)}" cy="${yScale(p.value)}" r="2.5" fill="${color}" />`).join("");
+        const label = rid.slice(0, 8);
+        return `<path d="${d}" fill="none" stroke="${color}" stroke-width="1.8" />${dots}
+          <text x="${pad.left + plotW + 8}" y="${pad.top + 12 + idx * 14}" fill="${color}" font-size="10" font-family="ui-monospace,monospace">${label}</text>`;
+      }).join("");
+
+      return `<svg viewBox="0 0 ${width} ${height}" class="chart-svg">${axes}${lines}</svg>`;
+    }
+
+    $("reload-btn").addEventListener("click", () => {
+      state.workspace = $("workspace-input").value.trim() || "default";
+      state.activeExperimentId = null;
+      state.runs = [];
+      state.selectedRuns.clear();
+      $("runs-container").innerHTML = `<div class="empty-state">Select an experiment to view runs.</div>`;
+      $("comparison-container").innerHTML = "";
+      $("history-container").innerHTML = "";
+      loadExperiments();
+    });
+    $("create-exp-btn").addEventListener("click", createExperiment);
+    $("apply-filter-btn").addEventListener("click", loadRuns);
+    $("compare-btn").addEventListener("click", compareSelected);
+    $("new-exp-name").addEventListener("keydown", (e) => { if (e.key === "Enter") createExperiment(); });
+    $("workspace-input").addEventListener("keydown", (e) => { if (e.key === "Enter") $("reload-btn").click(); });
+
+    loadExperiments();
+  </script>
+</body>
+</html>

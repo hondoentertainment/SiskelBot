@@ -94,6 +94,8 @@ import { mountExperimentRoutes } from "./experiments.js";
 import { mountMobileRoutes } from "./mobile.js";
 import mountModelRegistryRoutes from "./model-registry.js";
 import { mountLoraAdapterRoutes } from "./lora-adapters.js";
+import { mountFineTuningRoutes } from "./fine-tuning.js";
+import mountPushNotificationRoutes from "./push-notifications.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -153,6 +155,7 @@ const mountFunctions = [
   mountMobileRoutes,
   mountModelRegistryRoutes,
   mountLoraAdapterRoutes,
+  mountFineTuningRoutes,
 ];
 
 /**

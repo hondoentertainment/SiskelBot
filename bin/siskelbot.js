@@ -132,6 +132,26 @@ Commands:
   config                      Show current config (backend, url, auth status)
     --url, --api-key, --json
 
+  fine-tune export            Export conversations to JSONL for fine-tuning
+    --format <fmt>            Format: openai (default), alpaca, sharegpt
+    --min-rating <n>          Only include conversations with feedback >= n (1-5)
+    --date-from <iso>         Only include conversations created on/after date
+    --date-to <iso>           Only include conversations created on/before date
+    --max-examples <n>        Maximum examples to export
+    --output <file>           Write to file instead of stdout
+    --url, --api-key, --workspace, --json
+  fine-tune create            Create a fine-tune job
+    --file <path>             JSONL training file path (required)
+    --model <name>            Base model (e.g. gpt-4o-mini) (required)
+    --suffix <s>              Optional suffix for the fine-tuned model
+    --validation-file <path>  Optional validation JSONL file path
+    --provider <p>            Provider: openai (default) or local
+    --url, --api-key, --workspace, --json
+  fine-tune list              List fine-tune jobs in the workspace
+    --url, --api-key, --workspace, --json
+  fine-tune status <jobId>    Show status of a fine-tune job
+    --url, --api-key, --workspace, --json
+
 Environment:
   SISKELBOT_URL               Base URL (default: http://localhost:3000)
   SISKELBOT_API_KEY           API key (also API_KEY)
@@ -674,6 +694,134 @@ async function cmdExport(baseUrl, apiKey, conversationId, workspace, json) {
   }
 }
 
+async function cmdFineTuneExport(baseUrl, apiKey, workspace, json) {
+  const format = getFlag("--format") || "openai";
+  const minRating = getFlag("--min-rating");
+  const dateFrom = getFlag("--date-from");
+  const dateTo = getFlag("--date-to");
+  const maxExamples = getFlag("--max-examples");
+  const output = getFlag("--output");
+
+  const body = { workspace, format };
+  if (minRating != null) body.minRating = Number(minRating);
+  if (dateFrom) body.dateFrom = dateFrom;
+  if (dateTo) body.dateTo = dateTo;
+  if (maxExamples != null) body.maxExamples = Number(maxExamples);
+
+  try {
+    const data = await apiPost(baseUrl, apiKey, "/api/v1/fine-tune/export", body);
+    if (output) {
+      writeFileSync(output, data.jsonl || "");
+      if (json) {
+        console.log(JSON.stringify({ exported: output, exampleCount: data.exampleCount, estimatedTokens: data.estimatedTokens, format: data.format }));
+      } else {
+        console.log(`Exported ${data.exampleCount} example(s) (~${data.estimatedTokens} tokens) to ${output}`);
+      }
+      return;
+    }
+    if (json) {
+      console.log(JSON.stringify(data, null, 2));
+      return;
+    }
+    console.log(`Format: ${data.format}`);
+    console.log(`Examples: ${data.exampleCount}`);
+    console.log(`Estimated tokens: ${data.estimatedTokens}`);
+    if (data.jsonl) {
+      process.stdout.write(data.jsonl + "\n");
+    }
+  } catch (e) {
+    if (e.message?.includes("Connection refused")) err(e.message, 1);
+    err(e.message || String(e), 1);
+  }
+}
+
+async function cmdFineTuneCreate(baseUrl, apiKey, workspace, json) {
+  const filePath = getFlag("--file");
+  const model = getFlag("--model");
+  const suffix = getFlag("--suffix");
+  const provider = getFlag("--provider") || "openai";
+  const validationPath = getFlag("--validation-file");
+  if (!filePath) err("--file <path> is required (JSONL training file)");
+  if (!model) err("--model <name> is required");
+
+  let trainingContent;
+  try {
+    trainingContent = readFileSync(resolve(process.cwd(), filePath), "utf8");
+  } catch {
+    err(`Cannot read training file: ${filePath}`);
+  }
+  let validationContent;
+  if (validationPath) {
+    try {
+      validationContent = readFileSync(resolve(process.cwd(), validationPath), "utf8");
+    } catch {
+      err(`Cannot read validation file: ${validationPath}`);
+    }
+  }
+
+  const body = {
+    workspace,
+    model,
+    provider,
+    trainingFile: trainingContent,
+  };
+  if (validationContent) body.validationFile = validationContent;
+  if (suffix) body.suffix = suffix;
+
+  try {
+    const data = await apiPost(baseUrl, apiKey, "/api/v1/fine-tune/jobs", body);
+    if (json) {
+      console.log(JSON.stringify(data, null, 2));
+      return;
+    }
+    console.log(`Fine-tune job created: ${data.jobId} (status: ${data.status}, provider: ${data.provider})`);
+  } catch (e) {
+    if (e.message?.includes("Connection refused")) err(e.message, 1);
+    err(e.message || String(e), 1);
+  }
+}
+
+async function cmdFineTuneList(baseUrl, apiKey, workspace, json) {
+  try {
+    const data = await apiGet(baseUrl, apiKey, "/api/v1/fine-tune/jobs", workspace);
+    if (json) {
+      console.log(JSON.stringify(data, null, 2));
+      return;
+    }
+    const items = data?.items || [];
+    if (items.length === 0) {
+      console.log("No fine-tune jobs.");
+      return;
+    }
+    for (const j of items) {
+      console.log(`- ${j.jobId}  ${j.model}  ${j.status}  (${j.provider})  ${j.createdAt}`);
+    }
+  } catch (e) {
+    if (e.message?.includes("Connection refused")) err(e.message, 1);
+    err(e.message || String(e), 1);
+  }
+}
+
+async function cmdFineTuneStatus(baseUrl, apiKey, jobId, workspace, json) {
+  if (!jobId) err("Usage: siskelbot fine-tune status <jobId>");
+  try {
+    const data = await apiGet(baseUrl, apiKey, `/api/v1/fine-tune/jobs/${encodeURIComponent(jobId)}`, workspace);
+    if (json) {
+      console.log(JSON.stringify(data, null, 2));
+      return;
+    }
+    console.log(`Job: ${data.jobId}`);
+    console.log(`Model: ${data.model}`);
+    console.log(`Status: ${data.status}`);
+    console.log(`Provider: ${data.provider}`);
+    console.log(`Created: ${data.createdAt}`);
+    if (data.fineTunedModel) console.log(`Fine-tuned model: ${data.fineTunedModel}`);
+  } catch (e) {
+    if (e.message?.includes("Connection refused")) err(e.message, 1);
+    err(e.message || String(e), 1);
+  }
+}
+
 async function main() {
   const { args, json } = parseArgs();
   const baseUrl = getUrl();
@@ -718,6 +866,12 @@ async function main() {
       await cmdSearch(baseUrl, apiKey, args[1], workspace, json);
     } else if (cmd === "export") {
       await cmdExport(baseUrl, apiKey, args[1], workspace, json);
+    } else if (cmd === "fine-tune") {
+      if (sub === "export") await cmdFineTuneExport(baseUrl, apiKey, workspace, json);
+      else if (sub === "create") await cmdFineTuneCreate(baseUrl, apiKey, workspace, json);
+      else if (sub === "list") await cmdFineTuneList(baseUrl, apiKey, workspace, json);
+      else if (sub === "status") await cmdFineTuneStatus(baseUrl, apiKey, args[2], workspace, json);
+      else err("Usage: siskelbot fine-tune export|create|list|status <jobId>");
     } else {
       err(`Unknown command: ${cmd}. Run with --help for usage.`);
     }

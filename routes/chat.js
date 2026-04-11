@@ -310,6 +310,14 @@ export default function mountChatRoutes(app, deps) {
         recordModelResponse(model, { latencyMs: Date.now() - _startTime, tokens: outputTokens, error: false });
         checkAndLogPromotion(model);
 
+        // Phase 38.5: adapter usage metrics
+        if (activeAdapter) {
+          recordAdapterUsage(activeAdapter.id, {
+            latencyMs: Date.now() - _startTime,
+            error: false,
+          }).catch(() => {});
+        }
+
         if (autoRecordEnabled()) {
           try {
             const tracePayload = req._agentLoopMeta || {};
@@ -449,6 +457,14 @@ export default function mountChatRoutes(app, deps) {
       // Record model quality metrics for streaming proxy path
       recordModelResponse(model, { latencyMs: Date.now() - _startTime, tokens: outputTokens, error: false });
       checkAndLogPromotion(model);
+
+      // Phase 38.5: adapter usage metrics (streaming path)
+      if (activeAdapter) {
+        recordAdapterUsage(activeAdapter.id, {
+          latencyMs: Date.now() - _startTime,
+          error: false,
+        }).catch(() => {});
+      }
 
       if (USAGE_ALERT_TOKENS) {
         const totalInWindow = await getTotalTokensInWindow();
