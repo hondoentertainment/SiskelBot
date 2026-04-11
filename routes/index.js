@@ -158,6 +158,7 @@ import { mountVerificationLoopRoutes } from "./verification-loop.js";
 import { mountTreeOfThoughtRoutes } from "./tree-of-thought.js";
 import { mountGraphOfThoughtRoutes } from "./graph-of-thought.js";
 import { mountToolGraphRoutes } from "./tool-graph.js";
+import { mountVideoUnderstandingRoutes } from "./video-understanding.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -281,6 +282,7 @@ const mountFunctions = [
   mountTreeOfThoughtRoutes,
   mountGraphOfThoughtRoutes,
   mountToolGraphRoutes,
+  mountVideoUnderstandingRoutes,
 ];
 
 /**
