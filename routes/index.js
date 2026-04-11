@@ -133,6 +133,7 @@ import { mountFederatedTrainingRoutes } from "./federated-training.js";
 import { mountFlConsortiumRoutes } from "./fl-consortium.js";
 import { mountPrivacyAccountingRoutes } from "./privacy-accounting.js";
 import { mountSecureAggregationRoutes } from "./secure-aggregation.js";
+import { mountDifferentialPrivacyRoutes } from "./differential-privacy.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -231,6 +232,7 @@ const mountFunctions = [
   mountFlConsortiumRoutes,
   mountPrivacyAccountingRoutes,
   mountSecureAggregationRoutes,
+  mountDifferentialPrivacyRoutes,
 ];
 
 /**
