@@ -15,6 +15,7 @@ import { getLeaderElection } from "./lib/leader-election.js";
 import { getRegionHealth } from "./lib/region-health.js";
 import { getReplicationManager, internalAuth } from "./lib/storage-replication.js";
 import { getSyntheticMonitor, registerBuiltInChecks } from "./lib/synthetic-monitor.js";
+import { startDailySecurityScan } from "./lib/security-scorecard.js";
 import {
   branchConversation,
   getConversationTree,
@@ -1225,6 +1226,16 @@ if (process.env.VERCEL !== "1") {
             console.log(`Phase 31.3: Synthetic monitoring enabled (interval=${intervalMs}ms, base=${baseUrl})`);
           } catch (e) {
             console.warn("[synthetic-monitor] Start failed:", e.message);
+          }
+        }
+        if (process.env.ENABLE_SECURITY_SCORECARD !== "0") {
+          try {
+            startDailySecurityScan().catch((e) =>
+              console.warn("[security-scorecard] Start failed:", e.message),
+            );
+            console.log("Phase 36.5: Security scorecard daily scan enabled");
+          } catch (e) {
+            console.warn("[security-scorecard] Start failed:", e.message);
           }
         }
         console.log("Phase 33: WebSocket real-time sync enabled at /ws");

@@ -70,6 +70,7 @@ import { mountScheduledAgentRoutes } from "./scheduled-agents.js";
 import { mountBillingRoutes } from "./billing.js";
 import { mountBrandingRoutes } from "./branding.js";
 import { mountSecurityRoutes } from "./security.js";
+import { mountSecurityScorecardRoutes } from "./security-scorecard.js";
 import { mountFeedbackRoutes } from "./feedback.js";
 import { mountVoiceRoutes } from "./voice.js";
 import mountTraceExplorerRoutes from "./traces.js";
@@ -87,6 +88,8 @@ import { mountReferralRoutes } from "./referrals.js";
 import { mountTemplateGalleryRoutes } from "./template-gallery.js";
 import { mountEdgeCacheRoutes } from "./edge-cache.js";
 import mountQueryAnalyzerRoutes from "./query-analyzer.js";
+import { mountServiceAuthRoutes } from "./service-auth.js";
+import { mountSecretRotationRoutes } from "./secret-rotation.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -122,6 +125,7 @@ const mountFunctions = [
   mountBillingRoutes,
   mountBrandingRoutes,
   mountSecurityRoutes,
+  mountSecurityScorecardRoutes,
   mountFeedbackRoutes,
   mountVoiceRoutes,
   mountTraceExplorerRoutes,
@@ -139,6 +143,8 @@ const mountFunctions = [
   mountTemplateGalleryRoutes,
   mountEdgeCacheRoutes,
   mountQueryAnalyzerRoutes,
+  mountServiceAuthRoutes,
+  mountSecretRotationRoutes,
 ];
 
 /**
