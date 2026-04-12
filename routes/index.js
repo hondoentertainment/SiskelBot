@@ -322,6 +322,7 @@ const mountFunctions = [
   mountSyntheticTasksRoutes,
   mountDegradationTiersRoutes,
   mountQuantizationRoutes,
+  mountChaosEngineeringRoutes,
 ];
 
 /**
