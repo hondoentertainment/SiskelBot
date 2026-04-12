@@ -182,6 +182,7 @@ import { mountChaosEngineeringRoutes } from "./chaos-engineering.js";
 import { mountErrorBudgetRoutes } from "./error-budget.js";
 import { mountCanaryRoutes } from "./canary.js";
 import { mountApiPlaygroundRoutes } from "./api-playground.js";
+import { mountDevSetupRoutes } from "./dev-setup.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -329,6 +330,7 @@ const mountFunctions = [
   mountErrorBudgetRoutes,
   mountCanaryRoutes,
   mountApiPlaygroundRoutes,
+  mountDevSetupRoutes,
 ];
 
 /**
