@@ -86,6 +86,7 @@ import { mountPromptEvolutionRoutes } from "./prompt-evolution.js";
 import { mountToolDiscoveryRoutes } from "./tool-discovery.js";
 import { mountToolRagRoutes } from "./tool-rag.js";
 import { mountToolDisclosureRoutes } from "./tool-disclosure.js";
+import { mountToolValidationRoutes } from "./tool-validation.js";
 import { mountExplainabilityRoutes } from "./explainability.js";
 import { mountComplianceRoutes } from "./compliance.js";
 import { mountRecipeMarketplaceRoutes } from "./recipe-marketplace.js";
@@ -100,6 +101,7 @@ import { mountServiceAuthRoutes } from "./service-auth.js";
 import { mountSecretRotationRoutes } from "./secret-rotation.js";
 import { mountExperimentRoutes } from "./experiments.js";
 import { mountMobileRoutes } from "./mobile.js";
+import { mountMobileAutomationRoutes } from "./mobile-automation.js";
 import mountModelRegistryRoutes from "./model-registry.js";
 import { mountLoraAdapterRoutes } from "./lora-adapters.js";
 import { mountFineTuningRoutes } from "./fine-tuning.js";
@@ -158,6 +160,29 @@ import { mountVerificationLoopRoutes } from "./verification-loop.js";
 import { mountTreeOfThoughtRoutes } from "./tree-of-thought.js";
 import { mountGraphOfThoughtRoutes } from "./graph-of-thought.js";
 import { mountToolGraphRoutes } from "./tool-graph.js";
+import { mountVideoUnderstandingRoutes } from "./video-understanding.js";
+import { mountToolCompositionRoutes } from "./tool-composition.js";
+import { mountOutputClassifiersRoutes } from "./output-classifiers.js";
+import { mountImageGenerationRoutes } from "./image-generation.js";
+import { mountAudioClassificationRoutes } from "./audio-classification.js";
+import { mount3dAssetsRoutes } from "./3d-assets.js";
+import { mountScreenControlRoutes } from "./screen-control.js";
+import { mountShellAgentRoutes } from "./shell-agent.js";
+import { mountBrowserAgentRoutes } from "./browser-agent.js";
+import { mountDocumentLayoutRoutes } from "./document-layout.js";
+import { mountFsAgentRoutes } from "./fs-agent.js";
+import { mountAgentSandboxRoutes } from "./agent-sandbox.js";
+import { mountBenchmarkRunnerRoutes } from "./benchmark-runner.js";
+import { mountCurriculumRoutes } from "./curriculum.js";
+import { mountSpeculativeDecodingRoutes } from "./speculative-decoding.js";
+import { mountSyntheticTasksRoutes } from "./synthetic-tasks.js";
+import { mountDegradationTiersRoutes } from "./degradation-tiers.js";
+import { mountQuantizationRoutes } from "./quantization.js";
+import { mountChaosEngineeringRoutes } from "./chaos-engineering.js";
+import { mountErrorBudgetRoutes } from "./error-budget.js";
+import { mountCanaryRoutes } from "./canary.js";
+import { mountApiPlaygroundRoutes } from "./api-playground.js";
+import { mountDevSetupRoutes } from "./dev-setup.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -209,6 +234,7 @@ const mountFunctions = [
   mountToolDiscoveryRoutes,
   mountToolRagRoutes,
   mountToolDisclosureRoutes,
+  mountToolValidationRoutes,
   mountExplainabilityRoutes,
   mountComplianceRoutes,
   mountRecipeMarketplaceRoutes,
@@ -223,6 +249,7 @@ const mountFunctions = [
   mountSecretRotationRoutes,
   mountExperimentRoutes,
   mountMobileRoutes,
+  mountMobileAutomationRoutes,
   mountModelRegistryRoutes,
   mountLoraAdapterRoutes,
   mountFineTuningRoutes,
@@ -281,6 +308,29 @@ const mountFunctions = [
   mountTreeOfThoughtRoutes,
   mountGraphOfThoughtRoutes,
   mountToolGraphRoutes,
+  mountVideoUnderstandingRoutes,
+  mountToolCompositionRoutes,
+  mountOutputClassifiersRoutes,
+  mountImageGenerationRoutes,
+  mountAudioClassificationRoutes,
+  mount3dAssetsRoutes,
+  mountScreenControlRoutes,
+  mountShellAgentRoutes,
+  mountBrowserAgentRoutes,
+  mountDocumentLayoutRoutes,
+  mountFsAgentRoutes,
+  mountAgentSandboxRoutes,
+  mountBenchmarkRunnerRoutes,
+  mountCurriculumRoutes,
+  mountSpeculativeDecodingRoutes,
+  mountSyntheticTasksRoutes,
+  mountDegradationTiersRoutes,
+  mountQuantizationRoutes,
+  mountChaosEngineeringRoutes,
+  mountErrorBudgetRoutes,
+  mountCanaryRoutes,
+  mountApiPlaygroundRoutes,
+  mountDevSetupRoutes,
 ];
 
 /**

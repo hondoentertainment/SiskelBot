@@ -93,11 +93,14 @@ test("estimateBudget subtracts reserved output tokens", () => {
 // ─── Ranking and selection ───────────────────────────────────────────────────
 
 test("rankToolsForDisclosure orders by task relevance", () => {
-  const ranked = rankToolsForDisclosure(SAMPLE_TOOLS, { task: "search the knowledge base" });
+  const ranked = rankToolsForDisclosure(SAMPLE_TOOLS, {
+    task: "search and list context documents for knowledge",
+  });
   assert.ok(ranked.length === SAMPLE_TOOLS.length);
   const names = ranked.map((r) => r.name);
-  // search_context and list_context should be at the top.
+  // search_context should be at the top since both name and description match.
   assert.equal(names[0], "search_context");
+  // list_context matches "list context documents" and should outrank delete_resource.
   assert.ok(names.indexOf("list_context") < names.indexOf("delete_resource"));
 });
 

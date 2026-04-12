@@ -245,10 +245,10 @@ test("detectHallucination: ground truth match reduces confidence", () => {
 });
 
 test("detectHallucination: ground truth mismatch raises confidence", () => {
-  const claim = "The capital of France is Madrid and the population is 50 million.";
-  const truth = "The main language of Japan is Japanese.";
+  const claim = "Napoleon Bonaparte won Waterloo against Wellington definitively.";
+  const truth = "Quantum chromodynamics describes strong nuclear force interactions.";
   const r = detectHallucination(claim, truth);
-  assert.ok(r.overlap < 0.1);
+  assert.ok(r.overlap < 0.1, `expected low overlap, got ${r.overlap}`);
   assert.ok(r.flags.includes("no_overlap_with_ground_truth"));
   assert.ok(r.confidence >= 0.4);
 });
