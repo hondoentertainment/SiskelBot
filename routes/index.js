@@ -180,6 +180,7 @@ import { mountDegradationTiersRoutes } from "./degradation-tiers.js";
 import { mountQuantizationRoutes } from "./quantization.js";
 import { mountChaosEngineeringRoutes } from "./chaos-engineering.js";
 import { mountErrorBudgetRoutes } from "./error-budget.js";
+import { mountCanaryRoutes } from "./canary.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -324,6 +325,7 @@ const mountFunctions = [
   mountDegradationTiersRoutes,
   mountQuantizationRoutes,
   mountChaosEngineeringRoutes,
+  mountErrorBudgetRoutes,
 ];
 
 /**
