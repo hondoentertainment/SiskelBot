@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>SiskelBot — Webhook Inspector</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --bg: #0b1020; --fg: #e8ecf1; --muted: #93a2b8; --accent: #5aa6ff; --err: #ff6b6b; --ok: #55d48a; --panel: #141a2e; }
+    html, body { background: var(--bg); color: var(--fg); font-family: ui-sans-serif, system-ui, sans-serif; margin: 0; }
+    header { padding: 16px 24px; border-bottom: 1px solid #223; display: flex; justify-content: space-between; align-items: center; }
+    h1 { font-size: 16px; margin: 0; font-weight: 600; }
+    main { display: grid; grid-template-columns: 420px 1fr; gap: 0; height: calc(100vh - 57px); }
+    aside { border-right: 1px solid #223; overflow: auto; }
+    section { padding: 16px 24px; overflow: auto; }
+    .toolbar { padding: 12px 16px; border-bottom: 1px solid #223; display: flex; gap: 8px; flex-wrap: wrap; }
+    .toolbar select, .toolbar input { background: #0d1326; color: var(--fg); border: 1px solid #223; padding: 6px 10px; border-radius: 6px; }
+    button { background: var(--accent); color: #000; border: 0; padding: 7px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    button.secondary { background: transparent; color: var(--fg); border: 1px solid #223; }
+    .list { list-style: none; margin: 0; padding: 0; }
+    .list li { padding: 10px 16px; border-bottom: 1px solid #1a2040; cursor: pointer; }
+    .list li:hover { background: #101630; }
+    .list li.selected { background: #16204a; }
+    .kind { display: inline-block; font-size: 11px; border-radius: 4px; padding: 1px 6px; margin-right: 6px; }
+    .kind.dlq { background: var(--err); color: #fff; }
+    .kind.probe { background: var(--accent); color: #000; }
+    .url { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--muted); word-break: break-all; }
+    .time { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    pre { background: var(--panel); padding: 12px; border-radius: 8px; overflow: auto; font-size: 12px; }
+    .row { display: flex; gap: 8px; margin-bottom: 10px; }
+    .row input, .row textarea { flex: 1; background: #0d1326; color: var(--fg); border: 1px solid #223; border-radius: 6px; padding: 8px 10px; font-family: ui-monospace, Menlo, monospace; }
+    textarea { min-height: 150px; font-size: 12px; }
+    .ok { color: var(--ok); }
+    .err { color: var(--err); }
+    .muted { color: var(--muted); }
+    h2 { font-size: 14px; margin: 20px 0 10px; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Webhook Inspector</h1>
+  <div class="muted" id="status">ready</div>
+</header>
+<main>
+  <aside>
+    <div class="toolbar">
+      <select id="source">
+        <option value="all">All</option>
+        <option value="dlq">DLQ only</option>
+        <option value="probe">Probes only</option>
+      </select>
+      <input id="filter" type="text" placeholder="Filter URL" />
+      <button id="refresh">Refresh</button>
+    </div>
+    <ul class="list" id="deliveries"></ul>
+  </aside>
+  <section>
+    <h2>Delivery</h2>
+    <div id="detail" class="muted">Select a delivery to inspect.</div>
+    <h2>Replay</h2>
+    <div class="row">
+      <input id="replayUrl" placeholder="Override URL (optional)" />
+    </div>
+    <div class="row">
+      <textarea id="replayPayload" placeholder="Override payload JSON (optional)"></textarea>
+    </div>
+    <div class="row">
+      <button id="replayBtn">Replay</button>
+      <button class="secondary" id="sendProbeBtn">Send new probe</button>
+    </div>
+    <h2>Result</h2>
+    <pre id="replayResult" class="muted">No replay yet.</pre>
+  </section>
+</main>
+<script>
+const adminHeader = () => {
+  const k = localStorage.getItem("siskelbot_admin_key") || "";
+  return k ? { "X-Admin-Key": k, "Authorization": `Bearer ${k}` } : {};
+};
+const base = "/api/v1/webhook-inspector";
+let selected = null;
+
+async function refresh() {
+  const src = document.getElementById("source").value;
+  const filter = document.getElementById("filter").value.trim();
+  const url = `${base}/deliveries?source=${encodeURIComponent(src)}` +
+    (filter ? `&url=${encodeURIComponent(filter)}` : "");
+  const r = await fetch(url, { headers: adminHeader() });
+  if (!r.ok) { document.getElementById("status").textContent = `error ${r.status}`; return; }
+  const { items } = await r.json();
+  const ul = document.getElementById("deliveries");
+  ul.innerHTML = "";
+  for (const it of items) {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="kind ${it.kind}">${it.kind}</span><span class="url">${it.url || ""}</span><div class="time">${it.recordedAt || ""}</div>`;
+    li.onclick = () => select(it, li);
+    ul.appendChild(li);
+  }
+  document.getElementById("status").textContent = `${items.length} deliveries`;
+}
+
+function select(item, li) {
+  selected = item;
+  for (const el of document.querySelectorAll(".list li.selected")) el.classList.remove("selected");
+  li.classList.add("selected");
+  const det = document.getElementById("detail");
+  det.innerHTML = `<div><strong>URL:</strong> <span class="url">${item.url}</span></div>` +
+    `<div><strong>Kind:</strong> ${item.kind}</div>` +
+    (item.error ? `<div class="err"><strong>Error:</strong> ${item.error}</div>` : "") +
+    `<h2>Payload</h2><pre>${escapeHtml(JSON.stringify(item.payload, null, 2))}</pre>`;
+}
+
+function escapeHtml(s) {
+  return String(s || "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+
+async function replay() {
+  if (!selected && !document.getElementById("replayUrl").value.trim()) {
+    alert("Select a delivery or provide a URL"); return;
+  }
+  let payload;
+  const raw = document.getElementById("replayPayload").value.trim();
+  if (raw) { try { payload = JSON.parse(raw); } catch (e) { alert("Invalid JSON"); return; } }
+  const body = {
+    id: selected?.id,
+    url: document.getElementById("replayUrl").value.trim() || undefined,
+    payload,
+  };
+  const r = await fetch(`${base}/replay`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...adminHeader() },
+    body: JSON.stringify(body),
+  });
+  const text = await r.text();
+  const pre = document.getElementById("replayResult");
+  pre.className = r.ok ? "ok" : "err";
+  pre.textContent = text;
+}
+
+async function sendProbe() {
+  const url = document.getElementById("replayUrl").value.trim();
+  if (!url) { alert("Provide a URL in the override field"); return; }
+  let payload = {};
+  const raw = document.getElementById("replayPayload").value.trim();
+  if (raw) { try { payload = JSON.parse(raw); } catch (e) { alert("Invalid JSON"); return; } }
+  const r = await fetch(`${base}/probes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...adminHeader() },
+    body: JSON.stringify({ url, payload, source: "manual" }),
+  });
+  if (r.ok) await refresh();
+}
+
+document.getElementById("refresh").onclick = refresh;
+document.getElementById("replayBtn").onclick = replay;
+document.getElementById("sendProbeBtn").onclick = sendProbe;
+document.getElementById("source").onchange = refresh;
+refresh();
+</script>
+</body>
+</html>
