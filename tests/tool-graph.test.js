@@ -84,10 +84,20 @@ test("autoConnect creates edges for matching types", () => {
 });
 
 test("hasEdge / getDependencies / getDependents work", () => {
+  // Use distinct object formats so cross-type coercion does not introduce
+  // unintended edges.
   const g = new ToolGraph();
-  g.addTool({ name: "a", inputs: {}, outputs: { type: "string" } });
-  g.addTool({ name: "b", inputs: { q: { type: "string" } }, outputs: { type: "number" } });
-  g.addTool({ name: "c", inputs: { n: { type: "number" } }, outputs: { type: "boolean" } });
+  g.addTool({ name: "a", inputs: {}, outputs: { type: "object", format: "query" } });
+  g.addTool({
+    name: "b",
+    inputs: { q: { type: "object", format: "query" } },
+    outputs: { type: "object", format: "result" },
+  });
+  g.addTool({
+    name: "c",
+    inputs: { r: { type: "object", format: "result" } },
+    outputs: { type: "object", format: "report" },
+  });
   g.autoConnect();
   assert.ok(g.hasEdge("a", "b"));
   assert.ok(g.hasEdge("b", "c"));
@@ -99,9 +109,17 @@ test("hasEdge / getDependencies / getDependents work", () => {
 
 test("topoSort returns a valid ordering", () => {
   const g = new ToolGraph();
-  g.addTool({ name: "a", inputs: {}, outputs: { type: "string" } });
-  g.addTool({ name: "b", inputs: { q: { type: "string" } }, outputs: { type: "number" } });
-  g.addTool({ name: "c", inputs: { n: { type: "number" } }, outputs: { type: "boolean" } });
+  g.addTool({ name: "a", inputs: {}, outputs: { type: "object", format: "query" } });
+  g.addTool({
+    name: "b",
+    inputs: { q: { type: "object", format: "query" } },
+    outputs: { type: "object", format: "result" },
+  });
+  g.addTool({
+    name: "c",
+    inputs: { r: { type: "object", format: "result" } },
+    outputs: { type: "object", format: "report" },
+  });
   g.autoConnect();
   const order = g.topoSort();
   assert.equal(order.length, 3);
@@ -182,14 +200,24 @@ test("coerceTypes converts values per conversion", () => {
 // ---------- buildPipeline ----------
 
 test("buildPipeline finds the shortest chain", () => {
+  // Use distinct object formats so each step can only feed the next,
+  // forcing the BFS to take the long path.
   const tools = [
-    { name: "start", inputs: {}, outputs: { type: "string" } },
-    { name: "to_num", inputs: { s: { type: "string" } }, outputs: { type: "number" } },
-    { name: "to_bool", inputs: { n: { type: "number" } }, outputs: { type: "boolean" } },
+    { name: "start", inputs: {}, outputs: { type: "object", format: "query" } },
+    {
+      name: "to_mid",
+      inputs: { q: { type: "object", format: "query" } },
+      outputs: { type: "object", format: "mid" },
+    },
+    {
+      name: "to_final",
+      inputs: { m: { type: "object", format: "mid" } },
+      outputs: { type: "object", format: "final" },
+    },
   ];
-  const chain = buildPipeline({ type: "boolean" }, tools);
+  const chain = buildPipeline({ type: "object", format: "final" }, tools);
   assert.ok(chain);
-  assert.deepEqual(chain, ["start", "to_num", "to_bool"]);
+  assert.deepEqual(chain, ["start", "to_mid", "to_final"]);
 });
 
 test("buildPipeline returns null when goal is unreachable", () => {

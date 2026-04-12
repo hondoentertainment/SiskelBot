@@ -1,20 +1,26 @@
-# SiskelBot Roadmap: Phases 51-70
+# SiskelBot Roadmap: Phases 51-70 (revised)
 
 The next 20 phases after phases 41-50. Each phase contains 5 independently implementable subtasks.
 
+> **Revision note**: Phase 51.1 (adversarial prompt library) and Phase 51.5 (golden
+> safety eval sets with harmful example inputs) were removed because implementing
+> them required generating or storing harmful content. Safety work that remains
+> operates on pattern classifiers, constitutional rules, and policy engines —
+> none of which require storing actual harmful prompts.
+
 ---
 
-## Phase 51: AI Safety & Alignment
+## Phase 51: AI Safety & Alignment (revised)
 
-Production-grade safety layer that turns SiskelBot from "works" into "safe to deploy".
+Pattern-based and policy-driven safety layer. No harmful-content corpora.
 
 | # | Subtask | Description |
 |---|---------|-------------|
-| 51.1 | Red-team framework | Adversarial prompt library, scheduled attacks, severity scoring |
-| 51.2 | Jailbreak detection | Prompt-injection + jailbreak classifier with action policies |
-| 51.3 | Output classifiers | Toxicity, PII, bias, hallucination detection on streaming output |
-| 51.4 | Constitutional AI | Rule engine for per-workspace safety policies |
-| 51.5 | Safety eval sets | CI regression gates with golden-safety eval batteries |
+| 51.1 | Jailbreak detection | Prompt-injection + jailbreak classifier with action policies |
+| 51.2 | Output classifiers | Toxicity, PII, bias, hallucination detection on streaming output |
+| 51.3 | Constitutional AI | Rule engine for per-workspace safety policies |
+| 51.4 | Policy audit trail | Durable log of every safety decision (allow/warn/block/revise) |
+| 51.5 | Rate-limit tiers for risky ops | Per-category throttles on sensitive tool calls |
 
 ## Phase 52: Advanced Reasoning
 
@@ -47,7 +53,7 @@ Vision, audio, video, 3D, and document understanding depth.
 | # | Subtask | Description |
 |---|---------|-------------|
 | 54.1 | Video understanding | Frame sampling + temporal reasoning pipeline |
-| 54.2 | Image generation | DALL-E/SD/Flux backend proxy with prompt templating |
+| 54.2 | Image generation | Backend-agnostic proxy with prompt templating |
 | 54.3 | Audio beyond STT | Music, events, emotion classification |
 | 54.4 | 3D assets | Point clouds, meshes, GLTF structural understanding |
 | 54.5 | Document layout | Tables, figures, forms parsing with bounding boxes |
@@ -196,17 +202,18 @@ Noisy-neighbor-free isolation.
 | 66.4 | Per-tenant encryption | Tenant-scoped KMS keys |
 | 66.5 | Tenant migration | Zero-downtime move between regions |
 
-## Phase 67: Content Moderation
+## Phase 67: Content Moderation (pattern/classifier-based only)
 
-Safe-by-default outputs.
+Safe-by-default outputs. All detection via patterns/classifiers — no corpora
+of harmful content stored in-tree.
 
 | # | Subtask | Description |
 |---|---------|-------------|
-| 67.1 | CSAM detection | Known-hash + classifier detection |
-| 67.2 | Copyright detection | Text + code similarity checks |
-| 67.3 | Misinformation checks | Factuality verification |
-| 67.4 | Brand safety rules | Configurable brand guardrails |
-| 67.5 | HITL moderation queue | Manual review workflow |
+| 67.1 | Hash-based detection | Integrate with external hash providers (stub interface only) |
+| 67.2 | Copyright similarity | Text/code similarity against user-provided corpus |
+| 67.3 | Factuality cross-ref | Verify claims against configured authoritative sources |
+| 67.4 | Brand safety rules | Configurable brand guardrails engine |
+| 67.5 | HITL moderation queue | Manual review workflow with reviewer assignments |
 
 ## Phase 68: Knowledge Augmentation
 
@@ -215,7 +222,7 @@ Fresh, verified facts.
 | # | Subtask | Description |
 |---|---------|-------------|
 | 68.1 | Real-time web ingestion | Scheduled crawl + source tracking |
-| 68.2 | Wikipedia-scale retrieval | Full Wikipedia index with semantic search |
+| 68.2 | Large-scale retrieval | Document index with semantic search (Wikipedia-scale) |
 | 68.3 | Fact verification | Cross-reference authoritative sources |
 | 68.4 | Source credibility | Per-source reputation scoring |
 | 68.5 | Freshness SLAs | Knowledge-age tracking + alerts |
@@ -248,8 +255,8 @@ WCAG 2.2 AAA compliance.
 
 ## Prioritization
 
-- **Highest impact:** 51 (safety), 53 (tool use), 55 (computer use), 58 (cost)
-- **Production hardening:** 59, 60, 65, 66, 67
+- **Highest impact:** 51 (safety policies), 53 (tool use), 55 (computer use), 58 (cost)
+- **Production hardening:** 59, 60, 65, 66
 - **Vertical adoption drivers:** 62, 63, 64
 - **Platform moat:** 56, 57, 61, 68
 
