@@ -201,11 +201,13 @@ test("chaosMiddleware returns injected error response for error faults", async (
   const req = { originalUrl: "/api/fail" };
   let statusCode = null;
   let body = null;
-  const res = {
-    status(c) { statusCode = c; return this; },
-    json(b) { body = b; return this; },
-  };
-  await new Promise((resolve) => mw(req, res, () => resolve()));
+  await new Promise((resolve) => {
+    const res = {
+      status(c) { statusCode = c; return this; },
+      json(b) { body = b; resolve(); return this; },
+    };
+    mw(req, res, () => resolve());
+  });
   assert.equal(statusCode, 429);
   assert.ok(body.error);
   assert.equal(body.error.injected, true);
