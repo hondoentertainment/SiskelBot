@@ -171,6 +171,14 @@ import { mountShellAgentRoutes } from "./shell-agent.js";
 import { mountBrowserAgentRoutes } from "./browser-agent.js";
 import { mountDocumentLayoutRoutes } from "./document-layout.js";
 import { mountFsAgentRoutes } from "./fs-agent.js";
+import { mountAgentSandboxRoutes } from "./agent-sandbox.js";
+import { mountBenchmarkRunnerRoutes } from "./benchmark-runner.js";
+import { mountCurriculumRoutes } from "./curriculum.js";
+import { mountSpeculativeDecodingRoutes } from "./speculative-decoding.js";
+import { mountSyntheticTasksRoutes } from "./synthetic-tasks.js";
+import { mountDegradationTiersRoutes } from "./degradation-tiers.js";
+import { mountQuantizationRoutes } from "./quantization.js";
+import { mountChaosEngineeringRoutes } from "./chaos-engineering.js";
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -307,6 +315,13 @@ const mountFunctions = [
   mountBrowserAgentRoutes,
   mountDocumentLayoutRoutes,
   mountFsAgentRoutes,
+  mountAgentSandboxRoutes,
+  mountBenchmarkRunnerRoutes,
+  mountCurriculumRoutes,
+  mountSpeculativeDecodingRoutes,
+  mountSyntheticTasksRoutes,
+  mountDegradationTiersRoutes,
+  mountQuantizationRoutes,
 ];
 
 /**
