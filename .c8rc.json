@@ -17,5 +17,21 @@
     "data/**",
     "grafana/**",
     "docs/**"
-  ]
+  ],
+  "_criticalPathThresholds": {
+    "_note": "Per-file floors for agent-critical modules are enforced by scripts/check-critical-coverage.mjs (run via `npm run coverage:critical` after `npm run test:coverage`). c8's native check-coverage uses a single global threshold and cannot enforce per-file bars, so a companion script owns that.",
+    "lines": 80,
+    "branches": 70,
+    "functions": 75,
+    "files": [
+      "lib/agent-loop.js",
+      "lib/agent-loop-execute-tools.js",
+      "lib/agent-tools.js",
+      "lib/agent-hitl-store.js",
+      "lib/agent-run-control.js",
+      "lib/swarm.js",
+      "lib/circuit-breaker.js",
+      "lib/webhook-delivery.js"
+    ]
+  }
 }
