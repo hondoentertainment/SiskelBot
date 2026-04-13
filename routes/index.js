@@ -183,6 +183,56 @@ import { mountErrorBudgetRoutes } from "./error-budget.js";
 import { mountCanaryRoutes } from "./canary.js";
 import { mountApiPlaygroundRoutes } from "./api-playground.js";
 import { mountDevSetupRoutes } from "./dev-setup.js";
+
+// Phase 51-70 closeout (40 new subtasks)
+// Phase 51.4-5, 52.4, 57, 58 (Agent A — 11 modules)
+import mountPolicyAuditRoutes from "./policy-audit.js";
+import mountRiskyOpsQuotaRoutes from "./risky-ops-quota.js";
+import mountNeuroSymbolicRoutes from "./neuro-symbolic.js";
+import mountDagPipelineRoutes from "./dag-pipeline.js";
+import mountDataQualityRoutes from "./data-quality.js";
+import mountSchemaEvolutionRoutes from "./schema-evolution.js";
+import mountLineageRoutes from "./lineage.js";
+import mountFeatureStoreRoutes from "./feature-store.js";
+import mountCostAwareRouterRoutes from "./cost-aware-router.js";
+import mountPromptCompressionRoutes from "./prompt-compression.js";
+import mountDistillationRoutes from "./distillation.js";
+
+// Phase 59.2, 60.1-5 (Agent B — 6 modules)
+import mountLoadSheddingRoutes from "./load-shedding.js";
+import mountProfilingRoutes from "./profiling.js";
+import mountHeapDiffRoutes from "./heap-diff.js";
+import mountStepLatencyRoutes from "./step-latency.js";
+import mountLogAnalysisRoutes from "./log-analysis.js";
+import mountStatusPageRoutes from "./status-page.js";
+
+// Phase 61.2-3, 61.5, 62.1-5 (Agent C — 8 modules)
+import mountWebhookInspectorRoutes from "./webhook-inspector.js";
+import mountIntegrationTestHarnessRoutes from "./integration-test-harness.js";
+import mountSchemaRegistryRoutes from "./schema-registry.js";
+import mountIntentClassifierRoutes from "./intent-classifier.js";
+import mountTicketRouterRoutes from "./ticket-router.js";
+import mountResponseDrafterRoutes from "./response-drafter.js";
+import mountEscalationRulesRoutes from "./escalation-rules.js";
+import mountCsatTrackerRoutes from "./csat-tracker.js";
+
+// Phase 65, 67, 68 (Agent D — 15 modules)
+import mountModelApprovalRoutes from "./model-approval.js";
+import mountUsagePoliciesRoutes from "./usage-policies.js";
+import mountBudgetAllocationRoutes from "./budget-allocation.js";
+import mountAuditReportsRoutes from "./audit-reports.js";
+import mountAiRiskScoringRoutes from "./ai-risk-scoring.js";
+import mountHashDetectionRoutes from "./hash-detection.js";
+import mountCopyrightSimilarityRoutes from "./copyright-similarity.js";
+import mountFactualityCrossrefRoutes from "./factuality-crossref.js";
+import mountBrandSafetyRoutes from "./brand-safety.js";
+import mountHitlModerationRoutes from "./hitl-moderation.js";
+import mountWebIngestionRoutes from "./web-ingestion.js";
+import mountLargeRetrievalRoutes from "./large-retrieval.js";
+import mountFactVerificationRoutes from "./fact-verification.js";
+import mountSourceCredibilityRoutes from "./source-credibility.js";
+import mountFreshnessSlaRoutes from "./freshness-sla.js";
+
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -331,6 +381,55 @@ const mountFunctions = [
   mountCanaryRoutes,
   mountApiPlaygroundRoutes,
   mountDevSetupRoutes,
+
+  // Phase 51-70 closeout (40 new subtasks) — see AGENT_{A,B,C,D}_WIRING.md
+  // Agent A — safety audit, data engineering, cost
+  mountPolicyAuditRoutes,
+  mountRiskyOpsQuotaRoutes,
+  mountNeuroSymbolicRoutes,
+  mountDagPipelineRoutes,
+  mountDataQualityRoutes,
+  mountSchemaEvolutionRoutes,
+  mountLineageRoutes,
+  mountFeatureStoreRoutes,
+  mountCostAwareRouterRoutes,
+  mountPromptCompressionRoutes,
+  mountDistillationRoutes,
+
+  // Agent B — load shedding + observability pro
+  mountLoadSheddingRoutes,
+  mountProfilingRoutes,
+  mountHeapDiffRoutes,
+  mountStepLatencyRoutes,
+  mountLogAnalysisRoutes,
+  mountStatusPageRoutes,
+
+  // Agent C — dev platform finish + customer support vertical
+  mountWebhookInspectorRoutes,
+  mountIntegrationTestHarnessRoutes,
+  mountSchemaRegistryRoutes,
+  mountIntentClassifierRoutes,
+  mountTicketRouterRoutes,
+  mountResponseDrafterRoutes,
+  mountEscalationRulesRoutes,
+  mountCsatTrackerRoutes,
+
+  // Agent D — governance, moderation, knowledge augmentation
+  mountModelApprovalRoutes,
+  mountUsagePoliciesRoutes,
+  mountBudgetAllocationRoutes,
+  mountAuditReportsRoutes,
+  mountAiRiskScoringRoutes,
+  mountHashDetectionRoutes,
+  mountCopyrightSimilarityRoutes,
+  mountFactualityCrossrefRoutes,
+  mountBrandSafetyRoutes,
+  mountHitlModerationRoutes,
+  mountWebIngestionRoutes,
+  mountLargeRetrievalRoutes,
+  mountFactVerificationRoutes,
+  mountSourceCredibilityRoutes,
+  mountFreshnessSlaRoutes,
 ];
 
 /**
