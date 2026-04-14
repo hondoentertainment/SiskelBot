@@ -233,6 +233,10 @@ import mountFactVerificationRoutes from "./fact-verification.js";
 import mountSourceCredibilityRoutes from "./source-credibility.js";
 import mountFreshnessSlaRoutes from "./freshness-sla.js";
 
+// Wave 1 web interface — realtime agent run stream + replay
+import { mountAgentRunStreamRoutes } from "./agent-run-stream.js";
+import { mountReplayRoutes } from "./replay.js";
+
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -430,6 +434,10 @@ const mountFunctions = [
   mountFactVerificationRoutes,
   mountSourceCredibilityRoutes,
   mountFreshnessSlaRoutes,
+
+  // Wave 1 web interface — realtime agent run stream + replay
+  mountAgentRunStreamRoutes,
+  mountReplayRoutes,
 ];
 
 /**

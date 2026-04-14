@@ -78,6 +78,8 @@ import { runEvalSet } from "./lib/eval-runner.js";
 import { listEvalSets, loadEvalSet } from "./lib/storage-eval.js";
 import { listStagingTraceSummaries } from "./lib/eval-staging-traces.js";
 import { createToken, attachToServer, getOnlineUsers, closeServer } from "./lib/realtime.js";
+import { mountRealtimeWs } from "./routes/realtime-ws.js";
+import { defaultChannelRegistry } from "./lib/realtime-channels.js";
 import { sanitizeForLog } from "./lib/log-sanitizer.js";
 import { requestContextMiddleware } from "./lib/request-context.js";
 import { execute as circuitExecute } from "./lib/circuit-breaker.js";
@@ -1139,6 +1141,12 @@ const STATIC_CACHE_MAX_AGE_MS =
     ? 0
     : Number(process.env.STATIC_CACHE_MAX_AGE_MS) || (IS_PRODUCTION ? 86_400_000 : 0);
 
+// Wave 1 web interface — serve the SPA shell at /app (existing / route is unchanged)
+app.get("/app", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.sendFile(join(__dirname, "client", "app.html"));
+});
+
 app.use(
   express.static(join(__dirname, "client"), {
     maxAge: STATIC_CACHE_MAX_AGE_MS,
@@ -1168,6 +1176,9 @@ if (process.env.VERCEL !== "1") {
     .then(() => {
       const httpServer = createServer(app);
       attachToServer(httpServer);
+      if (process.env.REALTIME_WS_DISABLED !== "1") {
+        mountRealtimeWs(httpServer, { channels: defaultChannelRegistry });
+      }
 
       function gracefulShutdown(signal) {
         console.log(`[shutdown] Received ${signal}, shutting down gracefully...`);
