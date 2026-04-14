@@ -474,3 +474,38 @@ Where `mainEl` is the `<main id="sb-main">` node already created by
   createdAt-desc default, numeric + ISO timestamps, title / status keys),
   and `filterRows` (status + query composition, `completed`/`complete`
   equivalence, case-insensitive substring match, id fallback). No JSDOM.
+
+### Chat view
+
+The chat view (`client/src/views/chat.js`) mounts a two-pane conversation
+list + streaming composer inside the shell. Add to `client/src/app.js`:
+
+```js
+router.register("/chat", async (ctx) => (await import("./views/chat.js")).default(mainEl, ctx));
+palette.register({ id: "goto-chat", title: "Go to chat", run: () => router.navigate("/chat") });
+```
+
+The view consumes `GET /api/v1/conversations?workspace=default` for the
+list, tries `GET /api/v1/conversations/:id/messages` for per-conversation
+history (falls back to reading `messages` from the conversation object
+when that endpoint is not available), and POSTs
+`/v1/chat/completions` with `{messages, model, stream: true, workspace,
+conversationId, requestId}` for streaming responses. SSE frames are
+parsed via the exported `parseSseLine` helper.
+
+Model selection is persisted to `localStorage["siskelbot:chat:model"]`;
+the option list is static (`gpt-4o-mini`, `gpt-4o`, `llama3.1`).
+
+#### New files
+
+- `client/src/views/chat.js` — default export `mount(el, ctx)`.
+  Named exports: `parseSseLine`, `renderMarkdown`, `formatUsd`.
+- `client/src/views/chat.css` — dark theme matching the shell palette.
+
+#### Tests
+
+- `tests/client-views-chat.test.js` — 15 unit tests covering
+  `parseSseLine` (data / event / [DONE] / blank / comment / malformed),
+  `renderMarkdown` (fenced code, inline code, bold/italic, link href
+  escape, `<script>` sanitization, `javascript:` href rejection), and
+  `formatUsd` (sub-dollar, `>= 1`, zero, negative, non-numbers). No JSDOM.
