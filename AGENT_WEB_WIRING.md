@@ -509,3 +509,48 @@ the option list is static (`gpt-4o-mini`, `gpt-4o`, `llama3.1`).
   `renderMarkdown` (fenced code, inline code, bold/italic, link href
   escape, `<script>` sanitization, `javascript:` href rejection), and
   `formatUsd` (sub-dollar, `>= 1`, zero, negative, non-numbers). No JSDOM.
+
+### Knowledge view
+
+The knowledge view (`client/src/views/knowledge.js`) mounts a three-tab
+panel (Docs / Search / Graph) in the shell. Add to `client/src/app.js`:
+
+```js
+router.register("/knowledge", async (ctx) => (await import("./views/knowledge.js")).default(mainEl, ctx));
+palette.register({ id: "goto-knowledge", title: "Go to knowledge", run: () => router.navigate("/knowledge") });
+```
+
+Consumes:
+
+- `GET /api/v1/context?workspace=<ws>` — docs list (tolerant of
+  `[]`, `{items: []}`, `{documents: []}`).
+- `POST /api/v1/context`, `PUT /api/v1/context/:id`,
+  `DELETE /api/v1/context/:id?workspace=<ws>` — doc CRUD.
+- `GET /api/v1/search?q=<q>&workspace=<ws>` — keyword search.
+- `GET /api/v1/context/semantic?q=<q>&workspace=<ws>` — semantic
+  search. If this endpoint returns 404, the view shows a visible
+  notice and falls back to the keyword endpoint.
+- `GET /api/v1/knowledge/graph?workspace=<ws>&limit=100` — knowledge
+  graph. On 404 or empty result the view renders "Graph unavailable".
+
+The graph tab renders a static 600×600 canvas using the exported
+`layoutEntitiesCircular` helper (deterministic circular placement).
+Click a node to highlight its neighbors by dimming others. No zoom /
+pan. Responsive only via CSS `max-width: 100%`.
+
+#### New files
+
+- `client/src/views/knowledge.js` — default export `mount(el, ctx)`.
+  Named exports: `formatDocSize`, `rankSearchResults`,
+  `layoutEntitiesCircular`.
+- `client/src/views/knowledge.css` — dark theme matching the shell
+  palette.
+
+#### Tests
+
+- `tests/client-views-knowledge.test.js` — 4 unit tests covering
+  `formatDocSize` (0 / null / undefined / string / KB / MB),
+  `rankSearchResults` (empty, non-mutation, stable score-desc /
+  updatedAt-desc / title-asc tie-breaking), and
+  `layoutEntitiesCircular` (0 / 1 / 4 entities, determinism, finite
+  coords). No JSDOM.

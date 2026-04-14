@@ -1,0 +1,169 @@
+/* Knowledge view — dark theme matching other SPA shell views. */
+
+.kb-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 480px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  padding: 16px 20px;
+  gap: 12px;
+  box-sizing: border-box;
+  overflow: auto;
+}
+
+.kb-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.kb-title { font-size: 20px; font-weight: 600; color: #f1f5f9; margin: 0; }
+.kb-subtitle { color: #94a3b8; font-size: 13px; font-family: ui-monospace, monospace; }
+
+.kb-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #334155;
+}
+.kb-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  color: #94a3b8;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  border-radius: 6px 6px 0 0;
+}
+.kb-tab:hover { color: #e2e8f0; }
+.kb-tab-active {
+  background: #1e293b;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
+.kb-body { flex: 1; min-height: 0; }
+.kb-panel {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kb-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.kb-status { color: #94a3b8; font-size: 12px; }
+.kb-notice {
+  color: #fbbf24;
+  font-size: 12px;
+  background: #422006;
+  border: 1px solid #78350f;
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+.kb-notice:empty { display: none; }
+
+.kb-btn {
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.kb-btn:hover { background: #334155; }
+.kb-btn-primary { background: #60a5fa; border-color: #60a5fa; color: #0f172a; font-weight: 600; }
+.kb-btn-primary:hover { background: #3b82f6; }
+.kb-btn-danger { color: #fca5a5; border-color: #7f1d1d; }
+.kb-btn-danger:hover { background: #450a0a; }
+
+.kb-input, .kb-textarea {
+  background: #0f172a;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+.kb-input:focus, .kb-textarea:focus { outline: none; border-color: #60a5fa; }
+.kb-textarea { resize: vertical; min-height: 120px; font-family: ui-monospace, monospace; }
+
+.kb-list { display: flex; flex-direction: column; gap: 4px; }
+.kb-row {
+  padding: 10px 12px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.kb-row:hover { border-color: #60a5fa; }
+.kb-row-title { color: #e2e8f0; font-weight: 500; margin-bottom: 2px; }
+.kb-row-meta { display: flex; gap: 6px; color: #94a3b8; font-size: 12px; }
+.kb-row-head { display: flex; gap: 8px; align-items: center; }
+.kb-score {
+  background: #334155;
+  color: #cbd5e1;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+.kb-snippet { color: #94a3b8; font-size: 12px; margin-top: 4px; }
+
+.kb-empty { color: #94a3b8; padding: 12px; text-align: center; }
+
+.kb-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+}
+.kb-form-title { font-weight: 600; color: #f1f5f9; font-size: 15px; }
+.kb-form-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.kb-form-status { color: #94a3b8; font-size: 12px; min-height: 16px; }
+
+.kb-detail { display: flex; flex-direction: column; gap: 10px; }
+.kb-detail-header { display: flex; align-items: center; gap: 10px; }
+.kb-detail-title { flex: 1; font-weight: 600; color: #f1f5f9; font-size: 16px; }
+.kb-detail-content {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  padding: 12px;
+  color: #e2e8f0;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  max-height: 60vh;
+  overflow: auto;
+}
+
+.kb-search-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.kb-search-input { flex: 1; min-width: 200px; }
+.kb-radio { color: #cbd5e1; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
+
+.kb-canvas-wrap { display: flex; justify-content: center; padding: 8px; }
+.kb-canvas {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  max-width: 100%;
+  height: auto;
+  cursor: pointer;
+}
