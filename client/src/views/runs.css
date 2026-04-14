@@ -1,0 +1,229 @@
+/* Agent Runs list view — dark theme matching client/src/views/agent-run.css. */
+
+.runs-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 480px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  padding: 16px 20px;
+  gap: 12px;
+  box-sizing: border-box;
+  overflow: auto;
+}
+
+.runs-header {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.runs-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin: 0;
+}
+
+.runs-subtitle {
+  color: #94a3b8;
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.runs-pill {
+  margin-left: auto;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1;
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: #cbd5e1;
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+.runs-pill-ok { color: #86efac; border-color: #166534; background: #052e16; }
+.runs-pill-bad { color: #fca5a5; border-color: #7f1d1d; background: #450a0a; }
+.runs-pill-muted { color: #94a3b8; }
+.runs-pill-loading { color: #93c5fd; }
+
+/* ── Toolbar ─────────────────────────────────────────────────────────────── */
+
+.runs-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.runs-toolbar-spacer { flex: 1; }
+
+.runs-select,
+.runs-search {
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font: inherit;
+  outline: none;
+}
+.runs-search { min-width: 220px; }
+
+.runs-select:focus,
+.runs-search:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.3);
+}
+
+.runs-btn {
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+.runs-btn:hover { background: #273449; }
+.runs-btn:focus { outline: none; border-color: #60a5fa; box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.3); }
+.runs-btn[disabled] { opacity: 0.6; cursor: progress; }
+.runs-btn-primary { background: #1d4ed8; border-color: #2563eb; color: #f8fafc; }
+.runs-btn-primary:hover { background: #1e40af; }
+
+/* ── Error bar ───────────────────────────────────────────────────────────── */
+
+.runs-error {
+  background: #450a0a;
+  color: #fecaca;
+  border: 1px solid #7f1d1d;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+/* ── Table ───────────────────────────────────────────────────────────────── */
+
+.runs-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.runs-table thead tr {
+  background: #0f172a;
+}
+.runs-table th,
+.runs-table td {
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid #334155;
+  vertical-align: middle;
+}
+.runs-table th {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #cbd5e1;
+  font-weight: 600;
+}
+.runs-table tbody tr:last-child td { border-bottom: none; }
+
+.runs-row {
+  cursor: pointer;
+  transition: background-color 80ms ease;
+}
+.runs-row:hover { background: #273449; }
+.runs-row:focus {
+  outline: none;
+  background: #273449;
+  box-shadow: inset 0 0 0 2px rgba(96, 165, 250, 0.6);
+}
+
+.runs-created {
+  color: #94a3b8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.runs-title-cell {
+  color: #f1f5f9;
+  max-width: 480px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runs-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #cbd5e1;
+}
+
+.runs-actions { text-align: right; }
+
+.runs-link {
+  color: #93c5fd;
+  text-decoration: none;
+  font-weight: 500;
+}
+.runs-link:hover { text-decoration: underline; }
+
+/* ── Status badges ───────────────────────────────────────────────────────── */
+
+.runs-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: 1px solid transparent;
+}
+.runs-badge-running { color: #93c5fd; background: #0b1e3c; border-color: #1d4ed8; }
+.runs-badge-paused  { color: #fde68a; background: #3f2d05; border-color: #b45309; }
+.runs-badge-ok      { color: #86efac; background: #052e16; border-color: #166534; }
+.runs-badge-bad     { color: #fca5a5; background: #450a0a; border-color: #7f1d1d; }
+.runs-badge-muted   { color: #cbd5e1; background: #1e293b; border-color: #334155; }
+
+/* ── Empty state + footer ────────────────────────────────────────────────── */
+
+.runs-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+  background: #1e293b;
+  border: 1px dashed #334155;
+  border-radius: 10px;
+  padding: 20px;
+  color: #94a3b8;
+}
+
+.runs-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: #64748b;
+  font-size: 12px;
+}
+.runs-count { font-variant-numeric: tabular-nums; color: #94a3b8; }
+.runs-hint { margin-left: auto; font-style: italic; }
+
+@media (max-width: 720px) {
+  .runs-table th:first-child,
+  .runs-table td.runs-created { display: none; }
+  .runs-title-cell { max-width: 220px; }
+}

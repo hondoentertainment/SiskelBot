@@ -1,0 +1,442 @@
+/**
+ * Agent Runs list view. Source: GET {apiBase}/agent/sessions.
+ * Pure helpers formatStatus / sortRows / filterRows are exported for tests.
+ */
+
+const DEFAULT_API_BASE = "/api/v1";
+const DEFAULT_POLL_MS = 5000;
+const DEFAULT_LIMIT = 40;
+const CSS_HREF = new URL("./runs.css", import.meta.url).href;
+
+const STATUS_META = {
+  running:   { label: "Running",   cls: "runs-badge runs-badge-running" },
+  paused:    { label: "Paused",    cls: "runs-badge runs-badge-paused" },
+  completed: { label: "Complete",  cls: "runs-badge runs-badge-ok" },
+  complete:  { label: "Complete",  cls: "runs-badge runs-badge-ok" },
+  failed:    { label: "Failed",    cls: "runs-badge runs-badge-bad" },
+  cancelled: { label: "Cancelled", cls: "runs-badge runs-badge-muted" },
+};
+
+/**
+ * Map a status string to { label, cls } for badge rendering.
+ * Exposed for tests.
+ */
+export function formatStatus(status) {
+  const key = String(status || "").toLowerCase().trim();
+  if (STATUS_META[key]) return { ...STATUS_META[key] };
+  return { label: key ? key : "unknown", cls: "runs-badge runs-badge-muted" };
+}
+
+/**
+ * Stable sort over a row array. `by` is one of
+ * "createdAt" | "updatedAt" | "title" | "status". Default: createdAt desc.
+ * Returns a new array; input is not mutated.
+ */
+export function sortRows(rows, by) {
+  if (!Array.isArray(rows)) return [];
+  const key = typeof by === "string" && by ? by : "createdAt";
+  const indexed = rows.map((r, i) => ({ r, i }));
+  indexed.sort((a, b) => {
+    const va = pick(a.r, key);
+    const vb = pick(b.r, key);
+    let cmp;
+    if (key === "title" || key === "status") {
+      cmp = String(va || "").localeCompare(String(vb || ""));
+    } else {
+      // date-like: parse to ms; descending (newest first)
+      const na = toMs(va);
+      const nb = toMs(vb);
+      cmp = nb - na;
+    }
+    if (cmp !== 0) return cmp;
+    return a.i - b.i; // stable
+  });
+  return indexed.map((x) => x.r);
+}
+
+function pick(row, key) {
+  if (!row) return null;
+  return row[key];
+}
+
+function toMs(v) {
+  if (v == null) return 0;
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+  const n = Date.parse(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Client-side filter.
+ * - statusFilter: "" | "all" | one of running/paused/completed/failed/...
+ * - query: substring match against title (case-insensitive); also matches id.
+ */
+export function filterRows(rows, opts) {
+  if (!Array.isArray(rows)) return [];
+  const statusFilter = String(opts?.statusFilter || "").toLowerCase().trim();
+  const q = String(opts?.query || "").toLowerCase().trim();
+  return rows.filter((row) => {
+    if (statusFilter && statusFilter !== "all") {
+      const s = String(row?.status || "").toLowerCase();
+      // Treat "completed" and "complete" as equivalent.
+      const norm = (x) => (x === "complete" ? "completed" : x);
+      if (norm(s) !== norm(statusFilter)) return false;
+    }
+    if (q) {
+      const hay = `${row?.title || ""} ${row?.id || ""}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+// ─── DOM helpers ─────────────────────────────────────────────────────────────
+
+function el(tag, attrs, children) {
+  const node = document.createElement(tag);
+  if (attrs) {
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v == null) continue;
+      if (k === "class") node.className = v;
+      else if (k === "dataset") Object.assign(node.dataset, v);
+      else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
+      else node.setAttribute(k, String(v));
+    }
+  }
+  if (children != null) {
+    const arr = Array.isArray(children) ? children : [children];
+    for (const c of arr) {
+      if (c == null) continue;
+      node.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+  }
+  return node;
+}
+
+function ensureStylesheet() {
+  if (typeof document === "undefined") return;
+  if (document.querySelector('link[data-runs-css="1"]')) return;
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = CSS_HREF;
+  link.dataset.runsCss = "1";
+  document.head.appendChild(link);
+}
+
+function fmtTimestamp(v) {
+  if (!v) return "—";
+  const n = toMs(v);
+  if (!n) return String(v);
+  const d = new Date(n);
+  return d.toLocaleString();
+}
+
+function firstLine(s) {
+  if (!s) return "";
+  const line = String(s).split(/\r?\n/)[0] || "";
+  return line.slice(0, 140);
+}
+
+function rowTitle(row) {
+  return row?.title || firstLine(row?.planSummary) || "Untitled session";
+}
+
+function navigateToRun(sessionId) {
+  const id = String(sessionId || "").trim();
+  if (!id) return;
+  try {
+    const shell = typeof window !== "undefined" ? window.SiskelbotShell : null;
+    if (shell && shell.router && typeof shell.router.navigate === "function") {
+      shell.router.navigate("/runs/" + id);
+      return;
+    }
+  } catch (_) { /* fall through */ }
+  if (typeof window !== "undefined") {
+    window.location.assign("/app#/runs/" + id);
+  }
+}
+
+// ─── Mount ───────────────────────────────────────────────────────────────────
+
+/**
+ * @param {HTMLElement} root
+ * @param {{ params?: Record<string,string>, query?: string|URLSearchParams, apiBase?: string, pollMs?: number, fetchImpl?: typeof fetch, workspace?: string }} [ctx]
+ * @returns {{ destroy: () => void, refresh: () => Promise<void> }}
+ */
+export default function mount(root, ctx = {}) {
+  if (!root) throw new Error("mount root required");
+  const apiBase = (ctx.apiBase || DEFAULT_API_BASE).replace(/\/+$/, "");
+  const pollMs = Math.max(1000, Number(ctx.pollMs) || DEFAULT_POLL_MS);
+  const fetchImpl = ctx.fetchImpl || (typeof fetch !== "undefined" ? fetch : null);
+  const queryParams = parseQuery(ctx.query);
+  const workspace = String(ctx.workspace || queryParams.get("workspace") || "default");
+
+  ensureStylesheet();
+
+  // ── State ─────────────────────────────────────────────────────────────────
+  const state = {
+    rows: [],
+    total: 0,
+    offset: 0,
+    limit: DEFAULT_LIMIT,
+    statusFilter: queryParams.get("status") || "all",
+    query: queryParams.get("q") || "",
+    loading: false,
+    error: null,
+    lastUpdated: null,
+    destroyed: false,
+  };
+  let timer = null;
+
+  // ── DOM scaffold ──────────────────────────────────────────────────────────
+  const status = el("span", { class: "runs-pill runs-pill-loading" }, "loading…");
+  const header = el("header", { class: "runs-header" }, [
+    el("h1", { class: "runs-title" }, "Agent runs"),
+    el("span", { class: "runs-subtitle" }, `workspace: ${workspace}`),
+    status,
+  ]);
+
+  const statusSelect = el("select", { class: "runs-select", "aria-label": "Filter by status" }, [
+    el("option", { value: "all" }, "All statuses"),
+    el("option", { value: "running" }, "Running"),
+    el("option", { value: "paused" }, "Paused"),
+    el("option", { value: "completed" }, "Complete"),
+    el("option", { value: "failed" }, "Failed"),
+    el("option", { value: "cancelled" }, "Cancelled"),
+  ]);
+  statusSelect.value = state.statusFilter;
+  statusSelect.addEventListener("change", () => {
+    state.statusFilter = statusSelect.value;
+    renderTable();
+  });
+
+  const searchInput = el("input", {
+    class: "runs-search",
+    type: "search",
+    placeholder: "Search title or id…",
+    "aria-label": "Search",
+  });
+  searchInput.value = state.query;
+  searchInput.addEventListener("input", () => {
+    state.query = searchInput.value;
+    renderTable();
+  });
+
+  const newBtn = el("button", { class: "runs-btn runs-btn-primary", type: "button" }, "Start a new session");
+  newBtn.addEventListener("click", () => { startNewSession().catch((e) => setError(e)); });
+
+  const refreshBtn = el("button", { class: "runs-btn", type: "button" }, "Refresh");
+  refreshBtn.addEventListener("click", () => { refresh().catch(() => {}); });
+
+  const toolbar = el("div", { class: "runs-toolbar" }, [
+    statusSelect,
+    searchInput,
+    el("span", { class: "runs-toolbar-spacer" }),
+    refreshBtn,
+    newBtn,
+  ]);
+
+  const tbody = el("tbody", { class: "runs-tbody" });
+  const table = el("table", { class: "runs-table" }, [
+    el("thead", null, el("tr", null, [
+      el("th", { scope: "col" }, "Created"),
+      el("th", { scope: "col" }, "Title"),
+      el("th", { scope: "col" }, "Status"),
+      el("th", { scope: "col", class: "runs-num" }, "Events"),
+      el("th", { scope: "col" }, ""),
+    ])),
+    tbody,
+  ]);
+
+  const empty = el("div", { class: "runs-empty", hidden: "hidden" });
+  const errorBar = el("div", { class: "runs-error", role: "alert", hidden: "hidden" });
+
+  const footer = el("footer", { class: "runs-footer" }, [
+    el("span", { class: "runs-count" }, "—"),
+    el("span", { class: "runs-hint" }, "Auto-refresh every 5s. TODO: upgrade to realtime channel run:*."),
+  ]);
+
+  const wrap = el("section", { class: "runs-view", "aria-labelledby": "runs-view-title" }, [
+    header,
+    toolbar,
+    errorBar,
+    table,
+    empty,
+    footer,
+  ]);
+  header.querySelector("h1").id = "runs-view-title";
+
+  root.replaceChildren(wrap);
+
+  // ── Rendering ─────────────────────────────────────────────────────────────
+  function renderTable() {
+    const filtered = filterRows(sortRows(state.rows, "createdAt"), {
+      statusFilter: state.statusFilter,
+      query: state.query,
+    });
+
+    tbody.replaceChildren();
+    if (filtered.length === 0) {
+      empty.hidden = false;
+      empty.replaceChildren();
+      if (state.rows.length === 0 && !state.error && !state.loading) {
+        empty.appendChild(el("p", null, "No agent sessions yet in this workspace."));
+        const cta = el("button", { class: "runs-btn runs-btn-primary", type: "button" }, "Start a new session");
+        cta.addEventListener("click", () => { startNewSession().catch((e) => setError(e)); });
+        empty.appendChild(cta);
+      } else if (state.rows.length === 0 && state.error) {
+        empty.appendChild(el("p", null, "No sessions available. (You may be signed out — sign in to view runs.)"));
+      } else {
+        empty.appendChild(el("p", null, "No sessions match the current filters."));
+      }
+      footer.querySelector(".runs-count").textContent = `0 of ${state.total}`;
+      return;
+    }
+    empty.hidden = true;
+
+    for (const row of filtered) {
+      const meta = formatStatus(row.status);
+      const badge = el("span", { class: meta.cls }, meta.label);
+      const tr = el("tr", {
+        class: "runs-row",
+        tabindex: "0",
+        role: "link",
+        "aria-label": `Open session ${rowTitle(row)}`,
+        dataset: { id: row.id },
+      }, [
+        el("td", { class: "runs-created" }, fmtTimestamp(row.createdAt)),
+        el("td", { class: "runs-title-cell" }, rowTitle(row)),
+        el("td", null, badge),
+        el("td", { class: "runs-num" }, String(row.eventCount ?? row.iterations ?? 0)),
+        el("td", { class: "runs-actions" }, el("a", { href: "#/runs/" + row.id, class: "runs-link" }, "Open →")),
+      ]);
+      tr.addEventListener("click", (e) => {
+        // Don't double-navigate when the explicit link is clicked.
+        if (e.target && e.target.closest && e.target.closest("a")) return;
+        navigateToRun(row.id);
+      });
+      tr.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          navigateToRun(row.id);
+        }
+      });
+      tbody.appendChild(tr);
+    }
+    footer.querySelector(".runs-count").textContent = `${filtered.length} of ${state.total}`;
+  }
+
+  function setError(err) {
+    state.error = err;
+    if (!err) {
+      errorBar.hidden = true;
+      errorBar.textContent = "";
+    } else {
+      errorBar.hidden = false;
+      errorBar.textContent = `Error: ${err.message || err}`;
+    }
+    renderTable();
+  }
+
+  function setStatusPill(text, cls) {
+    status.textContent = text;
+    status.className = "runs-pill " + cls;
+  }
+
+  // ── Data ──────────────────────────────────────────────────────────────────
+  async function refresh() {
+    if (state.destroyed) return;
+    if (!fetchImpl) {
+      setError(new Error("fetch not available"));
+      setStatusPill("offline", "runs-pill-bad");
+      return;
+    }
+    state.loading = true;
+    try {
+      const url = `${apiBase}/agent/sessions?workspace=${encodeURIComponent(workspace)}&limit=${state.limit}&offset=${state.offset}`;
+      const resp = await fetchImpl(url, {
+        credentials: "include",
+        headers: { Accept: "application/json" },
+      });
+      if (!resp.ok) {
+        // 401/403 render an empty-state rather than shouting — SPA mounts
+        // before auth may be fully established.
+        if (resp.status === 401 || resp.status === 403) {
+          state.rows = [];
+          state.total = 0;
+          state.error = null;
+          setStatusPill("signed out", "runs-pill-muted");
+          renderTable();
+          return;
+        }
+        const body = await safeJson(resp);
+        throw new Error(body?.error?.message || `HTTP ${resp.status}`);
+      }
+      const data = await resp.json();
+      state.rows = Array.isArray(data?.items) ? data.items : [];
+      state.total = Number(data?.total) || state.rows.length;
+      state.error = null;
+      state.lastUpdated = Date.now();
+      setStatusPill(`updated ${new Date().toLocaleTimeString()}`, "runs-pill-ok");
+      renderTable();
+    } catch (err) {
+      setStatusPill("error", "runs-pill-bad");
+      setError(err);
+    } finally {
+      state.loading = false;
+    }
+  }
+
+  async function startNewSession() {
+    if (!fetchImpl) throw new Error("fetch not available");
+    newBtn.disabled = true;
+    try {
+      const resp = await fetchImpl(`${apiBase}/agent/sessions`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ workspace }),
+      });
+      if (!resp.ok) {
+        const body = await safeJson(resp);
+        throw new Error(body?.error?.message || `HTTP ${resp.status}`);
+      }
+      const session = await resp.json();
+      if (session?.id) {
+        navigateToRun(session.id);
+      } else {
+        await refresh();
+      }
+    } finally {
+      newBtn.disabled = false;
+    }
+  }
+
+  async function safeJson(resp) {
+    try { return await resp.json(); } catch (_) { return null; }
+  }
+
+  // Kick off initial fetch + polling
+  refresh().catch(() => {});
+  timer = setInterval(() => { refresh().catch(() => {}); }, pollMs);
+
+  return {
+    refresh,
+    destroy() {
+      state.destroyed = true;
+      if (timer) clearInterval(timer);
+      timer = null;
+      try { root.replaceChildren(); } catch (_) { /* ignore */ }
+    },
+  };
+}
+
+function parseQuery(q) {
+  try {
+    if (!q) return new URLSearchParams();
+    if (q instanceof URLSearchParams) return q;
+    if (typeof q === "string") return new URLSearchParams(q.startsWith("?") ? q.slice(1) : q);
+    if (typeof q === "object") return new URLSearchParams(q);
+  } catch (_) { /* ignore */ }
+  return new URLSearchParams();
+}

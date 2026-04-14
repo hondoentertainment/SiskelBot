@@ -438,3 +438,39 @@ used for WebSocket presence (`sanitizeWorkspace`, `sanitizeUserId`).
   `publishPresenceEvent` helper and subscribes to
   `presence:<workspaceId>`, asserting `{ type, userId, ts }` events and
   channel-level isolation.
+
+---
+
+## Shell view registration (wave 4)
+
+The agent runs list view (`client/src/views/runs.js`) pairs with the
+existing `agent-run.js` detail view. To wire both into the SPA shell,
+replace the `/runs` and `/runs/:id` placeholder registrations in
+`client/src/app.js` with:
+
+```js
+router.register("/runs", async (ctx) => (await import("./views/runs.js")).default(mainEl, ctx));
+router.register("/runs/:id", async (ctx) => (await import("./views/agent-run.js")).default(mainEl, { sessionId: ctx.params.id }));
+palette.register({ id: "goto-runs", title: "Go to agent runs", run: () => router.navigate("/runs") });
+```
+
+Where `mainEl` is the `<main id="sb-main">` node already created by
+`bootstrap()`. The list view consumes
+`GET /api/v1/agent/sessions?workspace=<ws>&limit=40`, polls every 5s
+(TODO: upgrade to the `run:*` realtime channel), and navigates to
+`/runs/:id` via `window.SiskelbotShell.router` when present, with a
+`window.location.assign("/app#/runs/" + id)` fallback.
+
+### New files
+
+- `client/src/views/runs.js` — default export `mount(el, { params, query, apiBase? })`.
+  Exports pure helpers `formatStatus`, `sortRows`, `filterRows`.
+- `client/src/views/runs.css` — dark theme matching `agent-run.css`.
+
+### Tests
+
+- `tests/client-views-runs.test.js` — 19 unit tests covering
+  `formatStatus` (label + color class), `sortRows` (stable,
+  createdAt-desc default, numeric + ISO timestamps, title / status keys),
+  and `filterRows` (status + query composition, `completed`/`complete`
+  equivalence, case-insensitive substring match, id fallback). No JSDOM.
