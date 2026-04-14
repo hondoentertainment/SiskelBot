@@ -207,3 +207,60 @@ unaffected.
 
 - `tests/client-shell-router.test.js` — 12 unit tests for router resolution.
 - `tests/client-shell-palette.test.js` — 13 unit tests for fuzzy filter/score.
+
+---
+
+## Build pipeline
+
+`scripts/build-client.mjs` bundles the `client/src/` module tree with esbuild
+(format `esm`, splitting enabled, sourcemaps on) into `client/dist/`.
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run build:client` | One-shot production build (minified). |
+| `npm run build:client:watch` | Rebuild on change (dev, unminified). |
+| `npm run build:client:legacy` | Previous concat-and-copy script, still used by `prestart`. |
+
+Entry points bundled:
+
+- `client/src/app.js` → `client/dist/app.js`
+- `client/src/views/agent-run.js` → `client/dist/agent-run.js`
+- `client/src/views/replay.js` → `client/dist/replay.js`
+
+A `client/dist/manifest.json` is written mapping each logical entry name to its
+final `/dist/...` path (with hashed chunk filenames for cache-busting). Shared
+code is split into `client/dist/chunks/*.js`.
+
+### Serving in `client/app.html`
+
+The shell agent owns `client/app.html`. To switch from the unbundled
+development layout to the bundled production layout, change:
+
+```html
+<script type="module" src="/src/app.js"></script>
+```
+
+to:
+
+```html
+<script type="module" src="/dist/app.js"></script>
+```
+
+View-level entries (`agent-run.js`, `replay.js`) follow the same pattern.
+Keep the unbundled path during local development so source edits are
+immediately visible without re-running the bundler.
+
+### Fallback
+
+If esbuild is ever uninstalled, `scripts/build-client.mjs` copies `client/src/`
+to `client/dist/` verbatim (no bundling, no minification) so
+`/dist/app.js` still resolves. Re-install esbuild
+(`npm install --save-dev esbuild`) to restore real bundling.
+
+### Tests
+
+- `tests/build-client.test.js` — runs the build script as a child process,
+  asserts `client/dist/app.js` is produced with exit code 0. Skips cleanly if
+  esbuild is unavailable.

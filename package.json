@@ -8,8 +8,10 @@
     "siskelbot": "./bin/siskelbot.js"
   },
   "scripts": {
-    "build:client": "node scripts/build-client.mjs",
-    "prestart": "node scripts/build-client.mjs",
+    "build:client": "node scripts/build-client.mjs --prod",
+    "build:client:watch": "node scripts/build-client.mjs --watch",
+    "build:client:legacy": "node scripts/build-client-legacy.mjs",
+    "prestart": "node scripts/build-client-legacy.mjs",
     "start": "node server.js",
     "cli": "node bin/siskelbot.js",
     "dev": "node --watch server.js",
