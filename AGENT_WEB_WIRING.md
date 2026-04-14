@@ -554,3 +554,87 @@ pan. Responsive only via CSS `max-width: 100%`.
   updatedAt-desc / title-asc tie-breaking), and
   `layoutEntitiesCircular` (0 / 1 / 4 entities, determinism, finite
   coords). No JSDOM.
+
+---
+
+## Artifacts
+
+Named outputs (files, charts, tables, etc.) produced by agent tools during a
+run are recorded in a durable store, fan out as `artifact.new` on the Agent
+Run SSE stream, and render in the hero-view Artifacts pane.
+
+### New files
+
+- `lib/agent-artifacts.js` — artifact store (`createArtifact`,
+  `listArtifactsForSession`, `getArtifactContent`, `getArtifactRecord`,
+  `deleteArtifact`, `deleteArtifactsForSession`, `getSessionArtifactBytes`,
+  `getArtifactLimits`). Inline payloads ≤ `ARTIFACT_INLINE_BYTES` (default
+  64 KiB) live in the metadata record; larger payloads spill to
+  `<STORAGE_PATH>/artifacts/<sessionId>/<id>.bin`. Metadata is persisted via
+  `lib/json-path-store.js` so it flows through the same JSON / SQLite /
+  Postgres backends as the rest of the codebase. `createArtifact` publishes
+  `artifact.new` via `publishAgentRunEvent(sessionId, "artifact.new", …)`.
+- `routes/agent-artifacts.js` — exports `mountAgentArtifactRoutes(app, deps)`.
+
+### Routes
+
+| Method | Path                                          | Scope | Description                                      |
+|--------|-----------------------------------------------|-------|--------------------------------------------------|
+| GET    | `/agent/sessions/:id/artifacts`               | read  | List artifacts for the session (metadata only).  |
+| POST   | `/agent/sessions/:id/artifacts`               | write | Create an artifact (JSON or multipart).          |
+| GET    | `/agent/artifacts/:artifactId`                | read  | Stream the content with the recorded MIME.       |
+| DELETE | `/agent/artifacts/:artifactId`                | write | Remove an artifact (record + disk file).         |
+
+All four routes follow the `logRequest → userAuth → requireScope → handler`
+chain and gate access through `getWorkspaceAgentAccess` + session ownership
+(same pattern as `routes/agent-sessions.js`).
+
+`POST` accepts either:
+
+- `application/json` with `{ name, mime, contentBase64 }` or
+  `{ name, mime, content }` (string, UTF-8).
+- `multipart/form-data` with a `file` field and optional `name` / `mime` /
+  `runId` / `meta` form fields.
+
+### Size caps and environment variables
+
+| Variable                       | Default              | Purpose                                                  |
+|--------------------------------|----------------------|----------------------------------------------------------|
+| `ARTIFACT_MAX_BYTES`           | `10485760` (10 MiB)  | Per-artifact hard cap — returns 413 `ARTIFACT_TOO_LARGE` |
+| `ARTIFACT_SESSION_MAX_BYTES`   | `104857600` (100 MiB)| Per-session cap — returns 413 `ARTIFACT_QUOTA_EXCEEDED`  |
+| `ARTIFACT_INLINE_BYTES`        | `65536` (64 KiB)     | Threshold at which payloads spill to disk                |
+
+Coded error responses: `INVALID_NAME`, `INVALID_MIME`, `INVALID_CONTENT`,
+`ARTIFACT_TOO_LARGE`, `ARTIFACT_QUOTA_EXCEEDED`.
+
+### Wiring into `routes/index.js`
+
+```js
+import { mountAgentArtifactRoutes } from "./agent-artifacts.js";
+// ...and append to mountFunctions:
+mountAgentArtifactRoutes,
+```
+
+### Client rendering
+
+`client/src/views/agent-run.js` — the Artifacts pane now:
+
+- Backfills on first mount via `GET /agent/sessions/:id/artifacts`.
+- Prepends new artifacts when an `artifact.new` SSE frame arrives
+  (dedup'd by id).
+- Renders each card with a mime-category icon, name, mime, and size.
+- On click:
+  - `image/*` → inline `<img>` via the content endpoint.
+  - `text/*`, `application/json`, `*+json`, `*+xml` → fetched and rendered
+    in a `<pre>`, truncated at 20 KB with a **Load full** button.
+  - Everything else → a Download link (uses the same content endpoint with
+    a `download` attribute).
+
+### Tests
+
+- `tests/agent-artifacts-store.test.js` — 10 unit tests covering inline +
+  disk storage, per-artifact and per-session caps, mime / name validation,
+  SSE publish, list scoping, and `deleteArtifactsForSession` cleanup.
+- `tests/agent-artifacts-route.test.js` — 11 integration tests covering
+  JSON and multipart POST, list, streamed GET with correct MIME and bytes,
+  auth + workspace-access gates, 404 paths, and DELETE semantics.
