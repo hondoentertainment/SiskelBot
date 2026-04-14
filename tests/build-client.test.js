@@ -76,13 +76,6 @@ test("build-client.mjs produces client/dist/app.js", (t) => {
     `build script must exit 0; stderr=${result.stderr}\nstdout=${result.stdout}`,
   );
 
-  const appOut = join(DIST_DIR, "app.js");
-  assert.ok(existsSync(appOut), `expected bundled ${appOut} to exist`);
-  assert.ok(
-    statSync(appOut).size > 0,
-    "bundled app.js should not be empty",
-  );
-
   const manifestPath = join(DIST_DIR, "manifest.json");
   assert.ok(existsSync(manifestPath), "expected manifest.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -90,5 +83,16 @@ test("build-client.mjs produces client/dist/app.js", (t) => {
   assert.ok(
     typeof manifest.entries.app === "string" && manifest.entries.app.length > 0,
     "manifest.entries.app must map to an output path",
+  );
+
+  // Entry filenames are hashed (`app-<hash>.js`) for cache-busting, so the
+  // manifest is the authoritative source for the produced path — resolve it
+  // to an on-disk file under DIST_DIR and assert it is non-empty.
+  const entryPath = manifest.entries.app.replace(/^\/dist\//, "");
+  const appOut = join(DIST_DIR, entryPath);
+  assert.ok(existsSync(appOut), `expected bundled ${appOut} to exist`);
+  assert.ok(
+    statSync(appOut).size > 0,
+    "bundled app entry should not be empty",
   );
 });

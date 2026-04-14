@@ -173,6 +173,10 @@ async function buildWithEsbuild(entries) {
     metafile: true,
     legalComments: prodMode ? "none" : "inline",
     logLevel: "info",
+    // Hash entry filenames so client/app.html can be served with long-lived
+    // Cache-Control and still cache-bust on new deploys. The manifest records
+    // the final hashed path for each logical entry name.
+    entryNames: "[name]-[hash]",
     chunkNames: "chunks/[name]-[hash]",
     assetNames: "assets/[name]-[hash]",
   };
