@@ -247,7 +247,10 @@ export default function mount(root, opts) {
       approve.addEventListener("click", () => decide(a, "approve"));
       deny.addEventListener("click", () => decide(a, "deny"));
       const actions = el("div", { class: "ar-approval-actions" }, [approve, deny]);
-      approvalsList.appendChild(el("li", { class: "ar-approval" }, [summary, meta, actions]));
+      const errorNode = a.error
+        ? el("div", { class: "ar-approval-error", role: "alert" }, String(a.error))
+        : null;
+      approvalsList.appendChild(el("li", { class: "ar-approval" }, [summary, meta, errorNode, actions]));
     }
   }
 
@@ -264,6 +267,7 @@ export default function mount(root, opts) {
     const id = approval.approvalId;
     if (!id || state.pendingApproval.has(id)) return;
     state.pendingApproval.add(id);
+    approval.error = null;
     renderApprovals();
     try {
       const resp = await fetch(`${apiBase}/agent/hitl/${encodeURIComponent(id)}`, {
@@ -273,18 +277,29 @@ export default function mount(root, opts) {
         body: JSON.stringify({ decision }),
       });
       if (!resp.ok) {
-        const text = await resp.text().catch(() => "");
-        console.warn("[agent-run] hitl decision failed", resp.status, text);
+        let bodyText = "";
+        try { bodyText = await resp.text(); } catch { /* ignore */ }
+        let errMsg = `${resp.status} ${resp.statusText || "request failed"}`;
+        try {
+          const j = bodyText ? JSON.parse(bodyText) : null;
+          if (j && (j.error || j.message)) errMsg = String(j.error || j.message);
+        } catch { /* body was not JSON */ }
+        console.warn("[agent-run] hitl decision failed", resp.status, bodyText);
+        approval.error = `Could not ${decision}: ${errMsg}`;
         // Roll back the in-flight guard so the user can retry.
         state.pendingApproval.delete(id);
         renderApprovals();
         return;
       }
+      // Optimistically retire the card. The hitl.resolved SSE frame will
+      // arrive shortly to confirm (and idempotently mark resolved=true again).
       approval.resolved = true;
+      approval.error = null;
       state.pendingApproval.delete(id);
       renderApprovals();
     } catch (err) {
       console.warn("[agent-run] hitl decision error", err);
+      approval.error = `Network error while sending ${decision}`;
       state.pendingApproval.delete(id);
       renderApprovals();
     }

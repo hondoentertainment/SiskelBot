@@ -398,3 +398,43 @@ the request-timing middleware.
 - `tests/observability-view.test.js` — unit tests for the pure formatting
   helpers (`formatDuration`, `formatBreakerRow`, `sortBySlowest`) exported
   from the view. No JSDOM required.
+
+---
+
+## Chat + presence publication
+
+Streaming chat deltas and workspace presence join/leave events are also
+fanned out through `defaultChannelRegistry` so the unified realtime client
+(`client/src/realtime/client.js`) can subscribe without opening a separate
+transport. Publication is **strictly additive** — existing SSE clients on
+`/v1/chat/completions` and existing WebSocket clients on `/ws` see
+unchanged output. Every publish call is wrapped in `try / catch` so a
+subscriber throwing, or the registry being unavailable, never interrupts
+the response or the WS lifecycle.
+
+### Channels
+
+| Channel | Published by | Event payload shape |
+|---------|--------------|---------------------|
+| `chat:<conversationId>` | `lib/llm-stream-sse.js` (swarm-synthesis path) and `routes/chat.js` (main streaming proxy path) | `{ role: "assistant", delta: string, index: number }` |
+| `presence:<workspaceId>` | `lib/realtime.js` (`publishPresenceEvent`) on WS join / disconnect | `{ type: "join" \| "leave", userId: string, ts: number }` |
+
+`conversationId` is resolved from `req.body.conversationId` or
+`req.body.agentOptions.conversationId`. If neither is present the publish
+call is skipped (nothing is invented). Legacy callers that don't pass a
+conversation id see zero behavior change.
+
+`workspaceId` and `userId` are sanitized through the same helpers already
+used for WebSocket presence (`sanitizeWorkspace`, `sanitizeUserId`).
+
+### Tests
+
+- `tests/realtime-pub-chat.test.js` — exercises
+  `pipeLlmChatStreamToSse(..., { conversationId })` with a mock streaming
+  backend and asserts deltas arrive on `chat:<conversationId>` with the
+  documented shape; also asserts the no-conversationId path creates no
+  channels.
+- `tests/realtime-pub-presence.test.js` — calls the exported
+  `publishPresenceEvent` helper and subscribes to
+  `presence:<workspaceId>`, asserting `{ type, userId, ts }` events and
+  channel-level isolation.

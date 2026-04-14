@@ -286,6 +286,15 @@
   gap: 8px;
 }
 
+.ar-approval-error {
+  color: #fecdd3;
+  background: rgba(159, 18, 57, 0.18);
+  border: 1px solid #9f1239;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
 /* ── Footer ─────────────────────────────────────────────────────────────── */
 
 .ar-footer {
