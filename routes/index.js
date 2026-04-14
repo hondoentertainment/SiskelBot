@@ -236,6 +236,8 @@ import mountFreshnessSlaRoutes from "./freshness-sla.js";
 // Wave 1 web interface — realtime agent run stream + replay
 import { mountAgentRunStreamRoutes } from "./agent-run-stream.js";
 import { mountReplayRoutes } from "./replay.js";
+import { mountSignalsRoutes } from "./signals.js";
+import { mountObservabilitySnapshotRoutes } from "./observability-snapshot.js";
 
 import { mountV2Routes } from "./v2/index.js";
 
@@ -438,6 +440,8 @@ const mountFunctions = [
   // Wave 1 web interface — realtime agent run stream + replay
   mountAgentRunStreamRoutes,
   mountReplayRoutes,
+  mountSignalsRoutes,
+  mountObservabilitySnapshotRoutes,
 ];
 
 /**
