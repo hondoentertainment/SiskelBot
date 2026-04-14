@@ -13,10 +13,9 @@
  * Route conventions mirror routes/agent-sessions.js:
  * `logRequest → userAuth → requireScope("read") → handler`.
  *
- * No long-term logic lives here — all numbers come from existing modules;
- * unavailable data points are stubbed with zero and marked with a TODO.
+ * No long-term logic lives here — all numbers come from existing modules.
  */
-import { isOpen } from "../lib/circuit-breaker.js";
+import { getBreakerSnapshot } from "../lib/circuit-breaker.js";
 import { getLatencyPercentiles, getErrorRates } from "../lib/observability.js";
 import { listTraces } from "../lib/trace-recorder.js";
 import { getPoolStats } from "../lib/pool-health.js";
@@ -24,30 +23,36 @@ import { getPoolStats } from "../lib/pool-health.js";
 const KNOWN_BACKENDS = ["ollama", "vllm", "openai"];
 
 /**
- * Build the breaker rows. Uses the public `isOpen()` API from
- * lib/circuit-breaker.js. The module doesn't expose failure counts or
- * last-failure timestamps, so those fields are stubbed to 0/null until
- * a richer snapshot API exists.
- * TODO: expose a `getBreakerSnapshot()` from lib/circuit-breaker.js so
- * this view can surface failure counts and lastFailureAt.
- * @returns {Array<{ name: string, state: string, failures: number, lastFailureAt: string|null }>}
+ * Build the breaker rows. Uses `getBreakerSnapshot()` from
+ * lib/circuit-breaker.js for a tri-state view (closed|open|half_open)
+ * plus failure counts and last-failure timestamps. We always report a
+ * row for each known backend, falling back to the per-name snapshot for
+ * backends that have not yet accumulated state.
+ * @returns {Array<{ name: string, state: string, failures: number, lastFailureAt: string|null, cooldownRemainingMs: number }>}
  */
 function collectBreakers() {
-  const rows = [];
+  let rows = [];
+  try {
+    const snap = getBreakerSnapshot();
+    rows = Array.isArray(snap) ? snap.slice() : [];
+  } catch (_) {
+    rows = [];
+  }
+  const seen = new Set(rows.map((r) => r && r.name));
   for (const name of KNOWN_BACKENDS) {
-    let state = "closed";
-    try {
-      const check = isOpen(name);
-      state = check.open ? "open" : "closed";
-    } catch (_) {
-      state = "unknown";
+    if (!seen.has(name)) {
+      try {
+        rows.push(getBreakerSnapshot(name));
+      } catch (_) {
+        rows.push({
+          name,
+          state: "unknown",
+          failures: 0,
+          lastFailureAt: null,
+          cooldownRemainingMs: 0,
+        });
+      }
     }
-    rows.push({
-      name,
-      state,
-      failures: 0, // TODO: sourced from lib/circuit-breaker.js once a snapshot API exists
-      lastFailureAt: null, // TODO: ditto
-    });
   }
   return rows;
 }

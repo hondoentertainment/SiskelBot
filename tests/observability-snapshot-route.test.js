@@ -66,14 +66,26 @@ test("observability snapshot returns 200 with expected shape", async () => {
   const body = res.body;
   assert.ok(body && typeof body === "object", "body is an object");
 
-  // breakers
+  // breakers — richer fields sourced from getBreakerSnapshot()
   assert.ok(Array.isArray(body.breakers), "breakers is an array");
   assert.ok(body.breakers.length > 0, "at least one known backend reported");
   for (const b of body.breakers) {
     assert.ok(typeof b.name === "string" && b.name.length > 0);
-    assert.ok(["open", "closed", "unknown"].includes(b.state));
+    assert.ok(
+      ["open", "closed", "half_open", "unknown"].includes(b.state),
+      `unexpected breaker state: ${b.state}`,
+    );
     assert.equal(typeof b.failures, "number");
-    assert.ok(b.lastFailureAt === null || typeof b.lastFailureAt === "string");
+    assert.ok(b.failures >= 0, "failures is non-negative");
+    assert.ok(
+      b.lastFailureAt === null || typeof b.lastFailureAt === "string",
+      "lastFailureAt is null or string",
+    );
+    if (typeof b.lastFailureAt === "string") {
+      assert.ok(!Number.isNaN(Date.parse(b.lastFailureAt)), "lastFailureAt is parseable");
+    }
+    assert.equal(typeof b.cooldownRemainingMs, "number");
+    assert.ok(b.cooldownRemainingMs >= 0, "cooldownRemainingMs is non-negative");
   }
 
   // slowRoutes
@@ -110,4 +122,24 @@ test("buildObservabilitySnapshot is callable directly", async () => {
   assert.ok(Array.isArray(snap.recentTrajectories));
   assert.ok(snap.pool && typeof snap.pool === "object");
   assert.equal(typeof snap.uptimeSec, "number");
+});
+
+test("observability snapshot surfaces real breaker failures/lastFailureAt", async () => {
+  const cb = await import("../lib/circuit-breaker.js");
+  // Prime a known backend with a failure so failures>0 and lastFailureAt
+  // is a real timestamp in the emitted snapshot.
+  cb.recordSuccess("ollama");
+  cb.recordFailure("ollama");
+
+  const snap = await buildObservabilitySnapshot();
+  const row = snap.breakers.find((b) => b.name === "ollama");
+  assert.ok(row, "expected a row for 'ollama'");
+  assert.ok(row.failures >= 1, `expected failures >= 1, got ${row.failures}`);
+  assert.equal(typeof row.lastFailureAt, "string");
+  assert.ok(!Number.isNaN(Date.parse(row.lastFailureAt)), "lastFailureAt parseable");
+  assert.ok(["closed", "open", "half_open"].includes(row.state));
+  assert.equal(typeof row.cooldownRemainingMs, "number");
+
+  // Reset so we don't leak state into sibling tests.
+  cb.recordSuccess("ollama");
 });
