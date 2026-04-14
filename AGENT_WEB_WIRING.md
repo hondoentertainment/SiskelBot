@@ -1,38 +1,117 @@
-# Agent Web view wiring
+# Agent Web wiring instructions
 
-Agent-facing single-page views live under `client/src/views/` and stream from
-matching routes. Each new route module MUST be wired into `routes/index.js`
-per the worktree rules (we do NOT modify `server.js` here).
+Per worktree rules, the wave 1 web-interface agents did not modify `server.js`
+or `routes/index.js` directly. This document collects the one-line-ish wiring
+snippets each new module needs to be fully active.
 
-## Agent Run Stream
-
-A new SSE-backed route surfaces the Agent Run hero UI (Plan / Timeline /
-Artifacts / Approvals) for a single agent session.
+## Realtime (unified WebSocket)
 
 ### New files
 
-- `lib/agent-run-stream.js` — `streamAgentRun({ sessionId, res, req, ... })`,
-  plus `getAgentRunEmitter(sessionId)` / `publishAgentRunEvent(sessionId, type, payload)`
-  for agent-loop callsites to push live events.
+- `lib/realtime-channels.js` — in-memory channel registry (publish / subscribe / bounded backlog / resume by `sinceSeq`). Optional Redis adapter via `setRedisAdapter({ publish, subscribe })`.
+- `routes/realtime-ws.js` — `mountRealtimeWs(httpServer, deps)` mounts a `WebSocketServer` at `/ws/realtime` that multiplexes channels over a single socket per tab.
+- `client/src/realtime/events.js` — shared protocol constants.
+- `client/src/realtime/client.js` — browser `RealtimeClient` (auto-reconnect with exponential backoff, 20s heartbeat, resume per channel).
+
+### Wiring snippet for `server.js`
+
+Add the imports alongside the other route-module imports:
+
+```js
+import { mountRealtimeWs } from "./routes/realtime-ws.js";
+import { defaultChannelRegistry } from "./lib/realtime-channels.js";
+```
+
+Then, after `const httpServer = app.listen(PORT, ...)` (or wherever the HTTP
+server handle is available — the existing `attachToServer(httpServer)` call
+from `lib/realtime.js` is the right neighborhood), add:
+
+```js
+mountRealtimeWs(httpServer, { channels: defaultChannelRegistry });
+```
+
+The handler shares the HTTP server's `upgrade` event with existing `/ws` and
+`/ws/voice` handlers — paths are namespaced so they coexist safely.
+
+### Auth
+
+Accepts the existing one-time token from `GET /api/ws-token` (reused via
+`lib/realtime.js` `consumeToken`). For richer auth (decoding the session
+cookie for WS upgrades), pass a `resolveWsAuth` function in deps:
+
+```js
+mountRealtimeWs(httpServer, {
+  channels: defaultChannelRegistry,
+  resolveWsAuth: async (request) => {
+    // TODO: decode session cookie via the shared express-session store
+    // and return { userId, workspaceId } or null.
+    return null;
+  },
+});
+```
+
+When `resolveWsAuth` is omitted and no token/auth is configured, the handler
+falls back to the `anonymous` user (matching `lib/auth.js` `userAuth`
+semantics).
+
+### Publishing events
+
+```js
+import { defaultChannelRegistry } from "./lib/realtime-channels.js";
+
+defaultChannelRegistry.publish(`chat:${conversationId}`, { role: "assistant", delta: "..." });
+defaultChannelRegistry.publish(`run:${sessionId}`, { type: "tool_call", name: "search_context" });
+defaultChannelRegistry.publish(`presence:${workspaceId}`, { type: "join", userId });
+```
+
+Suggested channel conventions (see `client/src/realtime/events.js`):
+
+- `chat:<conversationId>` — streaming chat deltas / tool-call events
+- `run:<agentSessionId>` — agent session lifecycle events
+- `presence:<workspaceId>` — join / leave / cursor updates
+
+### Optional Redis fan-out
+
+```js
+import { createRedisAdapter } from "./lib/realtime-redis.js";
+import { defaultChannelRegistry } from "./lib/realtime-channels.js";
+
+const redis = await createRedisAdapter(process.env.REDIS_URL);
+if (redis) {
+  defaultChannelRegistry.setRedisAdapter({
+    publish: (channel, event) => redis.publishWorkspace(channel, event),
+    subscribe: (channel, cb) => redis.subscribeWorkspace(channel, cb),
+  });
+}
+```
+
+### Tests
+
+- `tests/realtime-channels.test.js` — 14 pure unit tests.
+- `tests/realtime-ws.test.js` — 6 integration tests that skip when `ws` is not installed.
+
+---
+
+## Agent Run Stream
+
+A SSE-backed route surfaces the Agent Run hero UI (Plan / Timeline / Artifacts
+/ Approvals) for a single agent session.
+
+### New files
+
+- `lib/agent-run-stream.js` — `streamAgentRun({ sessionId, res, req, ... })`, plus `getAgentRunEmitter(sessionId)` / `publishAgentRunEvent(sessionId, type, payload)` for agent-loop callsites to push live events.
 - `routes/agent-run-stream.js` — exports `mountAgentRunStreamRoutes(app, deps)`.
 - `client/src/views/agent-run.js` — default export `mount(el, { sessionId, apiBase })`.
 - `client/src/views/agent-run.css`.
 
 ### Route
 
-`GET /api/v1/agent/sessions/:sessionId/stream`
-(legacy alias `GET /api/agent/sessions/:sessionId/stream` with the standard
+`GET /api/v1/agent/sessions/:sessionId/stream` (legacy alias
+`GET /api/agent/sessions/:sessionId/stream` with the standard
 `X-API-Deprecated` header via `apiRoute`).
 
 Middleware chain matches `routes/agent-sessions.js`:
-`logRequest → userAuth → requireScope("read") → handler`. The handler rejects
-missing sessions with 404, non-member workspaces with 403, and sessions owned
-by another user with 403. On success it streams SSE frames:
-
-```
-event: <type>
-data: {"seq":N,"ts":"...","payload":{...}}
-```
+`logRequest → userAuth → requireScope("read") → handler`.
 
 ### Event schema
 
@@ -50,24 +129,15 @@ data: {"seq":N,"ts":"...","payload":{...}}
 
 ### Wiring into `routes/index.js`
 
-Add alongside the existing imports:
-
 ```js
 import { mountAgentRunStreamRoutes } from "./agent-run-stream.js";
-```
-
-and append to `mountFunctions`:
-
-```js
+// ...and append to mountFunctions:
 mountAgentRunStreamRoutes,
 ```
 
-### Integration point (out of scope for this change)
+### Integration points for live events
 
-The per-session `EventEmitter` returned by `getAgentRunEmitter(sessionId)` is
-the publish boundary. Downstream emitters should import
-`publishAgentRunEvent(sessionId, type, payload)` from `lib/agent-run-stream.js`
-and call it from agent-loop callsites:
+`publishAgentRunEvent(sessionId, type, payload)` should be called from:
 
 - `lib/agent-loop.js` on iteration start/end → `status.change`, `done`
 - `lib/agent-loop-execute-tools.js` around tool execution → `tool.call`, `tool.result`
@@ -75,28 +145,20 @@ and call it from agent-loop callsites:
 - A cost/usage hook → `cost.update`
 - A future artifact sink → `artifact.new`
 
-Historical events (durable session event log + trajectory steps) are backfilled
-on connect, so late subscribers still see the full run.
+Historical events are backfilled on connect.
+
+---
 
 ## Replay & Share
 
-Tokenized, shareable, read-only replay of agent runs. A signed bearer token
-(HMAC-SHA256, compact JWT-style) grants unauthenticated viewers access to a
-recorded trajectory through a minimal single-page viewer served at `/r/:token`.
+Tokenized, shareable, read-only replay of agent runs.
 
 ### New files
 
-- `lib/replay-tokens.js` — `mintReplayToken({ runId, workspaceId, userId, ttlMs })`,
-  `verifyReplayToken(token)`, `revokeReplayToken(token)`. Secret resolution:
-  `REPLAY_TOKEN_SECRET` → `SESSION_SECRET`; throws with code
-  `REPLAY_SECRET_MISSING` if neither is set. Revocation list (by `jti`) is
-  persisted via `lib/json-path-store.js` under
-  `data/replay-revoked.json` (key space "replay:revoked:<jti>" conceptually).
+- `lib/replay-tokens.js` — `mintReplayToken`, `verifyReplayToken`, `revokeReplayToken`.
 - `routes/replay.js` — exports `mountReplayRoutes(app, deps)`.
-- `client/src/views/replay.js` — default export `mount(el, { token })`;
-  self-contained 3-pane (Plan / Timeline / Artifacts) viewer with top
-  scrubber (play/pause, step, 0.5x/1x/2x/4x, draggable seek).
-- `client/src/views/replay.css` — dark theme (`#0f172a` / `#e2e8f0` / `#60a5fa`).
+- `client/src/views/replay.js` — default export `mount(el, { token })`.
+- `client/src/views/replay.css`.
 
 ### Environment
 
@@ -110,39 +172,38 @@ recorded trajectory through a minimal single-page viewer served at `/r/:token`.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST   | `/api/v1/agent/sessions/:id/share` | `userAuth` + `write` scope | Validate workspace access and ownership, mint token. Returns `{ token, url: "/r/<token>", expiresAt, runId, sessionId }`. |
-| DELETE | `/api/v1/agent/sessions/:id/share/:token` | `userAuth` + `write` scope | Revoke the token (`jti` blacklist). |
-| GET    | `/r/:token` | Public (token-gated) | Minimal HTML page that imports `client/src/views/replay.js` and calls `mount(el, { token })`. |
-| GET    | `/api/v1/replay/:token/events` | Public (token-gated) | JSON `{ runId, workspaceId, expiresAt, plan, events, eventCount, generatedAt }`. |
-
-Authenticated endpoints are registered through the existing `apiRoute(...)`
-helper (`/api/v1/...` and legacy `/api/...` with the standard deprecation
-header). The public `/r/:token` HTML endpoint is registered with `app.get`
-directly because `apiRoute` is API-versioned.
+| POST   | `/api/v1/agent/sessions/:id/share` | `userAuth` + `write` scope | Mint a token. |
+| DELETE | `/api/v1/agent/sessions/:id/share/:token` | `userAuth` + `write` scope | Revoke. |
+| GET    | `/r/:token` | Public (token-gated) | HTML page that mounts the replay view. |
+| GET    | `/api/v1/replay/:token/events` | Public (token-gated) | Trajectory JSON. |
 
 ### Wiring into `routes/index.js`
 
-Add alongside the existing imports:
-
 ```js
 import { mountReplayRoutes } from "./replay.js";
-```
-
-and append to `mountFunctions`:
-
-```js
+// ...and append to mountFunctions:
 mountReplayRoutes,
 ```
 
-### Integration notes
+Token TTL is clamped to `[60s, 30 days]`; default 7 days.
 
-- `POST /agent/sessions/:id/share` looks up the session via
-  `getAgentSession(id)`, verifies workspace access
-  (`getWorkspaceAgentAccess`) and ownership (`resolveStorageUserId`), then
-  mints a token scoped to the session's most-recent linked runId (falling
-  back to the sessionId if no runs have been linked yet).
-- Public endpoints never call the authenticated user pipeline; the token's
-  `{ runId, workspaceId }` claims are the only authorization signal. Events
-  come straight from `loadTrajectory(runId)` and `getAgentSession(runId)`;
-  no mutation paths are exposed to public viewers.
-- Token TTL is clamped to `[60s, 30 days]`; default 7 days.
+---
+
+## SPA shell / router / palette
+
+Pure client-side; no server wiring required beyond serving `client/app.html`.
+`client/app.html` is served statically alongside the existing `client/*.html`
+set. The new shell is opt-in via direct navigation; legacy pages are
+unaffected.
+
+### Integration plan (deferred)
+
+1. Wire `client/app.html` at `/app` (or eventually `/`) once the placeholder
+   views (home, chat, runs, knowledge, recipes) are real.
+2. Convert existing HTML pages into views that the shell lazy-imports.
+3. Retire the 62-HTML-file model.
+
+### Tests
+
+- `tests/client-shell-router.test.js` — 12 unit tests for router resolution.
+- `tests/client-shell-palette.test.js` — 13 unit tests for fuzzy filter/score.
