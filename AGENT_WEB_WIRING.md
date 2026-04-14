@@ -210,6 +210,71 @@ unaffected.
 
 ---
 
+## Signals
+
+Read-only aggregator that powers the "signal strip" rendered under the chat
+composer (backend + model, rolling cost estimate, p50 latency, quality score,
+circuit-breaker pip). The strip polls the endpoint every 10 seconds.
+
+### New files
+
+- `routes/signals.js` — exports `mountSignalsRoutes(app, deps)`. Reads from
+  `lib/usage-tracker.js`, `lib/model-quality.js`, `lib/smart-router.js`, and
+  `lib/circuit-breaker.js`. No new storage or computation.
+- `client/signal-strip.js` — module that finds the composer anchor
+  (`form#chat-form` → `#prompt` fallback), injects a `<div class="signal-strip">`
+  as its previousElementSibling, and polls `GET /api/v1/signals/composer`.
+  Exports a pure `format` helper for tests.
+
+### Route
+
+`GET /api/v1/signals/composer` — returns:
+
+```json
+{
+  "backend": "openai",
+  "model": "gpt-4o-mini",
+  "estCostUsd": 0.003,
+  "p50LatencyMs": 1420,
+  "qualityScore": 0.82,
+  "breakerState": "closed",
+  "updatedAt": "2026-04-14T00:00:00.000Z"
+}
+```
+
+### Wiring into `routes/index.js`
+
+```js
+import { mountSignalsRoutes } from "./signals.js";
+// ...and append to mountFunctions:
+mountSignalsRoutes,
+```
+
+### Client include
+
+Already appended to `client/index.html` alongside the existing script loads
+(single `<script type="module" src="/signal-strip.js"></script>` line after
+`/js/ot-client.js`). Served by the existing `express.static("client")`
+handler, no extra route needed.
+
+### TODOs
+
+- `estCostUsd` currently approximates per-request cost as
+  `avgTokensPerRequest * costPer1K / 1000` using `lib/smart-router.js`
+  `getModelCost()`. Switch to a recorded per-request `costUsd` if
+  `lib/usage-tracker.js` grows one.
+- `breakerState` reports only `closed`/`open`. Expose `half_open` if
+  `lib/circuit-breaker.js` gains a tri-state API.
+
+### Tests
+
+- `tests/signals-route.test.js` — mounts `mountSignalsRoutes` on a minimal
+  Express app and asserts the 200 response shape.
+- `tests/signal-strip-render.test.js` — pure unit tests for the
+  `format()` helper (cost / latency / quality / backend-model / breaker).
+
+---
+
 ## Build pipeline
 
 `scripts/build-client.mjs` bundles the `client/src/` module tree with esbuild
@@ -264,3 +329,72 @@ to `client/dist/` verbatim (no bundling, no minification) so
 - `tests/build-client.test.js` — runs the build script as a child process,
   asserts `client/dist/app.js` is produced with exit code 0. Skips cleanly if
   esbuild is unavailable.
+
+---
+
+## Observability snapshot
+
+In-app observability view that surfaces trajectories, circuit-breaker state,
+slow routes, and pool health for non-ops users.
+
+### New files
+
+- `routes/observability-snapshot.js` — `mountObservabilitySnapshotRoutes(app, deps)`. Calls `lib/circuit-breaker.js` (`isOpen`), `lib/observability.js` (`getLatencyPercentiles`, `getErrorRates`), `lib/trace-recorder.js` (`listTraces`), and `lib/pool-health.js` (`getPoolStats`); no new business logic lives in the route.
+- `client/src/views/observability.js` — default export `mount(el, opts?)`. Polls the snapshot endpoint every 5s. Renders 4 cards (Breakers, Slow Routes, Recent Trajectories, Pool & Rates) with red color-coded cells for open breakers, p95 over 500ms, waiting pool clients, and non-zero error rate. Exports pure helpers `formatDuration`, `formatBreakerRow`, `sortBySlowest` for tests.
+- `client/src/views/observability.css` — dark theme (`#0f172a / #e2e8f0 / #60a5fa`) matching `client/src/views/agent-run.css`.
+
+### Route
+
+`GET /api/v1/observability/snapshot` (plus legacy `/api/` alias via `apiRoute`).
+
+Middleware chain matches `routes/agent-sessions.js`:
+`logRequest → userAuth → requireScope("read") → handler`.
+
+### Response shape
+
+```json
+{
+  "breakers": [
+    { "name": "ollama", "state": "closed", "failures": 0, "lastFailureAt": null }
+  ],
+  "slowRoutes": [
+    { "route": "GET /api/v1/chat", "p95Ms": 842, "p50Ms": 120, "hits": 57 }
+  ],
+  "recentTrajectories": [
+    { "runId": "abc-123", "startedAt": "2026-04-14T00:00:00.000Z", "steps": 8, "status": "complete" }
+  ],
+  "pool": { "dbConnections": 10, "inUse": 3, "waiting": 0 },
+  "uptimeSec": 1234,
+  "requestsPerMinute": 12.5,
+  "errorsPerMinute": 0.1
+}
+```
+
+### Stubbed fields
+
+The public `lib/circuit-breaker.js` API only exposes `isOpen(backend)`, so
+`failures` is reported as `0` and `lastFailureAt` as `null`. A `TODO` in
+`routes/observability-snapshot.js` points at the richer snapshot API that
+should land alongside a `getBreakerSnapshot()` export. The pool block is
+also zeroed out when no Postgres pool is registered (JSON/SQLite backends).
+
+### Wiring into `routes/index.js`
+
+```js
+import { mountObservabilitySnapshotRoutes } from "./observability-snapshot.js";
+// ...and append to mountFunctions:
+mountObservabilitySnapshotRoutes,
+```
+
+No changes to `server.js` are required — snapshot rendering is pull-based
+and reuses the existing observability in-memory aggregator populated by
+the request-timing middleware.
+
+### Tests
+
+- `tests/observability-snapshot-route.test.js` — mounts the handler on a
+  minimal Express app; asserts 200 with the correct shape and that auth is
+  enforced.
+- `tests/observability-view.test.js` — unit tests for the pure formatting
+  helpers (`formatDuration`, `formatBreakerRow`, `sortBySlowest`) exported
+  from the view. No JSDOM required.
