@@ -1,10 +1,25 @@
 /**
  * Unit tests for lib/realtime-channels.js — publish/subscribe, backlog
  * resume, bounded-backlog eviction, unsubscribe semantics.
+ *
+ * Dispatch is microtask-queued as of wave 2 (see
+ * tests/realtime-channels-backpressure.test.js for backpressure
+ * coverage); these tests flush pending microtasks via `await flush()`
+ * before asserting on receiver state. Test assertions and invariants
+ * are preserved verbatim from wave 1 — only the await glue is new.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createChannelRegistry } from "../lib/realtime-channels.js";
+
+// Flush all pending microtasks so subscriber callbacks have run.
+// A small loop handles the case where a callback itself enqueues more
+// microtasks (e.g., chained promise resolutions).
+async function flush() {
+  for (let i = 0; i < 8; i++) {
+    await Promise.resolve();
+  }
+}
 
 test("publish assigns monotonic seq starting at 1", () => {
   const reg = createChannelRegistry();
@@ -16,12 +31,13 @@ test("publish assigns monotonic seq starting at 1", () => {
   assert.equal(typeof a.ts, "number");
 });
 
-test("subscribe receives live events", () => {
+test("subscribe receives live events", async () => {
   const reg = createChannelRegistry();
   const received = [];
   reg.subscribe("run:1", "clientA", (ev) => received.push(ev));
   reg.publish("run:1", { step: 1 });
   reg.publish("run:1", { step: 2 });
+  await flush();
   assert.equal(received.length, 2);
   assert.deepEqual(received[0].payload, { step: 1 });
   assert.deepEqual(received[1].payload, { step: 2 });
@@ -29,7 +45,7 @@ test("subscribe receives live events", () => {
   assert.equal(received[1].seq, 2);
 });
 
-test("subscribe with sinceSeq replays backlog events > sinceSeq", () => {
+test("subscribe with sinceSeq replays backlog events > sinceSeq", async () => {
   const reg = createChannelRegistry();
   reg.publish("chat:x", { n: 1 });
   reg.publish("chat:x", { n: 2 });
@@ -37,44 +53,51 @@ test("subscribe with sinceSeq replays backlog events > sinceSeq", () => {
   const received = [];
   const { replayed } = reg.subscribe("chat:x", "c1", (ev) => received.push(ev), { sinceSeq: 1 });
   assert.equal(replayed, 2);
+  await flush();
   assert.deepEqual(received.map((e) => e.payload.n), [2, 3]);
 });
 
-test("subscribe with no sinceSeq does not replay backlog", () => {
+test("subscribe with no sinceSeq does not replay backlog", async () => {
   const reg = createChannelRegistry();
   reg.publish("chat:x", { n: 1 });
   const received = [];
   reg.subscribe("chat:x", "c1", (ev) => received.push(ev));
+  await flush();
   assert.equal(received.length, 0);
   reg.publish("chat:x", { n: 2 });
+  await flush();
   assert.equal(received.length, 1);
   assert.equal(received[0].payload.n, 2);
 });
 
-test("unsubscribe stops future events from being delivered", () => {
+test("unsubscribe stops future events from being delivered", async () => {
   const reg = createChannelRegistry();
   const received = [];
   reg.subscribe("run:42", "c1", (ev) => received.push(ev));
   reg.publish("run:42", { v: 1 });
+  await flush();
   const removed = reg.unsubscribe("run:42", "c1");
   assert.equal(removed, true);
   reg.publish("run:42", { v: 2 });
+  await flush();
   assert.equal(received.length, 1);
 });
 
-test("unsubscribeAll removes a client from all channels", () => {
+test("unsubscribeAll removes a client from all channels", async () => {
   const reg = createChannelRegistry();
   let a = 0, b = 0;
   reg.subscribe("chat:a", "c1", () => a++);
   reg.subscribe("chat:b", "c1", () => b++);
   reg.publish("chat:a", {});
   reg.publish("chat:b", {});
+  await flush();
   assert.equal(a, 1);
   assert.equal(b, 1);
   const count = reg.unsubscribeAll("c1");
   assert.equal(count, 2);
   reg.publish("chat:a", {});
   reg.publish("chat:b", {});
+  await flush();
   assert.equal(a, 1);
   assert.equal(b, 1);
 });
@@ -90,7 +113,7 @@ test("bounded backlog evicts oldest events past the cap", () => {
   assert.deepEqual(backlog.map((e) => e.seq), [8, 9, 10]);
 });
 
-test("resume after eviction only replays remaining events", () => {
+test("resume after eviction only replays remaining events", async () => {
   const reg = createChannelRegistry({ backlogSize: 2 });
   reg.publish("chat:e", { n: 1 });
   reg.publish("chat:e", { n: 2 });
@@ -99,27 +122,30 @@ test("resume after eviction only replays remaining events", () => {
   const { replayed } = reg.subscribe("chat:e", "c1", (ev) => received.push(ev), { sinceSeq: 0 });
   // Only seq 2,3 remain in the backlog; seq 1 was evicted.
   assert.equal(replayed, 2);
+  await flush();
   assert.deepEqual(received.map((e) => e.payload.n), [2, 3]);
 });
 
-test("publish fans out to multiple subscribers on the same channel", () => {
+test("publish fans out to multiple subscribers on the same channel", async () => {
   const reg = createChannelRegistry();
   const a = [], b = [];
   reg.subscribe("presence:ws1", "clientA", (ev) => a.push(ev));
   reg.subscribe("presence:ws1", "clientB", (ev) => b.push(ev));
   reg.publish("presence:ws1", { who: "alice" });
+  await flush();
   assert.equal(a.length, 1);
   assert.equal(b.length, 1);
   assert.deepEqual(a[0].payload, { who: "alice" });
 });
 
-test("one subscriber throwing does not prevent others from receiving", () => {
+test("one subscriber throwing does not prevent others from receiving", async () => {
   const reg = createChannelRegistry();
   const good = [];
   reg.subscribe("chat:t", "bad", () => { throw new Error("boom"); });
   reg.subscribe("chat:t", "good", (ev) => good.push(ev));
   // should not throw
   reg.publish("chat:t", { ok: true });
+  await flush();
   assert.equal(good.length, 1);
 });
 
