@@ -239,6 +239,7 @@ import { mountReplayRoutes } from "./replay.js";
 import { mountSignalsRoutes } from "./signals.js";
 import { mountObservabilitySnapshotRoutes } from "./observability-snapshot.js";
 import { mountAgentHitlRoutes } from "./agent-hitl.js";
+import { mountAgentArtifactRoutes } from "./agent-artifacts.js";
 
 import { mountV2Routes } from "./v2/index.js";
 
@@ -444,6 +445,7 @@ const mountFunctions = [
   mountSignalsRoutes,
   mountObservabilitySnapshotRoutes,
   mountAgentHitlRoutes,
+  mountAgentArtifactRoutes,
 ];
 
 /**

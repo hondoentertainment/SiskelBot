@@ -6,13 +6,19 @@
  * inside the WebSocket connection/disconnection handlers in lib/realtime.js,
  * so the shape guarantee covers both sites without spinning up a real
  * WebSocketServer (which would require the optional `ws` dependency).
+ *
+ * Note: since wave-4 added microtask-queued dispatch in lib/realtime-channels.js,
+ * subscriber callbacks now fire on a microtask rather than synchronously in the
+ * publish call stack. Tests use `await flush()` (a 2-microtask yield) to drain.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { publishPresenceEvent } from "../lib/realtime.js";
 import { defaultChannelRegistry } from "../lib/realtime-channels.js";
 
-test("publishPresenceEvent('join', ...) publishes to presence:<workspaceId>", () => {
+const flush = () => Promise.resolve().then(() => Promise.resolve());
+
+test("publishPresenceEvent('join', ...) publishes to presence:<workspaceId>", async () => {
   const workspaceId = `ws-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const channel = `presence:${workspaceId}`;
 
@@ -22,6 +28,7 @@ test("publishPresenceEvent('join', ...) publishes to presence:<workspaceId>", ()
   const before = Date.now();
   publishPresenceEvent("join", workspaceId, "alice");
   const after = Date.now();
+  await flush();
 
   assert.equal(received.length, 1);
   const ev = received[0];
@@ -37,7 +44,7 @@ test("publishPresenceEvent('join', ...) publishes to presence:<workspaceId>", ()
   defaultChannelRegistry.unsubscribe(channel, "presence-sub-1");
 });
 
-test("publishPresenceEvent('leave', ...) publishes to presence:<workspaceId>", () => {
+test("publishPresenceEvent('leave', ...) publishes to presence:<workspaceId>", async () => {
   const workspaceId = `ws-leave-${Date.now()}`;
   const channel = `presence:${workspaceId}`;
 
@@ -45,6 +52,7 @@ test("publishPresenceEvent('leave', ...) publishes to presence:<workspaceId>", (
   defaultChannelRegistry.subscribe(channel, "presence-sub-2", (ev) => received.push(ev));
 
   publishPresenceEvent("leave", workspaceId, "bob");
+  await flush();
 
   assert.equal(received.length, 1);
   const ev = received[0];
@@ -56,7 +64,7 @@ test("publishPresenceEvent('leave', ...) publishes to presence:<workspaceId>", (
   defaultChannelRegistry.unsubscribe(channel, "presence-sub-2");
 });
 
-test("join then leave produces two events with monotonic seq", () => {
+test("join then leave produces two events with monotonic seq", async () => {
   const workspaceId = `ws-pair-${Date.now()}`;
   const channel = `presence:${workspaceId}`;
 
@@ -65,6 +73,7 @@ test("join then leave produces two events with monotonic seq", () => {
 
   publishPresenceEvent("join", workspaceId, "carol");
   publishPresenceEvent("leave", workspaceId, "carol");
+  await flush();
 
   assert.equal(received.length, 2);
   assert.equal(received[0].payload.type, "join");
@@ -76,7 +85,7 @@ test("join then leave produces two events with monotonic seq", () => {
   defaultChannelRegistry.unsubscribe(channel, "presence-sub-3");
 });
 
-test("events for different workspaces are isolated by channel", () => {
+test("events for different workspaces are isolated by channel", async () => {
   const wsA = `ws-iso-A-${Date.now()}`;
   const wsB = `ws-iso-B-${Date.now()}`;
   const receivedA = [];
@@ -88,6 +97,7 @@ test("events for different workspaces are isolated by channel", () => {
   publishPresenceEvent("join", wsA, "u1");
   publishPresenceEvent("join", wsB, "u2");
   publishPresenceEvent("leave", wsA, "u1");
+  await flush();
 
   assert.equal(receivedA.length, 2);
   assert.equal(receivedB.length, 1);
@@ -98,7 +108,7 @@ test("events for different workspaces are isolated by channel", () => {
   defaultChannelRegistry.unsubscribe(`presence:${wsB}`, "iso-B");
 });
 
-test("publishPresenceEvent swallows subscriber errors (never throws)", () => {
+test("publishPresenceEvent swallows subscriber errors (never throws)", async () => {
   const workspaceId = `ws-err-${Date.now()}`;
   const channel = `presence:${workspaceId}`;
 
@@ -106,8 +116,9 @@ test("publishPresenceEvent swallows subscriber errors (never throws)", () => {
     throw new Error("subscriber boom");
   });
 
-  // Must not throw.
+  // Must not throw synchronously or during microtask drain.
   assert.doesNotThrow(() => publishPresenceEvent("join", workspaceId, "dave"));
+  await flush();
 
   defaultChannelRegistry.unsubscribe(channel, "bad-sub");
 });

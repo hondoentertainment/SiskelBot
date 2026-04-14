@@ -76,13 +76,26 @@ export function bootstrap(rootId = "sb-root") {
 
   palette.mount(document.body);
 
-  // Placeholder route table
+  // Route table — lazy imports for view modules so the shell loads fast.
+  const mountInto = (loader, props) => async (ctx) => {
+    const mod = await loader();
+    const mountFn = mod.default || mod.mount;
+    if (typeof mountFn !== "function") {
+      throw new Error(`view loader ${loader.name || "(anonymous)"} has no default export or mount()`);
+    }
+    return mountFn(main, { ...ctx, ...(props || {}) });
+  };
+
   router.register("/", () => router.navigate("/home", { replace: true }));
   router.register("/home", placeholderView("Home", "Overview of workspace activity."));
-  router.register("/chat", placeholderView("Chat", "Interactive conversations with the model."));
-  router.register("/runs/:id", placeholderView("Run detail", "Detail for a single agent run."));
-  router.register("/runs", placeholderView("Runs", "History of agent sessions and executions."));
-  router.register("/knowledge", placeholderView("Knowledge", "Knowledge base documents and graph."));
+  router.register("/chat", mountInto(() => import("./views/chat.js")));
+  router.register("/runs", mountInto(() => import("./views/runs.js")));
+  router.register("/runs/:id", async (ctx) => {
+    const mod = await import("./views/agent-run.js");
+    const mountFn = mod.default || mod.mount;
+    return mountFn(main, { sessionId: ctx.params.id, apiBase: "/api/v1" });
+  });
+  router.register("/knowledge", mountInto(() => import("./views/knowledge.js")));
   router.register("/recipes", placeholderView("Recipes", "Saved recipes and automation templates."));
   router.register("*", notFoundView());
 
