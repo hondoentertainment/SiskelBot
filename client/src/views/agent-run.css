@@ -1,0 +1,393 @@
+/* Agent Run hero view — dark theme matching client/index.html palette. */
+
+.agent-run {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 480px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+}
+
+.ar-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 12px;
+  padding: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+@media (max-width: 900px) {
+  .ar-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+  }
+}
+
+.ar-pane {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ar-pane-head {
+  padding: 10px 14px;
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #cbd5e1;
+  border-bottom: 1px solid #334155;
+  background: #0f172a;
+}
+
+.ar-pane-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  gap: 8px;
+}
+
+.ar-empty {
+  color: #64748b;
+  font-style: italic;
+  padding: 8px 0;
+}
+
+/* ── Plan ────────────────────────────────────────────────────────────────── */
+
+.ar-plan-summary {
+  color: #cbd5e1;
+  white-space: pre-wrap;
+  font-size: 13px;
+}
+
+.ar-plan-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.ar-plan-node {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid #334155;
+  font-size: 13px;
+}
+
+.ar-plan-node:last-child { border-bottom: none; }
+
+.ar-plan-node-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ar-plan-node-meta {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.ar-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: #334155;
+  color: #cbd5e1;
+}
+
+.ar-badge-running { background: #1d4ed8; color: #dbeafe; }
+.ar-badge-done { background: #166534; color: #bbf7d0; }
+.ar-badge-blocked { background: #9f1239; color: #fecdd3; }
+.ar-badge-pending { background: #334155; color: #cbd5e1; }
+.ar-badge-failed { background: #9f1239; color: #fecdd3; }
+
+/* ── Timeline ────────────────────────────────────────────────────────────── */
+
+.ar-timeline-scroll {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.ar-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ar-timeline-item {
+  display: grid;
+  grid-template-columns: 80px 120px 1fr;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 12.5px;
+  border-bottom: 1px dashed #1e293b;
+}
+
+.ar-timeline-time {
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+}
+
+.ar-timeline-kind {
+  color: #93c5fd;
+  font-weight: 600;
+}
+
+.ar-kind-tool-call { color: #fbbf24; }
+.ar-kind-tool-result { color: #a7f3d0; }
+.ar-kind-hitl-request { color: #f472b6; }
+.ar-kind-hitl-resolved { color: #f9a8d4; }
+.ar-kind-artifact-new { color: #c4b5fd; }
+.ar-kind-cost-update { color: #fde68a; }
+.ar-kind-status-change { color: #cbd5e1; }
+.ar-kind-done { color: #86efac; }
+.ar-kind-plan-update { color: #93c5fd; }
+
+.ar-timeline-summary {
+  color: #e2e8f0;
+  word-break: break-word;
+}
+
+/* ── Artifacts ───────────────────────────────────────────────────────────── */
+
+.ar-artifacts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.ar-artifact-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  background: #0f172a;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
+  margin: 4px 0;
+  text-align: left;
+}
+
+.ar-artifact-btn:hover {
+  border-color: #60a5fa;
+}
+
+.ar-artifact-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ar-artifact-mime {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.ar-artifact-preview {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.ar-artifact-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.ar-artifact-image {
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+}
+
+.ar-artifact-text {
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #e2e8f0;
+  margin: 0;
+}
+
+/* ── Approvals ──────────────────────────────────────────────────────────── */
+
+.ar-approvals-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.ar-approval {
+  padding: 10px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-left: 3px solid #f472b6;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ar-approval-summary {
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.ar-approval-meta {
+  color: #94a3b8;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.ar-approval-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.ar-approval-error {
+  color: #fecdd3;
+  background: rgba(159, 18, 57, 0.18);
+  border: 1px solid #9f1239;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+
+.ar-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: #1e293b;
+  border-top: 1px solid #334155;
+  flex-wrap: wrap;
+}
+
+.ar-footer-stats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ar-footer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.ar-stat {
+  color: #cbd5e1;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ar-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: #334155;
+  color: #cbd5e1;
+}
+
+.ar-pill-live, .ar-pill-running { background: #166534; color: #bbf7d0; }
+.ar-pill-connecting { background: #1d4ed8; color: #dbeafe; }
+.ar-pill-paused { background: #78350f; color: #fde68a; }
+.ar-pill-disconnected, .ar-pill-failed { background: #9f1239; color: #fecdd3; }
+.ar-pill-done { background: #334155; color: #cbd5e1; }
+.ar-pill-cancel-requested { background: #78350f; color: #fde68a; }
+.ar-pill-created { background: #334155; color: #cbd5e1; }
+
+.ar-btn {
+  background: #334155;
+  color: #e2e8f0;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+
+.ar-btn:hover:not([disabled]) {
+  background: #475569;
+  border-color: #60a5fa;
+}
+
+.ar-btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ar-btn-sm {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+.ar-btn-ok {
+  background: #166534;
+  border-color: #15803d;
+  color: #bbf7d0;
+}
+
+.ar-btn-ok:hover:not([disabled]) {
+  background: #15803d;
+}
+
+.ar-btn-danger {
+  background: #9f1239;
+  border-color: #be123c;
+  color: #fecdd3;
+}
+
+.ar-btn-danger:hover:not([disabled]) {
+  background: #be123c;
+}

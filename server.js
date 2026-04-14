@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { createServer } from "http";
+import { existsSync, readFileSync } from "node:fs";
 import express from "express";
 import session from "express-session";
 import rateLimit from "express-rate-limit";
@@ -78,6 +79,8 @@ import { runEvalSet } from "./lib/eval-runner.js";
 import { listEvalSets, loadEvalSet } from "./lib/storage-eval.js";
 import { listStagingTraceSummaries } from "./lib/eval-staging-traces.js";
 import { createToken, attachToServer, getOnlineUsers, closeServer } from "./lib/realtime.js";
+import { mountRealtimeWs } from "./routes/realtime-ws.js";
+import { defaultChannelRegistry } from "./lib/realtime-channels.js";
 import { sanitizeForLog } from "./lib/log-sanitizer.js";
 import { requestContextMiddleware } from "./lib/request-context.js";
 import { execute as circuitExecute } from "./lib/circuit-breaker.js";
@@ -1139,6 +1142,40 @@ const STATIC_CACHE_MAX_AGE_MS =
     ? 0
     : Number(process.env.STATIC_CACHE_MAX_AGE_MS) || (IS_PRODUCTION ? 86_400_000 : 0);
 
+// Wave 1 web interface — serve the SPA shell at /app (existing / route is unchanged)
+// In production (or whenever client/dist/manifest.json exists), substitute the
+// dev-only "/src/app.js" script tag with the hashed bundle path from the
+// manifest so /app serves cache-busted, pre-bundled JS. Otherwise fall back to
+// the raw source for fast dev ergonomics.
+const APP_HTML_PATH = join(__dirname, "client", "app.html");
+const APP_MANIFEST_PATH = join(__dirname, "client", "dist", "manifest.json");
+const APP_DIST_DIR = join(__dirname, "client", "dist");
+const APP_HTML_CACHE = loadAppHtmlCache();
+
+app.get("/app", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  const html = renderAppHtml();
+  if (html == null) {
+    // Cache miss or read failure: fall through to sending the source file
+    // verbatim so the dev layout keeps working.
+    return res.sendFile(APP_HTML_PATH);
+  }
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(html);
+});
+
+// Cache-bust dist assets aggressively; they are hashed at build time.
+if (existsSync(APP_DIST_DIR)) {
+  app.use(
+    "/dist",
+    express.static(APP_DIST_DIR, {
+      maxAge: "1y",
+      immutable: true,
+      etag: true,
+    }),
+  );
+}
+
 app.use(
   express.static(join(__dirname, "client"), {
     maxAge: STATIC_CACHE_MAX_AGE_MS,
@@ -1151,6 +1188,77 @@ app.use(
     },
   }),
 );
+
+function loadAppHtmlCache() {
+  const cache = { html: null, manifest: null };
+  try {
+    if (existsSync(APP_HTML_PATH)) {
+      cache.html = readFileSync(APP_HTML_PATH, "utf8");
+    }
+  } catch (_) {
+    cache.html = null;
+  }
+  try {
+    if (existsSync(APP_MANIFEST_PATH)) {
+      cache.manifest = JSON.parse(readFileSync(APP_MANIFEST_PATH, "utf8"));
+    }
+  } catch (_) {
+    cache.manifest = null;
+  }
+  return cache;
+}
+
+/**
+ * Produce the HTML body to serve at /app. In production (or whenever a
+ * manifest with an "app" entry is available) the dev "/src/app.js" script tag
+ * is rewritten to the hashed production bundle path. In development the HTML
+ * is re-read from disk on every request so edits to client/app.html show up
+ * without a restart.
+ *
+ * Exported for tests (see tests/app-prod-bundle.test.js).
+ */
+export function renderAppHtml({
+  htmlPath = APP_HTML_PATH,
+  manifestPath = APP_MANIFEST_PATH,
+  nodeEnv = process.env.NODE_ENV,
+} = {}) {
+  const isProd = nodeEnv === "production";
+  let html;
+  if (isProd && APP_HTML_CACHE.html != null && htmlPath === APP_HTML_PATH) {
+    html = APP_HTML_CACHE.html;
+  } else {
+    try {
+      if (!existsSync(htmlPath)) return null;
+      html = readFileSync(htmlPath, "utf8");
+    } catch (_) {
+      return null;
+    }
+  }
+
+  let manifest = null;
+  if (isProd && APP_HTML_CACHE.manifest && manifestPath === APP_MANIFEST_PATH) {
+    manifest = APP_HTML_CACHE.manifest;
+  } else if (existsSync(manifestPath)) {
+    try {
+      manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    } catch (_) {
+      manifest = null;
+    }
+  }
+
+  const entry = manifest && manifest.entries && manifest.entries.app;
+  if (entry && typeof entry === "string") {
+    return substituteAppEntry(html, entry);
+  }
+  return html;
+}
+
+export function substituteAppEntry(html, entryPath) {
+  return html.replace(
+    /<script\s+type="module"\s+src="\/src\/app\.js"\s*>\s*<\/script>/,
+    `<script type="module" src="${entryPath}"></script>`,
+  );
+}
 
 // Error middleware (after all routes and static files)
 app.use(errorMiddleware);
@@ -1168,6 +1276,9 @@ if (process.env.VERCEL !== "1") {
     .then(() => {
       const httpServer = createServer(app);
       attachToServer(httpServer);
+      if (process.env.REALTIME_WS_DISABLED !== "1") {
+        mountRealtimeWs(httpServer, { channels: defaultChannelRegistry });
+      }
 
       function gracefulShutdown(signal) {
         console.log(`[shutdown] Received ${signal}, shutting down gracefully...`);

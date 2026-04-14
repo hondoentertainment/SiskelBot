@@ -8,6 +8,7 @@ import {
   buildModelNameWithAdapter,
   recordAdapterUsage,
 } from "../lib/lora-adapters.js";
+import { defaultChannelRegistry } from "../lib/realtime-channels.js";
 
 const ENABLE_PROMPT_GUARD = process.env.ENABLE_PROMPT_GUARD === "1";
 const ENABLE_OUTPUT_GUARD = process.env.ENABLE_OUTPUT_GUARD === "1";
@@ -257,7 +258,18 @@ export default function mountChatRoutes(app, deps) {
 
         if (swarmResult?.synthesisDeferred) {
           const d = swarmResult.synthesisDeferred;
-          const { fullText, error } = await pipeLlmChatStreamToSse(res, backendFetch, d.url, d.config, d.synthBody);
+          const convoIdForSynth =
+            (typeof req.body?.conversationId === "string" && req.body.conversationId) ||
+            (typeof req.body?.agentOptions?.conversationId === "string" && req.body.agentOptions.conversationId) ||
+            null;
+          const { fullText, error } = await pipeLlmChatStreamToSse(
+            res,
+            backendFetch,
+            d.url,
+            d.config,
+            d.synthBody,
+            convoIdForSynth ? { conversationId: convoIdForSynth } : undefined
+          );
           content = fullText || "";
           if (error && !content.trim()) {
             content = `Synthesis error: ${error}\n\n${swarmResult.fallbackAggregate || ""}`;
@@ -392,6 +404,13 @@ export default function mountChatRoutes(app, deps) {
       let outputContent = "";
       let usageFromApi = null;
 
+      // Additive: unified realtime channel publication for this conversation.
+      const conversationIdForChannel =
+        (typeof req.body?.conversationId === "string" && req.body.conversationId) ||
+        (typeof req.body?.agentOptions?.conversationId === "string" && req.body.agentOptions.conversationId) ||
+        null;
+      let channelDeltaIndex = 0;
+
       for await (const chunk of response.body) {
         const text = chunk.toString("utf8");
         buffer += text;
@@ -408,6 +427,17 @@ export default function mountChatRoutes(app, deps) {
             if (typeof delta === "string") {
               outputChars += delta.length;
               outputContent += delta;
+              if (conversationIdForChannel) {
+                try {
+                  defaultChannelRegistry.publish(`chat:${conversationIdForChannel}`, {
+                    role: "assistant",
+                    delta,
+                    index: channelDeltaIndex++,
+                  });
+                } catch (_) {
+                  // publication must never break the SSE response
+                }
+              }
             }
             const usage = parsed.usage || parsed.choices?.[0]?.usage;
             if (usage && (usage.prompt_tokens != null || usage.completion_tokens != null)) {

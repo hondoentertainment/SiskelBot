@@ -233,6 +233,13 @@ import mountFactVerificationRoutes from "./fact-verification.js";
 import mountSourceCredibilityRoutes from "./source-credibility.js";
 import mountFreshnessSlaRoutes from "./freshness-sla.js";
 
+// Wave 1 web interface — realtime agent run stream + replay
+import { mountAgentRunStreamRoutes } from "./agent-run-stream.js";
+import { mountReplayRoutes } from "./replay.js";
+import { mountSignalsRoutes } from "./signals.js";
+import { mountObservabilitySnapshotRoutes } from "./observability-snapshot.js";
+import { mountAgentHitlRoutes } from "./agent-hitl.js";
+
 // Phase 63 — Code Generation vertical (5 modules)
 import mountRepoRagRoutes from "./repo-rag.js";
 import mountPrReviewRoutes from "./pr-review-agent.js";
@@ -465,6 +472,13 @@ const mountFunctions = [
   mountFactVerificationRoutes,
   mountSourceCredibilityRoutes,
   mountFreshnessSlaRoutes,
+
+  // Wave 1 web interface — realtime agent run stream + replay
+  mountAgentRunStreamRoutes,
+  mountReplayRoutes,
+  mountSignalsRoutes,
+  mountObservabilitySnapshotRoutes,
+  mountAgentHitlRoutes,
 
   // Phase 63 — Code Generation vertical
   mountRepoRagRoutes,
