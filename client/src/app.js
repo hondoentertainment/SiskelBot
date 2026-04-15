@@ -97,6 +97,7 @@ export function bootstrap(rootId = "sb-root") {
   });
   router.register("/knowledge", mountInto(() => import("./views/knowledge.js")));
   router.register("/recipes", mountInto(() => import("./views/recipes.js")));
+  router.register("/observability", mountInto(() => import("./views/observability.js")));
   router.register("*", notFoundView());
 
   // Palette actions
@@ -109,6 +110,7 @@ export function bootstrap(rootId = "sb-root") {
     navAction("/runs", "Go to Runs", "g r"),
     navAction("/knowledge", "Go to Knowledge", "g k"),
     navAction("/recipes", "Go to Recipes", "g p"),
+    navAction("/observability", "Go to Observability", "g o"),
     { id: "toggle:nav", title: "Toggle navigation", hint: "Cmd+\\", run: () => { nav.toggle(); toggleShellClass("is-nav-collapsed"); } },
     { id: "toggle:inspector", title: "Toggle inspector", hint: "Cmd+/", run: () => { inspector.toggle(); toggleShellClass("is-inspector-collapsed"); } },
     { id: "help:shortcuts", title: "Show keyboard shortcuts", hint: "?", run: () => showHelp(inspector) },
@@ -170,7 +172,7 @@ function installKeyboard({ nav, inspector, shell }) {
     // Navigation chords: g then c/r/k/h/p
     if (isTypingContext(e.target) || mod || e.altKey) return;
     if (chord === "g") {
-      const map = { c: "/chat", r: "/runs", k: "/knowledge", h: "/home", p: "/recipes" };
+      const map = { c: "/chat", r: "/runs", k: "/knowledge", h: "/home", p: "/recipes", o: "/observability" };
       const target = map[e.key.toLowerCase()];
       if (target) {
         e.preventDefault();
