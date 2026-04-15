@@ -87,7 +87,7 @@ export function bootstrap(rootId = "sb-root") {
   };
 
   router.register("/", () => router.navigate("/home", { replace: true }));
-  router.register("/home", placeholderView("Home", "Overview of workspace activity."));
+  router.register("/home", mountInto(() => import("./views/home.js")));
   router.register("/chat", mountInto(() => import("./views/chat.js")));
   router.register("/runs", mountInto(() => import("./views/runs.js")));
   router.register("/runs/:id", async (ctx) => {
@@ -96,7 +96,7 @@ export function bootstrap(rootId = "sb-root") {
     return mountFn(main, { sessionId: ctx.params.id, apiBase: "/api/v1" });
   });
   router.register("/knowledge", mountInto(() => import("./views/knowledge.js")));
-  router.register("/recipes", placeholderView("Recipes", "Saved recipes and automation templates."));
+  router.register("/recipes", mountInto(() => import("./views/recipes.js")));
   router.register("*", notFoundView());
 
   // Palette actions
