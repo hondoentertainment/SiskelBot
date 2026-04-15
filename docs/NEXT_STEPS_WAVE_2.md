@@ -7,6 +7,22 @@
 This doc takes fresh stock of the tree after Phase 63/64/71/72/75 and the
 Wave-4 Agent Web Interface landed, and recommends the next concrete wave.
 
+> **2026-04-15 update — most of this plan shipped on this branch.**
+> P0-2 (audit): see [`AUDIT_PHASE_63_64_71_72_75.md`](../AUDIT_PHASE_63_64_71_72_75.md).
+> P0-3 (server.js drift): server.js is now 1,055 lines; drift extracted to
+> `lib/server-middleware.js`, `lib/server-lifecycle.js`, `lib/rate-limiters.js`.
+> P0-4 (runs realtime): `client/src/views/runs.js` now subscribes to `run:<id>` channels.
+> P1-5 (legacy HTML ports): `eval-view.js`, `admin-view.js`, `marketplace-view.js` shipped (read-only).
+> P1-6 / P1-7 (home + recipes views): shipped and wired into the SPA shell.
+> P2-8 (reasoning primitives): `tree_of_thought_plan`, `verify_output`, `self_consistency`
+> registered in `lib/agent-tools.js` behind `AGENT_REASONING_TOOLS=1`.
+> P3 (Phase 63 productize): `search_repo`, `propose_patch`, `run_tests` registered behind
+> `AGENT_CODEGEN_TOOLS=1`; `refactor-agent.js` now actually writes (gated);
+> `migration-assistant.js` + `refactor-agent.js` indices now persist via `json-path-store`;
+> `plugins/recipes/code-review.json` shipped.
+> Still open: P0-1 (real coverage measurement), the `/` switch from `index.html` to `app.html`,
+> deletion of the legacy `*.html` files, and resolving the 25 audit findings.
+
 ---
 
 ## Where we are
