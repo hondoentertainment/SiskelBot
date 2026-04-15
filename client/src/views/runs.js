@@ -1,10 +1,17 @@
 /**
  * Agent Runs list view. Source: GET {apiBase}/agent/sessions.
- * Pure helpers formatStatus / sortRows / filterRows are exported for tests.
+ * Pure helpers formatStatus / sortRows / filterRows / mergeRunEvent are
+ * exported for tests.
+ *
+ * Live updates arrive over the unified realtime WebSocket. After the
+ * initial HTTP fetch populates the list we subscribe to `run:<id>` for
+ * each visible session and apply `status.change` / `done` events in
+ * place. A low-frequency refetch (30s or on window focus) catches new
+ * sessions that didn't exist on mount.
  */
 
 const DEFAULT_API_BASE = "/api/v1";
-const DEFAULT_POLL_MS = 5000;
+const DEFAULT_REFRESH_MS = 30_000;
 const DEFAULT_LIMIT = 40;
 const CSS_HREF = new URL("./runs.css", import.meta.url).href;
 
@@ -90,6 +97,78 @@ export function filterRows(rows, opts) {
   });
 }
 
+/**
+ * Reducer that folds a realtime `run:<id>` event into an existing row.
+ *
+ * Returns a NEW row object (never mutates the input) with any of
+ * `status`, `updatedAt`, `eventCount` patched from the event. Unknown
+ * event types are ignored (row returned unchanged). Exposed for tests.
+ *
+ * @param {object|null|undefined} row
+ * @param {{ type?: string, payload?: any, ts?: number|string }} [event]
+ */
+export function mergeRunEvent(row, event) {
+  if (!row || typeof row !== "object") return row;
+  if (!event || typeof event !== "object") return row;
+  const type = String(event.type || "").toLowerCase();
+  const payload = event.payload && typeof event.payload === "object" ? event.payload : {};
+
+  // Only `status.change` and `done` move a row forward. Other event
+  // types (tool.call, tool.result, artifact.new, cost.update, etc.) are
+  // timeline-level and are surfaced in the single-run view, not here.
+  // We still bump `eventCount` for any known event so stale list views
+  // reflect activity.
+  const KNOWN = new Set([
+    "status.change",
+    "done",
+    "tool.call",
+    "tool.result",
+    "plan.update",
+    "hitl.request",
+    "hitl.resolved",
+    "artifact.new",
+    "cost.update",
+  ]);
+  if (!KNOWN.has(type)) return row;
+
+  const next = { ...row };
+  let changed = false;
+
+  if (type === "status.change") {
+    const s = payload.status;
+    if (typeof s === "string" && s && s !== row.status) {
+      next.status = s;
+      changed = true;
+    }
+  } else if (type === "done") {
+    // `done` is terminal. If the payload carries a status use it;
+    // otherwise fall back to `completed` unless the row is already in a
+    // terminal state.
+    const s = typeof payload.status === "string" && payload.status ? payload.status : null;
+    if (s) {
+      if (s !== row.status) { next.status = s; changed = true; }
+    } else {
+      const cur = String(row.status || "").toLowerCase();
+      const terminal = cur === "completed" || cur === "complete" || cur === "failed" || cur === "cancelled";
+      if (!terminal) { next.status = "completed"; changed = true; }
+    }
+  }
+
+  const baseCount = Number(row.eventCount);
+  const nextCount = Number.isFinite(baseCount) ? baseCount + 1 : 1;
+  next.eventCount = nextCount;
+  changed = true;
+
+  // Touch updatedAt so sort-by-updatedAt surfaces recently-active rows.
+  if (event.ts != null) {
+    next.updatedAt = typeof event.ts === "number" ? new Date(event.ts).toISOString() : String(event.ts);
+  } else {
+    next.updatedAt = new Date().toISOString();
+  }
+
+  return changed ? next : row;
+}
+
 // ─── DOM helpers ─────────────────────────────────────────────────────────────
 
 function el(tag, attrs, children) {
@@ -160,16 +239,25 @@ function navigateToRun(sessionId) {
 
 /**
  * @param {HTMLElement} root
- * @param {{ params?: Record<string,string>, query?: string|URLSearchParams, apiBase?: string, pollMs?: number, fetchImpl?: typeof fetch, workspace?: string }} [ctx]
+ * @param {{
+ *   params?: Record<string,string>,
+ *   query?: string|URLSearchParams,
+ *   apiBase?: string,
+ *   refreshMs?: number,
+ *   fetchImpl?: typeof fetch,
+ *   workspace?: string,
+ *   realtime?: { subscribe: (channel: string, handler: (ev: any) => void, opts?: object) => void, unsubscribe: (channel: string) => void } | null,
+ * }} [ctx]
  * @returns {{ destroy: () => void, refresh: () => Promise<void> }}
  */
 export default function mount(root, ctx = {}) {
   if (!root) throw new Error("mount root required");
   const apiBase = (ctx.apiBase || DEFAULT_API_BASE).replace(/\/+$/, "");
-  const pollMs = Math.max(1000, Number(ctx.pollMs) || DEFAULT_POLL_MS);
+  const refreshMs = Math.max(5_000, Number(ctx.refreshMs) || DEFAULT_REFRESH_MS);
   const fetchImpl = ctx.fetchImpl || (typeof fetch !== "undefined" ? fetch : null);
   const queryParams = parseQuery(ctx.query);
   const workspace = String(ctx.workspace || queryParams.get("workspace") || "default");
+  const realtime = resolveRealtime(ctx.realtime);
 
   ensureStylesheet();
 
@@ -187,6 +275,9 @@ export default function mount(root, ctx = {}) {
     destroyed: false,
   };
   let timer = null;
+  /** @type {Set<string>} */
+  const subscribedChannels = new Set();
+  let onFocusHandler = null;
 
   // ── DOM scaffold ──────────────────────────────────────────────────────────
   const status = el("span", { class: "runs-pill runs-pill-loading" }, "loading…");
@@ -253,7 +344,7 @@ export default function mount(root, ctx = {}) {
 
   const footer = el("footer", { class: "runs-footer" }, [
     el("span", { class: "runs-count" }, "—"),
-    el("span", { class: "runs-hint" }, "Auto-refresh every 5s. TODO: upgrade to realtime channel run:*."),
+    el("span", { class: "runs-hint" }, "Live via realtime channel run:<id>. Background refresh every 30s."),
   ]);
 
   const wrap = el("section", { class: "runs-view", "aria-labelledby": "runs-view-title" }, [
@@ -378,6 +469,7 @@ export default function mount(root, ctx = {}) {
       state.error = null;
       state.lastUpdated = Date.now();
       setStatusPill(`updated ${new Date().toLocaleTimeString()}`, "runs-pill-ok");
+      syncSubscriptions();
       renderTable();
     } catch (err) {
       setStatusPill("error", "runs-pill-bad");
@@ -416,9 +508,79 @@ export default function mount(root, ctx = {}) {
     try { return await resp.json(); } catch (_) { return null; }
   }
 
-  // Kick off initial fetch + polling
+  // ── Realtime subscriptions ────────────────────────────────────────────────
+  function handleRunEvent(ev) {
+    if (state.destroyed) return;
+    // `ev.channel` looks like "run:<sessionId>".
+    const channel = ev && typeof ev === "object" ? ev.channel : null;
+    if (typeof channel !== "string" || !channel.startsWith("run:")) return;
+    const sessionId = channel.slice(4);
+    if (!sessionId) return;
+
+    // The server's realtime payload follows the Agent Run stream schema:
+    // { type: "status.change" | "done" | ..., payload: { ... } }
+    // In some deployments the whole frame IS the payload; tolerate both.
+    const raw = ev.payload && typeof ev.payload === "object" ? ev.payload : ev;
+    const evtShape = raw && typeof raw === "object" && typeof raw.type === "string"
+      ? raw
+      : { type: ev.type, payload: raw, ts: ev.ts };
+
+    const idx = state.rows.findIndex((r) => r && r.id === sessionId);
+    if (idx === -1) return; // row not in the current page; picked up on next refetch
+    const next = mergeRunEvent(state.rows[idx], evtShape);
+    if (next === state.rows[idx]) return;
+    state.rows = state.rows.slice();
+    state.rows[idx] = next;
+    renderTable();
+  }
+
+  function syncSubscriptions() {
+    if (!realtime || state.destroyed) return;
+    const desired = new Set();
+    for (const row of state.rows) {
+      if (row && typeof row.id === "string" && row.id) {
+        desired.add(`run:${row.id}`);
+      }
+    }
+    // Unsubscribe channels no longer in the visible list.
+    for (const ch of Array.from(subscribedChannels)) {
+      if (!desired.has(ch)) {
+        try { realtime.unsubscribe(ch); } catch (_) { /* ignore */ }
+        subscribedChannels.delete(ch);
+      }
+    }
+    // Subscribe any new channels.
+    for (const ch of desired) {
+      if (subscribedChannels.has(ch)) continue;
+      try {
+        realtime.subscribe(ch, handleRunEvent, { resume: true });
+        subscribedChannels.add(ch);
+      } catch (_) { /* ignore */ }
+    }
+  }
+
+  function unsubscribeAll() {
+    if (!realtime) { subscribedChannels.clear(); return; }
+    for (const ch of subscribedChannels) {
+      try { realtime.unsubscribe(ch); } catch (_) { /* ignore */ }
+    }
+    subscribedChannels.clear();
+  }
+
+  // Kick off initial fetch. syncSubscriptions() runs inside refresh() on success.
   refresh().catch(() => {});
-  timer = setInterval(() => { refresh().catch(() => {}); }, pollMs);
+
+  // Low-frequency background refetch to pick up NEW sessions that didn't
+  // exist at mount time. Realtime covers updates to existing rows.
+  timer = setInterval(() => { refresh().catch(() => {}); }, refreshMs);
+  if (typeof timer?.unref === "function") timer.unref();
+
+  // Also refetch when the tab regains focus — cheap and makes the list
+  // feel instant after the user comes back.
+  if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+    onFocusHandler = () => { refresh().catch(() => {}); };
+    try { window.addEventListener("focus", onFocusHandler); } catch (_) { /* ignore */ }
+  }
 
   return {
     refresh,
@@ -426,9 +588,32 @@ export default function mount(root, ctx = {}) {
       state.destroyed = true;
       if (timer) clearInterval(timer);
       timer = null;
+      if (onFocusHandler && typeof window !== "undefined" && typeof window.removeEventListener === "function") {
+        try { window.removeEventListener("focus", onFocusHandler); } catch (_) { /* ignore */ }
+        onFocusHandler = null;
+      }
+      unsubscribeAll();
       try { root.replaceChildren(); } catch (_) { /* ignore */ }
     },
   };
+}
+
+/**
+ * Pick the realtime client from the provided ctx or the global shell.
+ * We do not instantiate our own WebSocket — a shared per-tab socket lives
+ * on `window.SiskelbotShell.realtime`.
+ */
+function resolveRealtime(explicit) {
+  if (explicit && typeof explicit.subscribe === "function" && typeof explicit.unsubscribe === "function") {
+    return explicit;
+  }
+  if (typeof window === "undefined") return null;
+  const shell = window.SiskelbotShell;
+  const rt = shell && shell.realtime;
+  if (rt && typeof rt.subscribe === "function" && typeof rt.unsubscribe === "function") {
+    return rt;
+  }
+  return null;
 }
 
 function parseQuery(q) {
