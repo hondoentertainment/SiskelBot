@@ -1,0 +1,282 @@
+/* Plugin marketplace view — dark theme matching other SPA shell views. */
+
+.mk-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 480px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  padding: 16px 20px;
+  gap: 12px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* Header */
+.mk-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.mk-title { font-size: 20px; font-weight: 600; color: #f1f5f9; margin: 0; }
+.mk-subtitle { color: #94a3b8; font-size: 13px; font-family: ui-monospace, monospace; }
+
+.mk-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: #94a3b8;
+}
+.mk-pill-ok { color: #34d399; border-color: #065f46; background: #052e1f; }
+.mk-pill-bad { color: #fca5a5; border-color: #7f1d1d; background: #3b0a0a; }
+.mk-pill-muted { color: #94a3b8; }
+
+/* Panes */
+.mk-panes {
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) 1fr;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+}
+
+.mk-list-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.mk-detail {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 16px 18px;
+  overflow: auto;
+  min-height: 0;
+}
+
+/* Toolbar */
+.mk-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.mk-spacer { flex: 1; }
+.mk-search, .mk-select, .mk-btn {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #e2e8f0;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: inherit;
+}
+.mk-search { min-width: 140px; flex: 1; }
+.mk-btn { cursor: pointer; }
+.mk-btn:hover { background: #1e293b; border-color: #475569; }
+.mk-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.mk-btn-primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+.mk-btn-primary:hover:not(:disabled) { background: #1d4ed8; border-color: #1d4ed8; }
+.mk-btn-danger { background: #7f1d1d; border-color: #7f1d1d; color: #fecaca; }
+.mk-btn-danger:hover:not(:disabled) { background: #991b1b; }
+.mk-btn-enable { background: #065f46; border-color: #065f46; color: #d1fae5; }
+.mk-btn-enable:hover:not(:disabled) { background: #047857; }
+.mk-btn-disable { background: #78350f; border-color: #78350f; color: #fde68a; }
+.mk-btn-disable:hover:not(:disabled) { background: #92400e; }
+
+.mk-error {
+  color: #fca5a5;
+  background: #3b0a0a;
+  border: 1px solid #7f1d1d;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+/* List */
+.mk-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+.mk-list-item {
+  padding: 10px 12px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.mk-list-item:hover { border-color: #475569; }
+.mk-list-item-active {
+  border-color: #60a5fa;
+  background: #0c1a33;
+}
+.mk-list-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.mk-list-name { font-weight: 600; color: #f1f5f9; }
+.mk-list-version {
+  font-size: 11px;
+  color: #64748b;
+  background: #020617;
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.mk-list-desc {
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.35;
+  max-height: 2.7em;
+  overflow: hidden;
+}
+.mk-list-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.mk-list-author { font-size: 11px; color: #64748b; }
+
+.mk-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #334155;
+  color: #cbd5e1;
+  text-transform: capitalize;
+}
+.mk-badge-installed {
+  background: #064e3b;
+  color: #34d399;
+}
+
+.mk-empty {
+  color: #64748b;
+  padding: 24px 8px;
+  text-align: center;
+  font-size: 13px;
+}
+
+/* Detail pane */
+.mk-detail-empty {
+  color: #64748b;
+  font-size: 13px;
+  padding: 24px 0;
+  text-align: center;
+}
+.mk-detail-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.mk-detail-name { margin: 0; font-size: 18px; color: #f1f5f9; }
+.mk-detail-version { font-size: 12px; color: #64748b; }
+.mk-detail-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 6px 0 10px 0;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #94a3b8;
+}
+.mk-detail-author { color: #94a3b8; }
+.mk-detail-count { color: #94a3b8; }
+.mk-detail-desc {
+  color: #cbd5e1;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 12px 0;
+}
+.mk-detail-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.mk-detail-sub {
+  font-size: 13px;
+  color: #94a3b8;
+  margin: 12px 0 6px 0;
+}
+.mk-actions-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mk-actions-list li {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: #e2e8f0;
+}
+.mk-actions-empty { color: #64748b; font-style: italic; }
+
+/* Progress bar + row status */
+.mk-progress {
+  height: 4px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 6px 0;
+}
+.mk-progress-fill {
+  height: 100%;
+  background: #60a5fa;
+  width: 0%;
+  transition: width 0.2s ease-out;
+}
+.mk-row-status {
+  font-size: 12px;
+  color: #94a3b8;
+  min-height: 1em;
+}
+.mk-row-status-error { color: #fca5a5; }
+
+/* Responsive */
+@media (max-width: 720px) {
+  .mk-panes {
+    grid-template-columns: 1fr;
+  }
+  .mk-list-pane { max-height: 40vh; }
+}
