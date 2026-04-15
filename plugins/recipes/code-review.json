@@ -1,0 +1,43 @@
+{
+  "id": "code-review",
+  "name": "code-review",
+  "description": "Three-step code review: locate relevant files in the repo, propose a dry-run refactor patch, then hand off to a human for final review and apply. Requires AGENT_CODEGEN_TOOLS=1 on the server.",
+  "tags": ["phase-63", "code-review", "refactor"],
+  "requires": {
+    "env": ["AGENT_CODEGEN_TOOLS=1"]
+  },
+  "steps": [
+    {
+      "id": "locate",
+      "title": "Locate relevant files in the indexed repo",
+      "action": "tool",
+      "payload": {
+        "tool": "search_repo",
+        "args": {
+          "query": "{{input.query}}",
+          "limit": 20
+        }
+      }
+    },
+    {
+      "id": "propose",
+      "title": "Propose a dry-run refactor patch",
+      "action": "tool",
+      "payload": {
+        "tool": "propose_patch",
+        "args": {
+          "files": "{{input.files}}",
+          "intent": "{{input.intent}}"
+        }
+      }
+    },
+    {
+      "id": "review",
+      "title": "Manual review — approve or request changes",
+      "action": "manual",
+      "payload": {
+        "prompt": "Review the proposed patch returned by propose_patch. This recipe intentionally stops short of applying the patch. To apply, call POST /refactor/plans/:id/apply with {\"dryRun\": false, \"writeToDisk\": true} AND ensure WORKSPACE_FILE_TOOLS=1 is set on the server."
+      }
+    }
+  ]
+}

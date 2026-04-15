@@ -138,3 +138,120 @@ test("applyRefactor on unknown plan returns null", async () => {
   const res = await applyRefactor({ planId: "does-not-exist", dryRun: false, workspaceId: "ws-none" });
   assert.equal(res, null);
 });
+
+test("planIndex survives a module reload (persistent index)", async () => {
+  // Create a plan, reload the module to simulate a restart, then resolve
+  // the plan without passing workspaceId. The lookup must succeed via the
+  // on-disk index.
+  await _reset("ws-persist");
+  const plan = await planRefactor({
+    workspaceId: "ws-persist",
+    files: [{ path: "a.js", content: "alpha" }],
+    transform: { type: "replace", from: "alpha", to: "beta" },
+  });
+  const fresh = await import(`../lib/refactor-agent.js?reload=${Date.now()}`);
+  const fetched = await fresh.getPlan(plan.planId);
+  assert.ok(fetched, "plan should resolve via persistent index after module reload");
+  assert.equal(fetched.planId, plan.planId);
+  assert.equal(fetched.workspaceId, "ws-persist");
+});
+
+test("applyRefactor writeToDisk is refused when WORKSPACE_FILE_TOOLS is disabled", async () => {
+  await _reset("ws-write-gate");
+  const plan = await planRefactor({
+    workspaceId: "ws-write-gate",
+    files: [{ path: "a.js", content: "hello" }],
+    transform: { type: "replace", from: "hello", to: "world" },
+  });
+  const prevGate = process.env.WORKSPACE_FILE_TOOLS;
+  delete process.env.WORKSPACE_FILE_TOOLS;
+  try {
+    const res = await applyRefactor({
+      planId: plan.planId,
+      dryRun: false,
+      writeToDisk: true,
+      workspaceId: "ws-write-gate",
+    });
+    assert.equal(res.writeToDisk, false);
+    assert.ok(Array.isArray(res.writeErrors));
+    assert.equal(res.writeErrors[0].code, "WORKSPACE_FILE_TOOLS_DISABLED");
+    assert.deepEqual(res.wrote, []);
+  } finally {
+    if (prevGate === undefined) delete process.env.WORKSPACE_FILE_TOOLS;
+    else process.env.WORKSPACE_FILE_TOOLS = prevGate;
+  }
+});
+
+test("applyRefactor writeToDisk actually writes files when gated correctly", async () => {
+  const { mkdtempSync: mkt, readFileSync } = await import("node:fs");
+  const { tmpdir: tmp } = await import("node:os");
+  const { join: j } = await import("node:path");
+  const wsRoot = mkt(j(tmp(), "siskel-refactor-root-"));
+  await _reset("ws-write-ok");
+  const plan = await planRefactor({
+    workspaceId: "ws-write-ok",
+    files: [{ path: "sub/a.js", content: "hello" }],
+    transform: { type: "replace", from: "hello", to: "howdy" },
+  });
+  // Pre-create the directory so writeFile succeeds (planRefactor doesn't
+  // mkdirp; the test supplies an empty dir tree mirroring the intended layout).
+  const { mkdirSync } = await import("node:fs");
+  mkdirSync(j(wsRoot, "sub"), { recursive: true });
+
+  const prevGate = process.env.WORKSPACE_FILE_TOOLS;
+  process.env.WORKSPACE_FILE_TOOLS = "1";
+  try {
+    const res = await applyRefactor({
+      planId: plan.planId,
+      dryRun: false,
+      writeToDisk: true,
+      workspaceId: "ws-write-ok",
+      workspaceFilesystemRoot: wsRoot,
+    });
+    assert.equal(res.writeToDisk, true);
+    assert.deepEqual(res.wrote, ["sub/a.js"]);
+    assert.deepEqual(res.writeErrors, []);
+    const written = readFileSync(j(wsRoot, "sub/a.js"), "utf8");
+    assert.equal(written, "howdy");
+  } finally {
+    if (prevGate === undefined) delete process.env.WORKSPACE_FILE_TOOLS;
+    else process.env.WORKSPACE_FILE_TOOLS = prevGate;
+    try { rmSync(wsRoot, { recursive: true, force: true }); } catch (_) {}
+  }
+});
+
+test("applyRefactor writeToDisk refuses paths that escape the workspace root", async () => {
+  const { mkdtempSync: mkt } = await import("node:fs");
+  const { tmpdir: tmp } = await import("node:os");
+  const { join: j } = await import("node:path");
+  const wsRoot = mkt(j(tmp(), "siskel-refactor-esc-"));
+  await _reset("ws-esc");
+  const plan = await planRefactor({
+    workspaceId: "ws-esc",
+    files: [
+      { path: "../escape.js", content: "x" },
+      { path: "ok.js", content: "x" },
+    ],
+    transform: { type: "replace", from: "x", to: "y" },
+  });
+
+  const prevGate = process.env.WORKSPACE_FILE_TOOLS;
+  process.env.WORKSPACE_FILE_TOOLS = "1";
+  try {
+    const res = await applyRefactor({
+      planId: plan.planId,
+      dryRun: false,
+      writeToDisk: true,
+      workspaceId: "ws-esc",
+      workspaceFilesystemRoot: wsRoot,
+    });
+    assert.equal(res.writeToDisk, true);
+    // Traversal is refused by the guard; ok.js still writes.
+    assert.ok(res.writeErrors.some((e) => e.path === "../escape.js" && e.code === "PATH_TRAVERSAL"));
+    assert.ok(res.wrote.includes("ok.js"));
+  } finally {
+    if (prevGate === undefined) delete process.env.WORKSPACE_FILE_TOOLS;
+    else process.env.WORKSPACE_FILE_TOOLS = prevGate;
+    try { rmSync(wsRoot, { recursive: true, force: true }); } catch (_) {}
+  }
+});

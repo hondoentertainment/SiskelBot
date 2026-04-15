@@ -148,3 +148,19 @@ test("getMigrationStatus and listMigrations round-trip", async () => {
   assert.ok(ids.includes(a.migrationId));
   assert.ok(ids.includes(b.migrationId));
 });
+
+test("migrationIndex survives a module reload (persistent index)", async () => {
+  // Create a migration, then reload the module to simulate a restart and
+  // verify that advanceMigration can still resolve the workspace from the
+  // on-disk index when no workspaceId is passed.
+  await _reset("ws-persist-mig");
+  await registerPlaybook(PLAYBOOK);
+  const m = await startMigration({ workspaceId: "ws-persist-mig", playbookName: PLAYBOOK.name });
+  const fresh = await import(`../lib/migration-assistant.js?reload=${Date.now()}`);
+  const fetched = await fresh.getMigrationStatus(m.migrationId);
+  assert.ok(fetched, "migration should resolve via persistent index after module reload");
+  assert.equal(fetched.migrationId, m.migrationId);
+  assert.equal(fetched.workspaceId, "ws-persist-mig");
+  const advanced = await fresh.advanceMigration({ migrationId: m.migrationId, stepOutcome: "pass" });
+  assert.equal(advanced.steps[0].status, "completed");
+});
