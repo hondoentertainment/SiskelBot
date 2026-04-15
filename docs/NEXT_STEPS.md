@@ -2,6 +2,7 @@
 
 **Status date:** 2026-04-14
 **Branch:** `claude/recommend-next-steps-jNaEP`
+**Superseded by:** [`docs/NEXT_STEPS_WAVE_2.md`](NEXT_STEPS_WAVE_2.md) — P1–P3 items below have shipped
 **Supersedes:** [`docs/NEXT_PHASES.md`](NEXT_PHASES.md) (Wave 1 closeout has largely shipped)
 
 This document takes fresh stock of the tree after the Phase 51–70 closeout
