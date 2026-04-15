@@ -438,3 +438,203 @@ used for WebSocket presence (`sanitizeWorkspace`, `sanitizeUserId`).
   `publishPresenceEvent` helper and subscribes to
   `presence:<workspaceId>`, asserting `{ type, userId, ts }` events and
   channel-level isolation.
+
+---
+
+## Shell view registration (wave 4)
+
+The agent runs list view (`client/src/views/runs.js`) pairs with the
+existing `agent-run.js` detail view. To wire both into the SPA shell,
+replace the `/runs` and `/runs/:id` placeholder registrations in
+`client/src/app.js` with:
+
+```js
+router.register("/runs", async (ctx) => (await import("./views/runs.js")).default(mainEl, ctx));
+router.register("/runs/:id", async (ctx) => (await import("./views/agent-run.js")).default(mainEl, { sessionId: ctx.params.id }));
+palette.register({ id: "goto-runs", title: "Go to agent runs", run: () => router.navigate("/runs") });
+```
+
+Where `mainEl` is the `<main id="sb-main">` node already created by
+`bootstrap()`. The list view consumes
+`GET /api/v1/agent/sessions?workspace=<ws>&limit=40`, polls every 5s
+(TODO: upgrade to the `run:*` realtime channel), and navigates to
+`/runs/:id` via `window.SiskelbotShell.router` when present, with a
+`window.location.assign("/app#/runs/" + id)` fallback.
+
+### New files
+
+- `client/src/views/runs.js` — default export `mount(el, { params, query, apiBase? })`.
+  Exports pure helpers `formatStatus`, `sortRows`, `filterRows`.
+- `client/src/views/runs.css` — dark theme matching `agent-run.css`.
+
+### Tests
+
+- `tests/client-views-runs.test.js` — 19 unit tests covering
+  `formatStatus` (label + color class), `sortRows` (stable,
+  createdAt-desc default, numeric + ISO timestamps, title / status keys),
+  and `filterRows` (status + query composition, `completed`/`complete`
+  equivalence, case-insensitive substring match, id fallback). No JSDOM.
+
+### Chat view
+
+The chat view (`client/src/views/chat.js`) mounts a two-pane conversation
+list + streaming composer inside the shell. Add to `client/src/app.js`:
+
+```js
+router.register("/chat", async (ctx) => (await import("./views/chat.js")).default(mainEl, ctx));
+palette.register({ id: "goto-chat", title: "Go to chat", run: () => router.navigate("/chat") });
+```
+
+The view consumes `GET /api/v1/conversations?workspace=default` for the
+list, tries `GET /api/v1/conversations/:id/messages` for per-conversation
+history (falls back to reading `messages` from the conversation object
+when that endpoint is not available), and POSTs
+`/v1/chat/completions` with `{messages, model, stream: true, workspace,
+conversationId, requestId}` for streaming responses. SSE frames are
+parsed via the exported `parseSseLine` helper.
+
+Model selection is persisted to `localStorage["siskelbot:chat:model"]`;
+the option list is static (`gpt-4o-mini`, `gpt-4o`, `llama3.1`).
+
+#### New files
+
+- `client/src/views/chat.js` — default export `mount(el, ctx)`.
+  Named exports: `parseSseLine`, `renderMarkdown`, `formatUsd`.
+- `client/src/views/chat.css` — dark theme matching the shell palette.
+
+#### Tests
+
+- `tests/client-views-chat.test.js` — 15 unit tests covering
+  `parseSseLine` (data / event / [DONE] / blank / comment / malformed),
+  `renderMarkdown` (fenced code, inline code, bold/italic, link href
+  escape, `<script>` sanitization, `javascript:` href rejection), and
+  `formatUsd` (sub-dollar, `>= 1`, zero, negative, non-numbers). No JSDOM.
+
+### Knowledge view
+
+The knowledge view (`client/src/views/knowledge.js`) mounts a three-tab
+panel (Docs / Search / Graph) in the shell. Add to `client/src/app.js`:
+
+```js
+router.register("/knowledge", async (ctx) => (await import("./views/knowledge.js")).default(mainEl, ctx));
+palette.register({ id: "goto-knowledge", title: "Go to knowledge", run: () => router.navigate("/knowledge") });
+```
+
+Consumes:
+
+- `GET /api/v1/context?workspace=<ws>` — docs list (tolerant of
+  `[]`, `{items: []}`, `{documents: []}`).
+- `POST /api/v1/context`, `PUT /api/v1/context/:id`,
+  `DELETE /api/v1/context/:id?workspace=<ws>` — doc CRUD.
+- `GET /api/v1/search?q=<q>&workspace=<ws>` — keyword search.
+- `GET /api/v1/context/semantic?q=<q>&workspace=<ws>` — semantic
+  search. If this endpoint returns 404, the view shows a visible
+  notice and falls back to the keyword endpoint.
+- `GET /api/v1/knowledge/graph?workspace=<ws>&limit=100` — knowledge
+  graph. On 404 or empty result the view renders "Graph unavailable".
+
+The graph tab renders a static 600×600 canvas using the exported
+`layoutEntitiesCircular` helper (deterministic circular placement).
+Click a node to highlight its neighbors by dimming others. No zoom /
+pan. Responsive only via CSS `max-width: 100%`.
+
+#### New files
+
+- `client/src/views/knowledge.js` — default export `mount(el, ctx)`.
+  Named exports: `formatDocSize`, `rankSearchResults`,
+  `layoutEntitiesCircular`.
+- `client/src/views/knowledge.css` — dark theme matching the shell
+  palette.
+
+#### Tests
+
+- `tests/client-views-knowledge.test.js` — 4 unit tests covering
+  `formatDocSize` (0 / null / undefined / string / KB / MB),
+  `rankSearchResults` (empty, non-mutation, stable score-desc /
+  updatedAt-desc / title-asc tie-breaking), and
+  `layoutEntitiesCircular` (0 / 1 / 4 entities, determinism, finite
+  coords). No JSDOM.
+
+---
+
+## Artifacts
+
+Named outputs (files, charts, tables, etc.) produced by agent tools during a
+run are recorded in a durable store, fan out as `artifact.new` on the Agent
+Run SSE stream, and render in the hero-view Artifacts pane.
+
+### New files
+
+- `lib/agent-artifacts.js` — artifact store (`createArtifact`,
+  `listArtifactsForSession`, `getArtifactContent`, `getArtifactRecord`,
+  `deleteArtifact`, `deleteArtifactsForSession`, `getSessionArtifactBytes`,
+  `getArtifactLimits`). Inline payloads ≤ `ARTIFACT_INLINE_BYTES` (default
+  64 KiB) live in the metadata record; larger payloads spill to
+  `<STORAGE_PATH>/artifacts/<sessionId>/<id>.bin`. Metadata is persisted via
+  `lib/json-path-store.js` so it flows through the same JSON / SQLite /
+  Postgres backends as the rest of the codebase. `createArtifact` publishes
+  `artifact.new` via `publishAgentRunEvent(sessionId, "artifact.new", …)`.
+- `routes/agent-artifacts.js` — exports `mountAgentArtifactRoutes(app, deps)`.
+
+### Routes
+
+| Method | Path                                          | Scope | Description                                      |
+|--------|-----------------------------------------------|-------|--------------------------------------------------|
+| GET    | `/agent/sessions/:id/artifacts`               | read  | List artifacts for the session (metadata only).  |
+| POST   | `/agent/sessions/:id/artifacts`               | write | Create an artifact (JSON or multipart).          |
+| GET    | `/agent/artifacts/:artifactId`                | read  | Stream the content with the recorded MIME.       |
+| DELETE | `/agent/artifacts/:artifactId`                | write | Remove an artifact (record + disk file).         |
+
+All four routes follow the `logRequest → userAuth → requireScope → handler`
+chain and gate access through `getWorkspaceAgentAccess` + session ownership
+(same pattern as `routes/agent-sessions.js`).
+
+`POST` accepts either:
+
+- `application/json` with `{ name, mime, contentBase64 }` or
+  `{ name, mime, content }` (string, UTF-8).
+- `multipart/form-data` with a `file` field and optional `name` / `mime` /
+  `runId` / `meta` form fields.
+
+### Size caps and environment variables
+
+| Variable                       | Default              | Purpose                                                  |
+|--------------------------------|----------------------|----------------------------------------------------------|
+| `ARTIFACT_MAX_BYTES`           | `10485760` (10 MiB)  | Per-artifact hard cap — returns 413 `ARTIFACT_TOO_LARGE` |
+| `ARTIFACT_SESSION_MAX_BYTES`   | `104857600` (100 MiB)| Per-session cap — returns 413 `ARTIFACT_QUOTA_EXCEEDED`  |
+| `ARTIFACT_INLINE_BYTES`        | `65536` (64 KiB)     | Threshold at which payloads spill to disk                |
+
+Coded error responses: `INVALID_NAME`, `INVALID_MIME`, `INVALID_CONTENT`,
+`ARTIFACT_TOO_LARGE`, `ARTIFACT_QUOTA_EXCEEDED`.
+
+### Wiring into `routes/index.js`
+
+```js
+import { mountAgentArtifactRoutes } from "./agent-artifacts.js";
+// ...and append to mountFunctions:
+mountAgentArtifactRoutes,
+```
+
+### Client rendering
+
+`client/src/views/agent-run.js` — the Artifacts pane now:
+
+- Backfills on first mount via `GET /agent/sessions/:id/artifacts`.
+- Prepends new artifacts when an `artifact.new` SSE frame arrives
+  (dedup'd by id).
+- Renders each card with a mime-category icon, name, mime, and size.
+- On click:
+  - `image/*` → inline `<img>` via the content endpoint.
+  - `text/*`, `application/json`, `*+json`, `*+xml` → fetched and rendered
+    in a `<pre>`, truncated at 20 KB with a **Load full** button.
+  - Everything else → a Download link (uses the same content endpoint with
+    a `download` attribute).
+
+### Tests
+
+- `tests/agent-artifacts-store.test.js` — 10 unit tests covering inline +
+  disk storage, per-artifact and per-session caps, mime / name validation,
+  SSE publish, list scoping, and `deleteArtifactsForSession` cleanup.
+- `tests/agent-artifacts-route.test.js` — 11 integration tests covering
+  JSON and multipart POST, list, streamed GET with correct MIME and bytes,
+  auth + workspace-access gates, 404 paths, and DELETE semantics.

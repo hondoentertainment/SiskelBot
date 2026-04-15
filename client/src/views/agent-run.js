@@ -23,6 +23,7 @@
 const DEFAULT_API_BASE = "/api/v1";
 const MAX_TIMELINE_EVENTS = 500;
 const CSS_HREF = new URL("./agent-run.css", import.meta.url).href;
+const ARTIFACT_TEXT_PREVIEW_BYTES = 20 * 1024; // truncate text / json previews at 20 KB
 
 function el(tag, attrs, children) {
   const node = document.createElement(tag);
@@ -67,6 +68,30 @@ function fmtTime(ts) {
   return d.toLocaleTimeString();
 }
 
+function fmtBytes(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v) || v < 0) return "";
+  if (v < 1024) return `${v} B`;
+  if (v < 1024 * 1024) return `${(v / 1024).toFixed(1)} KB`;
+  if (v < 1024 * 1024 * 1024) return `${(v / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(v / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function mimeCategory(mime) {
+  const m = String(mime || "").toLowerCase();
+  if (m.startsWith("image/")) return "image";
+  if (m === "application/json" || m.endsWith("+json")) return "json";
+  if (m.startsWith("text/") || m === "application/xml" || m.endsWith("+xml")) return "text";
+  return "other";
+}
+
+function mimeIcon(cat) {
+  if (cat === "image") return "\u{1F5BC}"; // framed picture
+  if (cat === "json") return "{}";
+  if (cat === "text") return "\u{1F4C4}"; // document
+  return "\u{1F4E6}"; // package
+}
+
 /**
  * @param {HTMLElement} root
  * @param {{ sessionId: string, apiBase?: string }} opts
@@ -94,6 +119,9 @@ export default function mount(root, opts) {
     autoscroll: true,
   };
   let es = null;
+  let previewRequestSeq = 0;
+  const knownArtifactIds = new Set();
+  let artifactsBackfilled = false;
 
   // ─── DOM scaffold ─────────────────────────────────────────────────────────
   const wrap = el("div", { class: "agent-run" });
@@ -189,18 +217,49 @@ export default function mount(root, opts) {
       artifactsList.appendChild(el("li", { class: "ar-empty" }, "No artifacts yet."));
     }
     for (const art of state.artifacts) {
+      const cat = mimeCategory(art.mime);
+      const icon = el("span", { class: "ar-artifact-icon", "aria-hidden": "true" }, mimeIcon(cat));
+      const nameNode = el("span", { class: "ar-artifact-name" }, art.name || art.id || "artifact");
+      const metaBits = [];
+      if (art.mime) metaBits.push(art.mime);
+      const sizeText = fmtBytes(art.sizeBytes);
+      if (sizeText) metaBits.push(sizeText);
+      const meta = metaBits.length
+        ? el("span", { class: "ar-artifact-mime" }, metaBits.join(" \u00b7 "))
+        : null;
       const btn = el(
         "button",
-        { type: "button", class: "ar-artifact-btn" },
-        [
-          el("span", { class: "ar-artifact-name" }, art.name || art.id || "artifact"),
-          art.mime ? el("span", { class: "ar-artifact-mime" }, art.mime) : null,
-        ],
+        { type: "button", class: `ar-artifact-btn ar-artifact-cat-${cat}` },
+        [icon, nameNode, meta],
       );
       btn.addEventListener("click", () => openPreview(art));
       artifactsList.appendChild(el("li", null, btn));
     }
     renderPreview();
+  }
+
+  function artifactUrl(a) {
+    if (a && typeof a.url === "string" && a.url) return a.url;
+    if (a && a.id) return `${apiBase}/agent/artifacts/${encodeURIComponent(a.id)}`;
+    return null;
+  }
+
+  async function fetchArtifactText(a, { full = false } = {}) {
+    const url = artifactUrl(a);
+    if (!url) return null;
+    try {
+      const resp = await fetch(url, { credentials: "include" });
+      if (!resp.ok) return null;
+      const buf = await resp.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      if (!full && bytes.length > ARTIFACT_TEXT_PREVIEW_BYTES) {
+        const slice = bytes.subarray(0, ARTIFACT_TEXT_PREVIEW_BYTES);
+        return { text: new TextDecoder().decode(slice), truncated: true, totalBytes: bytes.length };
+      }
+      return { text: new TextDecoder().decode(bytes), truncated: false, totalBytes: bytes.length };
+    } catch {
+      return null;
+    }
   }
 
   function renderPreview() {
@@ -210,28 +269,99 @@ export default function mount(root, opts) {
       artifactPreview.appendChild(el("div", { class: "ar-empty" }, "Click an artifact to preview."));
       return;
     }
-    const mime = String(a.mime || "").toLowerCase();
-    const header = el("div", { class: "ar-artifact-preview-head" }, [
+    const cat = mimeCategory(a.mime);
+    const url = artifactUrl(a);
+    const headBits = [
       el("strong", null, a.name || a.id || "artifact"),
-      el("button", { type: "button", class: "ar-btn ar-btn-sm", onClick: () => { state.preview = null; renderPreview(); } }, "Close"),
-    ]);
+    ];
+    const metaBits = [];
+    if (a.mime) metaBits.push(a.mime);
+    const sizeText = fmtBytes(a.sizeBytes);
+    if (sizeText) metaBits.push(sizeText);
+    if (metaBits.length) {
+      headBits.push(el("span", { class: "ar-artifact-mime" }, metaBits.join(" \u00b7 ")));
+    }
+    if (url) {
+      headBits.push(
+        el(
+          "a",
+          { href: url, download: a.name || a.id || "artifact", class: "ar-btn ar-btn-sm", target: "_blank", rel: "noopener" },
+          "Download",
+        ),
+      );
+    }
+    headBits.push(
+      el(
+        "button",
+        {
+          type: "button",
+          class: "ar-btn ar-btn-sm",
+          onClick: () => { state.preview = null; renderPreview(); },
+        },
+        "Close",
+      ),
+    );
+    const header = el("div", { class: "ar-artifact-preview-head" }, headBits);
     artifactPreview.appendChild(header);
-    if (mime.startsWith("image/") && a.url) {
-      artifactPreview.appendChild(el("img", { src: a.url, alt: a.name || "image", class: "ar-artifact-image" }));
+
+    if (cat === "image" && url) {
+      artifactPreview.appendChild(
+        el("img", { src: url, alt: a.name || "image", class: "ar-artifact-image" }),
+      );
       return;
     }
-    if (mime.includes("json")) {
-      let txt;
-      try {
-        txt = JSON.stringify(typeof a.content === "string" ? JSON.parse(a.content) : a.content, null, 2);
-      } catch {
-        txt = String(a.content ?? "");
-      }
-      artifactPreview.appendChild(el("pre", { class: "ar-artifact-text" }, txt));
+
+    if (cat === "text" || cat === "json") {
+      const pre = el("pre", { class: "ar-artifact-text" }, "Loading\u2026");
+      artifactPreview.appendChild(pre);
+      const requestId = ++previewRequestSeq;
+      fetchArtifactText(a, { full: false }).then((res) => {
+        if (requestId !== previewRequestSeq || state.preview !== a) return;
+        if (!res) { pre.textContent = "(failed to load preview)"; return; }
+        let body = res.text;
+        if (cat === "json") {
+          try { body = JSON.stringify(JSON.parse(res.text), null, 2); } catch { /* keep raw */ }
+        }
+        pre.textContent = body;
+        if (res.truncated) {
+          const loadFull = el(
+            "button",
+            { type: "button", class: "ar-btn ar-btn-sm" },
+            `Load full (${fmtBytes(res.totalBytes)})`,
+          );
+          loadFull.addEventListener("click", async () => {
+            loadFull.disabled = true;
+            loadFull.textContent = "Loading\u2026";
+            const fullRes = await fetchArtifactText(a, { full: true });
+            if (state.preview !== a) return;
+            if (!fullRes) { loadFull.textContent = "Failed"; return; }
+            let fullBody = fullRes.text;
+            if (cat === "json") {
+              try { fullBody = JSON.stringify(JSON.parse(fullRes.text), null, 2); } catch { /* keep raw */ }
+            }
+            pre.textContent = fullBody;
+            loadFull.remove();
+          });
+          artifactPreview.appendChild(loadFull);
+        }
+      });
       return;
     }
-    const text = typeof a.content === "string" ? a.content : JSON.stringify(a.content ?? "", null, 2);
-    artifactPreview.appendChild(el("pre", { class: "ar-artifact-text" }, text));
+
+    // Non-previewable mime types: surface as a download link.
+    const linkRow = el("div", { class: "ar-artifact-download" });
+    if (url) {
+      linkRow.appendChild(
+        el(
+          "a",
+          { href: url, download: a.name || a.id || "artifact", target: "_blank", rel: "noopener" },
+          `Download ${a.name || "artifact"}`,
+        ),
+      );
+    } else {
+      linkRow.appendChild(el("span", { class: "ar-empty" }, "Preview unavailable."));
+    }
+    artifactPreview.appendChild(linkRow);
   }
 
   function renderApprovals() {
@@ -319,6 +449,40 @@ export default function mount(root, opts) {
     }
   }
 
+  // ─── Artifact backfill ────────────────────────────────────────────────────
+
+  async function backfillArtifacts() {
+    if (artifactsBackfilled) return;
+    artifactsBackfilled = true;
+    try {
+      const resp = await fetch(
+        `${apiBase}/agent/sessions/${encodeURIComponent(sessionId)}/artifacts`,
+        { credentials: "include" },
+      );
+      if (!resp.ok) return;
+      const data = await resp.json().catch(() => null);
+      const items = Array.isArray(data?.items) ? data.items : [];
+      let changed = false;
+      // Session list is newest-first; preserve that on paint.
+      for (const rec of items) {
+        const id = rec?.id;
+        if (!id || knownArtifactIds.has(id)) continue;
+        knownArtifactIds.add(id);
+        state.artifacts.push({
+          id,
+          name: rec.name,
+          mime: rec.mime,
+          sizeBytes: rec.sizeBytes,
+          url: `${apiBase}/agent/artifacts/${encodeURIComponent(id)}`,
+        });
+        changed = true;
+      }
+      if (changed) renderArtifacts();
+    } catch {
+      // Best-effort backfill; live SSE will still populate new items.
+    }
+  }
+
   // ─── Event handling ───────────────────────────────────────────────────────
 
   function summarize(ev) {
@@ -360,15 +524,21 @@ export default function mount(root, opts) {
       state.iterations += type === "tool.call" ? 1 : 0;
       renderFooter();
     } else if (type === "artifact.new") {
-      const art = {
-        id: payload.id || `a_${state.artifacts.length + 1}`,
-        name: payload.name,
-        mime: payload.mime,
-        url: payload.url,
-        content: payload.content,
-      };
-      state.artifacts.push(art);
-      renderArtifacts();
+      const id = payload.id || `a_${state.artifacts.length + 1}`;
+      if (!knownArtifactIds.has(id)) {
+        const art = {
+          id,
+          name: payload.name,
+          mime: payload.mime,
+          sizeBytes: payload.sizeBytes,
+          url: payload.url,
+          content: payload.content,
+        };
+        knownArtifactIds.add(id);
+        // Prepend so the latest artifact is at the top of the pane.
+        state.artifacts.unshift(art);
+        renderArtifacts();
+      }
     } else if (type === "hitl.request") {
       state.approvals.push({
         approvalId: payload.approvalId || payload.id,
@@ -446,6 +616,9 @@ export default function mount(root, opts) {
   renderArtifacts();
   renderApprovals();
   renderFooter();
+  // Fire-and-forget backfill of existing artifacts so the pane is populated
+  // even when no `artifact.new` SSE frames arrive this connection.
+  backfillArtifacts();
 
   return {
     destroy() {

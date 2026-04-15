@@ -239,6 +239,7 @@ import { mountReplayRoutes } from "./replay.js";
 import { mountSignalsRoutes } from "./signals.js";
 import { mountObservabilitySnapshotRoutes } from "./observability-snapshot.js";
 import { mountAgentHitlRoutes } from "./agent-hitl.js";
+import { mountAgentArtifactRoutes } from "./agent-artifacts.js";
 
 // Phase 63 — Code Generation vertical (5 modules)
 import mountRepoRagRoutes from "./repo-rag.js";
@@ -479,6 +480,7 @@ const mountFunctions = [
   mountSignalsRoutes,
   mountObservabilitySnapshotRoutes,
   mountAgentHitlRoutes,
+  mountAgentArtifactRoutes,
 
   // Phase 63 — Code Generation vertical
   mountRepoRagRoutes,
