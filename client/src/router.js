@@ -63,11 +63,49 @@ export function resolve(routes, path) {
   return { status: "notfound", pattern: null, params: {}, loader: null };
 }
 
+/**
+ * Pure helper: run a view loader, swap out the previous view's unmount
+ * cleanup, and return the new cleanup (or null).
+ *
+ * Contract:
+ *   - Calls `prevUnmount()` first (if a function). Any throw is swallowed.
+ *   - Invokes `loader(ctx)`; awaits if a Promise is returned.
+ *   - If the awaited result is a function, it is returned as the new unmount.
+ *     Otherwise returns null.
+ *   - Any throw from the loader is swallowed and reported via onError; the
+ *     returned unmount is null so the next navigation has nothing to clean.
+ *
+ * Exported for tests — the Router class uses this to bookkeep cleanups.
+ *
+ * @param {Function|null|undefined} prevUnmount
+ * @param {Function|null|undefined} loader
+ * @param {any} ctx
+ * @param {(err:unknown, where:string)=>void} [onError]
+ * @returns {Promise<Function|null>}
+ */
+export async function runWithLifecycle(prevUnmount, loader, ctx, onError) {
+  if (typeof prevUnmount === "function") {
+    try { await prevUnmount(); }
+    catch (e) { if (onError) onError(e, "unmount"); }
+  }
+  if (typeof loader !== "function") return null;
+  let result;
+  try {
+    result = loader(ctx);
+    if (result && typeof result.then === "function") result = await result;
+  } catch (e) {
+    if (onError) onError(e, "loader");
+    return null;
+  }
+  return typeof result === "function" ? result : null;
+}
+
 export class Router {
   constructor() {
     this.routes = [];
     this.notFound = null;
     this.listeners = new Set();
+    this._currentUnmount = null;
     this._onPop = () => this._render(window.location.pathname + window.location.search);
   }
 
@@ -110,9 +148,20 @@ export class Router {
     for (const fn of this.listeners) {
       try { fn(ctx); } catch (e) { console.error("router listener error", e); }
     }
-    if (loader) {
-      try { loader(ctx); } catch (e) { console.error("router loader error", e); }
-    }
+    // Swap the previous view's unmount for the new one (if any). The view
+    // lifecycle contract: mount() may return a function (or Promise of one)
+    // that the router calls before the next view mounts. See runWithLifecycle.
+    const prev = this._currentUnmount;
+    this._currentUnmount = null;
+    const onError = (e, where) => console.error(`router ${where} error`, e);
+    const pending = runWithLifecycle(prev, loader, ctx, onError)
+      .then((next) => {
+        // Only store if nothing else replaced us while we were awaiting.
+        if (this._currentUnmount === null) this._currentUnmount = next;
+      })
+      .catch((e) => console.error("router lifecycle error", e));
+    this._pendingRender = pending;
+    return pending;
   }
 }
 

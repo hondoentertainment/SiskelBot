@@ -391,3 +391,58 @@
 .ar-btn-danger:hover:not([disabled]) {
   background: #be123c;
 }
+
+/* Mobile polish: touch targets, safe-area footer, scroll momentum. */
+.ar-timeline-scroll,
+.ar-plan-list,
+.ar-artifacts-list,
+.ar-approvals-list,
+.ar-artifact-preview {
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 900px) {
+  .ar-grid { padding: 10px; gap: 10px; }
+  .ar-btn,
+  .ar-btn-ok,
+  .ar-btn-danger {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 10px 14px;
+    font-size: 14px;
+  }
+  .ar-btn-sm { min-height: 36px; padding: 6px 10px; }
+  .ar-artifact-btn { min-height: 44px; padding: 10px 12px; }
+  .ar-footer {
+    padding: 10px 12px;
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+  .ar-timeline-item {
+    grid-template-columns: 70px 100px 1fr;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 600px) {
+  .agent-run { font-size: 13.5px; }
+  .ar-grid { padding: 8px; gap: 8px; }
+  .ar-pane-head { padding: 10px 12px; font-size: 12px; }
+  .ar-pane-body { padding: 8px 10px; }
+  .ar-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+  .ar-footer-stats,
+  .ar-footer-actions { justify-content: flex-start; }
+  .ar-timeline-item {
+    grid-template-columns: 1fr;
+    gap: 2px;
+    padding: 8px 0;
+  }
+  .ar-timeline-time,
+  .ar-timeline-kind { font-size: 11px; }
+  .ar-approval { padding: 10px; }
+  .ar-approval-actions { flex-wrap: wrap; }
+}

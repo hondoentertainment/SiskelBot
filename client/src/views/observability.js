@@ -301,6 +301,7 @@ export default function mount(root, opts = {}) {
       if (timer) clearInterval(timer);
       timer = null;
       try { root.replaceChildren(); } catch (_) {}
+      try { globalThis.SiskelbotShell?.inspector?.clear(); } catch (_) {}
     },
   };
 }

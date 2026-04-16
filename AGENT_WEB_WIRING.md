@@ -780,3 +780,57 @@ the shell is absent (e.g., legacy HTML pages).
   escape), `renderTrajectoryTree` (empty / mixed types / >50 truncation
   / HTML escape), and `renderGraphNeighbors` (0 neighbors / row content
   with `data-entity` attribute / HTML escape).
+
+## View lifecycle
+
+Views mounted by the SPA router (`client/src/router.js`) follow a simple
+mount/unmount contract so navigation never leaks timers, in-flight fetches,
+realtime subscriptions, or stale inspector content.
+
+### Contract
+
+A view module's `mount(el, ctx)` may return **any** of:
+
+- `void` / `undefined` — nothing to clean up.
+- A function `() => void` — called by the router on the next navigation.
+- An object with a `destroy()` method — adapted to a cleanup function by
+  `app.js`'s `mountInto` helper.
+- A `Promise` resolving to any of the above — awaited before the router
+  records the cleanup.
+
+The router stores the resulting cleanup on `router._currentUnmount` and
+invokes it **before** the next view's loader runs. Thrown errors from either
+the unmount or the loader are logged via `console.error` and swallowed so a
+single buggy view cannot wedge the shell.
+
+The pure bookkeeping is factored into the exported helper
+`runWithLifecycle(prevUnmount, loader, ctx, onError)` so it can be unit
+tested without a DOM (`tests/client-shell-router-lifecycle.test.js`).
+
+### What each view should clean up
+
+Each view's returned unmount is expected to:
+
+- Clear any `setInterval` / `setTimeout` it owns.
+- Abort any in-flight `fetch` via an `AbortController`.
+- Close any `EventSource` it opened.
+- Unsubscribe from any realtime channels it subscribed to.
+- Call `globalThis.SiskelbotShell?.inspector?.clear()` so stale inspector
+  content does not linger into the next view.
+
+`mountInto` itself also calls `SiskelbotShell.inspector.clear()` up-front
+before delegating to the view's `mount()`, as a belt-and-suspenders default
+for views that have nothing else to clean up.
+
+### Per-view summary
+
+| View | Cleanup |
+|------|---------|
+| `client/src/views/chat.js` | Unsubscribes realtime channel, clears inspector. |
+| `client/src/views/agent-run.js` | Closes `EventSource`, replaces children, clears inspector. |
+| `client/src/views/knowledge.js` | Clears DOM, clears inspector. |
+| `client/src/views/recipes.js` | Replaces children, clears inspector. |
+| `client/src/views/runs.js` | Clears poll `setInterval`, replaces children, clears inspector. |
+| `client/src/views/replay.js` | Aborts in-flight fetch, stops playback timer, clears inspector. |
+| `client/src/views/observability.js` | Clears poll `setInterval`, replaces children, clears inspector. |
+

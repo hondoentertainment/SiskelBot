@@ -636,7 +636,8 @@ export default function mount(root, opts) {
     destroy() {
       try { if (es) es.close(); } catch (_) {}
       es = null;
-      root.replaceChildren();
+      try { globalThis.SiskelbotShell?.inspector?.clear(); } catch (_) {}
+      try { root.replaceChildren(); } catch (_) {}
     },
   };
 }

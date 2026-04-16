@@ -92,13 +92,28 @@ export function bootstrap(rootId = "sb-root") {
   });
 
   // Route table — lazy imports for view modules so the shell loads fast.
+  //
+  // View lifecycle: mount(el, ctx) may return (a) void, (b) a cleanup
+  // function `() => void`, (c) a `{ destroy }` object, or (d) a Promise of
+  // any of those. We normalize to a plain cleanup function so the router
+  // can call it on the next navigation.
+  const toUnmount = (result) => {
+    if (!result) return null;
+    if (typeof result === "function") return result;
+    if (typeof result.destroy === "function") return () => result.destroy();
+    return null;
+  };
   const mountInto = (loader, props) => async (ctx) => {
+    // Clear stale inspector content before the new view mounts.
+    try { globalThis.SiskelbotShell?.inspector?.clear(); } catch (_) { /* noop */ }
     const mod = await loader();
     const mountFn = mod.default || mod.mount;
     if (typeof mountFn !== "function") {
       throw new Error(`view loader ${loader.name || "(anonymous)"} has no default export or mount()`);
     }
-    return mountFn(main, { ...ctx, ...(props || {}) });
+    let result = mountFn(main, { ...ctx, ...(props || {}) });
+    if (result && typeof result.then === "function") result = await result;
+    return toUnmount(result);
   };
 
   router.register("/", () => router.navigate("/home", { replace: true }));
@@ -106,9 +121,12 @@ export function bootstrap(rootId = "sb-root") {
   router.register("/chat", mountInto(() => import("./views/chat.js")));
   router.register("/runs", mountInto(() => import("./views/runs.js")));
   router.register("/runs/:id", async (ctx) => {
+    try { globalThis.SiskelbotShell?.inspector?.clear(); } catch (_) { /* noop */ }
     const mod = await import("./views/agent-run.js");
     const mountFn = mod.default || mod.mount;
-    return mountFn(main, { sessionId: ctx.params.id, apiBase: "/api/v1" });
+    let result = mountFn(main, { sessionId: ctx.params.id, apiBase: "/api/v1" });
+    if (result && typeof result.then === "function") result = await result;
+    return toUnmount(result);
   });
   router.register("/knowledge", mountInto(() => import("./views/knowledge.js")));
   router.register("/recipes", mountInto(() => import("./views/recipes.js")));
