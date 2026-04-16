@@ -111,7 +111,7 @@ export function bootstrap(rootId = "sb-root") {
     return mountFn(main, { sessionId: ctx.params.id, apiBase: "/api/v1" });
   });
   router.register("/knowledge", mountInto(() => import("./views/knowledge.js")));
-  router.register("/recipes", placeholderView("Recipes", "Saved recipes and automation templates."));
+  router.register("/recipes", mountInto(() => import("./views/recipes.js")));
   router.register("*", notFoundView());
 
   // Palette actions
