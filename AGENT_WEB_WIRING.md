@@ -555,6 +555,58 @@ pan. Responsive only via CSS `max-width: 100%`.
   `layoutEntitiesCircular` (0 / 1 / 4 entities, determinism, finite
   coords). No JSDOM.
 
+### Recipes view
+
+The recipes view (`client/src/views/recipes.js`) mounts a two-pane
+list + editor + runner inside the shell. Add to `client/src/app.js`:
+
+```js
+router.register("/recipes", async (ctx) => (await import("./views/recipes.js")).default(mainEl, ctx));
+palette.register({ id: "goto-recipes", title: "Go to recipes", run: () => router.navigate("/recipes") });
+```
+
+Consumes:
+
+- `GET /api/v1/recipes?workspace=<ws>` — list (tolerant of `[]`,
+  `{items: []}`, `{data: {items: []}}`, `{recipes: []}`).
+- `GET /api/v1/recipes/:id?workspace=<ws>` — full detail when an
+  existing row is opened.
+- `POST /api/v1/recipes` (create) and `PUT /api/v1/recipes/:id`
+  (update) with body `{name, description, steps, workspace}`.
+- `DELETE /api/v1/recipes/:id?workspace=<ws>` — delete with
+  confirmation.
+- `POST /api/v1/recipes/:id/run` with body `{workspace}`. Falls back
+  to `POST /api/v1/schedules/run-now/:id` on 404/405 (the only
+  run-now path the current server exposes).
+
+Steps editor: each step is `{tool, args}`. `args` is rendered as a
+JSON textarea and validated via `validateStepArgs` on save. The
+view stores `argsText` separately so freeform JSON edits round-trip
+verbatim until save.
+
+The empty list state shows a "+ New recipe" CTA. The empty editor
+state shows a placeholder until a recipe is selected or created.
+Run output is pretty-printed JSON in a scrollable panel below the
+editor.
+
+#### New files
+
+- `client/src/views/recipes.js` — default export `mount(el, ctx)`.
+  Named exports: `validateStepArgs`, `moveStep`, `isValidRecipeName`.
+- `client/src/views/recipes.css` — dark theme matching the shell
+  palette (`#0f172a` / `#1e293b` / `#e2e8f0` / `#60a5fa` / `#334155`).
+
+#### Tests
+
+- `tests/client-views-recipes.test.js` — 10 unit tests covering
+  `validateStepArgs` (empty, valid object, invalid JSON, array /
+  primitive / null rejection), `moveStep` (forward, backward,
+  same-idx no-op, out-of-bounds clamping, single-element array,
+  non-array input), and `isValidRecipeName` (lowercase / hyphen /
+  dot / digits / 64-char accept; empty / uppercase / leading
+  hyphen / over-length / spaces / slashes / non-string reject).
+  No JSDOM.
+
 ---
 
 ## Artifacts
@@ -638,3 +690,93 @@ mountAgentArtifactRoutes,
 - `tests/agent-artifacts-route.test.js` — 11 integration tests covering
   JSON and multipart POST, list, streamed GET with correct MIME and bytes,
   auth + workspace-access gates, 404 paths, and DELETE semantics.
+
+## Shell globals
+
+The SPA shell exposes a single global, `window.SiskelbotShell`, that other
+views and downstream agents use to find the router, command palette,
+realtime client, inspector, and the active user / workspace.
+
+```js
+window.SiskelbotShell = {
+  router,                  // from client/src/router.js
+  palette,                 // from client/src/palette.js
+  realtime,                // lazy RealtimeClient wrapper (connects on first .subscribe)
+  inspector,               // shell's inspector instance
+  user: { userId, email?, displayName?, avatarUrl? } | null,
+  workspace: { id, name, role? } | null,
+  workspaces: [{ id, name, role? }, ...],
+  setWorkspace(id),        // updates active, persists to localStorage, emits 'workspace:change'
+  on(event, handler),      // 'workspace:change' | 'user:change'
+  off(event, handler),
+  emit(event, payload),
+};
+```
+
+### Bootstrap behavior
+
+- `client/src/app.js` builds the global at boot via `createShellGlobals()`
+  from `client/src/shell/shell-globals.js`.
+- It calls `GET /api/v1/auth/session` and `GET /api/v1/workspaces` in the
+  background. On 401 the shell stays in guest mode (`user = null`,
+  `workspaces = []`) and the header shows a "Sign in" link. On any other
+  non-2xx response the failure is logged and the shell proceeds with
+  empty state — the rest of the app must not crash.
+- The workspaces endpoint may return either a bare array or
+  `{ items: [...] }`; the bootstrap normalizes both shapes.
+
+### Workspace persistence
+
+- The active workspace id is persisted to `localStorage["siskelbot:workspace"]`
+  whenever `setWorkspace(id)` is called.
+- On reload, the shell prefers the persisted id; if it is no longer in the
+  user's workspace list, the first workspace is selected instead.
+
+### Realtime: lazy connect
+
+- A single `RealtimeClient({ url: "/ws/realtime" })` is constructed at boot
+  but `.connect()` is deferred until the first `.subscribe(channel, handler, opts)`.
+- Views should call `window.SiskelbotShell.realtime.subscribe(...)` rather
+  than constructing their own client, so subscriptions multiplex over one
+  socket.
+
+### Header
+
+- `client/src/shell/header.js` renders a `<select>` for the workspace
+  switcher and an account block with the user's display name (or initials
+  avatar) when signed in, falling back to a "Sign in" link when not.
+- Selecting a workspace calls `shell.setWorkspace(id)`, which persists and
+  emits `workspace:change`.
+
+### Tests
+
+- `tests/client-shell-globals.test.js` — 5 pure unit tests covering the
+  emitter contract: single + multi-handler dispatch, `off` removes a
+  handler, `emit` with no handlers does not throw, and event isolation.
+
+## Inspector context-sensitivity
+
+The right-side inspector drawer (`client/src/shell/inspector.js`,
+exposed at `window.SiskelbotShell.inspector` with `setTitle / setContent /
+clear / toggle`) is now populated by views as the active selection
+changes. A new pure-helper module,
+`client/src/views/inspector-content.js`, exports HTML-string renderers
+that each view feeds into `inspector.setContent(...)`.
+
+Every view feature-detects `globalThis.SiskelbotShell?.inspector` and
+wraps the call in `try / catch` so the panel is silently skipped when
+the shell is absent (e.g., legacy HTML pages).
+
+| View | Hook point | Title | Body renderer | When |
+|------|-----------|-------|---------------|------|
+| `client/src/views/chat.js` | end of `streamCompletion` (`finally` block after the SSE reader closes) | `Last response` | `renderChatSignals({ cost, latencyMs, model, tokens })` | After each assistant message completes. Captures `usage` / `model` / `costUsd` from any SSE frame; latency is the wall-clock time from request start to stream end via `performance.now()`. Missing fields render as em-dash. |
+| `client/src/views/agent-run.js` | end of `handleEvent` (after `renderTimeline()`) | `Trajectory` | `renderTrajectoryTree(state.timeline)` | On every SSE frame. Groups events by type via collapsible `<details>` and truncates to the most recent 50. |
+| `client/src/views/knowledge.js` | inside `showDetail(doc)`, fired before the detail pane renders | `Graph neighbors` | `renderGraphNeighbors({ entity, neighbors })` | When a doc is opened. Tries `GET /api/v1/knowledge/graph?workspace=…&entity=<docTitle>` first, then `&entity=<docId>`; on both 404 the inspector is cleared. |
+
+### Tests
+
+- `tests/client-shell-inspector-content.test.js` — 10 pure unit tests
+  covering `renderChatSignals` (all fields / missing fields / HTML
+  escape), `renderTrajectoryTree` (empty / mixed types / >50 truncation
+  / HTML escape), and `renderGraphNeighbors` (0 neighbors / row content
+  with `data-entity` attribute / HTML escape).
