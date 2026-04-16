@@ -20,10 +20,21 @@
  *   mount(document.getElementById("root"), { sessionId: "abc-123" });
  */
 
+import { renderTrajectoryTree } from "./inspector-content.js";
+
 const DEFAULT_API_BASE = "/api/v1";
 const MAX_TIMELINE_EVENTS = 500;
 const CSS_HREF = new URL("./agent-run.css", import.meta.url).href;
 const ARTIFACT_TEXT_PREVIEW_BYTES = 20 * 1024; // truncate text / json previews at 20 KB
+
+function pushTrajectoryToInspector(events) {
+  try {
+    const ins = globalThis.SiskelbotShell?.inspector;
+    if (!ins) return;
+    ins.setTitle?.("Trajectory");
+    ins.setContent?.(renderTrajectoryTree(events));
+  } catch { /* noop */ }
+}
 
 function el(tag, attrs, children) {
   const node = document.createElement(tag);
@@ -565,6 +576,7 @@ export default function mount(root, opts) {
     }
 
     renderTimeline();
+    pushTrajectoryToInspector(state.timeline);
   }
 
   function openPreview(art) {

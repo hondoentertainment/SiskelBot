@@ -1,0 +1,308 @@
+/* Recipes view — dark theme matching client/src/views/runs.css. */
+
+.rcp-view {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  height: 100%;
+  min-height: 480px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  padding: 16px 20px;
+  box-sizing: border-box;
+  overflow: auto;
+}
+
+@media (min-width: 900px) {
+  .rcp-view {
+    grid-template-columns: 320px 1fr;
+    align-items: stretch;
+  }
+}
+
+.rcp-pane {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.rcp-pane-list { max-height: 80vh; overflow: hidden; }
+.rcp-pane-detail { overflow: auto; }
+
+/* ── Side header / toolbar ───────────────────────────────────────────────── */
+
+.rcp-side-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.rcp-side-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+.rcp-ws {
+  color: #94a3b8;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.rcp-side-toolbar {
+  display: flex;
+  gap: 8px;
+}
+
+/* ── List ────────────────────────────────────────────────────────────────── */
+
+.rcp-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: auto;
+}
+
+.rcp-item {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background-color 80ms ease, border-color 80ms ease;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rcp-item:hover { background: #182338; }
+.rcp-item:focus {
+  outline: none;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.3);
+}
+.rcp-item-active {
+  border-color: #60a5fa;
+  background: #182338;
+}
+.rcp-item-name {
+  color: #f1f5f9;
+  font-weight: 600;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rcp-item-meta {
+  display: flex;
+  justify-content: space-between;
+  color: #94a3b8;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.rcp-item-ts {
+  color: #64748b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.rcp-item-desc {
+  color: #cbd5e1;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rcp-empty {
+  padding: 20px;
+  border: 1px dashed #334155;
+  border-radius: 10px;
+  color: #94a3b8;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+  list-style: none;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.rcp-btn {
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+.rcp-btn:hover { background: #273449; }
+.rcp-btn:focus {
+  outline: none;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.3);
+}
+.rcp-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+.rcp-btn-primary { background: #1d4ed8; border-color: #2563eb; color: #f8fafc; }
+.rcp-btn-primary:hover { background: #1e40af; }
+.rcp-btn-run { background: #166534; border-color: #15803d; color: #ecfdf5; }
+.rcp-btn-run:hover { background: #14532d; }
+.rcp-btn-danger { background: #7f1d1d; border-color: #991b1b; color: #fee2e2; }
+.rcp-btn-danger:hover { background: #991b1b; }
+.rcp-btn-icon { padding: 4px 8px; min-width: 32px; }
+
+/* ── Error bar ───────────────────────────────────────────────────────────── */
+
+.rcp-error {
+  background: #450a0a;
+  color: #fecaca;
+  border: 1px solid #7f1d1d;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+/* ── Detail / form ───────────────────────────────────────────────────────── */
+
+.rcp-placeholder {
+  color: #94a3b8;
+  text-align: center;
+  padding: 60px 20px;
+}
+.rcp-placeholder h3 {
+  margin: 0 0 6px;
+  color: #cbd5e1;
+  font-weight: 500;
+}
+
+.rcp-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rcp-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rcp-label > span {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+}
+
+.rcp-input,
+.rcp-textarea {
+  background: #0f172a;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font: inherit;
+  outline: none;
+}
+.rcp-textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  resize: vertical;
+}
+.rcp-input:focus,
+.rcp-textarea:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.3);
+}
+.rcp-desc { min-height: 50px; }
+
+.rcp-h3 {
+  margin: 0;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  font-weight: 600;
+}
+.rcp-steps-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rcp-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rcp-step {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.rcp-step-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.rcp-step-num {
+  color: #60a5fa;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-width: 22px;
+  text-align: center;
+}
+.rcp-step-tool { flex: 1; }
+
+.rcp-step-args-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rcp-step-args-label > span {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+
+/* ── Actions row ─────────────────────────────────────────────────────────── */
+
+.rcp-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding-top: 4px;
+}
+.rcp-actions-spacer { flex: 1; }
+
+/* ── Run output panel ────────────────────────────────────────────────────── */
+
+.rcp-output {
+  margin: 12px 0 0;
+  background: #020617;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: #e2e8f0;
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

@@ -10,9 +10,58 @@
  * are exported for tests.
  */
 
+import { renderGraphNeighbors } from "./inspector-content.js";
+
 const DEFAULT_API_BASE = "/api/v1";
 const DEFAULT_WORKSPACE = "default";
 const CSS_HREF = new URL("./knowledge.css", import.meta.url).href;
+
+async function fetchGraphNeighborsForDoc(apiBase, workspace, doc) {
+  const tries = [doc.title, doc.id].filter(Boolean);
+  for (const ent of tries) {
+    try {
+      const url =
+        `${apiBase}/knowledge/graph?workspace=${encodeURIComponent(workspace)}` +
+        `&entity=${encodeURIComponent(ent)}`;
+      const res = await fetch(url, { credentials: "same-origin" });
+      if (res.status === 404) continue;
+      if (!res.ok) continue;
+      const data = await res.json().catch(() => null);
+      if (!data) continue;
+      const ents = Array.isArray(data?.entities) ? data.entities
+        : Array.isArray(data?.nodes) ? data.nodes : [];
+      const rels = Array.isArray(data?.relationships) ? data.relationships
+        : Array.isArray(data?.edges) ? data.edges
+        : Array.isArray(data?.links) ? data.links : [];
+      const byId = new Map();
+      for (const e of ents) {
+        const id = e.id ?? e.name;
+        if (id != null) byId.set(String(id), { id: String(id), name: e.name ?? e.label ?? String(id), type: e.type ?? e.kind ?? "" });
+      }
+      const focus = String(ent);
+      const neighbors = [];
+      for (const r of rels) {
+        const s = String(r.source ?? r.from ?? r.src ?? "");
+        const t = String(r.target ?? r.to ?? r.dst ?? "");
+        const rel = String(r.type ?? r.relationship ?? r.label ?? "related");
+        if (s === focus && t) neighbors.push({ ...(byId.get(t) || { id: t, name: t }), relationship: rel });
+        else if (t === focus && s) neighbors.push({ ...(byId.get(s) || { id: s, name: s }), relationship: rel });
+      }
+      return { entity: focus, neighbors };
+    } catch { /* try next */ }
+  }
+  return null;
+}
+
+function pushGraphNeighborsToInspector(payload) {
+  try {
+    const ins = globalThis.SiskelbotShell?.inspector;
+    if (!ins) return;
+    if (!payload) { ins.setContent?.(""); ins.setTitle?.("Inspector"); return; }
+    ins.setTitle?.("Graph neighbors");
+    ins.setContent?.(renderGraphNeighbors(payload));
+  } catch { /* noop */ }
+}
 
 // ── Pure helpers ─────────────────────────────────────────────────────────────
 
@@ -282,6 +331,9 @@ async function renderDocsTab(body, apiBase, workspace) {
 
   function showDetail(doc) {
     panel.innerHTML = "";
+    fetchGraphNeighborsForDoc(apiBase, workspace, doc)
+      .then(pushGraphNeighborsToInspector)
+      .catch(() => pushGraphNeighborsToInspector(null));
     let editing = false;
     const detail = h("div", { class: "kb-detail" });
     const heading = h("div", { class: "kb-detail-header" },

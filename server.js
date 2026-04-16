@@ -1142,6 +1142,15 @@ const STATIC_CACHE_MAX_AGE_MS =
     ? 0
     : Number(process.env.STATIC_CACHE_MAX_AGE_MS) || (IS_PRODUCTION ? 86_400_000 : 0);
 
+// Optional default redirect from `/` to `/app/chat`. Off by default; opt-in
+// via `UI_DEFAULT_APP=1`. When enabled, the handler is installed BEFORE the
+// static middleware so it intercepts cleanly; the query string is preserved.
+// Exported for tests (see tests/app-default-redirect.test.js).
+installDefaultAppRedirect(app);
+if (process.env.UI_DEFAULT_APP === "1") {
+  console.log("[ui] / → /app/chat redirect ENABLED via UI_DEFAULT_APP=1");
+}
+
 // Wave 1 web interface — serve the SPA shell at /app (existing / route is unchanged)
 // In production (or whenever client/dist/manifest.json exists), substitute the
 // dev-only "/src/app.js" script tag with the hashed bundle path from the
@@ -1258,6 +1267,27 @@ export function substituteAppEntry(html, entryPath) {
     /<script\s+type="module"\s+src="\/src\/app\.js"\s*>\s*<\/script>/,
     `<script type="module" src="${entryPath}"></script>`,
   );
+}
+
+/**
+ * Install a flag-gated default redirect from `GET /` to `/app/chat`.
+ *
+ * When `process.env.UI_DEFAULT_APP === "1"`, registers an `app.get("/", …)`
+ * handler that returns a 302 to `/app/chat`, preserving any query string.
+ * When the flag is unset (or anything other than "1"), this is a no-op and
+ * `/` continues to be served by the existing `express.static` middleware.
+ *
+ * Must be installed BEFORE the static middleware so the redirect intercepts
+ * cleanly. Exported for tests (see tests/app-default-redirect.test.js).
+ */
+export function installDefaultAppRedirect(targetApp, env = process.env) {
+  if (env.UI_DEFAULT_APP !== "1") return false;
+  targetApp.get("/", (req, res) => {
+    const qs = req.url.indexOf("?");
+    const suffix = qs >= 0 ? req.url.slice(qs) : "";
+    res.redirect(302, "/app/chat" + suffix);
+  });
+  return true;
 }
 
 // Error middleware (after all routes and static files)

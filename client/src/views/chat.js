@@ -8,11 +8,22 @@
  * unit-tested without JSDOM.
  */
 
+import { renderChatSignals } from "./inspector-content.js";
+
 const DEFAULT_API_BASE = "/api/v1";
 const DEFAULT_WORKSPACE = "default";
 const MODEL_OPTIONS = ["gpt-4o-mini", "gpt-4o", "llama3.1"];
 const MODEL_STORAGE_KEY = "siskelbot:chat:model";
 const CSS_HREF = new URL("./chat.css", import.meta.url).href;
+
+function pushChatSignalsToInspector(signals) {
+  try {
+    const ins = globalThis.SiskelbotShell?.inspector;
+    if (!ins) return;
+    ins.setTitle?.("Last response");
+    ins.setContent?.(renderChatSignals(signals));
+  } catch { /* noop */ }
+}
 
 // ────────────────────────────────────────────────────────────────────
 // Pure helpers (exported for tests)
@@ -368,6 +379,21 @@ export default function mount(el, ctx = {}) {
       conversationId: state.currentId || undefined,
       requestId,
     };
+    const startedAt = (globalThis.performance?.now?.() ?? Date.now());
+    let usage = null;
+    let observedModel = state.model;
+    let observedCost = null;
+    const finalize = () => {
+      const latencyMs = (globalThis.performance?.now?.() ?? Date.now()) - startedAt;
+      pushChatSignalsToInspector({
+        cost: typeof observedCost === "number" ? observedCost : undefined,
+        latencyMs,
+        model: observedModel,
+        tokens: usage
+          ? { prompt: usage.prompt_tokens, completion: usage.completion_tokens }
+          : undefined,
+      });
+    };
     const res = await fetch("/v1/chat/completions", {
       method: "POST",
       credentials: "same-origin",
@@ -380,25 +406,37 @@ export default function mount(el, ctx = {}) {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = "";
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      let idx;
-      while ((idx = buf.indexOf("\n")) !== -1) {
-        const line = buf.slice(0, idx);
-        buf = buf.slice(idx + 1);
-        const parsed = parseSseLine(line);
-        if (!parsed) continue;
-        if (parsed.type === "done") return;
-        if (parsed.type === "data" && parsed.data) {
-          const delta = extractDelta(parsed.data);
-          if (delta) {
-            assistantMsg.content += delta;
-            renderMessages({ appendOnly: true });
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let idx;
+        while ((idx = buf.indexOf("\n")) !== -1) {
+          const line = buf.slice(0, idx);
+          buf = buf.slice(idx + 1);
+          const parsed = parseSseLine(line);
+          if (!parsed) continue;
+          if (parsed.type === "done") return;
+          if (parsed.type === "data" && parsed.data) {
+            const data = parsed.data;
+            if (data && typeof data === "object") {
+              const u = data.usage || data.choices?.[0]?.usage;
+              if (u && (u.prompt_tokens != null || u.completion_tokens != null)) usage = u;
+              if (typeof data.model === "string") observedModel = data.model;
+              const c = Number(data.costUsd ?? data.usage?.costUsd);
+              if (Number.isFinite(c)) observedCost = c;
+            }
+            const delta = extractDelta(data);
+            if (delta) {
+              assistantMsg.content += delta;
+              renderMessages({ appendOnly: true });
+            }
           }
         }
       }
+    } finally {
+      finalize();
     }
   }
 

@@ -7,6 +7,8 @@ import { palette } from "./palette.js";
 import { createHeader } from "./shell/header.js";
 import { createNav } from "./shell/nav.js";
 import { createInspector } from "./shell/inspector.js";
+import { createShellGlobals, readPersistedWorkspaceId } from "./shell/shell-globals.js";
+import { RealtimeClient } from "./realtime/client.js";
 
 function placeholderView(title, description) {
   return (ctx) => {
@@ -76,6 +78,19 @@ export function bootstrap(rootId = "sb-root") {
 
   palette.mount(document.body);
 
+  const realtime = createLazyRealtime("/ws/realtime");
+  const shellGlobals = createShellGlobals({ router, palette, realtime, inspector });
+  if (typeof window !== "undefined") {
+    window.SiskelbotShell = shellGlobals;
+  }
+
+  header.onWorkspaceChange((id) => { shellGlobals.setWorkspace(id); });
+
+  // Fetch user + workspaces in the background; degrade gracefully on failure.
+  hydrateAuthAndWorkspaces(shellGlobals, header).catch((err) => {
+    console.warn("[shell] failed to hydrate auth/workspaces", err);
+  });
+
   // Route table — lazy imports for view modules so the shell loads fast.
   const mountInto = (loader, props) => async (ctx) => {
     const mod = await loader();
@@ -96,7 +111,7 @@ export function bootstrap(rootId = "sb-root") {
     return mountFn(main, { sessionId: ctx.params.id, apiBase: "/api/v1" });
   });
   router.register("/knowledge", mountInto(() => import("./views/knowledge.js")));
-  router.register("/recipes", placeholderView("Recipes", "Saved recipes and automation templates."));
+  router.register("/recipes", mountInto(() => import("./views/recipes.js")));
   router.register("*", notFoundView());
 
   // Palette actions
@@ -121,7 +136,99 @@ export function bootstrap(rootId = "sb-root") {
 
   router.start();
 
-  return { router, palette, header, nav, inspector };
+  return { router, palette, header, nav, inspector, shell: shellGlobals, realtime };
+}
+
+/**
+ * Build a lazy wrapper around RealtimeClient that defers .connect() until
+ * the first .subscribe() call. Exposes the same surface views need.
+ */
+function createLazyRealtime(url) {
+  let client = null;
+  function ensure() {
+    if (client) return client;
+    try {
+      client = new RealtimeClient({ url });
+    } catch (err) {
+      console.warn("[shell] RealtimeClient unavailable", err);
+      // Stub so callers don't crash in environments without WebSocket.
+      client = {
+        subscribe() {}, unsubscribe() {}, close() {}, connect() {}
+      };
+    }
+    return client;
+  }
+  return {
+    get url() { return url; },
+    get raw() { return client; },
+    subscribe(channel, handler, opts) {
+      const c = ensure();
+      // Lazy-connect on first subscribe.
+      if (typeof c.connect === "function" && !c._ws && !c._closed) {
+        try { c.connect(); } catch (err) { console.warn("[shell] realtime connect failed", err); }
+      }
+      return c.subscribe(channel, handler, opts);
+    },
+    unsubscribe(channel) {
+      if (!client) return;
+      return client.unsubscribe(channel);
+    },
+    close() {
+      if (!client) return;
+      return client.close();
+    }
+  };
+}
+
+async function fetchJsonSafe(path) {
+  try {
+    const res = await fetch(path, { credentials: "same-origin", headers: { accept: "application/json" } });
+    if (res.status === 401) return { status: 401, body: null };
+    if (!res.ok) {
+      console.warn(`[shell] ${path} returned ${res.status}`);
+      return { status: res.status, body: null };
+    }
+    const body = await res.json().catch(() => null);
+    return { status: res.status, body };
+  } catch (err) {
+    console.warn(`[shell] ${path} failed`, err);
+    return { status: 0, body: null };
+  }
+}
+
+function normalizeWorkspaces(body) {
+  if (!body) return [];
+  if (Array.isArray(body)) return body;
+  if (Array.isArray(body.items)) return body.items;
+  if (Array.isArray(body.workspaces)) return body.workspaces;
+  return [];
+}
+
+async function hydrateAuthAndWorkspaces(shellGlobals, header) {
+  const sessionRes = await fetchJsonSafe("/api/v1/auth/session");
+  if (sessionRes.status === 401 || !sessionRes.body) {
+    shellGlobals.setUser(null);
+    shellGlobals.setWorkspaces([]);
+    header.setUser(null);
+    header.setWorkspaces([], null);
+    return;
+  }
+
+  const user = sessionRes.body;
+  shellGlobals.setUser(user);
+  header.setUser(user);
+
+  const wsRes = await fetchJsonSafe("/api/v1/workspaces");
+  const workspaces = normalizeWorkspaces(wsRes.body);
+  shellGlobals.setWorkspaces(workspaces);
+
+  const persisted = readPersistedWorkspaceId();
+  const initial = workspaces.find(w => persisted != null && String(w.id) === String(persisted))
+    || workspaces[0]
+    || null;
+
+  header.setWorkspaces(workspaces, initial ? initial.id : null);
+  if (initial) shellGlobals.setWorkspace(initial.id);
 }
 
 function installKeyboard({ nav, inspector, shell }) {
