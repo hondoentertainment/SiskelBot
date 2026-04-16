@@ -58,11 +58,14 @@ const WS_PATH = "/ws/realtime";
  */
 async function resolveAuth(request, deps) {
   if (deps && typeof deps.resolveWsAuth === "function") {
+    // When an explicit resolver is provided, its decision is final.
+    // Returning null/falsy means "reject" — do not fall through to
+    // the anonymous fallback, as that would silently bypass auth.
     try {
       const got = await deps.resolveWsAuth(request);
-      if (got && got.userId) return got;
+      return (got && got.userId) ? got : null;
     } catch {
-      // fall through to token / anonymous fallback
+      return null;
     }
   }
 
