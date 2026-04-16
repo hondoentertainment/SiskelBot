@@ -105,6 +105,8 @@ import {
   recordChatRequest,
   recordTokensUsed,
   isEnabled as metricsEnabled,
+  incrementRealtimeBackpressure,
+  incrementRealtimeSubscriberError,
 } from "./lib/metrics.js";
 import { globalSLOTracker } from "./lib/slo-tracker.js";
 import { fetchWithTimeoutAndRetry } from "./lib/backend-fetch.js";
@@ -156,7 +158,7 @@ import {
 } from "./lib/workspace-templates.js";
 
 import { mountAllRoutes } from "./routes/index.js";
-import { agentSessionApiEnabled } from "./lib/agent-session.js";
+import { agentSessionApiEnabled, buildRunIndexFromSessions } from "./lib/agent-session.js";
 import { mountAgentSessionRoutes } from "./routes/agent-sessions.js";
 import { errorMiddleware, errorHandler } from "./lib/error-middleware.js";
 import { runStartupChecks } from "./lib/startup-checks.js";
@@ -1270,6 +1272,44 @@ export function substituteAppEntry(html, entryPath) {
 }
 
 /**
+ * Extract the channel prefix (everything before the first `:`) from a channel
+ * identifier. Used to tag realtime backpressure / subscriber-error metrics
+ * with a low-cardinality label (e.g. `chat:abc-123` -> `chat`).
+ *
+ * @param {string} channel
+ * @returns {string}
+ */
+export function channelPrefix(channel) {
+  const s = typeof channel === "string" ? channel : "";
+  const idx = s.indexOf(":");
+  return idx >= 0 ? s.slice(0, idx) : s;
+}
+
+/**
+ * Install the realtime-channel observability hooks: slow-subscriber drops
+ * and subscriber errors are forwarded to the metrics module, tagged with the
+ * channel prefix. Every call into metrics is wrapped in try/catch so a
+ * metric-layer failure never breaks dispatch.
+ *
+ * Exported for tests (see tests/server-boot-wiring.test.js).
+ *
+ * @param {object} registry - a channel registry from lib/realtime-channels.js
+ * @param {object} [m] - metrics module overrides (tests inject fakes here)
+ */
+export function installRealtimeMetricsHooks(registry, m = {}) {
+  if (!registry || typeof registry.setSlowSubscriberHook !== "function") return false;
+  const incBackpressure = m.incrementRealtimeBackpressure || incrementRealtimeBackpressure;
+  const incSubError = m.incrementRealtimeSubscriberError || incrementRealtimeSubscriberError;
+  registry.setSlowSubscriberHook(({ channel }) => {
+    try { incBackpressure(channelPrefix(channel)); } catch (_) { /* never break dispatch */ }
+  });
+  registry.setSubscriberErrorHook((channel, _clientId, _err) => {
+    try { incSubError(channelPrefix(channel)); } catch (_) { /* never break dispatch */ }
+  });
+  return true;
+}
+
+/**
  * Install a flag-gated default redirect from `GET /` to `/app/chat`.
  *
  * When `process.env.UI_DEFAULT_APP === "1"`, registers an `app.get("/", …)`
@@ -1309,6 +1349,21 @@ if (process.env.VERCEL !== "1") {
       if (process.env.REALTIME_WS_DISABLED !== "1") {
         mountRealtimeWs(httpServer, { channels: defaultChannelRegistry });
       }
+      // Wire realtime backpressure + subscriber errors into metrics counters.
+      installRealtimeMetricsHooks(defaultChannelRegistry);
+      // Best-effort: rebuild the agent-session runId -> sessionId index from
+      // persisted sessions so cross-process restarts recover the lookup
+      // mirror without needing a first write. Non-fatal if storage is
+      // unavailable (e.g. read-only test boots).
+      buildRunIndexFromSessions()
+        .then((stats) => {
+          if (stats?.runs > 0) {
+            console.log(
+              `[boot] agent-session run index: ${stats.runs} runs across ${stats.sessions} sessions`,
+            );
+          }
+        })
+        .catch((err) => console.warn("[boot] buildRunIndexFromSessions failed:", err.message));
 
       function gracefulShutdown(signal) {
         console.log(`[shutdown] Received ${signal}, shutting down gracefully...`);
