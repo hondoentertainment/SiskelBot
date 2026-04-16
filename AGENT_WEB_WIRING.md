@@ -834,3 +834,27 @@ for views that have nothing else to clean up.
 | `client/src/views/replay.js` | Aborts in-flight fetch, stops playback timer, clears inspector. |
 | `client/src/views/observability.js` | Clears poll `setInterval`, replaces children, clears inspector. |
 
+## Cost emission
+
+The `cost.update` SSE event that feeds the Agent Run hero footer is emitted from
+every site where the server completes a chat completion on behalf of an agent
+run. The cumulative-per-run accounting lives in a single shared helper,
+`lib/agent-cost-emitter.js`, which exports `emitCostUpdate(...)` and
+`disposeRunCostAccumulator(runId)`. Call sites wrap each emit in a try/catch;
+resolution of `sessionId` from a bare `runId` uses `getSessionIdForRun` from
+`lib/agent-session.js` (sync mirror preferred, persisted reverse index as
+fallback). When no `sessionId` can be resolved, emission silently skips.
+
+| Site | Module | Hook |
+|------|--------|------|
+| Single-agent tool loop | `lib/agent-loop.js` | Inline emitter (wave 5); migrates to shared helper later. |
+| Swarm specialist LLM round | `lib/swarm.js` (`runSpecialistLoop`) | After each `backendFetch` parses `data.usage`, attributed to the swarm's parent `runId`. |
+| Swarm synthesizer | `lib/swarm.js` (non-streaming synth branch) | After the synth response's `data.usage` is available. |
+| Scheduled agent completion | `lib/scheduled-agents.js` (`runScheduledAgent`) | After the one-shot `backendFetch` returns with `usage`. |
+| Direct streamed chat | `lib/llm-stream-sse.js` (`pipeLlmChatStreamToSse`) | Captures `usage` from the terminal chunk (OpenAI `stream_options.include_usage`, vLLM default) and emits once on pipe close, only when caller passes `opts.runId`/`opts.sessionId`. |
+
+Sites NOT wired (no `runId`/`sessionId` in scope): direct non-agent chat
+requests to `/v1/chat/completions` that do not thread a run through
+`pipeLlmChatStreamToSse` opts; legacy `runSwarmDirect` and `runSwarmLegacy`
+tool-only paths that never invoke an LLM.
+
