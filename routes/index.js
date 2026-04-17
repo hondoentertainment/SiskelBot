@@ -50,6 +50,7 @@ import mountRecipesRoutes from "./recipes.js";
 import mountTeamsRoutes from "./teams.js";
 import mountAdminRoutes from "./admin.js";
 import mountAgentStatsAdminRoutes from "./admin-agent-stats.js";
+import mountAdminTracesRoutes from "./admin-traces.js";
 import mountDocsRoutes from "./docs.js";
 import { mountBackupRoutes } from "./backup.js";
 import { mountConversationRoutes } from "./conversations.js";
@@ -296,6 +297,7 @@ const mountFunctions = [
   mountTeamsRoutes,
   mountAdminRoutes,
   mountAgentStatsAdminRoutes,
+  mountAdminTracesRoutes,
   mountDocsRoutes,
   mountBackupRoutes,
   mountConversationRoutes,
