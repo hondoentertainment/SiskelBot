@@ -155,6 +155,74 @@ test("resetGenealogy: clears all tools for a workspace", async () => {
   assert.equal(Object.keys(stats.tools).length, 0);
 });
 
+test("extractTaskKeywords: tokenizes and stems task text", async () => {
+  const { extractTaskKeywords } = await import("../lib/agent-genealogy.js");
+  const kw = extractTaskKeywords("Please search the docs for a user guide.");
+  assert.ok(kw.has("search"));
+  assert.ok(kw.has("docs"));
+  assert.ok(kw.has("doc"), "should stem 'docs' to 'doc'");
+  assert.ok(kw.has("user"));
+  assert.ok(kw.has("guide"));
+  // stopwords dropped
+  assert.ok(!kw.has("the"));
+  assert.ok(!kw.has("please"));
+});
+
+test("extractTaskKeywords: empty / non-string returns empty set", async () => {
+  const { extractTaskKeywords } = await import("../lib/agent-genealogy.js");
+  assert.equal(extractTaskKeywords("").size, 0);
+  assert.equal(extractTaskKeywords(null).size, 0);
+});
+
+test("toolMatchesTask: matches on underscore-separated parts and prefixes", async () => {
+  const { toolMatchesTask, extractTaskKeywords } = await import("../lib/agent-genealogy.js");
+  const task = extractTaskKeywords("search for a document in the knowledge base");
+  assert.equal(toolMatchesTask("search_context", task), true);
+  assert.equal(toolMatchesTask("semantic_search_context", task), true);
+  assert.equal(toolMatchesTask("get_context_document", task), true);
+  assert.equal(toolMatchesTask("fetch_allowed_url", task), false);
+});
+
+test("buildReliabilityHint: task text restricts to relevant tools", async () => {
+  const { recordToolOutcomes, buildReliabilityHint } = await import("../lib/agent-genealogy.js");
+  const ws = `wsTaskAware-${Date.now()}`;
+  const outs = [];
+  // Reliable search tool
+  for (let i = 0; i < 10; i++) outs.push({ tool: "search_context", ok: true });
+  // Reliable URL fetcher - NOT relevant to a "search for docs" task
+  for (let i = 0; i < 10; i++) outs.push({ tool: "fetch_allowed_url", ok: true });
+  await recordToolOutcomes(ws, outs);
+
+  const taskHint = await buildReliabilityHint(ws, { taskText: "search for a user guide in the docs" });
+  assert.match(taskHint, /Task-relevant/);
+  assert.match(taskHint, /search_context/);
+  assert.doesNotMatch(taskHint, /fetch_allowed_url/);
+});
+
+test("buildReliabilityHint: falls back to full hint when no tool names match task", async () => {
+  const { recordToolOutcomes, buildReliabilityHint } = await import("../lib/agent-genealogy.js");
+  const ws = `wsTaskFallback-${Date.now()}`;
+  const outs = [];
+  for (let i = 0; i < 10; i++) outs.push({ tool: "search_context", ok: true });
+  await recordToolOutcomes(ws, outs);
+  // Task that shares no words with the tool name
+  const hint = await buildReliabilityHint(ws, { taskText: "lorem ipsum random words" });
+  // Falls back to non-task header
+  assert.doesNotMatch(hint, /Task-relevant/);
+  assert.match(hint, /search_context/);
+});
+
+test("buildReliabilityHint: empty taskText behaves like un-scoped call", async () => {
+  const { recordToolOutcomes, buildReliabilityHint } = await import("../lib/agent-genealogy.js");
+  const ws = `wsTaskEmpty-${Date.now()}`;
+  const outs = [];
+  for (let i = 0; i < 10; i++) outs.push({ tool: "search_context", ok: true });
+  await recordToolOutcomes(ws, outs);
+  const a = await buildReliabilityHint(ws);
+  const b = await buildReliabilityHint(ws, { taskText: "" });
+  assert.equal(a, b);
+});
+
 test("workspace isolation: outcomes in ws1 do not leak into ws2", async () => {
   const ws1 = uniqueWs("iso1");
   const ws2 = uniqueWs("iso2");

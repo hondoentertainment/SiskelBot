@@ -206,3 +206,91 @@ test("analyzeSwarmConflicts: returns {report, prompt} on conflict", () => {
   assert.equal(out.report.conflictType, "polarity");
   assert.match(out.prompt, /polarity/);
 });
+
+/* ---------------------- resolveConflictWithJudge ------------------------- */
+
+test("resolveConflictWithJudge: no judgeFn -> null", async () => {
+  const { resolveConflictWithJudge } = await import("../lib/swarm-conflict-resolver.js");
+  const out = await resolveConflictWithJudge({
+    responses: [
+      { specialist: "a", output: "Yes" },
+      { specialist: "b", output: "No" },
+    ],
+    judgeFn: null,
+  });
+  assert.equal(out, null);
+});
+
+test("resolveConflictWithJudge: no conflict -> null (judge not invoked)", async () => {
+  const { resolveConflictWithJudge } = await import("../lib/swarm-conflict-resolver.js");
+  let invoked = false;
+  const out = await resolveConflictWithJudge({
+    responses: [
+      { specialist: "a", output: "bump version redeploy services" },
+      { specialist: "b", output: "bump version redeploy services cleanly" },
+    ],
+    judgeFn: () => { invoked = true; return "should not be called"; },
+  });
+  assert.equal(out, null);
+  assert.equal(invoked, false);
+});
+
+test("resolveConflictWithJudge: conflict + judge returns text -> reconciled in result", async () => {
+  const { resolveConflictWithJudge } = await import("../lib/swarm-conflict-resolver.js");
+  const out = await resolveConflictWithJudge({
+    responses: [
+      { specialist: "a", output: "Yes this works." },
+      { specialist: "b", output: "No this does not work." },
+    ],
+    judgeFn: (prompt) => {
+      assert.match(prompt, /polarity/);
+      return "Specialist a is correct: yes, this works.";
+    },
+  });
+  assert.ok(out);
+  assert.equal(out.reconciled, "Specialist a is correct: yes, this works.");
+  assert.equal(out.report.conflictType, "polarity");
+  assert.equal(out.error, undefined);
+});
+
+test("resolveConflictWithJudge: judge throws -> error captured, prompt + report returned", async () => {
+  const { resolveConflictWithJudge } = await import("../lib/swarm-conflict-resolver.js");
+  const out = await resolveConflictWithJudge({
+    responses: [
+      { specialist: "a", output: "Yes" },
+      { specialist: "b", output: "No" },
+    ],
+    judgeFn: () => { throw new Error("judge exploded"); },
+  });
+  assert.ok(out);
+  assert.match(out.error, /judge exploded/);
+  assert.ok(out.prompt);
+  assert.equal(out.reconciled, undefined);
+});
+
+test("resolveConflictWithJudge: judge returns empty string -> error reported", async () => {
+  const { resolveConflictWithJudge } = await import("../lib/swarm-conflict-resolver.js");
+  const out = await resolveConflictWithJudge({
+    responses: [
+      { specialist: "a", output: "Yes" },
+      { specialist: "b", output: "No" },
+    ],
+    judgeFn: () => "   ",
+  });
+  assert.ok(out);
+  assert.match(out.error, /empty output/);
+});
+
+test("resolveConflictWithJudge: honors timeout", async () => {
+  const { resolveConflictWithJudge } = await import("../lib/swarm-conflict-resolver.js");
+  const out = await resolveConflictWithJudge({
+    responses: [
+      { specialist: "a", output: "Yes" },
+      { specialist: "b", output: "No" },
+    ],
+    judgeFn: () => new Promise((resolve) => setTimeout(() => resolve("late"), 200)),
+    opts: { timeoutMs: 20 },
+  });
+  assert.ok(out);
+  assert.match(out.error, /timeout/);
+});
