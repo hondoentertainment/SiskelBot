@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>SiskelBot - Agent Stats</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { color-scheme: dark; }
+    body { font-family: system-ui, -apple-system, sans-serif; min-height: 100vh; background: #0f172a; color: #e2e8f0; }
+    a { color: #60a5fa; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+
+    header { background: #1e293b; border-bottom: 1px solid #334155; padding: 0.75rem 1.5rem; }
+    header h1 { font-size: 1rem; font-weight: 700; }
+    header .subtitle { font-size: 0.75rem; color: #64748b; margin-top: 0.125rem; }
+
+    .topbar { padding: 0.75rem 1.5rem; background: #1e293b; border-bottom: 1px solid #334155; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; position: sticky; top: 0; z-index: 50; }
+
+    .tabs { display: flex; gap: 0.25rem; padding: 0.5rem 1.5rem 0; background: #0f172a; border-bottom: 1px solid #334155; }
+    .tab { padding: 0.5rem 0.875rem; background: none; border: 1px solid transparent; border-bottom: none; border-radius: 6px 6px 0 0; color: #94a3b8; font-size: 0.8125rem; cursor: pointer; }
+    .tab:hover { color: #e2e8f0; background: #1e293b; }
+    .tab.active { background: #1e293b; color: #60a5fa; border-color: #334155; position: relative; top: 1px; }
+
+    .content { padding: 1.5rem; max-width: 1200px; }
+
+    .input { padding: 0.375rem 0.5rem; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; font-size: 0.8125rem; }
+    .input:focus { border-color: #60a5fa; }
+
+    .btn { padding: 0.375rem 0.75rem; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8125rem; font-weight: 500; }
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-danger { background: #7f1d1d; color: #fecaca; }
+    .btn-danger:hover { background: #991b1b; }
+    .btn-ghost { background: #334155; color: #e2e8f0; }
+    .btn-ghost:hover { background: #475569; }
+    .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
+
+    .section { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+    .section h3 { font-size: 0.875rem; font-weight: 600; color: #94a3b8; margin-bottom: 0.75rem; }
+    .summary { font-size: 0.875rem; color: #cbd5e1; margin-bottom: 0.5rem; }
+    .summary .muted { color: #64748b; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+    th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid #334155; vertical-align: top; }
+    th { color: #64748b; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; user-select: none; }
+    th.sortable:hover { color: #e2e8f0; }
+    th .sort-indicator { color: #60a5fa; font-size: 0.625rem; margin-left: 0.25rem; }
+    tr:last-child td { border-bottom: none; }
+
+    .chip { display: inline-block; background: #334155; color: #cbd5e1; font-size: 0.6875rem; padding: 0.125rem 0.375rem; border-radius: 4px; margin: 0.125rem 0.125rem 0.125rem 0; }
+
+    .banner { padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.8125rem; }
+    .banner-error { background: #7f1d1d; color: #fecaca; border: 1px solid #f87171; }
+    .banner-info { background: #1e3a5f; color: #bfdbfe; border: 1px solid #3b82f6; }
+
+    .last-fetch { font-size: 0.75rem; color: #64748b; }
+
+    .auto-refresh { display: flex; align-items: center; gap: 0.375rem; font-size: 0.8125rem; color: #94a3b8; }
+    .auto-refresh input[type=checkbox] { cursor: pointer; }
+
+    details { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 0.625rem 0.75rem; margin-bottom: 0.5rem; }
+    details[open] { background: #111827; }
+    details summary { cursor: pointer; font-size: 0.8125rem; color: #cbd5e1; }
+    details summary:hover { color: #e2e8f0; }
+    details .detail-body { margin-top: 0.625rem; padding-top: 0.625rem; border-top: 1px solid #334155; font-size: 0.8125rem; }
+    details details { margin-top: 0.375rem; background: #1e293b; }
+
+    .kv { display: grid; grid-template-columns: 140px 1fr; gap: 0.375rem 0.75rem; font-size: 0.8125rem; margin-bottom: 0.5rem; }
+    .kv .k { color: #64748b; text-transform: uppercase; font-size: 0.6875rem; letter-spacing: 0.05em; padding-top: 0.125rem; }
+    .kv .v { color: #e2e8f0; word-break: break-word; }
+
+    pre { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 0.5rem 0.625rem; font-size: 0.75rem; color: #cbd5e1; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+
+    .empty { color: #64748b; font-size: 0.8125rem; padding: 1rem; text-align: center; }
+    .ok { color: #34d399; } .warn { color: #fbbf24; } .err { color: #f87171; }
+
+    .rel-good td { background: #064e3b33; }
+    .rel-bad td { background: #7f1d1d33; }
+
+    label { font-size: 0.8125rem; color: #94a3b8; }
+
+    .spacer { flex: 1; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SiskelBot - Agent Stats</h1>
+    <div class="subtitle">Failure, reliability, and swarm conflict observability. <a href="/admin">Back to admin</a></div>
+  </header>
+
+  <div class="topbar">
+    <label>Admin key
+      <input type="password" class="input" id="admin-key" placeholder="ADMIN_API_KEY" autocomplete="off" style="width:200px">
+    </label>
+    <label>Workspace
+      <input type="text" class="input" id="workspace" value="default" style="width:140px">
+    </label>
+    <div class="spacer"></div>
+    <div class="auto-refresh">
+      <input type="checkbox" id="auto-refresh">
+      <label for="auto-refresh">Auto-refresh (10s)</label>
+    </div>
+    <span class="last-fetch" id="last-fetch"></span>
+    <button class="btn btn-ghost btn-sm" id="refresh-btn">Refresh</button>
+    <button class="btn btn-danger btn-sm" id="reset-btn">Reset workspace data</button>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-tab="failures" role="tab">Failures</button>
+    <button class="tab" data-tab="reliability" role="tab">Reliability</button>
+    <button class="tab" data-tab="conflicts" role="tab">Swarm Conflicts</button>
+  </div>
+
+  <div class="content">
+    <div id="banner"></div>
+    <div id="view"></div>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      const KEY_STORAGE = 'siskelbot_admin_agent_stats_key';
+      const WS_STORAGE = 'siskelbot_admin_agent_stats_ws';
+
+      const state = {
+        tab: 'failures',
+        sort: {
+          failures: { col: 'score', dir: 'desc' },
+          reliability: { col: 'successRate', dir: 'asc' },
+        },
+        data: { failures: null, reliability: null, conflicts: null },
+        autoRefresh: false,
+        timer: null,
+      };
+
+      // ─── Helpers ─────────────────────────────────────────
+      function escapeHtml(input) {
+        const s = input == null ? '' : String(input);
+        return s
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function setBanner(msg, kind) {
+        const el = document.getElementById('banner');
+        if (!msg) { el.innerHTML = ''; return; }
+        const cls = kind === 'info' ? 'banner-info' : 'banner-error';
+        el.innerHTML = '<div class="banner ' + cls + '">' + escapeHtml(msg) + '</div>';
+      }
+
+      function adminKey() { return document.getElementById('admin-key').value.trim(); }
+      function workspace() { return document.getElementById('workspace').value.trim() || 'default'; }
+
+      function persistInputs() {
+        const k = adminKey();
+        if (k) sessionStorage.setItem(KEY_STORAGE, k);
+        const w = workspace();
+        if (w) sessionStorage.setItem(WS_STORAGE, w);
+      }
+
+      async function apiFetch(path, opts) {
+        const headers = { 'Content-Type': 'application/json' };
+        const key = adminKey();
+        if (key) headers['Authorization'] = 'Bearer ' + key;
+        const res = await fetch(path, Object.assign({ credentials: 'include', headers }, opts || {}));
+        const text = await res.text();
+        let body = null;
+        try { body = text ? JSON.parse(text) : null; } catch (_) { /* non-JSON */ }
+        if (!res.ok) {
+          const err = new Error((body && (body.error || body.message)) || text || res.statusText);
+          err.status = res.status;
+          err.body = body;
+          throw err;
+        }
+        return body;
+      }
+
+      function friendlyError(err) {
+        if (err && err.status === 401) return 'Invalid admin key';
+        if (err && err.status === 403) return 'Forbidden: admin scope required';
+        return (err && err.message) || 'Network error';
+      }
+
+      function touchLastFetch() {
+        const el = document.getElementById('last-fetch');
+        el.textContent = 'Last fetched at ' + new Date().toLocaleTimeString();
+      }
+
+      // ─── Tabs ────────────────────────────────────────────
+      document.querySelectorAll('.tab').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          const t = btn.dataset.tab;
+          state.tab = t;
+          document.querySelectorAll('.tab').forEach(function (b) {
+            b.classList.toggle('active', b.dataset.tab === t);
+          });
+          loadCurrent();
+        });
+      });
+
+      document.getElementById('refresh-btn').addEventListener('click', function () { loadCurrent(); });
+      document.getElementById('reset-btn').addEventListener('click', onReset);
+      document.getElementById('auto-refresh').addEventListener('change', function (e) {
+        state.autoRefresh = e.target.checked;
+        if (state.timer) { clearInterval(state.timer); state.timer = null; }
+        if (state.autoRefresh) {
+          state.timer = setInterval(loadCurrent, 10000);
+        }
+      });
+      ['admin-key', 'workspace'].forEach(function (id) {
+        document.getElementById(id).addEventListener('change', function () {
+          persistInputs();
+          loadCurrent();
+        });
+      });
+
+      // ─── Load current tab ────────────────────────────────
+      async function loadCurrent() {
+        setBanner('');
+        if (state.tab === 'failures') return loadFailures();
+        if (state.tab === 'reliability') return loadReliability();
+        if (state.tab === 'conflicts') return loadConflicts();
+      }
+
+      // ─── Failures ────────────────────────────────────────
+      async function loadFailures() {
+        const view = document.getElementById('view');
+        view.innerHTML = '<p class="empty">Loading failures...</p>';
+        try {
+          const params = new URLSearchParams({ workspace: workspace(), limit: '50' });
+          const data = await apiFetch('/api/admin/agent-stats/failures?' + params.toString());
+          state.data.failures = data;
+          touchLastFetch();
+          renderFailures();
+        } catch (err) {
+          setBanner(friendlyError(err), 'error');
+          view.innerHTML = '<p class="empty">Unable to load failures.</p>';
+        }
+      }
+
+      function renderFailures() {
+        const data = state.data.failures;
+        if (!data) return;
+        const totals = data.totals || { tools: 0, failures: 0 };
+        const chronic = Array.isArray(data.chronic) ? data.chronic.slice() : [];
+        const s = state.sort.failures;
+        chronic.sort(function (a, b) {
+          const va = a[s.col]; const vb = b[s.col];
+          const na = typeof va === 'number' ? va : 0;
+          const nb = typeof vb === 'number' ? vb : 0;
+          if (s.col === 'tool') {
+            return s.dir === 'asc'
+              ? String(va || '').localeCompare(String(vb || ''))
+              : String(vb || '').localeCompare(String(va || ''));
+          }
+          return s.dir === 'asc' ? na - nb : nb - na;
+        });
+
+        const html = [];
+        html.push('<div class="section">');
+        html.push('<div class="summary">' + escapeHtml(totals.tools) + ' tools, ' + escapeHtml(totals.failures) + ' total failures <span class="muted">(workspace: ' + escapeHtml(data.workspace || '') + ')</span></div>');
+        if (!chronic.length) {
+          html.push('<div class="empty">No failures recorded for this workspace</div>');
+        } else {
+          html.push('<table>');
+          html.push('<thead><tr>');
+          html.push(sortHeader('failures', 'tool', 'Tool'));
+          html.push(sortHeader('failures', 'total', 'Total'));
+          html.push(sortHeader('failures', 'score', 'Score'));
+          html.push('<th>Categories</th>');
+          html.push('</tr></thead><tbody>');
+          chronic.forEach(function (row) {
+            const cats = row.categories || {};
+            const chips = Object.keys(cats).map(function (c) {
+              return '<span class="chip">' + escapeHtml(c) + ': ' + escapeHtml(cats[c]) + '</span>';
+            }).join('');
+            html.push('<tr>');
+            html.push('<td>' + escapeHtml(row.tool || '-') + '</td>');
+            html.push('<td>' + escapeHtml(row.total != null ? row.total : '-') + '</td>');
+            html.push('<td>' + escapeHtml(row.score != null ? row.score : '-') + '</td>');
+            html.push('<td>' + (chips || '<span class="muted">-</span>') + '</td>');
+            html.push('</tr>');
+          });
+          html.push('</tbody></table>');
+        }
+        html.push('</div>');
+        document.getElementById('view').innerHTML = html.join('');
+        wireSortHeaders();
+      }
+
+      // ─── Reliability ─────────────────────────────────────
+      async function loadReliability() {
+        const view = document.getElementById('view');
+        view.innerHTML = '<p class="empty">Loading reliability...</p>';
+        try {
+          const params = new URLSearchParams({ workspace: workspace(), minSamples: '3' });
+          const data = await apiFetch('/api/admin/agent-stats/reliability?' + params.toString());
+          state.data.reliability = data;
+          touchLastFetch();
+          renderReliability();
+        } catch (err) {
+          setBanner(friendlyError(err), 'error');
+          view.innerHTML = '<p class="empty">Unable to load reliability.</p>';
+        }
+      }
+
+      function rateOf(row) {
+        const succ = Number(row.successes || 0);
+        const fail = Number(row.failures || 0);
+        const total = succ + fail;
+        if (!total) return 0;
+        return succ / total;
+      }
+
+      function renderReliability() {
+        const data = state.data.reliability;
+        if (!data) return;
+        const totals = data.totals || { tools: 0, samples: 0 };
+        const ranked = Array.isArray(data.ranked) ? data.ranked.slice() : [];
+        ranked.forEach(function (r) { r._samples = Number(r.successes || 0) + Number(r.failures || 0); r._rate = rateOf(r); });
+        const s = state.sort.reliability;
+        ranked.sort(function (a, b) {
+          let va, vb;
+          if (s.col === 'tool') {
+            return s.dir === 'asc'
+              ? String(a.tool || '').localeCompare(String(b.tool || ''))
+              : String(b.tool || '').localeCompare(String(a.tool || ''));
+          }
+          if (s.col === 'successRate') { va = a._rate; vb = b._rate; }
+          else if (s.col === 'samples') { va = a._samples; vb = b._samples; }
+          else { va = Number(a[s.col] || 0); vb = Number(b[s.col] || 0); }
+          return s.dir === 'asc' ? va - vb : vb - va;
+        });
+
+        const html = [];
+        html.push('<div class="section">');
+        const hintTxt = data.hint ? String(data.hint) : '(none)';
+        html.push('<div class="summary">' + escapeHtml(totals.tools) + ' tools, ' + escapeHtml(totals.samples) + ' samples, hint: <span class="muted">' + escapeHtml(hintTxt) + '</span></div>');
+        if (!ranked.length) {
+          html.push('<div class="empty">No reliability data for this workspace (need minSamples=3)</div>');
+        } else {
+          html.push('<table>');
+          html.push('<thead><tr>');
+          html.push(sortHeader('reliability', 'tool', 'Tool'));
+          html.push(sortHeader('reliability', 'successes', 'Successes'));
+          html.push(sortHeader('reliability', 'failures', 'Failures'));
+          html.push(sortHeader('reliability', 'successRate', 'Success rate'));
+          html.push(sortHeader('reliability', 'samples', 'Samples'));
+          html.push('</tr></thead><tbody>');
+          ranked.forEach(function (row) {
+            const pct = row._rate * 100;
+            let cls = '';
+            if (row._samples > 0 && pct >= 80) cls = 'rel-good';
+            else if (row._samples > 0 && pct <= 30) cls = 'rel-bad';
+            html.push('<tr class="' + cls + '">');
+            html.push('<td>' + escapeHtml(row.tool || '-') + '</td>');
+            html.push('<td>' + escapeHtml(row.successes != null ? row.successes : 0) + '</td>');
+            html.push('<td>' + escapeHtml(row.failures != null ? row.failures : 0) + '</td>');
+            html.push('<td>' + (row._samples ? pct.toFixed(1) + '%' : '-') + '</td>');
+            html.push('<td>' + escapeHtml(row._samples) + '</td>');
+            html.push('</tr>');
+          });
+          html.push('</tbody></table>');
+        }
+        html.push('</div>');
+        document.getElementById('view').innerHTML = html.join('');
+        wireSortHeaders();
+      }
+
+      // ─── Swarm Conflicts ─────────────────────────────────
+      async function loadConflicts() {
+        const view = document.getElementById('view');
+        view.innerHTML = '<p class="empty">Loading swarm conflicts...</p>';
+        try {
+          const params = new URLSearchParams({ workspace: workspace(), limit: '20' });
+          const data = await apiFetch('/api/admin/agent-stats/swarm-conflicts?' + params.toString());
+          state.data.conflicts = data;
+          touchLastFetch();
+          renderConflicts();
+        } catch (err) {
+          if (err && err.status === 404) {
+            setBanner('Swarm conflict logging not yet deployed on this instance', 'info');
+            view.innerHTML = '<div class="section"><div class="empty">No swarm-conflicts endpoint available.</div></div>';
+            return;
+          }
+          setBanner(friendlyError(err), 'error');
+          view.innerHTML = '<p class="empty">Unable to load swarm conflicts.</p>';
+        }
+      }
+
+      function renderConflicts() {
+        const data = state.data.conflicts || {};
+        const events = data.events || data.conflicts || data.items || [];
+        const count = (data.totals && (data.totals.conflicts != null ? data.totals.conflicts : data.totals.count)) || events.length;
+        const html = [];
+        html.push('<div class="section">');
+        html.push('<div class="summary">' + escapeHtml(count) + ' conflicts logged <span class="muted">(workspace: ' + escapeHtml(data.workspace || workspace()) + ')</span></div>');
+        if (!events.length) {
+          html.push('<div class="empty">No swarm conflicts recorded for this workspace</div>');
+        } else {
+          events.forEach(function (ev) {
+            html.push(renderConflictCard(ev));
+          });
+        }
+        html.push('</div>');
+        document.getElementById('view').innerHTML = html.join('');
+      }
+
+      function renderConflictCard(ev) {
+        const ts = ev.timestamp || ev.time || ev.createdAt || '';
+        const type = ev.type || ev.kind || 'conflict';
+        const summary = ev.summary || ev.message || ev.reason || '';
+        const specialists = Array.isArray(ev.specialists) ? ev.specialists : (ev.specialistNames || []);
+        const outputs = ev.outputs || ev.specialistOutputs || {};
+        const reconciled = ev.reconciled || ev.reconciledAnswer || ev.answer;
+        const judgeError = ev.judgeError || ev.error;
+
+        const head = [escapeHtml(ts), escapeHtml(type), escapeHtml(summary)]
+          .filter(Boolean).join(' &middot; ');
+
+        const parts = [];
+        parts.push('<details>');
+        parts.push('<summary>' + head + '</summary>');
+        parts.push('<div class="detail-body">');
+        parts.push('<div class="kv">');
+        if (specialists.length) {
+          parts.push('<div class="k">Specialists</div><div class="v">' + specialists.map(function (n) { return '<span class="chip">' + escapeHtml(n) + '</span>'; }).join('') + '</div>');
+        }
+        if (ev.conversationId) parts.push('<div class="k">Conversation</div><div class="v">' + escapeHtml(ev.conversationId) + '</div>');
+        if (ev.runId) parts.push('<div class="k">Run</div><div class="v">' + escapeHtml(ev.runId) + '</div>');
+        if (ev.user || ev.userId) parts.push('<div class="k">User</div><div class="v">' + escapeHtml(ev.user || ev.userId) + '</div>');
+        parts.push('</div>');
+
+        // per-specialist outputs
+        const outKeys = Array.isArray(outputs)
+          ? outputs.map(function (o, i) { return o && o.name ? o.name : String(i); })
+          : Object.keys(outputs || {});
+        if (outKeys.length) {
+          parts.push('<div style="margin-top:0.5rem"><strong style="font-size:0.75rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em">Specialist Outputs</strong></div>');
+          outKeys.forEach(function (key, idx) {
+            const val = Array.isArray(outputs) ? outputs[idx] : outputs[key];
+            const label = (val && val.name) ? val.name : key;
+            const content = (val && (val.output || val.answer || val.text)) != null
+              ? (val.output || val.answer || val.text)
+              : val;
+            parts.push('<details><summary>' + escapeHtml(label) + '</summary><pre>' + escapeHtml(typeof content === 'string' ? content : JSON.stringify(content, null, 2)) + '</pre></details>');
+          });
+        }
+
+        if (reconciled) {
+          parts.push('<div style="margin-top:0.5rem"><strong style="font-size:0.75rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em">Reconciled Answer</strong></div>');
+          parts.push('<pre>' + escapeHtml(typeof reconciled === 'string' ? reconciled : JSON.stringify(reconciled, null, 2)) + '</pre>');
+        }
+        if (judgeError) {
+          parts.push('<div style="margin-top:0.5rem"><strong class="err" style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em">Judge Error</strong></div>');
+          parts.push('<pre>' + escapeHtml(typeof judgeError === 'string' ? judgeError : JSON.stringify(judgeError, null, 2)) + '</pre>');
+        }
+        parts.push('</div>');
+        parts.push('</details>');
+        return parts.join('');
+      }
+
+      // ─── Sort header helpers ─────────────────────────────
+      function sortHeader(tab, col, label) {
+        const s = state.sort[tab];
+        const active = s && s.col === col;
+        const ind = active ? ' <span class="sort-indicator">' + (s.dir === 'asc' ? '▲' : '▼') + '</span>' : '';
+        return '<th class="sortable" data-tab="' + escapeHtml(tab) + '" data-col="' + escapeHtml(col) + '">' + escapeHtml(label) + ind + '</th>';
+      }
+
+      function wireSortHeaders() {
+        document.querySelectorAll('th.sortable').forEach(function (th) {
+          th.addEventListener('click', function () {
+            const tab = th.dataset.tab;
+            const col = th.dataset.col;
+            const s = state.sort[tab];
+            if (s.col === col) s.dir = s.dir === 'asc' ? 'desc' : 'asc';
+            else { s.col = col; s.dir = (col === 'tool') ? 'asc' : 'desc'; }
+            if (tab === 'failures') renderFailures();
+            else if (tab === 'reliability') renderReliability();
+          });
+        });
+      }
+
+      // ─── Reset ───────────────────────────────────────────
+      async function onReset() {
+        const tab = state.tab;
+        const ws = workspace();
+        let path;
+        if (tab === 'failures') path = '/api/admin/agent-stats/failures';
+        else if (tab === 'reliability') path = '/api/admin/agent-stats/reliability';
+        else {
+          setBanner('Reset is only supported on Failures and Reliability tabs', 'info');
+          return;
+        }
+        const msg = 'Reset ' + tab + ' data for workspace "' + ws + '"? This cannot be undone.';
+        if (!window.confirm(msg)) return;
+        try {
+          const params = new URLSearchParams({ workspace: ws });
+          await apiFetch(path + '?' + params.toString(), { method: 'DELETE' });
+          setBanner('Reset complete for ' + tab + ' in workspace "' + ws + '"', 'info');
+          loadCurrent();
+        } catch (err) {
+          setBanner(friendlyError(err), 'error');
+        }
+      }
+
+      // ─── Init ────────────────────────────────────────────
+      function init() {
+        const savedKey = sessionStorage.getItem(KEY_STORAGE);
+        if (savedKey) document.getElementById('admin-key').value = savedKey;
+        const savedWs = sessionStorage.getItem(WS_STORAGE);
+        if (savedWs) document.getElementById('workspace').value = savedWs;
+        loadCurrent();
+      }
+
+      init();
+    })();
+  </script>
+</body>
+</html>
