@@ -939,3 +939,46 @@ hourly exhaustion, depth exceeded, HITL cost gate, HITL spawn-count gate,
 window rotation, stats accuracy, per-workspace isolation, disabled thresholds,
 priority ordering, workspace overrides, and counter reset.
 
+---
+
+## Agent checkpoint resume
+
+Checkpoint snapshots for agent runs so they can be resumed from the last good
+state after crashes, timeouts, or manual pauses.
+
+### New files
+
+- `lib/agent-checkpoint.js` — checkpoint store (`saveCheckpoint`,
+  `loadCheckpoint`, `deleteCheckpoint`). One checkpoint per session, stored
+  under `data/agent-checkpoints/<sessionId>.json` via `lib/json-path-store.js`.
+- `routes/agent-resume.js` — exports `mountAgentResumeRoutes(app, deps)`.
+- `tests/agent-checkpoint.test.js` — 6 tests (save/load round-trip, overwrite,
+  delete, load-nonexistent, empty-string guards).
+- `tests/agent-resume-route.test.js` — 4 tests (resume with checkpoint 200,
+  no checkpoint 404, nonexistent session 404, wrong user 403).
+
+### Route
+
+`POST /api/v1/agent/sessions/:id/resume` — `logRequest → userAuth →
+requireScope("write") → handler`.
+
+Returns `{ ok: true, resumedFromIteration, sessionId, checkpoint }` on
+success; `404 CHECKPOINT_NOT_FOUND` when no checkpoint exists.
+
+### Wiring into `routes/index.js`
+
+```js
+import { mountAgentResumeRoutes } from "./agent-resume.js";
+// ...and append to mountFunctions:
+mountAgentResumeRoutes,
+```
+
+### Agent loop changes (`lib/agent-loop.js`)
+
+- After each successful iteration (tool results processed, messages updated),
+  a checkpoint is saved asynchronously via fire-and-forget `.catch(() => {})`.
+- On resume (`agentOpts.resume === true`), the loop calls `loadCheckpoint()`
+  before entering the while-loop. If found, `messages` and `iteration` are
+  restored and a `status.change { status: "resumed", fromIteration }` event
+  is published.
+
