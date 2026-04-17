@@ -186,7 +186,10 @@ export default function mount(el, ctx) {
   const workspace = (ctx && ctx.workspace) || DEFAULT_WORKSPACE;
   el.innerHTML = "";
   el.appendChild(render(apiBase, workspace));
-  return () => { el.innerHTML = ""; };
+  return () => {
+    try { el.innerHTML = ""; } catch (_) { /* noop */ }
+    try { globalThis.SiskelbotShell?.inspector?.clear(); } catch (_) { /* noop */ }
+  };
 }
 
 function render(apiBase, workspace) {

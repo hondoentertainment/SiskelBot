@@ -306,3 +306,42 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* Mobile polish: touch targets, 16px inputs, card-list rows. */
+.rcp-view,
+.rcp-list,
+.rcp-pane-detail,
+.rcp-output { -webkit-overflow-scrolling: touch; }
+
+@media (max-width: 900px) {
+  .rcp-view { padding: 12px 14px; grid-template-columns: 1fr; }
+  .rcp-pane-list { max-height: none; }
+  .rcp-btn,
+  .rcp-btn-primary,
+  .rcp-btn-run,
+  .rcp-btn-danger {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 10px 14px;
+  }
+  .rcp-btn-icon { min-width: 44px; padding: 8px 12px; }
+  .rcp-item { min-height: 44px; padding: 12px; }
+  .rcp-input,
+  .rcp-textarea {
+    font-size: 16px;
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 600px) {
+  .rcp-view { padding: 10px 10px; gap: 10px; }
+  .rcp-pane { padding: 10px; }
+  .rcp-side-header { flex-wrap: wrap; }
+  .rcp-side-title { font-size: 15px; }
+  .rcp-ws { font-size: 11px; }
+  .rcp-actions { flex-wrap: wrap; }
+  .rcp-item-meta { flex-direction: column; gap: 2px; }
+  .rcp-item-desc { white-space: normal; }
+  .rcp-step-header { flex-wrap: wrap; }
+  .rcp-placeholder { padding: 32px 12px; }
+}

@@ -552,6 +552,7 @@ export default function mount(el, ctx = {}) {
 
   // Return a teardown for shells that support it.
   return () => {
-    if (rtUnsub) { try { rtUnsub(); } catch { /* noop */ } }
+    if (rtUnsub) { try { rtUnsub(); } catch { /* noop */ } rtUnsub = null; }
+    try { globalThis.SiskelbotShell?.inspector?.clear(); } catch { /* noop */ }
   };
 }

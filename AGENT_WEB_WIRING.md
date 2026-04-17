@@ -780,3 +780,205 @@ the shell is absent (e.g., legacy HTML pages).
   escape), `renderTrajectoryTree` (empty / mixed types / >50 truncation
   / HTML escape), and `renderGraphNeighbors` (0 neighbors / row content
   with `data-entity` attribute / HTML escape).
+
+## View lifecycle
+
+Views mounted by the SPA router (`client/src/router.js`) follow a simple
+mount/unmount contract so navigation never leaks timers, in-flight fetches,
+realtime subscriptions, or stale inspector content.
+
+### Contract
+
+A view module's `mount(el, ctx)` may return **any** of:
+
+- `void` / `undefined` — nothing to clean up.
+- A function `() => void` — called by the router on the next navigation.
+- An object with a `destroy()` method — adapted to a cleanup function by
+  `app.js`'s `mountInto` helper.
+- A `Promise` resolving to any of the above — awaited before the router
+  records the cleanup.
+
+The router stores the resulting cleanup on `router._currentUnmount` and
+invokes it **before** the next view's loader runs. Thrown errors from either
+the unmount or the loader are logged via `console.error` and swallowed so a
+single buggy view cannot wedge the shell.
+
+The pure bookkeeping is factored into the exported helper
+`runWithLifecycle(prevUnmount, loader, ctx, onError)` so it can be unit
+tested without a DOM (`tests/client-shell-router-lifecycle.test.js`).
+
+### What each view should clean up
+
+Each view's returned unmount is expected to:
+
+- Clear any `setInterval` / `setTimeout` it owns.
+- Abort any in-flight `fetch` via an `AbortController`.
+- Close any `EventSource` it opened.
+- Unsubscribe from any realtime channels it subscribed to.
+- Call `globalThis.SiskelbotShell?.inspector?.clear()` so stale inspector
+  content does not linger into the next view.
+
+`mountInto` itself also calls `SiskelbotShell.inspector.clear()` up-front
+before delegating to the view's `mount()`, as a belt-and-suspenders default
+for views that have nothing else to clean up.
+
+### Per-view summary
+
+| View | Cleanup |
+|------|---------|
+| `client/src/views/chat.js` | Unsubscribes realtime channel, clears inspector. |
+| `client/src/views/agent-run.js` | Closes `EventSource`, replaces children, clears inspector. |
+| `client/src/views/knowledge.js` | Clears DOM, clears inspector. |
+| `client/src/views/recipes.js` | Replaces children, clears inspector. |
+| `client/src/views/runs.js` | Clears poll `setInterval`, replaces children, clears inspector. |
+| `client/src/views/replay.js` | Aborts in-flight fetch, stops playback timer, clears inspector. |
+| `client/src/views/observability.js` | Clears poll `setInterval`, replaces children, clears inspector. |
+
+## Cost emission
+
+The `cost.update` SSE event that feeds the Agent Run hero footer is emitted from
+every site where the server completes a chat completion on behalf of an agent
+run. The cumulative-per-run accounting lives in a single shared helper,
+`lib/agent-cost-emitter.js`, which exports `emitCostUpdate(...)` and
+`disposeRunCostAccumulator(runId)`. Call sites wrap each emit in a try/catch;
+resolution of `sessionId` from a bare `runId` uses `getSessionIdForRun` from
+`lib/agent-session.js` (sync mirror preferred, persisted reverse index as
+fallback). When no `sessionId` can be resolved, emission silently skips.
+
+| Site | Module | Hook |
+|------|--------|------|
+| Single-agent tool loop | `lib/agent-loop.js` | Inline emitter (wave 5); migrates to shared helper later. |
+| Swarm specialist LLM round | `lib/swarm.js` (`runSpecialistLoop`) | After each `backendFetch` parses `data.usage`, attributed to the swarm's parent `runId`. |
+| Swarm synthesizer | `lib/swarm.js` (non-streaming synth branch) | After the synth response's `data.usage` is available. |
+| Scheduled agent completion | `lib/scheduled-agents.js` (`runScheduledAgent`) | After the one-shot `backendFetch` returns with `usage`. |
+| Direct streamed chat | `lib/llm-stream-sse.js` (`pipeLlmChatStreamToSse`) | Captures `usage` from the terminal chunk (OpenAI `stream_options.include_usage`, vLLM default) and emits once on pipe close, only when caller passes `opts.runId`/`opts.sessionId`. |
+
+Sites NOT wired (no `runId`/`sessionId` in scope): direct non-agent chat
+requests to `/v1/chat/completions` that do not thread a run through
+`pipeLlmChatStreamToSse` opts; legacy `runSwarmDirect` and `runSwarmLegacy`
+tool-only paths that never invoke an LLM.
+
+---
+
+## Subagent quotas
+
+Per-workspace enforcement of subagent spawn limits with optional human-in-the-loop
+(HITL) approval gates when thresholds are crossed. Prevents runaway agent trees
+from exhausting compute or budget.
+
+### New files
+
+- `lib/subagent-quota.js` -- quota enforcement + HITL gate logic.
+- `tests/subagent-quota.test.js` -- 19 unit tests.
+
+### Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SUBAGENT_MAX_SPAWNS_PER_HOUR` | `100` | Hard cap on subagent spawns per workspace per hour. `0` = unlimited. |
+| `SUBAGENT_MAX_DEPTH` | `3` | Maximum nesting depth for subagent chains. |
+| `SUBAGENT_HITL_COST_THRESHOLD_USD` | `5.00` | If estimated cost exceeds this, require HITL approval before spawn. `0` = disabled. |
+| `SUBAGENT_HITL_SPAWN_THRESHOLD` | `10` | If hourly spawn count reaches this, require HITL approval for subsequent spawns. `0` = disabled. |
+
+Per-workspace overrides are supported via `lib/workspace-agent-settings.js`. If
+`getWorkspaceAgentAccess(userId, workspace)` returns a `subagentQuota` field, its
+values (`maxSpawnsPerHour`, `maxDepth`, `hitlCostThresholdUsd`, `hitlSpawnThreshold`)
+override the environment defaults.
+
+### Quota behavior
+
+1. **Depth check** -- if `depth >= SUBAGENT_MAX_DEPTH`, hard deny (`SUBAGENT_DEPTH_EXCEEDED`).
+2. **Hourly rate check** -- in-memory `Map<workspace, {count, windowStart}>`. When `count >= max`, hard deny (`SUBAGENT_QUOTA_EXHAUSTED`). Window rotates automatically when `Date.now() - windowStart > 3600000`.
+3. **HITL cost gate** -- if `estimatedCostUsd > threshold` and threshold > 0, a HITL state is saved via `saveHitlState()` from `lib/agent-hitl-store.js` and the caller receives `{ allowed: "hitl_required", approvalId }`.
+4. **HITL spawn-count gate** -- if `spawnsThisHour >= spawnThreshold` and threshold > 0, same HITL pattern.
+5. Otherwise, `{ allowed: true }`.
+
+### HITL integration
+
+The module calls `saveHitlState(state)` from `lib/agent-hitl-store.js` to persist
+a one-time approval token. The saved state includes `tool: "spawn_subagent"`,
+`sessionId` (from `parentSessionId`), estimated cost / spawn count, and a human-
+readable reason. Because `saveHitlState` publishes `hitl.request` on the Agent Run
+SSE stream when a `sessionId` is present, the 4-pane hero UI renders the approval
+card automatically.
+
+The caller (spawn_subagent tool) must poll or await the approval via
+`peekHitlState(approvalId)` / `takeHitlState(approvalId, { decision })` before
+proceeding. If the user denies, the spawn is aborted.
+
+### Call convention for spawn_subagent
+
+```js
+import { checkSubagentQuota, recordSubagentSpawn } from "../lib/subagent-quota.js";
+
+const result = await checkSubagentQuota({
+  workspace,
+  userId,
+  parentSessionId,
+  depth,
+  estimatedCostUsd,
+  workspaceQuotaOverrides,   // optional: subagentQuota from workspace settings
+});
+
+if (result.allowed === false) {
+  return { error: result.reason, code: result.code };
+}
+if (result.allowed === "hitl_required") {
+  // Await human approval via takeHitlState(result.approvalId, ...)
+  return { hitl_required: true, approvalId: result.approvalId, reason: result.reason };
+}
+
+// Proceed with spawn, then record it:
+recordSubagentSpawn(workspace);
+```
+
+### Tests
+
+`tests/subagent-quota.test.js` -- 19 tests covering fresh workspace allow,
+hourly exhaustion, depth exceeded, HITL cost gate, HITL spawn-count gate,
+window rotation, stats accuracy, per-workspace isolation, disabled thresholds,
+priority ordering, workspace overrides, and counter reset.
+
+---
+
+## Agent checkpoint resume
+
+Checkpoint snapshots for agent runs so they can be resumed from the last good
+state after crashes, timeouts, or manual pauses.
+
+### New files
+
+- `lib/agent-checkpoint.js` — checkpoint store (`saveCheckpoint`,
+  `loadCheckpoint`, `deleteCheckpoint`). One checkpoint per session, stored
+  under `data/agent-checkpoints/<sessionId>.json` via `lib/json-path-store.js`.
+- `routes/agent-resume.js` — exports `mountAgentResumeRoutes(app, deps)`.
+- `tests/agent-checkpoint.test.js` — 6 tests (save/load round-trip, overwrite,
+  delete, load-nonexistent, empty-string guards).
+- `tests/agent-resume-route.test.js` — 4 tests (resume with checkpoint 200,
+  no checkpoint 404, nonexistent session 404, wrong user 403).
+
+### Route
+
+`POST /api/v1/agent/sessions/:id/resume` — `logRequest → userAuth →
+requireScope("write") → handler`.
+
+Returns `{ ok: true, resumedFromIteration, sessionId, checkpoint }` on
+success; `404 CHECKPOINT_NOT_FOUND` when no checkpoint exists.
+
+### Wiring into `routes/index.js`
+
+```js
+import { mountAgentResumeRoutes } from "./agent-resume.js";
+// ...and append to mountFunctions:
+mountAgentResumeRoutes,
+```
+
+### Agent loop changes (`lib/agent-loop.js`)
+
+- After each successful iteration (tool results processed, messages updated),
+  a checkpoint is saved asynchronously via fire-and-forget `.catch(() => {})`.
+- On resume (`agentOpts.resume === true`), the loop calls `loadCheckpoint()`
+  before entering the while-loop. If found, `messages` and `iteration` are
+  restored and a `status.change { status: "resumed", fromIteration }` event
+  is published.
+

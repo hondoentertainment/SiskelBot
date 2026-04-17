@@ -181,8 +181,12 @@ export async function mount(root, opts) {
   if (!token) {
     errorBox.style.display = "";
     errorBox.textContent = "Missing replay token.";
-    return;
+    return () => {
+      try { globalThis.SiskelbotShell?.inspector?.clear(); } catch (_) { /* noop */ }
+    };
   }
+
+  const abort = new AbortController();
 
   let data;
   try {
@@ -190,6 +194,7 @@ export async function mount(root, opts) {
       method: "GET",
       credentials: "omit",
       headers: { accept: "application/json" },
+      signal: abort.signal,
     });
     if (!resp.ok) {
       const body = await resp.json().catch(() => ({}));
@@ -197,9 +202,14 @@ export async function mount(root, opts) {
     }
     data = await resp.json();
   } catch (err) {
+    if (err && err.name === "AbortError") {
+      return () => { /* already aborted */ };
+    }
     errorBox.style.display = "";
     errorBox.textContent = `Could not load replay: ${err?.message || err}`;
-    return;
+    return () => {
+      try { globalThis.SiskelbotShell?.inspector?.clear(); } catch (_) { /* noop */ }
+    };
   }
 
   const events = Array.isArray(data?.events) ? data.events : [];
@@ -348,6 +358,13 @@ export async function mount(root, opts) {
 
   refreshPanes();
   updateScrubber();
+
+  return () => {
+    try { abort.abort(); } catch (_) { /* noop */ }
+    stopTimer();
+    try { globalThis.SiskelbotShell?.inspector?.clear(); } catch (_) { /* noop */ }
+    try { root.replaceChildren(); } catch (_) { /* noop */ }
+  };
 }
 
 export default { mount };

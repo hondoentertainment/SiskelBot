@@ -575,6 +575,7 @@ export default function mount(root, ctx = {}) {
     refresh: load,
     destroy() {
       try { root.replaceChildren(); } catch (_) { /* ignore */ }
+      try { globalThis.SiskelbotShell?.inspector?.clear(); } catch (_) { /* ignore */ }
     },
   };
 }

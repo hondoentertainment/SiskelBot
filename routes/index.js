@@ -240,6 +240,10 @@ import { mountSignalsRoutes } from "./signals.js";
 import { mountObservabilitySnapshotRoutes } from "./observability-snapshot.js";
 import { mountAgentHitlRoutes } from "./agent-hitl.js";
 import { mountAgentArtifactRoutes } from "./agent-artifacts.js";
+import { mountAgentProfileRoutes } from "./agent-profiles.js";
+import { mountAgentToolsDiscoverRoutes } from "./agent-tools-discover.js";
+import { mountCostEstimateRoutes } from "./cost-estimate.js";
+import { mountTrajectoryBranchRoutes } from "./trajectory-branch.js";
 
 // Phase 63 — Code Generation vertical (5 modules)
 import mountRepoRagRoutes from "./repo-rag.js";
@@ -481,6 +485,10 @@ const mountFunctions = [
   mountObservabilitySnapshotRoutes,
   mountAgentHitlRoutes,
   mountAgentArtifactRoutes,
+  mountAgentProfileRoutes,
+  mountAgentToolsDiscoverRoutes,
+  mountCostEstimateRoutes,
+  mountTrajectoryBranchRoutes,
 
   // Phase 63 — Code Generation vertical
   mountRepoRagRoutes,

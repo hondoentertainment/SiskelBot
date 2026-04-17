@@ -1,17 +1,23 @@
 /**
- * Agent Run hero view — 4-pane live dashboard for a single agent session.
+ * Agent Run hero view — 5-pane live dashboard for a single agent session.
  *
- * Layout (2×2 grid, stacks on < 900px):
+ * Desktop layout (>= 1200px, 2 columns):
  *
- *   ┌─────────── Plan ───────────┬──────── Timeline ─────────┐
- *   ├───────── Artifacts ────────┼──────── Approvals ────────┤
- *   └────────────────── footer (status + controls) ─────────┘
+ *   ┌─────── Plan ───────┬──────── Timeline ─────────┐
+ *   ├─────── Tree ───────┤                            │
+ *   │                    ├──────── Artifacts ─────────┤
+ *   │                    ├──────── Approvals ─────────┤
+ *   └────────────────── footer (status + controls) ───┘
+ *
+ * Medium (< 1200px): Plan > Tree (collapsible) > Timeline > Artifacts > Approvals
+ * Mobile  (< 900px): All sections stack vertically
  *
  * Stream source: GET {apiBase}/agent/sessions/:id/stream  (Server-Sent Events)
  *
  * Event types consumed:
  *   plan.update, tool.call, tool.result, hitl.request, hitl.resolved,
- *   artifact.new, cost.update, status.change, done
+ *   artifact.new, cost.update, status.change, subagent.spawned,
+ *   subagent.done, done
  *
  * Each SSE `data:` frame is a JSON object: { seq, ts, payload }.
  *
@@ -21,6 +27,7 @@
  */
 
 import { renderTrajectoryTree } from "./inspector-content.js";
+import { buildTree, renderTreeHtml, updateNodeInTree } from "./subagent-tree.js";
 
 const DEFAULT_API_BASE = "/api/v1";
 const MAX_TIMELINE_EVENTS = 500;
@@ -128,6 +135,9 @@ export default function mount(root, opts) {
     preview: null,
     pendingApproval: new Set(),
     autoscroll: true,
+    treeEvents: [],
+    tree: null,
+    treeCollapsed: new Set(),
   };
   let es = null;
   let previewRequestSeq = 0;
@@ -142,6 +152,10 @@ export default function mount(root, opts) {
   const planSummary = el("div", { class: "ar-plan-summary" });
   const planList = el("ul", { class: "ar-plan-list" });
   const planPane = makePane("Plan", [planSummary, planList]);
+
+  // Tree pane (subagent hierarchy)
+  const treeContainer = el("div", { class: "sat-tree" });
+  const treePane = makePane("Tree", [treeContainer]);
 
   // Timeline pane
   const timelineList = el("ol", { class: "ar-timeline" });
@@ -162,7 +176,7 @@ export default function mount(root, opts) {
   const approvalsEmpty = el("div", { class: "ar-empty" }, "No pending approvals.");
   const approvalsPane = makePane("Approvals", [approvalsEmpty, approvalsList]);
 
-  const grid = el("div", { class: "ar-grid" }, [planPane, timelinePane, artifactsPane, approvalsPane]);
+  const grid = el("div", { class: "ar-grid" }, [planPane, timelinePane, treePane, artifactsPane, approvalsPane]);
 
   // Footer controls
   const statusPill = el("span", { class: "ar-pill ar-pill-connecting" }, "connecting");
@@ -204,6 +218,39 @@ export default function mount(root, opts) {
       const title = el("span", { class: "ar-plan-node-title" }, node.title || node.id || "step");
       const meta = node.detail ? el("span", { class: "ar-plan-node-meta" }, String(node.detail)) : null;
       planList.appendChild(el("li", { class: "ar-plan-node" }, [badge, title, meta]));
+    }
+  }
+
+  function renderTree() {
+    state.tree = buildTree(state.treeEvents, { sessionId, title: sessionId });
+    const html = renderTreeHtml(state.tree, 0, state.treeCollapsed);
+    treeContainer.innerHTML = html ? `<ul class="sat-root">${html}</ul>` : '<div class="ar-empty">No subagents spawned.</div>';
+    // Bind toggle clicks
+    for (const toggle of treeContainer.querySelectorAll(".sat-toggle")) {
+      toggle.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const nodeId = toggle.dataset.nodeId;
+        if (!nodeId) return;
+        if (state.treeCollapsed.has(nodeId)) {
+          state.treeCollapsed.delete(nodeId);
+        } else {
+          state.treeCollapsed.add(nodeId);
+        }
+        renderTree();
+      });
+    }
+    // Bind click-to-navigate on nodes
+    for (const node of treeContainer.querySelectorAll(".sat-node")) {
+      const sid = node.dataset.sessionId;
+      if (!sid || sid === sessionId) continue;
+      node.addEventListener("click", () => {
+        const shell = globalThis.SiskelbotShell;
+        if (shell?.navigate) {
+          shell.navigate(`/runs/${encodeURIComponent(sid)}`);
+        } else {
+          window.open(`/runs/${encodeURIComponent(sid)}`, "_blank", "noopener");
+        }
+      });
     }
   }
 
@@ -506,6 +553,8 @@ export default function mount(root, opts) {
     if (ev.type === "artifact.new") return `artifact: ${p.name || p.id || ""}`;
     if (ev.type === "cost.update") return `cost: ${fmtUSD(p.totalUsd ?? p.costUsd ?? 0)}`;
     if (ev.type === "status.change") return `${p.status || p.kind || "status"}`;
+    if (ev.type === "subagent.spawned") return `spawned: ${p.profile || "agent"} ${p.childSessionId || ""}`;
+    if (ev.type === "subagent.done") return `child done: ${p.childSessionId || ""} ${p.error ? "(error)" : ""}`;
     if (ev.type === "done") return "run finished";
     return JSON.stringify(p);
   }
@@ -533,6 +582,7 @@ export default function mount(root, opts) {
       renderPlan();
     } else if (type === "tool.call" || type === "tool.result") {
       state.iterations += type === "tool.call" ? 1 : 0;
+      if (type === "tool.call") state.treeEvents.push({ type, payload });
       renderFooter();
     } else if (type === "artifact.new") {
       const id = payload.id || `a_${state.artifacts.length + 1}`;
@@ -563,12 +613,24 @@ export default function mount(root, opts) {
       const id = payload.approvalId || payload.id;
       for (const a of state.approvals) if (a.approvalId === id) a.resolved = true;
       renderApprovals();
+    } else if (type === "subagent.spawned") {
+      state.treeEvents.push({ type, payload });
+      renderTree();
+    } else if (type === "subagent.done") {
+      state.treeEvents.push({ type, payload });
+      renderTree();
     } else if (type === "cost.update") {
       const usd = Number(payload.totalUsd ?? payload.costUsd);
       if (Number.isFinite(usd)) state.costUsd = usd;
+      // Forward cost.update with childCostUsd to tree state
+      if (payload.childSessionId && payload.childCostUsd != null) {
+        state.treeEvents.push({ type, payload });
+        renderTree();
+      }
       renderFooter();
     } else if (type === "status.change") {
       if (payload.status) state.status = String(payload.status);
+      state.treeEvents.push({ type, payload });
       renderFooter();
     } else if (type === "done") {
       state.status = "done";
@@ -601,6 +663,8 @@ export default function mount(root, opts) {
       "artifact.new",
       "cost.update",
       "status.change",
+      "subagent.spawned",
+      "subagent.done",
       "done",
     ];
     for (const t of types) {
@@ -624,6 +688,7 @@ export default function mount(root, opts) {
 
   connect();
   renderPlan();
+  renderTree();
   renderTimeline();
   renderArtifacts();
   renderApprovals();
@@ -636,7 +701,8 @@ export default function mount(root, opts) {
     destroy() {
       try { if (es) es.close(); } catch (_) {}
       es = null;
-      root.replaceChildren();
+      try { globalThis.SiskelbotShell?.inspector?.clear(); } catch (_) {}
+      try { root.replaceChildren(); } catch (_) {}
     },
   };
 }
