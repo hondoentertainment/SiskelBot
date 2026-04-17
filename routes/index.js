@@ -242,6 +242,8 @@ import { mountAgentHitlRoutes } from "./agent-hitl.js";
 import { mountAgentArtifactRoutes } from "./agent-artifacts.js";
 import { mountAgentProfileRoutes } from "./agent-profiles.js";
 import { mountAgentToolsDiscoverRoutes } from "./agent-tools-discover.js";
+import { mountCostEstimateRoutes } from "./cost-estimate.js";
+import { mountTrajectoryBranchRoutes } from "./trajectory-branch.js";
 
 import { mountV2Routes } from "./v2/index.js";
 
@@ -450,6 +452,8 @@ const mountFunctions = [
   mountAgentArtifactRoutes,
   mountAgentProfileRoutes,
   mountAgentToolsDiscoverRoutes,
+  mountCostEstimateRoutes,
+  mountTrajectoryBranchRoutes,
 ];
 
 /**
