@@ -240,6 +240,7 @@ import { mountSignalsRoutes } from "./signals.js";
 import { mountObservabilitySnapshotRoutes } from "./observability-snapshot.js";
 import { mountAgentHitlRoutes } from "./agent-hitl.js";
 import { mountAgentArtifactRoutes } from "./agent-artifacts.js";
+import { mountAgentProfileRoutes } from "./agent-profiles.js";
 
 import { mountV2Routes } from "./v2/index.js";
 
@@ -446,6 +447,7 @@ const mountFunctions = [
   mountObservabilitySnapshotRoutes,
   mountAgentHitlRoutes,
   mountAgentArtifactRoutes,
+  mountAgentProfileRoutes,
 ];
 
 /**
