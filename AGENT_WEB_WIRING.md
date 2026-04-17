@@ -858,3 +858,84 @@ requests to `/v1/chat/completions` that do not thread a run through
 `pipeLlmChatStreamToSse` opts; legacy `runSwarmDirect` and `runSwarmLegacy`
 tool-only paths that never invoke an LLM.
 
+---
+
+## Subagent quotas
+
+Per-workspace enforcement of subagent spawn limits with optional human-in-the-loop
+(HITL) approval gates when thresholds are crossed. Prevents runaway agent trees
+from exhausting compute or budget.
+
+### New files
+
+- `lib/subagent-quota.js` -- quota enforcement + HITL gate logic.
+- `tests/subagent-quota.test.js` -- 19 unit tests.
+
+### Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SUBAGENT_MAX_SPAWNS_PER_HOUR` | `100` | Hard cap on subagent spawns per workspace per hour. `0` = unlimited. |
+| `SUBAGENT_MAX_DEPTH` | `3` | Maximum nesting depth for subagent chains. |
+| `SUBAGENT_HITL_COST_THRESHOLD_USD` | `5.00` | If estimated cost exceeds this, require HITL approval before spawn. `0` = disabled. |
+| `SUBAGENT_HITL_SPAWN_THRESHOLD` | `10` | If hourly spawn count reaches this, require HITL approval for subsequent spawns. `0` = disabled. |
+
+Per-workspace overrides are supported via `lib/workspace-agent-settings.js`. If
+`getWorkspaceAgentAccess(userId, workspace)` returns a `subagentQuota` field, its
+values (`maxSpawnsPerHour`, `maxDepth`, `hitlCostThresholdUsd`, `hitlSpawnThreshold`)
+override the environment defaults.
+
+### Quota behavior
+
+1. **Depth check** -- if `depth >= SUBAGENT_MAX_DEPTH`, hard deny (`SUBAGENT_DEPTH_EXCEEDED`).
+2. **Hourly rate check** -- in-memory `Map<workspace, {count, windowStart}>`. When `count >= max`, hard deny (`SUBAGENT_QUOTA_EXHAUSTED`). Window rotates automatically when `Date.now() - windowStart > 3600000`.
+3. **HITL cost gate** -- if `estimatedCostUsd > threshold` and threshold > 0, a HITL state is saved via `saveHitlState()` from `lib/agent-hitl-store.js` and the caller receives `{ allowed: "hitl_required", approvalId }`.
+4. **HITL spawn-count gate** -- if `spawnsThisHour >= spawnThreshold` and threshold > 0, same HITL pattern.
+5. Otherwise, `{ allowed: true }`.
+
+### HITL integration
+
+The module calls `saveHitlState(state)` from `lib/agent-hitl-store.js` to persist
+a one-time approval token. The saved state includes `tool: "spawn_subagent"`,
+`sessionId` (from `parentSessionId`), estimated cost / spawn count, and a human-
+readable reason. Because `saveHitlState` publishes `hitl.request` on the Agent Run
+SSE stream when a `sessionId` is present, the 4-pane hero UI renders the approval
+card automatically.
+
+The caller (spawn_subagent tool) must poll or await the approval via
+`peekHitlState(approvalId)` / `takeHitlState(approvalId, { decision })` before
+proceeding. If the user denies, the spawn is aborted.
+
+### Call convention for spawn_subagent
+
+```js
+import { checkSubagentQuota, recordSubagentSpawn } from "../lib/subagent-quota.js";
+
+const result = await checkSubagentQuota({
+  workspace,
+  userId,
+  parentSessionId,
+  depth,
+  estimatedCostUsd,
+  workspaceQuotaOverrides,   // optional: subagentQuota from workspace settings
+});
+
+if (result.allowed === false) {
+  return { error: result.reason, code: result.code };
+}
+if (result.allowed === "hitl_required") {
+  // Await human approval via takeHitlState(result.approvalId, ...)
+  return { hitl_required: true, approvalId: result.approvalId, reason: result.reason };
+}
+
+// Proceed with spawn, then record it:
+recordSubagentSpawn(workspace);
+```
+
+### Tests
+
+`tests/subagent-quota.test.js` -- 19 tests covering fresh workspace allow,
+hourly exhaustion, depth exceeded, HITL cost gate, HITL spawn-count gate,
+window rotation, stats accuracy, per-workspace isolation, disabled thresholds,
+priority ordering, workspace overrides, and counter reset.
+
