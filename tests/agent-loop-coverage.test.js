@@ -68,6 +68,11 @@ test("runAgentLoop: backend error is surfaced as thrown Error", async () => {
 });
 
 test("runAgentLoop: hits max iterations via looping tool calls", async () => {
+  // Disable stagnation detector so the loop reaches the iteration cap
+  // rather than short-circuiting via the N-cycle detector.
+  const origStag = process.env.AGENT_STAGNATION_STOP;
+  process.env.AGENT_STAGNATION_STOP = "0";
+
   let i = 0;
   const backendFetch = async () => {
     i++;
@@ -102,6 +107,9 @@ test("runAgentLoop: hits max iterations via looping tool calls", async () => {
   const r = await runAgentLoop(req, makeRes(), { baseUrl: "http://mock", path: "/v1/chat", headers: {} }, "m", null, backendFetch);
   assert.equal(r.stopReason, "max_iterations");
   assert.ok(r.content.includes("max iterations"));
+
+  if (origStag !== undefined) process.env.AGENT_STAGNATION_STOP = origStag;
+  else delete process.env.AGENT_STAGNATION_STOP;
 });
 
 test("runAgentLoop: respects required tool sequence on first iteration", async () => {
