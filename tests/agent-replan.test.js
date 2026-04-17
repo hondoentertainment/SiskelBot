@@ -115,6 +115,8 @@ test("re-plan: tool fails 4 times (max 3 replans) -> loop stops with replan_exha
   const origMaxReplans = process.env.AGENT_MAX_REPLANS;
   delete process.env.AGENT_REPLAN_ON_FAILURE;
   process.env.AGENT_MAX_REPLANS = "3";
+  const origStag = process.env.AGENT_STAGNATION_STOP;
+  process.env.AGENT_STAGNATION_STOP = "0";
 
   // 4 rounds of calling a broken tool, each time the LLM stubbornly retries
   const responses = [
@@ -140,6 +142,8 @@ test("re-plan: tool fails 4 times (max 3 replans) -> loop stops with replan_exha
   else delete process.env.AGENT_REPLAN_ON_FAILURE;
   if (origMaxReplans !== undefined) process.env.AGENT_MAX_REPLANS = origMaxReplans;
   else delete process.env.AGENT_MAX_REPLANS;
+  if (origStag !== undefined) process.env.AGENT_STAGNATION_STOP = origStag;
+  else delete process.env.AGENT_STAGNATION_STOP;
 });
 
 test("re-plan: tool succeeds -> no re-plan message, replanCount stays 0", async () => {
