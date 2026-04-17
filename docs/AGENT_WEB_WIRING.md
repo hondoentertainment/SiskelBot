@@ -1,102 +1,62 @@
-# Agent Web Wiring
+## Agent profiles
 
-## Subagent tool
+Named persona configurations (subagent profiles) with system prompt, tool allowlist/denylist, model override, and execution budgets. Workspace-scoped CRUD so teams can define their own profiles.
 
-The `spawn_subagent` tool allows any agent inside `runAgentLoop` to delegate a subtask to a child agent. The child runs its own tool-call loop with an independent iteration budget and returns a structured result.
+### Profile schema
 
-### Tool schema
-
-```json
+```js
 {
-  "name": "spawn_subagent",
-  "description": "Delegate a subtask to a child agent. The child runs its own tool-call loop with its own budget and returns a structured result. Use this when a task is large enough to benefit from decomposition.",
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "goal": { "type": "string", "description": "Clear statement of what the child should accomplish" },
-      "profile": { "type": "string", "description": "Named profile: researcher, executor, synthesizer, code_writer, reviewer, or 'default'" },
-      "model": { "type": "string", "description": "Override model for child (optional, inherits parent if omitted)" },
-      "maxIterations": { "type": "number", "description": "Max iterations for child (default 10)" },
-      "toolAllowlist": { "type": "array", "items": {"type":"string"}, "description": "Tools the child may use (empty = inherit parent's allowlist)" },
-      "context": { "type": "string", "description": "Additional context/instructions passed as a user message to the child" }
-    },
-    "required": ["goal"]
-  }
+  id: string,           // "researcher", "code_writer", etc. — alphanumeric + hyphens/underscores, 2-64 chars
+  name: string,         // display name
+  systemPrompt: string, // required, non-empty
+  model: string | null, // null = inherit from caller
+  toolAllowlist: string[] | null, // null = inherit all tools
+  toolDenylist: string[] | null,  // explicit deny (applied after allowlist)
+  budgets: {
+    maxIterations: number | null,  // null = default
+    maxCostUsd: number | null,
+    maxWallTimeMs: number | null,
+    maxToolCalls: number | null,
+  },
+  builtIn: boolean,     // true for the 5 defaults; false for user-defined
+  createdAt: string,    // ISO 8601
+  updatedAt: string,    // ISO 8601
 }
 ```
 
-### Profiles
+### Built-in profiles
 
-| Profile | System prompt |
-|---------|--------------|
-| `researcher` | You are a research agent. Search, summarize, and return structured findings. Do not execute or modify anything. |
-| `executor` | You are an execution agent. Carry out the plan step by step. Report results. |
-| `synthesizer` | You are a synthesis agent. Combine inputs into a coherent output. |
-| `code_writer` | You are a code-writing agent. Write clean, tested code. |
-| `reviewer` | You are a review agent. Analyze for correctness, security, and quality. |
-| `default` | You are a focused assistant. Complete the goal and return the result. |
+| id | systemPrompt (first line) | model | toolAllowlist | budgets |
+|----|---------------------------|-------|---------------|---------|
+| researcher | "You are a research agent. Search and summarize findings. Never modify data." | null | search_context, semantic_search_context, fetch_allowed_url, web_search, list_context, get_context_document, search_knowledge_graph | maxIterations:15, maxCostUsd:0.50 |
+| executor | "You are an execution agent. Carry out the plan step by step." | null | null (all tools) | maxIterations:25, maxCostUsd:2.00 |
+| synthesizer | "You are a synthesis agent. Combine inputs into coherent output." | null | search_context, get_context_document, create_document | maxIterations:5, maxCostUsd:0.20 |
+| code_writer | "You are a code-writing agent. Write clean, tested code." | null | workspace_read_file, code_execute, search_context | maxIterations:20, maxCostUsd:1.00 |
+| reviewer | "You are a review agent. Analyze for correctness, security, and quality. Do not modify." | null | search_context, workspace_read_file, get_context_document | maxIterations:10, maxCostUsd:0.30 |
 
-### Depth limit
+### Endpoints
 
-Subagent nesting is capped at depth 3 (0, 1, 2 are allowed; depth 3 is rejected). The depth is tracked via `agentOptions.depth` in the child request and incremented on each spawn. When the limit is exceeded, the tool returns:
+All endpoints are workspace-scoped via `?workspace=<name>` query parameter (defaults to "default").
 
-```json
-{ "ok": false, "code": "SUBAGENT_DEPTH_EXCEEDED", "error": "Subagent nesting depth 3 exceeds maximum of 3" }
-```
+| Method | Path | Scope | Description |
+|--------|------|-------|-------------|
+| GET | `/api/v1/agent/profiles` | read | List all profiles (built-ins + workspace custom) |
+| GET | `/api/v1/agent/profiles/:id` | read | Get a single profile by id |
+| PUT | `/api/v1/agent/profiles/:id` | write | Create or update a profile (validates schema) |
+| DELETE | `/api/v1/agent/profiles/:id` | write | Delete a workspace profile or override; rejects built-in delete without override |
 
-The `spawn_subagent` tool is always excluded from children's tool lists to prevent infinite recursion, regardless of the depth counter.
+### Storage
 
-### Event shapes
+Per-workspace profiles are stored via `lib/json-path-store.js` under `data/agent-profiles/<workspace>.json`. Built-in profiles are always available from in-memory defaults regardless of storage state.
 
-Events are published on the parent session's SSE emitter via `publishAgentRunEvent`.
+### routes/index.js wiring snippet
 
-**`subagent.spawned`** (emitted when the child agent starts):
-```json
-{
-  "childSessionId": "<uuid>",
-  "parentRunId": "<uuid>",
-  "goal": "Clear statement of what the child should accomplish",
-  "profile": "researcher"
-}
-```
+To wire the agent profiles routes into the application, add the following to `routes/index.js`:
 
-**`subagent.done`** (emitted when the child completes or errors):
-```json
-{
-  "childSessionId": "<uuid>",
-  "result": "<truncated to 2000 chars>",
-  "iterations": 3,
-  "toolCallCount": 5
-}
-```
+```js
+// Import
+import { mountAgentProfileRoutes } from "./agent-profiles.js";
 
-On error:
-```json
-{
-  "childSessionId": "<uuid>",
-  "error": "Error message"
-}
-```
-
-### Return value
-
-The tool returns a JSON object to the parent agent:
-
-```json
-{
-  "ok": true,
-  "result": "<last assistant message from child>",
-  "childSessionId": "<uuid>",
-  "iterations": 3,
-  "toolCallCount": 5
-}
-```
-
-On failure:
-```json
-{
-  "ok": false,
-  "error": "<error message>",
-  "childSessionId": "<uuid or undefined>"
-}
+// Add to mountFunctions array
+mountAgentProfileRoutes,
 ```
