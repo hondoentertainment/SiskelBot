@@ -9,9 +9,8 @@
  *     validation pass (lib/tool-validation.js KNOWN_TOOLS) short-circuits
  *     the unknown tool, records it with ok:false + validationError:true,
  *     injects a _tool_validation_error into messages, and the loop
- *     iterates. The unreachable `default:` branch in runToolCore (which
- *     emits `{content: "{\"error\":\"Unknown tool\"}"}` *without* an outer
- *     ok flag) is documented as dead code in BUGS_FOUND.md.
+ *     iterates. The `default:` branch in runToolCore now throws an
+ *     assertion error (unreachable if validation is enabled).
  *
  *  3. Iteration cap is reached while the model keeps requesting tools. The
  *     loop must exit with stopReason === "max_iterations" and emit a
@@ -183,7 +182,7 @@ test("unknown tool name: runTool returns error content, loop continues to next i
   // validation pass (lib/tool-validation.js KNOWN_TOOLS) short-circuits the
   // unknown tool, records it with validationError:true + ok:false, and
   // injects a `_tool_validation_error` payload into messages. runToolCore's
-  // default-branch "Unknown tool" error is never reached through this path.
+  // default branch (now an assertion throw) is never reached through this path.
   const unknownEntry = result.toolCalls.find(
     (t) => t.name === "definitely_not_a_real_tool_xyz",
   );
@@ -336,21 +335,16 @@ test("tool that fails (ok:false) mid-loop: error is absorbed into tool-result co
 
   assert.equal(result.stopReason, "model_finished");
   assert.equal(result.content, "Handled.");
-  // The throwing tool is captured in toolCalls. Existing behavior (see
-  // lib/agent-tools.js runTool): a thrown error is swallowed into a
-  // JSON content string; the wrapper does not set ok:false on itself,
-  // so the loop records ok:true. Pin that — any fix will flip this.
+  // The throwing tool is captured in toolCalls.
   const throwEntry = result.toolCalls.find(
     (t) => t.name === "fetch_allowed_url",
   );
   assert.ok(throwEntry, "expected fetch_allowed_url in toolCalls log");
   // Arg-validation rejects the empty url before runToolCore is reached, so
   // the log entry is ok:false with validationError:true and durationMs:0.
-  // A true "tool threw an error" path (bypassing validation) would take
-  // the runTool try/catch instead, which wraps the throw into an ok:false
-  // content JSON but does NOT propagate an outer ok flag — so the log
-  // entry would record ok:true. That wrapper-vs-content mismatch is
-  // documented in BUGS_FOUND.md.
+  // If a tool threw an error bypassing validation, runTool's try/catch now
+  // correctly sets ok:false on the wrapper object (bug #2 fix), so the log
+  // entry would also record ok:false.
   assert.equal(throwEntry.ok, false);
   assert.equal(throwEntry.validationError, true);
   // Loop published a terminal done event even though the tool failed.

@@ -1,22 +1,14 @@
 /**
  * Concurrent-approval race tests for POST /api/v1/agent/hitl/:approvalId.
  *
- * The route body between `peekHitlState` and `takeHitlState` is synchronous
- * (no awaits), and JavaScript is single-threaded, so two requests entering
- * the handler concurrently cannot naturally interleave peek+take in a way
- * that causes `peek` to return truthy and `take` to return null on the same
- * request. That means the route's 409 branch is currently unreachable under
- * real traffic — the "already resolved" case degrades to 404 instead.
+ * The route uses a single atomic `takeHitlState` call (no peek+take gap).
+ * When the token is already consumed, `takeHitlState` returns null and the
+ * route returns 409 CONFLICT. This means both concurrent and sequential
+ * duplicate requests correctly receive 409.
  *
- * See BUGS_FOUND.md for the finding. These tests pin the *current* behavior
- * so regressions (or a future fix) are immediately visible:
- *
- *   Test A — two concurrent POSTs with the same id resolve to {200, 404},
- *            never {200, 409}.
- *   Test B — a forced race with peek+take re-entrancy (using a custom route
- *            that awaits between peek and take) does produce 409. This
- *            documents what the real route *would* return if there were a
- *            genuine async gap — and keeps the 409 response shape under test.
+ *   Test A — two concurrent POSTs with the same id resolve to {200, 409}.
+ *   Test B — a forced race with an async gap also produces {200, 409}.
+ *   Test C — sequential resolution returns 200 then 409.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -49,7 +41,7 @@ async function buildRealRouteHarness() {
   return { request, app };
 }
 
-test("POST /agent/hitl/:approvalId — concurrent approvals never yield a 409 under the real route (current behavior)", async () => {
+test("POST /agent/hitl/:approvalId — concurrent approvals: winner gets 200, loser gets 409", async () => {
   const { saveHitlState } = await import("../lib/agent-hitl-store.js");
   const token = saveHitlState({ sample: true });
   const { request, app } = await buildRealRouteHarness();
@@ -63,12 +55,12 @@ test("POST /agent/hitl/:approvalId — concurrent approvals never yield a 409 un
   const [a, b] = await Promise.all([send("approve"), send("deny")]);
   const statuses = [a.status, b.status].sort();
 
-  // Current behavior: one 200 + one 404. The 409 branch is unreachable
-  // because peek and take are synchronous with no await gap between them.
+  // After fix: the route uses atomic takeHitlState only (no peek+take gap).
+  // The winner gets 200, the loser gets 409 CONFLICT.
   assert.deepEqual(
     statuses,
-    [200, 404],
-    `expected [200, 404] under current synchronous peek+take semantics; got ${JSON.stringify(statuses)}`,
+    [200, 409],
+    `expected [200, 409] with atomic take semantics; got ${JSON.stringify(statuses)}`,
   );
 
   const ok = a.status === 200 ? a : b;
@@ -76,7 +68,7 @@ test("POST /agent/hitl/:approvalId — concurrent approvals never yield a 409 un
   assert.equal(ok.body.ok, true);
   assert.equal(ok.body.approvalId, token);
   assert.ok(["approve", "deny"].includes(ok.body.decision));
-  assert.equal(loser.body.code, "NOT_FOUND");
+  assert.equal(loser.body.code, "CONFLICT");
 });
 
 /**
@@ -165,7 +157,7 @@ test("POST /agent/hitl/:approvalId — when peek+take straddle an async gap, con
   );
 });
 
-test("POST /agent/hitl/:approvalId — sequential resolution returns 200 then 404 (pins the no-409 degradation)", async () => {
+test("POST /agent/hitl/:approvalId — sequential resolution returns 200 then 409", async () => {
   const { saveHitlState } = await import("../lib/agent-hitl-store.js");
   const token = saveHitlState({ sample: true });
   const { request, app } = await buildRealRouteHarness();
@@ -180,9 +172,8 @@ test("POST /agent/hitl/:approvalId — sequential resolution returns 200 then 40
     .post(`/api/v1/agent/hitl/${token}`)
     .set("Content-Type", "application/json")
     .send({ decision: "deny" });
-  // The real route returns 404 here (not 409) because the state is gone by
-  // the time peek runs, and 409 is only possible if peek sees it and take
-  // doesn't.
-  assert.equal(second.status, 404);
-  assert.equal(second.body.code, "NOT_FOUND");
+  // After fix: the route uses takeHitlState atomically. A consumed token
+  // returns null from take, which the route interprets as 409 CONFLICT.
+  assert.equal(second.status, 409);
+  assert.equal(second.body.code, "CONFLICT");
 });
