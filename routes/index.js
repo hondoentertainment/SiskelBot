@@ -245,6 +245,41 @@ import { mountAgentToolsDiscoverRoutes } from "./agent-tools-discover.js";
 import { mountCostEstimateRoutes } from "./cost-estimate.js";
 import { mountTrajectoryBranchRoutes } from "./trajectory-branch.js";
 
+// Phase 63 — Code Generation vertical (5 modules)
+import mountRepoRagRoutes from "./repo-rag.js";
+import mountPrReviewRoutes from "./pr-review-agent.js";
+import mountTestGenRoutes from "./test-gen.js";
+import mountRefactorRoutes from "./refactor-agent.js";
+import mountMigrationRoutes from "./migration-assistant.js";
+
+// Phase 64 — Research pack (5 modules)
+import mountLiteratureRoutes from "./literature-search.js";
+import mountPaperSummaryRoutes from "./paper-summary.js";
+import mountCitationGraphRoutes from "./citation-graph.js";
+import mountExperimentBridgeRoutes from "./experiment-bridge.js";
+import mountReproducibilityRoutes from "./reproducibility-checks.js";
+
+// Phase 71 — Agent Economics (5 modules)
+import mountPricingRoutes from "./pricing-engine.js";
+import mountOutcomeRoutes from "./outcome-verification.js";
+import mountRevenueShareRoutes from "./revenue-share.js";
+import mountCreditRoutes from "./credit-system.js";
+import mountInvoicingRoutes from "./invoicing.js";
+
+// Phase 72 — Trust & Safety Pro (5 modules)
+import mountRedTeamRoutes from "./red-team-harness.js";
+import mountModelCardRoutes from "./model-card-generator.js";
+import mountBiasEvalRoutes from "./bias-eval-suite.js";
+import mountKTelemetryRoutes from "./k-anonymous-telemetry.js";
+import mountSafetySlaRoutes from "./safety-sla.js";
+
+// Phase 75 — Evaluation 2.0 (5 modules)
+import mountEvalInProdRoutes from "./eval-in-prod.js";
+import mountJudgeCalibrationRoutes from "./judge-calibration.js";
+import mountPreferenceRoutes from "./preference-collection.js";
+import mountBisectionRoutes from "./regression-bisection.js";
+import mountSyntheticUsersRoutes from "./synthetic-users.js";
+
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -454,6 +489,41 @@ const mountFunctions = [
   mountAgentToolsDiscoverRoutes,
   mountCostEstimateRoutes,
   mountTrajectoryBranchRoutes,
+
+  // Phase 63 — Code Generation vertical
+  mountRepoRagRoutes,
+  mountPrReviewRoutes,
+  mountTestGenRoutes,
+  mountRefactorRoutes,
+  mountMigrationRoutes,
+
+  // Phase 64 — Research pack
+  mountLiteratureRoutes,
+  mountPaperSummaryRoutes,
+  mountCitationGraphRoutes,
+  mountExperimentBridgeRoutes,
+  mountReproducibilityRoutes,
+
+  // Phase 71 — Agent Economics
+  mountPricingRoutes,
+  mountOutcomeRoutes,
+  mountRevenueShareRoutes,
+  mountCreditRoutes,
+  mountInvoicingRoutes,
+
+  // Phase 72 — Trust & Safety Pro
+  mountRedTeamRoutes,
+  mountModelCardRoutes,
+  mountBiasEvalRoutes,
+  mountKTelemetryRoutes,
+  mountSafetySlaRoutes,
+
+  // Phase 75 — Evaluation 2.0
+  mountEvalInProdRoutes,
+  mountJudgeCalibrationRoutes,
+  mountPreferenceRoutes,
+  mountBisectionRoutes,
+  mountSyntheticUsersRoutes,
 ];
 
 /**

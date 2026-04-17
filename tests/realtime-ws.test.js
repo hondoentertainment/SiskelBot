@@ -84,7 +84,7 @@ maybeTest("rejects upgrade when no auth and no resolver", async () => {
   const url = `ws://127.0.0.1:${port}${REALTIME_WS_PATH}`;
   const ws = new WS(url);
   const errP = once(ws, "error").catch((e) => e);
-  const closeP = once(ws, "close");
+  const closeP = once(ws, "close").catch(() => {});
   await Promise.race([errP, closeP]);
   assert.equal(ws.readyState === WS.CLOSED || ws.readyState === WS.CLOSING, true);
   await handle.close();
@@ -95,8 +95,6 @@ maybeTest("subscribe receives live events published via the registry", async () 
   const ctx = await setup();
   try {
     const ws = new WS(ctx.url);
-    await once(ws, "open");
-    // consume the hello ack
     await waitForMessage(ws, (m) => m.type === "ack" && m.channel === "__hello__");
     ws.send(JSON.stringify({ type: "subscribe", channel: "chat:room1" }));
     await waitForMessage(ws, (m) => m.type === "ack" && m.channel === "chat:room1");
@@ -116,7 +114,6 @@ maybeTest("ping → pong", async () => {
   const ctx = await setup();
   try {
     const ws = new WS(ctx.url);
-    await once(ws, "open");
     await waitForMessage(ws, (m) => m.type === "ack" && m.channel === "__hello__");
     ws.send(JSON.stringify({ type: "ping" }));
     const pong = await waitForMessage(ws, (m) => m.type === "pong");
@@ -132,7 +129,6 @@ maybeTest("unsubscribe stops further events on that channel", async () => {
   const ctx = await setup();
   try {
     const ws = new WS(ctx.url);
-    await once(ws, "open");
     await waitForMessage(ws, (m) => m.type === "ack" && m.channel === "__hello__");
     ws.send(JSON.stringify({ type: "subscribe", channel: "run:1" }));
     await waitForMessage(ws, (m) => m.type === "ack" && m.channel === "run:1");
@@ -161,7 +157,6 @@ maybeTest("reconnect with sinceSeq replays missed events", async () => {
   try {
     // First connection: subscribe and collect seqs.
     const wsA = new WS(ctx.url);
-    await once(wsA, "open");
     await waitForMessage(wsA, (m) => m.type === "ack" && m.channel === "__hello__");
     wsA.send(JSON.stringify({ type: "subscribe", channel: "chat:resume" }));
     await waitForMessage(wsA, (m) => m.type === "ack" && m.channel === "chat:resume");
@@ -181,7 +176,6 @@ maybeTest("reconnect with sinceSeq replays missed events", async () => {
 
     // Reconnect and resume from seq=1.
     const wsB = new WS(ctx.url);
-    await once(wsB, "open");
     await waitForMessage(wsB, (m) => m.type === "ack" && m.channel === "__hello__");
     wsB.send(JSON.stringify({ type: "subscribe", channel: "chat:resume", sinceSeq: 1 }));
 
@@ -212,7 +206,6 @@ maybeTest("bad JSON produces a BAD_MESSAGE error", async () => {
   const ctx = await setup();
   try {
     const ws = new WS(ctx.url);
-    await once(ws, "open");
     await waitForMessage(ws, (m) => m.type === "ack" && m.channel === "__hello__");
     ws.send("not json");
     const err = await waitForMessage(ws, (m) => m.type === "error");
