@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0f172a">
+  <title>SiskelBot - Shared Trace (anonymized)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { color-scheme: dark; }
+    body { font-family: system-ui, -apple-system, sans-serif; min-height: 100vh; background: #0f172a; color: #e2e8f0; }
+
+    header { background: #1e293b; border-bottom: 1px solid #334155; padding: 0.75rem 1.5rem; }
+    header h1 { font-size: 1rem; font-weight: 700; }
+    header .subtitle { font-size: 0.75rem; color: #64748b; margin-top: 0.125rem; }
+
+    .pill-shared { display: inline-block; margin-left: 0.5rem; padding: 0.125rem 0.5rem; border-radius: 999px; background: #78350f; color: #fde68a; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
+
+    main { padding: 1.25rem; max-width: 1000px; margin: 0 auto; }
+    .section { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+    .section h3 { font-size: 0.875rem; font-weight: 600; color: #94a3b8; margin-bottom: 0.75rem; }
+
+    .summary { font-size: 0.875rem; color: #cbd5e1; margin-bottom: 0.25rem; }
+    .summary .muted { color: #64748b; }
+
+    .banner { padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.8125rem; }
+    .banner-error { background: #7f1d1d; color: #fecaca; border: 1px solid #f87171; }
+    .banner-info { background: #1e3a5f; color: #bfdbfe; border: 1px solid #3b82f6; }
+
+    .empty { color: #64748b; font-size: 0.8125rem; padding: 1rem; text-align: center; }
+
+    details.iter-card { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 0.75rem 0.875rem; margin-bottom: 0.625rem; }
+    details.iter-card[open] { background: #111827; border-color: #475569; }
+    details.iter-card > summary { cursor: pointer; font-size: 0.875rem; color: #e2e8f0; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+    details.iter-card > summary .iter-title { font-weight: 600; }
+    details.iter-card > summary .iter-meta { font-size: 0.75rem; color: #94a3b8; }
+    details.iter-card .iter-body { margin-top: 0.625rem; padding-top: 0.625rem; border-top: 1px solid #334155; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; margin-top: 0.375rem; }
+    th, td { padding: 0.375rem 0.5rem; text-align: left; border-bottom: 1px solid #334155; vertical-align: top; }
+    th { color: #64748b; font-weight: 500; font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    tr:last-child td { border-bottom: none; }
+
+    pre { background: #0b1220; border: 1px solid #334155; border-radius: 6px; padding: 0.5rem 0.625rem; font-size: 0.7rem; color: #cbd5e1; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+
+    .badge { display: inline-block; font-size: 0.6875rem; padding: 0.125rem 0.375rem; border-radius: 4px; margin: 0.125rem 0.25rem 0.125rem 0; font-weight: 500; }
+    .badge-ok { background: #064e3b; color: #a7f3d0; }
+    .badge-fail { background: #7f1d1d; color: #fecaca; }
+    .badge-warn { background: #78350f; color: #fde68a; }
+    .badge-info { background: #1e3a5f; color: #bfdbfe; }
+    .badge-neutral { background: #334155; color: #cbd5e1; }
+
+    footer.notice { margin-top: 2rem; padding: 0.75rem 1rem; border: 1px dashed #78350f; border-radius: 8px; color: #fde68a; background: #1c1505; font-size: 0.75rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SiskelBot - Shared Trace <span class="pill-shared">Shared / anonymized</span></h1>
+    <div class="subtitle">This is a read-only, anonymized view of a single agent run.</div>
+  </header>
+
+  <main>
+    <div id="banner"></div>
+    <div id="content"><div class="empty">Loading shared trace&hellip;</div></div>
+    <footer class="notice" id="notice" style="display:none"></footer>
+  </main>
+
+  <script>
+    (function () {
+      'use strict';
+
+      function escapeHtml(input) {
+        var s = input == null ? '' : String(input);
+        return s
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function setBanner(msg, kind) {
+        var el = document.getElementById('banner');
+        if (!msg) { el.innerHTML = ''; return; }
+        var cls = kind === 'info' ? 'banner-info' : 'banner-error';
+        el.innerHTML = '<div class="banner ' + cls + '">' + escapeHtml(msg) + '</div>';
+      }
+
+      function fmtDuration(ms) {
+        if (!Number.isFinite(ms)) return '—';
+        if (ms < 1000) return ms + ' ms';
+        if (ms < 60000) return (ms / 1000).toFixed(2) + ' s';
+        return (ms / 60000).toFixed(2) + ' min';
+      }
+
+      function fmtTime(iso) {
+        if (!iso) return '—';
+        var d = new Date(iso);
+        if (!Number.isFinite(d.getTime())) return '—';
+        return d.toLocaleString();
+      }
+
+      function getTokenFromQuery() {
+        try {
+          var q = new URLSearchParams(window.location.search);
+          return q.get('t') || '';
+        } catch (_) {
+          return '';
+        }
+      }
+
+      function stopBadge(reason) {
+        if (!reason) return '<span class="badge badge-neutral">no stop</span>';
+        var r = String(reason).toLowerCase();
+        var cls = 'badge-neutral';
+        if (r === 'model_finished' || r === 'completed') cls = 'badge-ok';
+        else if (r.indexOf('error') >= 0 || r.indexOf('timeout') >= 0) cls = 'badge-fail';
+        else if (r.indexOf('replan') >= 0) cls = 'badge-warn';
+        return '<span class="badge ' + cls + '">' + escapeHtml(reason) + '</span>';
+      }
+
+      function renderArgs(args) {
+        if (args == null) return '<span class="muted">—</span>';
+        try {
+          return '<pre>' + escapeHtml(typeof args === 'string' ? args : JSON.stringify(args, null, 2)) + '</pre>';
+        } catch (_) {
+          return '<pre>' + escapeHtml(String(args)) + '</pre>';
+        }
+      }
+
+      function renderResult(preview) {
+        if (preview == null) return '<span class="muted">—</span>';
+        return '<pre>' + escapeHtml(typeof preview === 'string' ? preview : JSON.stringify(preview, null, 2)) + '</pre>';
+      }
+
+      function renderIteration(it) {
+        var toolCalls = Array.isArray(it.toolCalls) ? it.toolCalls : [];
+        var signals = Array.isArray(it.signals) ? it.signals : [];
+        var meta = [
+          toolCalls.length + ' tool call' + (toolCalls.length === 1 ? '' : 's'),
+          signals.length + ' signal' + (signals.length === 1 ? '' : 's')
+        ].join(' · ');
+
+        var rows = toolCalls.map(function (tc) {
+          var okBadge = tc.ok === false
+            ? '<span class="badge badge-fail">error</span>'
+            : tc.ok === true
+            ? '<span class="badge badge-ok">ok</span>'
+            : '<span class="badge badge-neutral">—</span>';
+          var latency = Number.isFinite(tc.latencyMs) ? (tc.latencyMs + ' ms') : '—';
+          return '<tr>' +
+            '<td><strong>' + escapeHtml(tc.name || '—') + '</strong></td>' +
+            '<td>' + okBadge + '</td>' +
+            '<td>' + escapeHtml(latency) + '</td>' +
+            '<td>' + renderArgs(tc.argsRedacted) + '</td>' +
+            '<td>' + renderResult(tc.resultPreview) + '</td>' +
+            '</tr>';
+        }).join('');
+
+        var tools = toolCalls.length
+          ? '<table><thead><tr><th>Tool</th><th>Status</th><th>Latency</th><th>Args (redacted)</th><th>Result preview</th></tr></thead><tbody>' + rows + '</tbody></table>'
+          : '<div class="empty">No tool calls.</div>';
+
+        var sigs = signals.length
+          ? '<div style="margin-top:0.5rem">' + signals.map(function (s) {
+              var cls = s.kind === 'stop' ? 'badge-info' : 'badge-warn';
+              return '<span class="badge ' + cls + '">' + escapeHtml(s.kind) + (s.reason ? ': ' + escapeHtml(s.reason) : '') + '</span>';
+            }).join('') + '</div>'
+          : '';
+
+        return '<details class="iter-card" open>' +
+          '<summary>' +
+            '<span class="iter-title">Iteration ' + escapeHtml(it.iteration) + '</span>' +
+            '<span class="iter-meta">' + escapeHtml(meta) + '</span>' +
+          '</summary>' +
+          '<div class="iter-body">' + tools + sigs + '</div>' +
+        '</details>';
+      }
+
+      function render(data) {
+        var iterations = Array.isArray(data.iterations) ? data.iterations : [];
+        var summary = '<div class="section">' +
+          '<h3>Shared trace summary</h3>' +
+          '<div class="summary"><span class="muted">Run:</span> <code>' + escapeHtml(data.runId || '—') + '</code></div>' +
+          '<div class="summary"><span class="muted">Workspace:</span> <code>' + escapeHtml(data.workspace || '<redacted>') + '</code></div>' +
+          '<div class="summary"><span class="muted">Started:</span> ' + escapeHtml(fmtTime(data.startedAt)) + '</div>' +
+          '<div class="summary"><span class="muted">Duration:</span> ' + escapeHtml(fmtDuration(data.durationMs)) + '</div>' +
+          '<div class="summary"><span class="muted">Stop:</span> ' + stopBadge(data.stopReason) + '</div>' +
+        '</div>';
+
+        var iterSection = '<div class="section">' +
+          '<h3>Iterations</h3>' +
+          (iterations.length ? iterations.map(renderIteration).join('') : '<div class="empty">No iterations recorded.</div>') +
+        '</div>';
+
+        document.getElementById('content').innerHTML = summary + iterSection;
+
+        var notice = document.getElementById('notice');
+        notice.style.display = '';
+        notice.innerHTML =
+          'This is an anonymized trace share. Secrets, PII, and workspace identifiers have been redacted. ' +
+          'Shared by: <strong>' + escapeHtml(data.sharedBy || '—') + '</strong> · ' +
+          'Expires: <strong>' + escapeHtml(fmtTime(data.expiresAt ? new Date(Number(data.expiresAt)).toISOString() : null)) + '</strong>';
+      }
+
+      async function load() {
+        var token = getTokenFromQuery();
+        if (!token) {
+          document.getElementById('content').innerHTML = '<div class="empty">Missing share token.</div>';
+          setBanner('No share token provided in URL.', 'error');
+          return;
+        }
+        try {
+          var res = await fetch('/api/trace-share/' + encodeURIComponent(token), {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+            credentials: 'omit'
+          });
+          if (res.status === 404) {
+            document.getElementById('content').innerHTML = '<div class="empty">Trace unavailable or expired.</div>';
+            return;
+          }
+          if (res.status === 429) {
+            document.getElementById('content').innerHTML = '<div class="empty">Rate limit exceeded. Try again later.</div>';
+            return;
+          }
+          if (!res.ok) {
+            document.getElementById('content').innerHTML = '<div class="empty">Unable to load trace (HTTP ' + res.status + ').</div>';
+            return;
+          }
+          var data = await res.json();
+          render(data);
+        } catch (_) {
+          document.getElementById('content').innerHTML = '<div class="empty">Network error loading trace.</div>';
+        }
+      }
+
+      load();
+    })();
+  </script>
+</body>
+</html>

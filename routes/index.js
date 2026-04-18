@@ -53,6 +53,7 @@ import mountAgentStatsAdminRoutes from "./admin-agent-stats.js";
 import mountAdminEvalHistoryRoutes from "./admin-eval-history.js";
 import mountAdminTracesRoutes from "./admin-traces.js";
 import mountAdminTraceStreamRoutes from "./admin-trace-stream.js";
+import mountTraceShareRoutes from "./trace-share.js";
 import mountAdminPromptPatchesRoutes from "./admin-prompt-patches.js";
 import { mountAgentFeedbackRoutes } from "./agent-feedback.js";
 import mountDocsRoutes from "./docs.js";
@@ -304,6 +305,7 @@ const mountFunctions = [
   mountAdminEvalHistoryRoutes,
   mountAdminTracesRoutes,
   mountAdminTraceStreamRoutes,
+  mountTraceShareRoutes,
   mountAdminPromptPatchesRoutes,
   mountAgentFeedbackRoutes,
   mountDocsRoutes,
