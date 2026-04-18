@@ -50,6 +50,7 @@ import mountRecipesRoutes from "./recipes.js";
 import mountTeamsRoutes from "./teams.js";
 import mountAdminRoutes from "./admin.js";
 import mountAgentStatsAdminRoutes from "./admin-agent-stats.js";
+import mountAdminEvalHistoryRoutes from "./admin-eval-history.js";
 import mountAdminTracesRoutes from "./admin-traces.js";
 import mountAdminTraceStreamRoutes from "./admin-trace-stream.js";
 import mountAdminPromptPatchesRoutes from "./admin-prompt-patches.js";
@@ -300,6 +301,7 @@ const mountFunctions = [
   mountTeamsRoutes,
   mountAdminRoutes,
   mountAgentStatsAdminRoutes,
+  mountAdminEvalHistoryRoutes,
   mountAdminTracesRoutes,
   mountAdminTraceStreamRoutes,
   mountAdminPromptPatchesRoutes,
