@@ -49,6 +49,13 @@ import mountWorkspacesRoutes from "./workspaces.js";
 import mountRecipesRoutes from "./recipes.js";
 import mountTeamsRoutes from "./teams.js";
 import mountAdminRoutes from "./admin.js";
+import mountAgentStatsAdminRoutes from "./admin-agent-stats.js";
+import mountAdminEvalHistoryRoutes from "./admin-eval-history.js";
+import mountAdminTracesRoutes from "./admin-traces.js";
+import mountAdminTraceStreamRoutes from "./admin-trace-stream.js";
+import mountTraceShareRoutes from "./trace-share.js";
+import mountAdminPromptPatchesRoutes from "./admin-prompt-patches.js";
+import { mountAgentFeedbackRoutes } from "./agent-feedback.js";
 import mountDocsRoutes from "./docs.js";
 import { mountBackupRoutes } from "./backup.js";
 import { mountConversationRoutes } from "./conversations.js";
@@ -294,6 +301,13 @@ const mountFunctions = [
   mountRecipesRoutes,
   mountTeamsRoutes,
   mountAdminRoutes,
+  mountAgentStatsAdminRoutes,
+  mountAdminEvalHistoryRoutes,
+  mountAdminTracesRoutes,
+  mountAdminTraceStreamRoutes,
+  mountTraceShareRoutes,
+  mountAdminPromptPatchesRoutes,
+  mountAgentFeedbackRoutes,
   mountDocsRoutes,
   mountBackupRoutes,
   mountConversationRoutes,

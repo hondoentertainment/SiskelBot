@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>SiskelBot - Prompt Patches</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { color-scheme: dark; }
+    body { font-family: system-ui, -apple-system, sans-serif; min-height: 100vh; background: #0f172a; color: #e2e8f0; }
+    a { color: #60a5fa; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+
+    header { background: #1e293b; border-bottom: 1px solid #334155; padding: 0.75rem 1.5rem; }
+    header h1 { font-size: 1rem; font-weight: 700; }
+    header .subtitle { font-size: 0.75rem; color: #64748b; margin-top: 0.125rem; }
+
+    .topbar { padding: 0.75rem 1.5rem; background: #1e293b; border-bottom: 1px solid #334155; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; position: sticky; top: 0; z-index: 50; }
+
+    .input { padding: 0.375rem 0.5rem; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; font-size: 0.8125rem; }
+    .input:focus { border-color: #60a5fa; }
+
+    .btn { padding: 0.375rem 0.75rem; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8125rem; font-weight: 500; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+    .btn-success { background: #065f46; color: #d1fae5; }
+    .btn-success:hover:not(:disabled) { background: #047857; }
+    .btn-danger { background: #7f1d1d; color: #fecaca; }
+    .btn-danger:hover:not(:disabled) { background: #991b1b; }
+    .btn-ghost { background: #334155; color: #e2e8f0; }
+    .btn-ghost:hover:not(:disabled) { background: #475569; }
+    .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
+
+    .layout { display: grid; grid-template-columns: 320px 1fr; gap: 1rem; padding: 1rem 1.5rem; max-width: 1400px; }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+    .sidebar { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 0.5rem; max-height: calc(100vh - 140px); overflow-y: auto; }
+    .main { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1rem; }
+
+    .patch-row { padding: 0.625rem 0.75rem; border-radius: 6px; cursor: pointer; margin-bottom: 0.25rem; border: 1px solid transparent; }
+    .patch-row:hover { background: #0f172a; }
+    .patch-row.selected { background: #0f172a; border-color: #60a5fa; }
+    .patch-row .ver { font-size: 0.8125rem; font-weight: 600; color: #e2e8f0; font-family: monospace; }
+    .patch-row .meta { font-size: 0.6875rem; color: #64748b; margin-top: 0.125rem; }
+    .patch-row .basis { font-size: 0.75rem; color: #94a3b8; margin-top: 0.25rem; }
+
+    .status-pending { color: #fbbf24; }
+    .status-applied { color: #34d399; }
+    .status-rejected { color: #f87171; }
+
+    .status-pill { display: inline-block; padding: 0.0625rem 0.375rem; border-radius: 4px; font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-left: 0.375rem; }
+    .pill-pending { background: #78350f; color: #fbbf24; }
+    .pill-applied { background: #064e3b; color: #34d399; }
+    .pill-rejected { background: #7f1d1d; color: #f87171; }
+    .pill-active { background: #1e3a8a; color: #93c5fd; margin-left: 0.375rem; }
+
+    .kv { display: grid; grid-template-columns: 140px 1fr; gap: 0.375rem 0.75rem; font-size: 0.8125rem; margin-bottom: 0.75rem; }
+    .kv .k { color: #64748b; text-transform: uppercase; font-size: 0.6875rem; letter-spacing: 0.05em; padding-top: 0.125rem; }
+    .kv .v { color: #e2e8f0; word-break: break-word; }
+
+    pre { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 0.625rem 0.75rem; font-size: 0.75rem; color: #cbd5e1; overflow-x: auto; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, SFMono-Regular, monospace; }
+
+    .section-title { font-size: 0.75rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; margin-top: 1rem; }
+    .section-title:first-child { margin-top: 0; }
+
+    .diff { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 0.5rem 0; font-size: 0.75rem; overflow-x: auto; font-family: ui-monospace, SFMono-Regular, monospace; }
+    .diff .line { padding: 0.0625rem 0.75rem; white-space: pre-wrap; word-break: break-word; }
+    .diff .added { background: #064e3b33; color: #86efac; }
+    .diff .added::before { content: "+ "; color: #34d399; font-weight: 600; }
+    .diff .removed { background: #7f1d1d33; color: #fca5a5; }
+    .diff .removed::before { content: "- "; color: #f87171; font-weight: 600; }
+    .diff .unchanged { color: #64748b; }
+    .diff .unchanged::before { content: "  "; }
+
+    .actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
+
+    .banner { padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.8125rem; }
+    .banner-error { background: #7f1d1d; color: #fecaca; border: 1px solid #f87171; }
+    .banner-info { background: #1e3a5f; color: #bfdbfe; border: 1px solid #3b82f6; }
+    .banner-success { background: #064e3b; color: #a7f3d0; border: 1px solid #34d399; }
+
+    .empty { color: #64748b; font-size: 0.8125rem; padding: 1.5rem; text-align: center; }
+
+    label { font-size: 0.8125rem; color: #94a3b8; }
+
+    .spacer { flex: 1; }
+
+    .chip { display: inline-block; background: #334155; color: #cbd5e1; font-size: 0.6875rem; padding: 0.125rem 0.375rem; border-radius: 4px; margin: 0.125rem 0.125rem 0.125rem 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SiskelBot - Prompt Patches</h1>
+    <div class="subtitle">Review, diff, and apply per-workspace prompt-tuner patches. <a href="/admin">Back to admin</a></div>
+  </header>
+
+  <div class="topbar">
+    <label>Admin key
+      <input type="password" class="input" id="admin-key" placeholder="ADMIN_API_KEY" autocomplete="off" style="width:200px">
+    </label>
+    <label>Workspace
+      <input type="text" class="input" id="workspace" value="default" style="width:140px">
+    </label>
+    <div class="spacer"></div>
+    <button class="btn btn-primary btn-sm" id="synthesize-btn">Synthesize new patch</button>
+    <button class="btn btn-ghost btn-sm" id="refresh-btn">Refresh</button>
+  </div>
+
+  <div style="padding: 1rem 1.5rem 0;">
+    <div id="banner"></div>
+  </div>
+
+  <div class="layout">
+    <div class="sidebar" id="sidebar">
+      <div class="empty">Loading...</div>
+    </div>
+    <div class="main" id="main">
+      <div class="empty">Select a patch from the list to inspect.</div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      const KEY_STORAGE = 'siskelbot_admin_prompt_patches_key';
+      const WS_STORAGE = 'siskelbot_admin_prompt_patches_ws';
+
+      const state = {
+        workspace: 'default',
+        active: null,
+        patches: [],
+        selectedVersion: null,
+        diff: null,
+      };
+
+      // ─── Helpers ─────────────────────────────────────────
+      function escapeHtml(input) {
+        const s = input == null ? '' : String(input);
+        return s
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function setBanner(msg, kind) {
+        const el = document.getElementById('banner');
+        if (!msg) { el.innerHTML = ''; return; }
+        const cls = kind === 'success' ? 'banner-success' : (kind === 'info' ? 'banner-info' : 'banner-error');
+        el.innerHTML = '<div class="banner ' + cls + '">' + escapeHtml(msg) + '</div>';
+      }
+
+      function adminKey() { return document.getElementById('admin-key').value.trim(); }
+      function workspaceInput() { return document.getElementById('workspace').value.trim() || 'default'; }
+
+      function persistInputs() {
+        const k = adminKey();
+        if (k) sessionStorage.setItem(KEY_STORAGE, k);
+        const w = workspaceInput();
+        if (w) sessionStorage.setItem(WS_STORAGE, w);
+      }
+
+      async function apiFetch(path, opts) {
+        const headers = { 'Content-Type': 'application/json' };
+        const key = adminKey();
+        if (key) headers['Authorization'] = 'Bearer ' + key;
+        const res = await fetch(path, Object.assign({ credentials: 'include', headers }, opts || {}));
+        const text = await res.text();
+        let body = null;
+        try { body = text ? JSON.parse(text) : null; } catch (_) { /* non-JSON */ }
+        if (!res.ok) {
+          const err = new Error((body && (body.error || body.message)) || text || res.statusText);
+          err.status = res.status;
+          err.body = body;
+          throw err;
+        }
+        return body;
+      }
+
+      function friendlyError(err) {
+        if (err && err.status === 401) return 'Invalid admin key';
+        if (err && err.status === 403) return 'Forbidden: admin scope required';
+        if (err && err.status === 404) return (err.message || 'Not found');
+        return (err && err.message) || 'Network error';
+      }
+
+      function formatDate(ts) {
+        if (!ts) return '';
+        try { return new Date(ts).toLocaleString(); } catch (_) { return String(ts); }
+      }
+
+      function basisSummary(basis) {
+        if (!basis || typeof basis !== 'object') return '';
+        const parts = [];
+        const flagged = Array.isArray(basis.toolsFlagged) ? basis.toolsFlagged.length : 0;
+        const preferred = Array.isArray(basis.toolsPreferred) ? basis.toolsPreferred.length : 0;
+        if (flagged) parts.push(flagged + ' tools flagged');
+        if (preferred) parts.push(preferred + ' preferred');
+        if (basis.conflictCount) parts.push(basis.conflictCount + ' conflicts');
+        if (!parts.length && basis.failureCount) parts.push(basis.failureCount + ' failures');
+        return parts.join(', ');
+      }
+
+      // ─── Load list ───────────────────────────────────────
+      async function loadList() {
+        state.workspace = workspaceInput();
+        const sidebar = document.getElementById('sidebar');
+        sidebar.innerHTML = '<div class="empty">Loading...</div>';
+        try {
+          const params = new URLSearchParams({ workspace: state.workspace, limit: '50' });
+          const data = await apiFetch('/api/admin/prompt-patches?' + params.toString());
+          state.active = data.active || null;
+          state.patches = Array.isArray(data.patches) ? data.patches : [];
+          renderSidebar();
+          // Preserve selection if still in list; otherwise clear.
+          const stillPresent = state.selectedVersion && state.patches.some(function (p) { return p.version === state.selectedVersion; });
+          if (!stillPresent) {
+            state.selectedVersion = null;
+            renderEmptyMain();
+          } else {
+            renderMain();
+          }
+        } catch (err) {
+          setBanner(friendlyError(err), 'error');
+          sidebar.innerHTML = '<div class="empty">Unable to load patches.</div>';
+        }
+      }
+
+      function renderSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        if (!state.patches.length) {
+          sidebar.innerHTML = '<div class="empty">No patches yet. Click "Synthesize new patch" to generate one.</div>';
+          return;
+        }
+        const activeVer = state.active ? state.active.version : null;
+        const rows = state.patches.map(function (p) {
+          const cls = 'patch-row' + (state.selectedVersion === p.version ? ' selected' : '');
+          const statusCls = 'status-' + (p.status || 'pending');
+          const pillCls = 'pill-' + (p.status || 'pending');
+          const activeBadge = p.version === activeVer
+            ? '<span class="status-pill pill-active">Active</span>' : '';
+          return ''
+            + '<div class="' + cls + '" data-version="' + escapeHtml(p.version || '') + '">'
+            +   '<div class="ver">' + escapeHtml(p.version || '(no version)')
+            +     '<span class="status-pill ' + pillCls + ' ' + statusCls + '">' + escapeHtml(p.status || 'pending') + '</span>'
+            +     activeBadge
+            +   '</div>'
+            +   '<div class="meta">' + escapeHtml(formatDate(p.generatedAt)) + '</div>'
+            +   '<div class="basis">' + escapeHtml(basisSummary(p.basis) || '-') + '</div>'
+            + '</div>';
+        }).join('');
+        sidebar.innerHTML = rows;
+        sidebar.querySelectorAll('.patch-row').forEach(function (row) {
+          row.addEventListener('click', function () {
+            state.selectedVersion = row.dataset.version;
+            renderSidebar();
+            renderMain();
+          });
+        });
+      }
+
+      function renderEmptyMain() {
+        const main = document.getElementById('main');
+        if (!state.patches.length) {
+          main.innerHTML = '<div class="empty">No patches yet. Click "Synthesize new patch" to generate one.</div>';
+        } else {
+          main.innerHTML = '<div class="empty">Select a patch from the list to inspect.</div>';
+        }
+      }
+
+      // ─── Main pane ───────────────────────────────────────
+      async function renderMain() {
+        const main = document.getElementById('main');
+        const selected = state.patches.find(function (p) { return p.version === state.selectedVersion; });
+        if (!selected) { renderEmptyMain(); return; }
+
+        const basis = selected.basis || {};
+        const isActive = state.active && state.active.version === selected.version;
+        const isPending = selected.status === 'pending';
+
+        const flaggedChips = (Array.isArray(basis.toolsFlagged) ? basis.toolsFlagged : [])
+          .map(function (t) { return '<span class="chip">' + escapeHtml(t) + '</span>'; }).join('') || '<span class="empty" style="padding:0">-</span>';
+        const preferredChips = (Array.isArray(basis.toolsPreferred) ? basis.toolsPreferred : [])
+          .map(function (t) { return '<span class="chip">' + escapeHtml(t) + '</span>'; }).join('') || '<span class="empty" style="padding:0">-</span>';
+
+        const statusCls = 'status-' + (selected.status || 'pending');
+
+        const html = [];
+        html.push('<div class="kv">');
+        html.push('<div class="k">Version</div><div class="v" style="font-family:monospace">' + escapeHtml(selected.version || '') + (isActive ? ' <span class="status-pill pill-active">Active</span>' : '') + '</div>');
+        html.push('<div class="k">Status</div><div class="v ' + statusCls + '">' + escapeHtml(selected.status || 'pending') + '</div>');
+        html.push('<div class="k">Generated</div><div class="v">' + escapeHtml(formatDate(selected.generatedAt)) + '</div>');
+        if (selected.appliedAt) {
+          html.push('<div class="k">' + escapeHtml(selected.status === 'rejected' ? 'Rejected' : 'Applied') + '</div><div class="v">' + escapeHtml(formatDate(selected.appliedAt)) + ' by ' + escapeHtml(selected.appliedBy || 'unknown') + '</div>');
+        }
+        html.push('<div class="k">Failures</div><div class="v">' + escapeHtml(basis.failureCount != null ? basis.failureCount : 0) + '</div>');
+        html.push('<div class="k">Genealogy</div><div class="v">' + escapeHtml(basis.genealogyCount != null ? basis.genealogyCount : 0) + ' samples</div>');
+        html.push('<div class="k">Conflicts</div><div class="v">' + escapeHtml(basis.conflictCount != null ? basis.conflictCount : 0) + '</div>');
+        html.push('<div class="k">Flagged tools</div><div class="v">' + flaggedChips + '</div>');
+        html.push('<div class="k">Preferred tools</div><div class="v">' + preferredChips + '</div>');
+        html.push('</div>');
+
+        html.push('<div class="section-title">Patch content</div>');
+        html.push('<pre>' + escapeHtml(selected.content || '(empty)') + '</pre>');
+
+        html.push('<div class="section-title">Diff vs active patch</div>');
+        if (!state.active) {
+          html.push('<div class="empty" style="text-align:left; padding:0.5rem 0">No currently-active patch in this workspace.</div>');
+        } else if (isActive) {
+          html.push('<div class="empty" style="text-align:left; padding:0.5rem 0">This IS the currently-active patch.</div>');
+        } else {
+          html.push('<div id="diff-container" class="empty">Loading diff...</div>');
+        }
+
+        html.push('<div class="actions">');
+        html.push('<button class="btn btn-success btn-sm" id="apply-btn"' + (isPending ? '' : ' disabled') + '>Apply</button>');
+        html.push('<button class="btn btn-danger btn-sm" id="reject-btn"' + (isPending ? '' : ' disabled') + '>Reject</button>');
+        html.push('</div>');
+
+        main.innerHTML = html.join('');
+
+        const applyBtn = document.getElementById('apply-btn');
+        if (applyBtn) applyBtn.addEventListener('click', function () { onApply(selected.version); });
+        const rejectBtn = document.getElementById('reject-btn');
+        if (rejectBtn) rejectBtn.addEventListener('click', function () { onReject(selected.version); });
+
+        if (state.active && !isActive) {
+          loadDiff(state.active.version, selected.version);
+        }
+      }
+
+      async function loadDiff(fromVer, toVer) {
+        const container = document.getElementById('diff-container');
+        if (!container) return;
+        try {
+          const params = new URLSearchParams({ workspace: state.workspace, from: fromVer, to: toVer });
+          const data = await apiFetch('/api/admin/prompt-patches/diff?' + params.toString());
+          const entries = Array.isArray(data.diff) ? data.diff : [];
+          if (!entries.length) {
+            container.innerHTML = '<div class="empty" style="text-align:left; padding:0.5rem 0">(no differences)</div>';
+            return;
+          }
+          const lines = entries.map(function (e) {
+            const t = e.type === 'added' ? 'added' : (e.type === 'removed' ? 'removed' : 'unchanged');
+            return '<div class="line ' + t + '">' + escapeHtml(e.text || '') + '</div>';
+          }).join('');
+          container.outerHTML = '<div class="diff">' + lines + '</div>';
+        } catch (err) {
+          container.outerHTML = '<div class="empty" style="text-align:left; padding:0.5rem 0">Unable to load diff: ' + escapeHtml(friendlyError(err)) + '</div>';
+        }
+      }
+
+      // ─── Actions ─────────────────────────────────────────
+      async function onSynthesize() {
+        setBanner('');
+        persistInputs();
+        try {
+          const params = new URLSearchParams({ workspace: workspaceInput() });
+          const data = await apiFetch('/api/admin/prompt-patches/synthesize?' + params.toString(), {
+            method: 'POST',
+            body: JSON.stringify({ autoApply: false }),
+          });
+          if (!data.patch) {
+            setBanner('No signal yet — not enough failures, reliability data, or conflicts to synthesize a patch. Reason: ' + (data.reason || 'unknown'), 'info');
+          } else {
+            setBanner('Synthesized patch ' + data.patch.version, 'success');
+            state.selectedVersion = data.patch.version;
+          }
+          await loadList();
+        } catch (err) {
+          setBanner(friendlyError(err), 'error');
+        }
+      }
+
+      async function onApply(version) {
+        if (!window.confirm('Apply patch "' + version + '"? This will become the workspace\'s active prompt patch.')) return;
+        try {
+          const params = new URLSearchParams({ workspace: state.workspace });
+          await apiFetch('/api/admin/prompt-patches/' + encodeURIComponent(version) + '/apply?' + params.toString(), {
+            method: 'POST',
+            body: JSON.stringify({}),
+          });
+          setBanner('Applied patch ' + version, 'success');
+          await loadList();
+        } catch (err) {
+          setBanner(friendlyError(err), 'error');
+        }
+      }
+
+      async function onReject(version) {
+        if (!window.confirm('Reject patch "' + version + '"? It will be marked rejected and will not be applied.')) return;
+        try {
+          const params = new URLSearchParams({ workspace: state.workspace });
+          await apiFetch('/api/admin/prompt-patches/' + encodeURIComponent(version) + '/reject?' + params.toString(), {
+            method: 'POST',
+            body: JSON.stringify({}),
+          });
+          setBanner('Rejected patch ' + version, 'success');
+          await loadList();
+        } catch (err) {
+          setBanner(friendlyError(err), 'error');
+        }
+      }
+
+      // ─── Wire up ─────────────────────────────────────────
+      document.getElementById('refresh-btn').addEventListener('click', function () { setBanner(''); loadList(); });
+      document.getElementById('synthesize-btn').addEventListener('click', onSynthesize);
+      ['admin-key', 'workspace'].forEach(function (id) {
+        document.getElementById(id).addEventListener('change', function () {
+          persistInputs();
+          loadList();
+        });
+      });
+
+      function init() {
+        const savedKey = sessionStorage.getItem(KEY_STORAGE);
+        if (savedKey) document.getElementById('admin-key').value = savedKey;
+        const savedWs = sessionStorage.getItem(WS_STORAGE);
+        if (savedWs) document.getElementById('workspace').value = savedWs;
+        loadList();
+      }
+
+      init();
+    })();
+  </script>
+</body>
+</html>

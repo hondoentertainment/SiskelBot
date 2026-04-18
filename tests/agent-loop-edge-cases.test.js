@@ -201,6 +201,11 @@ test("iteration cap reached: stopReason='max_iterations' + terminal done event c
   __resetAgentRunStreamForTests();
   __resetRunCostAccumulatorsForTests();
 
+  // Disable stagnation detector so the loop reaches the iteration cap
+  // rather than short-circuiting via the N-cycle detector.
+  const origStag = process.env.AGENT_STAGNATION_STOP;
+  process.env.AGENT_STAGNATION_STOP = "0";
+
   const session = await createAgentSession({
     workspace: "default",
     ownerStorageUserId: "anonymous",
@@ -274,6 +279,9 @@ test("iteration cap reached: stopReason='max_iterations' + terminal done event c
 
   // Cost accumulator cleaned up after the terminal `done`.
   assert.equal(__getRunCostAccumulatorForTests(presetRunId), null);
+
+  if (origStag !== undefined) process.env.AGENT_STAGNATION_STOP = origStag;
+  else delete process.env.AGENT_STAGNATION_STOP;
 });
 
 test("tool that fails (ok:false) mid-loop: error is absorbed into tool-result content; loop continues and emits no `error` event", async () => {

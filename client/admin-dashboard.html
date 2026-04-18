@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>SiskelBot - Admin Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { color-scheme: dark; }
+    body { font-family: system-ui, -apple-system, sans-serif; min-height: 100vh; background: #0f172a; color: #e2e8f0; }
+    a { color: #60a5fa; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+    header { background: #1e293b; border-bottom: 1px solid #334155; padding: 0.75rem 1.5rem; }
+    header h1 { font-size: 1rem; font-weight: 700; }
+    header .subtitle { font-size: 0.75rem; color: #64748b; margin-top: 0.125rem; }
+    .topbar { padding: 0.75rem 1.5rem; background: #1e293b; border-bottom: 1px solid #334155; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; position: sticky; top: 0; z-index: 50; }
+    .content { padding: 1.5rem; max-width: 1200px; margin: 0 auto; }
+    .input { padding: 0.375rem 0.5rem; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; font-size: 0.8125rem; }
+    .input:focus { border-color: #60a5fa; }
+    .btn { padding: 0.375rem 0.75rem; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8125rem; font-weight: 500; }
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .auto-refresh { display: flex; align-items: center; gap: 0.375rem; font-size: 0.8125rem; color: #94a3b8; }
+    .auto-refresh input[type=checkbox] { cursor: pointer; }
+    .last-fetch { font-size: 0.75rem; color: #64748b; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.25rem; }
+    @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } .topbar { padding: 0.5rem 0.75rem; } .content { padding: 0.75rem; } }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1rem; min-height: 120px; display: flex; flex-direction: column; }
+    .card .label { font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: 600; margin-bottom: 0.5rem; }
+    .card .value { font-size: 1.75rem; font-weight: 700; color: #e2e8f0; line-height: 1.1; }
+    .card .sub { font-size: 0.8125rem; color: #94a3b8; margin-top: 0.375rem; }
+    .card .err-inline { font-size: 0.75rem; color: #fecaca; background: #7f1d1d; padding: 0.25rem 0.5rem; border-radius: 4px; margin-top: 0.5rem; }
+    .val-good { color: #34d399 !important; }
+    .val-warn { color: #fbbf24 !important; }
+    .val-bad { color: #f87171 !important; }
+    .muted { color: #64748b; }
+    details { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 0.75rem; }
+    details[open] { background: #1e293b; }
+    details summary { cursor: pointer; font-size: 0.875rem; color: #cbd5e1; font-weight: 600; }
+    details summary:hover { color: #e2e8f0; }
+    details .body { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #334155; font-size: 0.8125rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+    th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid #334155; vertical-align: top; }
+    th { color: #64748b; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    tr:last-child td { border-bottom: none; }
+    .empty { color: #64748b; font-size: 0.8125rem; padding: 0.75rem; text-align: center; }
+    .banner-error { background: #7f1d1d; color: #fecaca; border: 1px solid #f87171; padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.75rem; margin-top: 0.5rem; }
+    ul.plain { list-style: none; }
+    ul.plain li { padding: 0.375rem 0; border-bottom: 1px solid #334155; font-size: 0.8125rem; }
+    ul.plain li:last-child { border-bottom: none; }
+    .bars { display: flex; gap: 2px; align-items: flex-end; height: 50px; margin-top: 0.5rem; }
+    .bar { flex: 1; background: #2563eb; min-width: 6px; border-radius: 2px 2px 0 0; position: relative; }
+    .bar:hover { background: #60a5fa; }
+    footer { padding: 1rem 1.5rem; border-top: 1px solid #334155; margin-top: 1rem; font-size: 0.8125rem; color: #94a3b8; display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; }
+    footer .links { display: flex; gap: 1rem; flex-wrap: wrap; }
+    code { font-family: ui-monospace, monospace; font-size: 0.75rem; background: #0f172a; padding: 0.125rem 0.25rem; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SiskelBot Admin Dashboard</h1>
+    <div class="subtitle">Aggregated agent health, reliability, and feedback</div>
+  </header>
+  <div class="topbar">
+    <input id="admin-key" class="input" type="password" placeholder="Admin API key" autocomplete="off" style="min-width:200px">
+    <input id="workspace" class="input" type="text" placeholder="workspace" value="default" style="min-width:140px">
+    <button id="refresh" class="btn btn-primary">Refresh</button>
+    <label class="auto-refresh"><input id="auto-refresh" type="checkbox"> Auto-refresh 30s</label>
+    <span id="last-fetch" class="last-fetch"></span>
+  </div>
+  <div class="content">
+    <div class="grid" id="cards">
+      <div class="card" data-card="feedback"><div class="label">Feedback up-rate</div><div class="value muted" id="c-feedback-value">--</div><div class="sub" id="c-feedback-sub">Loading...</div><div id="c-feedback-err"></div></div>
+      <div class="card" data-card="reliable"><div class="label">Top reliable tool</div><div class="value muted" id="c-reliable-value">--</div><div class="sub" id="c-reliable-sub">Loading...</div><div id="c-reliable-err"></div></div>
+      <div class="card" data-card="chronic"><div class="label">Top chronic failure</div><div class="value muted" id="c-chronic-value">--</div><div class="sub" id="c-chronic-sub">Loading...</div><div id="c-chronic-err"></div></div>
+      <div class="card" data-card="conflicts"><div class="label">Swarm conflicts (24h)</div><div class="value muted" id="c-conflicts-value">--</div><div class="sub" id="c-conflicts-sub">Loading...</div><div id="c-conflicts-err"></div></div>
+      <div class="card" data-card="patch"><div class="label">Active prompt patch</div><div class="value muted" id="c-patch-value">--</div><div class="sub" id="c-patch-sub">Loading...</div><div id="c-patch-err"></div></div>
+      <div class="card" data-card="traces"><div class="label">Recent traces</div><div class="value muted" id="c-traces-value">--</div><div class="sub" id="c-traces-sub">Loading...</div><div id="c-traces-err"></div></div>
+    </div>
+    <details><summary>Chronic failures</summary><div class="body" id="d-chronic"><div class="empty">Loading...</div></div></details>
+    <details><summary>Tool reliability</summary><div class="body" id="d-reliability"><div class="empty">Loading...</div></div></details>
+    <details><summary>Recent swarm conflicts</summary><div class="body" id="d-conflicts"><div class="empty">Loading...</div></div></details>
+    <details><summary>Recent prompt patches</summary><div class="body" id="d-patches"><div class="empty">Loading...</div></div></details>
+    <details><summary>Recent traces</summary><div class="body" id="d-traces"><div class="empty">Loading...</div></div></details>
+    <details><summary>Feedback aggregate</summary><div class="body" id="d-feedback"><div class="empty">Loading...</div></div></details>
+    <details><summary>Latest benchmark eval</summary><div class="body" id="d-eval"><div class="empty">Loading...</div></div></details>
+  </div>
+  <footer>
+    <div class="links">
+      <a href="/admin-agent-stats.html">Agent stats</a>
+      <a href="/admin-prompt-patches.html">Prompt patches</a>
+      <a href="/trace-viewer.html">Trace viewer</a>
+      <a href="/trace-live.html">Live traces</a>
+      <a href="/metrics">Metrics</a>
+    </div>
+    <div id="last-fetch-foot" class="last-fetch"></div>
+  </footer>
+  <script>
+    const SS_KEY = 'siskel_admin_key';
+    const SS_AUTO = 'siskel_admin_auto';
+    const SS_WS = 'siskel_admin_ws';
+
+    function escapeHtml(s) {
+      if (s === null || s === undefined) return '';
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function getKey() { return sessionStorage.getItem(SS_KEY) || ''; }
+    function getWs() { return document.getElementById('workspace').value || 'default'; }
+
+    async function fetchJson(path) {
+      const key = getKey();
+      const headers = { 'Accept': 'application/json' };
+      if (key) headers['Authorization'] = 'Bearer ' + key;
+      const resp = await fetch(path, { headers });
+      if (!resp.ok) {
+        const e = new Error('HTTP ' + resp.status);
+        e.status = resp.status;
+        throw e;
+      }
+      return resp.json();
+    }
+
+    async function fetchFeedback(ws) {
+      try {
+        return await fetchJson('/api/v1/admin/agent-feedback/aggregate?workspace=' + encodeURIComponent(ws));
+      } catch (e) {
+        if (e.status === 404) {
+          return fetchJson('/api/admin/agent-feedback/aggregate?workspace=' + encodeURIComponent(ws));
+        }
+        throw e;
+      }
+    }
+
+    function setCardErr(name, msg) {
+      const el = document.getElementById('c-' + name + '-err');
+      if (el) el.innerHTML = '<div class="banner-error">' + escapeHtml(msg) + '</div>';
+    }
+    function clearCardErr(name) {
+      const el = document.getElementById('c-' + name + '-err');
+      if (el) el.innerHTML = '';
+    }
+
+    function renderFeedback(data) {
+      clearCardErr('feedback');
+      const up = Number(data && data.up || 0);
+      const down = Number(data && data.down || 0);
+      const total = up + down;
+      const val = document.getElementById('c-feedback-value');
+      const sub = document.getElementById('c-feedback-sub');
+      if (!total) {
+        val.textContent = '--';
+        val.className = 'value muted';
+        sub.textContent = 'No feedback yet';
+      } else {
+        const pct = Math.round((up / total) * 100);
+        val.textContent = pct + '%';
+        val.className = 'value ' + (pct >= 70 ? 'val-good' : pct >= 40 ? 'val-warn' : 'val-bad');
+        sub.textContent = up + ' up / ' + down + ' down (' + total + ' total)';
+      }
+      const det = document.getElementById('d-feedback');
+      const tags = data && data.tags || {};
+      const byDay = data && data.byDay || {};
+      const tagEntries = Object.entries(tags).sort((a, b) => b[1] - a[1]);
+      const dayEntries = Object.entries(byDay).sort((a, b) => a[0].localeCompare(b[0]));
+      const maxDay = dayEntries.reduce((m, [, v]) => {
+        const n = (v && (v.up + v.down)) || 0;
+        return n > m ? n : m;
+      }, 1);
+      let html = '';
+      if (tagEntries.length) {
+        html += '<div style="margin-bottom:0.75rem"><strong>Tag counts:</strong><br>';
+        html += tagEntries.map(([t, c]) => '<span class="chip" style="display:inline-block;background:#334155;color:#cbd5e1;font-size:0.6875rem;padding:0.125rem 0.5rem;border-radius:4px;margin:0.25rem 0.25rem 0 0">' + escapeHtml(t) + ' (' + Number(c) + ')</span>').join('');
+        html += '</div>';
+      }
+      if (dayEntries.length) {
+        html += '<div><strong>By day (' + dayEntries.length + ' days):</strong><div class="bars">';
+        html += dayEntries.map(([d, v]) => {
+          const n = (v && (v.up + v.down)) || 0;
+          const h = Math.max(4, Math.round((n / maxDay) * 50));
+          return '<div class="bar" style="height:' + h + 'px" title="' + escapeHtml(d) + ': ' + n + '"></div>';
+        }).join('');
+        html += '</div></div>';
+      }
+      det.innerHTML = html || '<div class="empty">No feedback data</div>';
+    }
+
+    function renderReliability(data) {
+      clearCardErr('reliable');
+      const ranked = (data && data.ranked) || [];
+      const val = document.getElementById('c-reliable-value');
+      const sub = document.getElementById('c-reliable-sub');
+      if (!ranked.length) {
+        val.textContent = '--';
+        val.className = 'value muted';
+        sub.textContent = 'No reliability data';
+      } else {
+        const top = ranked[0];
+        val.textContent = top.tool || top.name || '--';
+        val.className = 'value val-good';
+        const rate = top.successRate != null ? top.successRate : top.rate;
+        sub.textContent = (rate != null ? (Math.round(rate * 100) + '% success') : '') + (top.samples ? ' · ' + top.samples + ' runs' : '');
+      }
+      const det = document.getElementById('d-reliability');
+      if (!ranked.length) { det.innerHTML = '<div class="empty">No data</div>'; return; }
+      let html = '<table><thead><tr><th>Tool</th><th>Success rate</th><th>Samples</th></tr></thead><tbody>';
+      html += ranked.slice(0, 20).map(r => {
+        const rate = r.successRate != null ? r.successRate : r.rate;
+        return '<tr><td>' + escapeHtml(r.tool || r.name || '?') + '</td><td>' + (rate != null ? Math.round(rate * 100) + '%' : '-') + '</td><td>' + escapeHtml(String(r.samples || 0)) + '</td></tr>';
+      }).join('');
+      html += '</tbody></table>';
+      det.innerHTML = html;
+    }
+
+    function renderFailures(data) {
+      clearCardErr('chronic');
+      const chronic = (data && data.chronic) || [];
+      const val = document.getElementById('c-chronic-value');
+      const sub = document.getElementById('c-chronic-sub');
+      if (!chronic.length) {
+        val.textContent = '0';
+        val.className = 'value val-good';
+        sub.textContent = 'No chronic failures';
+      } else {
+        const top = chronic[0];
+        val.textContent = top.tool || top.name || '--';
+        val.className = 'value val-bad';
+        sub.textContent = (top.total || top.count || 0) + ' failures';
+      }
+      const det = document.getElementById('d-chronic');
+      if (!chronic.length) { det.innerHTML = '<div class="empty">No chronic failures</div>'; return; }
+      let html = '<table><thead><tr><th>Tool</th><th>Failures</th><th>Last error</th></tr></thead><tbody>';
+      html += chronic.slice(0, 20).map(c => {
+        return '<tr><td>' + escapeHtml(c.tool || c.name || '?') + '</td><td>' + escapeHtml(String(c.total || c.count || 0)) + '</td><td class="muted">' + escapeHtml((c.lastError || c.message || '').slice(0, 100)) + '</td></tr>';
+      }).join('');
+      html += '</tbody></table>';
+      det.innerHTML = html;
+    }
+
+    function renderConflicts(data) {
+      clearCardErr('conflicts');
+      const conflicts = Array.isArray(data) ? data : (data && data.conflicts) || [];
+      const cutoff = Date.now() - 86400000;
+      const recent = conflicts.filter(c => {
+        const ts = typeof c.ts === 'number' ? c.ts : Date.parse(c.ts || c.timestamp || 0);
+        return ts >= cutoff;
+      });
+      const val = document.getElementById('c-conflicts-value');
+      const sub = document.getElementById('c-conflicts-sub');
+      val.textContent = String(recent.length);
+      val.className = 'value ' + (recent.length === 0 ? 'val-good' : recent.length < 5 ? 'val-warn' : 'val-bad');
+      sub.textContent = conflicts.length + ' total on record';
+      const det = document.getElementById('d-conflicts');
+      if (!conflicts.length) { det.innerHTML = '<div class="empty">No conflicts recorded</div>'; return; }
+      const list = conflicts.slice(0, 10).map(c => {
+        const ts = c.ts || c.timestamp;
+        const when = ts ? new Date(typeof ts === 'number' ? ts : Date.parse(ts)).toLocaleString() : '';
+        return '<li><strong>' + escapeHtml(c.type || c.kind || 'conflict') + '</strong> <span class="muted">' + escapeHtml(when) + '</span><br><span class="muted">' + escapeHtml((c.summary || c.description || JSON.stringify(c)).slice(0, 200)) + '</span></li>';
+      }).join('');
+      det.innerHTML = '<ul class="plain">' + list + '</ul>';
+    }
+
+    function renderPatches(data) {
+      clearCardErr('patch');
+      const active = data && data.active;
+      const recent = (data && data.recent) || (data && data.patches) || [];
+      const val = document.getElementById('c-patch-value');
+      const sub = document.getElementById('c-patch-sub');
+      if (!active) {
+        val.textContent = 'None';
+        val.className = 'value muted';
+        sub.textContent = 'No active patch';
+      } else {
+        val.textContent = escapeHtml(String(active.version || active.id || '?'));
+        val.className = 'value val-good';
+        sub.textContent = active.description ? String(active.description).slice(0, 60) : 'Active';
+      }
+      const det = document.getElementById('d-patches');
+      if (!recent.length) { det.innerHTML = '<div class="empty">No patches</div>'; return; }
+      const list = recent.slice(0, 10).map(p => {
+        return '<li><strong>' + escapeHtml(String(p.version || p.id || '?')) + '</strong> <span class="muted">' + escapeHtml(p.status || '') + '</span><br><span class="muted">' + escapeHtml((p.description || p.summary || '').slice(0, 200)) + '</span></li>';
+      }).join('');
+      det.innerHTML = '<ul class="plain">' + list + '</ul>';
+    }
+
+    function renderTraces(data) {
+      clearCardErr('traces');
+      const traces = Array.isArray(data) ? data : (data && data.traces) || [];
+      const val = document.getElementById('c-traces-value');
+      const sub = document.getElementById('c-traces-sub');
+      val.textContent = String(traces.length);
+      val.className = 'value';
+      sub.textContent = traces.length ? 'Latest: ' + (traces[0].id || traces[0].traceId || '').slice(0, 12) : 'No traces';
+      const det = document.getElementById('d-traces');
+      if (!traces.length) { det.innerHTML = '<div class="empty">No recent traces</div>'; return; }
+      let html = '<table><thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Duration</th></tr></thead><tbody>';
+      html += traces.slice(0, 10).map(t => {
+        const id = t.id || t.traceId || '';
+        return '<tr><td><a href="/trace-viewer.html?id=' + encodeURIComponent(id) + '">' + escapeHtml(id.slice(0, 12)) + '</a></td><td>' + escapeHtml(t.name || t.operation || '-') + '</td><td>' + escapeHtml(t.status || '-') + '</td><td>' + escapeHtml(String(t.durationMs || t.duration || '-')) + '</td></tr>';
+      }).join('');
+      html += '</tbody></table>';
+      det.innerHTML = html;
+    }
+
+    function renderEval(data) {
+      const det = document.getElementById('d-eval');
+      if (!data || (Array.isArray(data) && !data.length)) {
+        det.innerHTML = '<div class="empty">No benchmark eval runs available</div>';
+        return;
+      }
+      const e = Array.isArray(data) ? data[0] : data;
+      det.innerHTML = '<div><strong>Run:</strong> ' + escapeHtml(String(e.id || e.runId || '?')) +
+        '<br><strong>Score:</strong> ' + escapeHtml(String(e.score ?? e.pass ?? '-')) +
+        '<br><strong>At:</strong> ' + escapeHtml(String(e.ts || e.timestamp || '-')) + '</div>';
+    }
+
+    async function loadAll() {
+      const ws = getWs();
+      sessionStorage.setItem(SS_WS, ws);
+      const tasks = [
+        ['failures', () => fetchJson('/api/admin/agent-stats/failures?workspace=' + encodeURIComponent(ws) + '&limit=10'), renderFailures, 'chronic'],
+        ['reliability', () => fetchJson('/api/admin/agent-stats/reliability?workspace=' + encodeURIComponent(ws) + '&minSamples=3'), renderReliability, 'reliable'],
+        ['conflicts', () => fetchJson('/api/admin/agent-stats/swarm-conflicts?workspace=' + encodeURIComponent(ws) + '&limit=5'), renderConflicts, 'conflicts'],
+        ['patches', () => fetchJson('/api/admin/prompt-patches?workspace=' + encodeURIComponent(ws) + '&limit=5'), renderPatches, 'patch'],
+        ['traces', () => fetchJson('/api/admin/traces?workspace=' + encodeURIComponent(ws) + '&limit=10'), renderTraces, 'traces'],
+        ['feedback', () => fetchFeedback(ws), renderFeedback, 'feedback'],
+        ['eval', () => fetchJson('/api/admin/eval-history/latest?workspace=' + encodeURIComponent(ws) + '&kind=benchmark'), renderEval, null]
+      ];
+      const results = await Promise.allSettled(tasks.map(t => t[1]()));
+      results.forEach((r, i) => {
+        const [, , render, card] = tasks[i];
+        if (r.status === 'fulfilled') {
+          try { render(r.value); } catch (err) { if (card) setCardErr(card, 'Render error: ' + err.message); }
+        } else {
+          const msg = (r.reason && r.reason.message) || 'Request failed';
+          if (card) setCardErr(card, msg);
+          if (tasks[i][0] === 'eval') {
+            document.getElementById('d-eval').innerHTML = '<div class="empty">No eval data (' + escapeHtml(msg) + ')</div>';
+          }
+        }
+      });
+      const now = new Date().toLocaleTimeString();
+      const stamp = 'Last refreshed at ' + now;
+      document.getElementById('last-fetch').textContent = stamp;
+      document.getElementById('last-fetch-foot').textContent = stamp;
+    }
+
+    let autoTimer = null;
+    function setAuto(on) {
+      sessionStorage.setItem(SS_AUTO, on ? '1' : '0');
+      if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+      if (on) autoTimer = setInterval(loadAll, 30000);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const keyInput = document.getElementById('admin-key');
+      const wsInput = document.getElementById('workspace');
+      const autoInput = document.getElementById('auto-refresh');
+      keyInput.value = getKey();
+      keyInput.addEventListener('change', () => sessionStorage.setItem(SS_KEY, keyInput.value));
+      const savedWs = sessionStorage.getItem(SS_WS);
+      if (savedWs) wsInput.value = savedWs;
+      const savedAuto = sessionStorage.getItem(SS_AUTO) === '1';
+      autoInput.checked = savedAuto;
+      autoInput.addEventListener('change', () => setAuto(autoInput.checked));
+      document.getElementById('refresh').addEventListener('click', loadAll);
+      wsInput.addEventListener('change', loadAll);
+      if (savedAuto) setAuto(true);
+      loadAll();
+    });
+  </script>
+</body>
+</html>

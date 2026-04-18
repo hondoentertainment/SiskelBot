@@ -238,21 +238,27 @@ test("re-plan: message contains the failed tool name and error summary", async (
 
   // Find the injected system message
   const replanMsg = capturedMessages.find(
-    (m) => m.role === "system" && typeof m.content === "string" && m.content.includes("Re-evaluate your approach")
+    (m) => m.role === "system" && typeof m.content === "string" && /Tool 'nonexistent_tool_xyz' failed/.test(m.content)
   );
   assert.ok(replanMsg, "re-plan system message should be present in messages");
   assert.ok(
     replanMsg.content.includes("nonexistent_tool_xyz"),
     "re-plan message should contain the failed tool name"
   );
-  assert.ok(
-    replanMsg.content.includes("failed with:"),
-    "re-plan message should contain error indicator"
+  // New analyzer: message is prefixed with the category label and carries a hint
+  assert.match(
+    replanMsg.content,
+    /failed \((unknown_tool|validation|unknown|not_allowed|permission)\)/,
+    "re-plan message should include the failure category"
   );
-  // The error summary should be present (the tool throws "Unknown tool: ..." or similar)
+  assert.match(
+    replanMsg.content,
+    /Re-plan attempt 1 of/,
+    "re-plan message should include the attempt banner"
+  );
   assert.ok(
-    replanMsg.content.length > 50,
-    "re-plan message should contain meaningful error summary"
+    replanMsg.content.length > 80,
+    "enriched re-plan message should contain meaningful hint + error summary"
   );
 
   // Restore env
