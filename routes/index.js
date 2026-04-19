@@ -51,6 +51,9 @@ import mountTeamsRoutes from "./teams.js";
 import mountAdminRoutes from "./admin.js";
 import mountAgentStatsAdminRoutes from "./admin-agent-stats.js";
 import mountAdminEvalHistoryRoutes from "./admin-eval-history.js";
+import mountAdminHealthScoreRoutes from "./admin-health-score.js";
+import mountAdminPromptCanaryRoutes from "./admin-prompt-canary.js";
+import mountAdminQualityJobsRoutes from "./admin-quality-jobs.js";
 import mountAdminTracesRoutes from "./admin-traces.js";
 import mountAdminTraceStreamRoutes from "./admin-trace-stream.js";
 import mountTraceShareRoutes from "./trace-share.js";
@@ -303,6 +306,9 @@ const mountFunctions = [
   mountAdminRoutes,
   mountAgentStatsAdminRoutes,
   mountAdminEvalHistoryRoutes,
+  mountAdminHealthScoreRoutes,
+  mountAdminPromptCanaryRoutes,
+  mountAdminQualityJobsRoutes,
   mountAdminTracesRoutes,
   mountAdminTraceStreamRoutes,
   mountTraceShareRoutes,
