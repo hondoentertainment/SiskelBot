@@ -275,7 +275,7 @@ test("GET /metrics returns 200 when METRICS_PROTECTED=1 and secret provided", as
 // --- Phase 4: Toolchain Integration Hub ---
 
 test("GET /api/integrations/status returns { github, vercel } booleans", async () => {
-  const app = await loadApp({ BACKEND: "ollama" });
+  const app = await loadApp({ BACKEND: "ollama", GITHUB_TOKEN: "", VERCEL_TOKEN: "" });
   const response = await request(app).get("/api/integrations/status");
 
   assert.equal(response.status, 200);
@@ -302,7 +302,7 @@ test("GET /api/integrations/status returns vercel true when VERCEL_TOKEN set", a
 });
 
 test("GET /api/github/repos returns 503 with { error, code, hint } when GITHUB_TOKEN missing", async () => {
-  const app = await loadApp({ BACKEND: "ollama" });
+  const app = await loadApp({ BACKEND: "ollama", GITHUB_TOKEN: "" });
   const response = await request(app).get("/api/github/repos");
 
   assert.equal(response.status, 503);
@@ -313,7 +313,7 @@ test("GET /api/github/repos returns 503 with { error, code, hint } when GITHUB_T
 });
 
 test("GET /api/vercel/deployments returns 503 with { error, code, hint } when VERCEL_TOKEN missing", async () => {
-  const app = await loadApp({ BACKEND: "ollama" });
+  const app = await loadApp({ BACKEND: "ollama", VERCEL_TOKEN: "" });
   const response = await request(app).get("/api/vercel/deployments");
 
   assert.equal(response.status, 503);
