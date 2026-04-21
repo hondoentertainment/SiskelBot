@@ -48,7 +48,8 @@
     "test:recipes": "node scripts/test-recipes.mjs",
     "schema:diff": "node scripts/schema-diff.mjs",
     "wire-check": "node scripts/wire-check.mjs",
-    "seed:safety-sla": "node scripts/seed-safety-sla.mjs"
+    "seed:safety-sla": "node scripts/seed-safety-sla.mjs",
+    "chaos:drill": "node scripts/run-chaos-drill.mjs"
   },
   "engines": {
     "node": ">=18"
