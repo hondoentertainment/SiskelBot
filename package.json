@@ -47,7 +47,8 @@
     "test:integration": "node scripts/integration-test.mjs",
     "test:recipes": "node scripts/test-recipes.mjs",
     "schema:diff": "node scripts/schema-diff.mjs",
-    "wire-check": "node scripts/wire-check.mjs"
+    "wire-check": "node scripts/wire-check.mjs",
+    "seed:safety-sla": "node scripts/seed-safety-sla.mjs"
   },
   "engines": {
     "node": ">=18"
