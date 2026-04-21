@@ -46,7 +46,8 @@
     "eval:live": "node scripts/run-eval-live.mjs",
     "test:integration": "node scripts/integration-test.mjs",
     "test:recipes": "node scripts/test-recipes.mjs",
-    "schema:diff": "node scripts/schema-diff.mjs"
+    "schema:diff": "node scripts/schema-diff.mjs",
+    "wire-check": "node scripts/wire-check.mjs"
   },
   "engines": {
     "node": ">=18"
