@@ -1507,3 +1507,68 @@ Merge order for LLM requests: client messages → **Phase 60** `AGENT_DEFAULT_SY
 | **CI eval** | `npm run eval:ci` runs `data/eval-sets/ci-offline.json` (trace + staging_trace, including swarm/stopReason shapes). Wired in `.github/workflows/ci.yml`. Optional live: `EVAL_LIVE=1 npm run eval:live`. See `docs/AGENT_SLI.md` for agent SLIs. |
 
 See `docs/AGENT_NEXT_STEPS.md` for a short backlog of further agent improvements.
+
+## Phase 59.2: Load shedding
+
+`lib/load-shedding.js` rejects low-priority requests when the in-flight
+budget is exceeded. Four priority tiers:
+
+| Tier | Label | Default per-priority limit | Use |
+|------|-------|----------------------------|-----|
+| P0 | `P0_health` | unlimited | Health probes, control-plane traffic. **Never shed.** |
+| P1 | `P1_paid` | 400 | Paid / contractual traffic. Shed only after P2 + P3. |
+| P2 | `P2_free` | 200 | Free-tier user traffic. Shed before P1. |
+| P3 | `P3_batch` | 50 | Background, batch, eval-in-prod shadow traffic. Shed first. |
+
+Defaults (in `DEFAULT_CONFIG`):
+
+| Knob | Default | Meaning |
+|------|---------|---------|
+| `softCapacity` | 200 | Comfortable in-flight count. Above this, P3 starts being shed. |
+| `hardCapacity` | 500 | Absolute ceiling. Above this, even P1 is shed. |
+| `enabled` | `true` | Set to `false` to disable shedding entirely (do this in tests, never prod). |
+
+### Tuning thresholds
+
+1. Run `npm run test:load` against staging.
+2. Watch `loadShedding.totalInFlight` and the per-priority shed counters
+   (exposed via `routes/load-shedding-admin.js` and the Prometheus
+   `/metrics` endpoint).
+3. Set `softCapacity` to the in-flight count at which **p99 latency
+   starts to climb** (not where errors begin — the breaker handles that).
+4. Set `hardCapacity` to the in-flight count where the host actually
+   tips into OOM / GC pause territory. Leave 20% headroom.
+5. Adjust per-priority limits so the sum of P1+P2+P3 ≈ hardCapacity. P0
+   stays unlimited.
+
+### Rollout
+
+Update at runtime via `POST /api/admin/load-shedding/configure`:
+
+```bash
+curl -XPOST -H "X-Admin-API-Key: $ADMIN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"softCapacity": 250, "hardCapacity": 600, "perPriorityLimits": {"3": 25}}' \
+  https://api.siskelbot.local/api/admin/load-shedding/configure
+```
+
+Persistent across restarts via `data/load-shedding/config.json` — rolling
+deploys preserve the live tuning.
+
+### Observability
+
+| Signal | Source | Alert when |
+|--------|--------|-----------|
+| Shed count by priority | `/metrics` (`load_shedding_shed_total{priority=...}`) | P1 shed > 0 sustained for >5 min — capacity is undersized |
+| In-flight by priority | `/metrics` (`load_shedding_in_flight{priority=...}`) | P0 in-flight ≥ softCapacity — control plane is saturated |
+| Reasons | `data/load-shedding/events.json` ring buffer | `disabled_priority` reasons — operator probably hit a typo in tuning |
+
+### Failure modes
+
+| Symptom | Cause | Mitigation |
+|---------|-------|-----------|
+| All requests rejected with `429 SHED` | Misconfigured `enabled: true` with `hardCapacity: 0` | `POST /api/admin/load-shedding/configure` with proper values; persisted config takes effect immediately |
+| P0 traffic shed | Caller misclassified itself as P3 | Audit caller wiring — P0 must be set explicitly via the admit() API |
+| Shed events never observed | `shedEventHook` not registered | Wire in `routes/load-shedding-admin.js` mount path; verify metrics are emitted |
+| Capacity drift after restart | `loadPersistedConfig()` not called at startup | Confirm server.js calls it before accepting traffic |
+
