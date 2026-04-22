@@ -251,6 +251,11 @@ import { mountAgentProfileRoutes } from "./agent-profiles.js";
 import { mountAgentToolsDiscoverRoutes } from "./agent-tools-discover.js";
 import { mountCostEstimateRoutes } from "./cost-estimate.js";
 import { mountTrajectoryBranchRoutes } from "./trajectory-branch.js";
+import { mountAgentResumeRoutes } from "./agent-resume.js";
+import { mountContextRoutes } from "./context.js";
+import { mountContinuousLearningRoutes } from "./continuous-learning.js";
+import mountKarpathyPipelineRoutes from "./karpathy-pipeline.js";
+import mountZeroToHeroRoutes from "./zero-to-hero.js";
 
 // Phase 63 — Code Generation vertical (5 modules)
 import mountRepoRagRoutes from "./repo-rag.js";
@@ -503,6 +508,11 @@ const mountFunctions = [
   mountAgentToolsDiscoverRoutes,
   mountCostEstimateRoutes,
   mountTrajectoryBranchRoutes,
+  mountAgentResumeRoutes,
+  mountContextRoutes,
+  mountContinuousLearningRoutes,
+  mountKarpathyPipelineRoutes,
+  mountZeroToHeroRoutes,
 
   // Phase 63 — Code Generation vertical
   mountRepoRagRoutes,
