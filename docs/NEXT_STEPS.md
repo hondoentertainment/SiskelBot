@@ -1,154 +1,161 @@
 # SiskelBot — Recommended Next Steps
 
-**Status date:** 2026-04-14
-**Branch:** `claude/recommend-next-steps-jNaEP`
-**Supersedes:** [`docs/NEXT_PHASES.md`](NEXT_PHASES.md) (Wave 1 closeout has largely shipped)
+**Status date:** 2026-04-21
+**Branch:** `claude/recommend-next-steps-yWvy7`
+**Supersedes:** the 2026-04-14 revision of this file (Phase 63/64/71/72/75
+fronts closed).
 
-This document takes fresh stock of the tree after the Phase 51–70 closeout
-landed and recommends the next concrete wave of work.
+One week after the last revision, everything it called out under P1–P4 has
+shipped. The hygiene items from its P0, however, did not — and one got
+worse. This revision refocuses the next wave on consolidation and
+design-partner burn-in rather than opening new phases.
 
 ---
 
 ## Where we are
 
 **Repo shape**
-- `server.js`: 1,257 lines (composition root)
-- `routes/`: 195 modules (37 core + v2 + 150+ Phase 51–70 modules)
-- `lib/`: 371 modules
-- `tests/`: 318 files
-- Coverage floor: lines 50 / funcs 45 / branches 40 (per `.c8rc.json`)
 
-**What shipped since `docs/NEXT_PHASES.md` was written**
+| Metric | 2026-04-14 | 2026-04-21 | Δ |
+|--------|------------|------------|---|
+| `server.js` lines | 1,257 | 1,453 | +196 |
+| `routes/index.js` lines | — | 554 | — |
+| `lib/` modules | 371 | 439 | +68 |
+| `routes/` modules | 195 | 239 | +44 |
+| `tests/` files | 318 | 459 | +141 |
+| Coverage floor (lines/funcs/branches) | 50/45/40 | 50/45/40 | — |
 
-Wave 1 closeout is substantially complete. Every module called out in that
-doc is present in `lib/` or `routes/`:
+**What shipped since the prior revision**
 
-| Phase | Module |
-|-------|--------|
-| 51.4  | `policy-audit.js` |
-| 51.5  | `risky-ops-quota.js` |
-| 52.4  | `neuro-symbolic.js` |
-| 57.1–5 | `dag-pipeline.js`, `data-quality.js`, `schema-evolution.js`, `lineage.js`, `feature-store.js` |
-| 58.1/3/4 | `cost-aware-router.js`, `prompt-compression.js`, `distillation.js` |
-| 59.2  | `load-shedding.js` |
-| 60.1–5 | `profiling.js`, `heap-diff.js`, per-tool latency in `tracing.js`, `log-analysis.js`, `status-page.js` |
-| 61.2/5 | `webhook-inspector.js`, `schema-registry.js` |
-| 62    | `intent-classifier.js`, `ticket-router.js`, `response-drafter.js`, `escalation-rules.js`, `csat-tracker.js` |
-| 67    | `hash-detection.js`, `copyright-similarity.js`, `factuality-crossref.js`, `brand-safety.js`, `hitl-moderation.js` |
-| 65/68 | approvals, usage-policies, budget-alloc, audit-reports, risk-scoring, web-ingestion, large-retrieval, fact-verification, source-credibility, freshness-sla |
+All 25 planned modules from the last doc landed with tests:
 
-**What's still outstanding from that doc**
-- **V1 — Phase 63 Code Generation:** `repo-rag.js`, `pr-review-agent.js`, `test-gen.js`, `refactor-agent.js`, `migration-assistant.js` — none shipped
-- **V3 — Phase 64 Research pack:** `literature-search.js`, `paper-summary.js`, `citation-graph.js`, `experiment-bridge.js`, `reproducibility-checks.js` — none shipped
-- **Wave 3 Phases 71–80:** only `model-registry.js` and `white-label.js` exist; the rest are greenfield
+| Phase | Modules |
+|-------|---------|
+| 63 Code Generation | `repo-rag`, `pr-review-agent`, `test-gen`, `refactor-agent`, `migration-assistant` |
+| 64 Research | `literature-search`, `paper-summary`, `citation-graph`, `experiment-bridge`, `reproducibility-checks` |
+| 71 Agent Economics | `pricing-engine`, `outcome-verification`, `revenue-share`, `credit-system`, `invoicing` |
+| 72 Trust & Safety Pro | `red-team-harness`, `model-card-generator`, `bias-eval-suite`, `k-anonymous-telemetry`, `safety-sla` |
+| 75 Evaluation 2.0 | `eval-in-prod`, `judge-calibration`, `preference-dataset`, `regression-bisection`, `synthetic-users` |
+
+Notable side-lands: unified quality dashboard, shareable anonymized trace
+URLs, DAG-based swarm orchestration, dynamic MCP tool discovery, trajectory
+branching, per-profile success models, subagent memoization, feedback →
+prompt-tuner loop with CI regression gate.
+
+**What did NOT ship from the prior P0**
+
+1. `server.js` drift — got worse (+196 lines).
+2. Coverage floor uplift to 55/50/45 — floor is still 50/45/40.
+3. Wire-check audit — 44 new route modules were added without a reconciled
+   sweep of `mountAllRoutes` vs `routes/*.js` exports.
 
 ---
 
 ## Recommended next steps (prioritized)
 
-### P0 — Close out the last closeout items (1 PR each)
+Appetite has clearly been on breadth. Depth is now the bottleneck. Resist
+opening Phase 73/74/76–80 until the consolidation wave lands.
 
-These are small and they finish Wave 1 for real.
+### P0 — Consolidation (ship before anything new)
 
-1. **Coverage uplift pass.** Closeout shipped ~40 modules but the coverage
-   floor hasn't moved. Run `npm run test:coverage`, identify the 10 lowest-
-   covered closeout modules, and backfill tests to push the floor to
-   lines 55 / funcs 50 / branches 45 before opening new fronts.
+1. **`server.js` extract.** Carve `server.js` down to a composition root
+   (<600 lines). Targets: middleware stack, startup checks, WebSocket
+   upgrade wiring, graceful-shutdown hooks → each to a focused module in
+   `lib/`. One PR per extraction to keep review cheap.
 
-2. **Wire-check audit.** With 195 route modules and 378 `mount*Routes`
-   references in `routes/index.js`, verify nothing shipped with lib + tests
-   but no HTTP surface. Grep `mountAllRoutes` vs `routes/*.js` exports and
-   close any gaps.
+2. **Wire-check audit.** For every `lib/<feature>.js` with a matching
+   `routes/<feature>.js`, assert the route is mounted and has at least one
+   test that hits it via `supertest`. Encode this as a script under
+   `scripts/wire-check.mjs` run in CI. Gap-list first, fixes second.
 
-3. **`server.js` drift.** It grew from 1,073 → 1,257 lines. Extract the
-   drift (likely middleware + new startup checks) into focused modules so
-   `server.js` stays a composition root.
+3. **Coverage floor to 55/50/45.** Prior doc called for this; it never
+   happened. The 141 new test files likely bought room — run
+   `npm run test:coverage`, bump `.c8rc.json`, fix the shortfall. Critical
+   paths in `_criticalPathThresholds.files` should also widen (add
+   `lib/agent-session.js`, `lib/eval-in-prod.js`, `lib/pr-review-agent.js`,
+   `lib/repo-rag.js`).
 
-### P1 — Phase 63 Code Generation vertical ⭐⭐⭐
+4. **Dead-route / dead-module sweep.** With 239 route modules and 439 lib
+   modules, some shipped-and-forgotten surface exists. Grep for
+   zero-importers in `lib/`, zero-reference routes in the client, and
+   either wire them up or delete. Do not keep half-finished scaffolds.
 
-Highest monetization leverage and reuses the most existing infra (agent
-loop, knowledge graph, search index, MCP client, GitHub MCP tools).
+### P1 — Design-partner burn-in ⭐⭐⭐
 
-- **63.1 Repo-level RAG** — `lib/repo-rag.js`
-  - Tree-sitter based AST-aware chunking (one parser per language, start
-    with JS/TS/Python/Go)
-  - Reuse `lib/search-index.js` inverted index + `lib/knowledge-graph.js`
-    for cross-file entity linking
-  - New agent tool `search_repo` gated behind `WORKSPACE_FILE_TOOLS=1`
-- **63.2 PR review agent** — `lib/pr-review-agent.js`
-  - Uses GitHub MCP tools (`mcp__github__*`) already available
-  - Posts inline comments via `add_comment_to_pending_review`
-  - Policy gate via existing `lib/policy-audit.js`
-- **63.3 Test generation** — `lib/test-gen.js`
-  - Parse c8 lcov output to find uncovered lines
-  - Agent generates test + runs it + verifies coverage bump
-- **63.4 Refactoring agent** — `lib/refactor-agent.js`
-  - Multi-file edits with dry-run preview (diff-only mode)
-  - HITL approval via existing `lib/agent-hitl-store.js`
-- **63.5 Migration assistant** — `lib/migration-assistant.js`
-  - Framework-version upgrade playbooks (Express 4 → 5, Node 18 → 22, etc.)
-  - Reuses `lib/recipes.js` for playbook storage
+The Phase 63 code-gen vertical is the highest-value product surface the
+repo now has. It will not hold up under a design partner until:
 
-Each subtask ships `lib/*.js` + `routes/*.js` + `tests/*.test.js` and
-registers in `mountAllRoutes`.
+- **P1.1 End-to-end golden path.** A single scripted flow `workspace → repo
+  ingest → repo-rag query → PR review → test-gen → merge` with
+  Playwright coverage and a cost budget captured in the trace. Put the
+  script in `tests/e2e/` and run it in `test:e2e:api`.
+- **P1.2 `pr-review-agent` HITL defaults.** Any comment-posting action must
+  default to draft mode; require explicit approval via
+  `lib/agent-hitl-store.js`. Today's default is almost certainly too hot
+  for a design partner.
+- **P1.3 Cost attribution per Phase 63 call.** Wire `lib/pricing-engine.js`
+  + `lib/usage-tracker.js` so every `repo-rag`/`pr-review`/`test-gen` run
+  lands on an invoice line. Without this, the economics modules shipped
+  but don't meter the product.
+- **P1.4 Failure-mode docs.** `docs/PR_REVIEW_AGENT.md`,
+  `docs/REPO_RAG.md`, `docs/TEST_GEN.md` each with: inputs, limits, known
+  failure modes, HITL guarantees, how to disable. None of these docs
+  exist today.
+- **P1.5 Eval-in-prod wired to Phase 63.** `lib/eval-in-prod.js` shipped
+  generically. Register `pr-review-agent` and `test-gen` as tracked
+  subjects so regression bisection can find breaks automatically.
 
-### P2 — Phase 75 Evaluation 2.0 ⭐⭐⭐
+### P2 — Operational hardening ⭐⭐
 
-Needed before shipping Phase 63 to design partners and before Phase 80
-model-lifecycle work. Existing `eval-*.js` modules (7 of them) give us a
-big head start.
+These are load-bearing modules that landed without being exercised under
+load:
 
-- **75.1 Eval-in-prod** — shadow traffic: mirror `/v1/chat/completions` to
-  a candidate model, diff against production, never surface to user
-- **75.2 LLM-as-judge calibration** — harness that measures judge
-  precision/recall against human-labeled goldens
-- **75.3 Pairwise preference UI** — client page + route to collect A/B
-  preferences; feeds `lib/preference-dataset.js`
-- **75.4 Regression bisection** — given a failing trace, `git bisect`
-  across recent commits to find the breaker
-- **75.5 Synthetic user simulation** — multi-turn eval agent that plays
-  the user role, scored by goal completion
+- **P2.1 Chaos drill.** `lib/chaos-engineering.js` exists; add a
+  scheduled run (weekly, staging-only) that kills one backend, trips the
+  circuit breaker, and asserts the status page reflects reality within
+  60s. Hooks: `lib/region-health.js`, `lib/status-page.js`.
+- **P2.2 Safety SLA backtest.** `lib/safety-sla.js` tracks precision/recall
+  over time — seed with a 90-day backfill from existing traces so the
+  dashboard is useful on day one.
+- **P2.3 Load-shed tuning.** `lib/load-shedding.js` is in place; run
+  `npm run test:load` against it, publish thresholds in `docs/RUNBOOK.md`.
+- **P2.4 Leader-election under partition.** `lib/leader-election.js` has
+  not been exercised under a network partition. Add a fault-injection
+  test (toggle Redis availability mid-flight) and document the failure
+  mode.
 
-### P3 — Phase 72 Trust & Safety Pro ⭐⭐
+### P3 — Open a new front only after P0+P1 land
 
-Builds on Phase 51 (safety) + Phase 67 (moderation). Gates enterprise
-design partner deals.
+If (and only if) P0 and P1 are green, pick ONE:
 
-- **72.1 Red-team harness** (classifier-generated probes only)
-- **72.2 Model card generator** (auto-updated per deployed model)
-- **72.3 Bias eval suite** on synthetic personas
-- **72.4 k-anonymous telemetry**
-- **72.5 Safety SLA dashboard** (precision/recall over time per classifier)
+- **Phase 73 Compliance Automation** — `lib/compliance.js` exists but is
+  thin; SOC2/ISO audit evidence collection + export pipeline.
+- **Phase 76 Privacy Engineering** — differential-privacy telemetry, PII
+  redaction preflight, right-to-erasure workflow.
+- **Phase 80 Model Lifecycle** — `lib/model-registry.js` exists; build
+  out champion/challenger routing, automated rollback on quality
+  regression.
 
-### P4 — Pick one: Phase 64 Research pack OR Phase 71 Agent Economics
-
-Choose based on design-partner signal.
-
-- **Phase 64 (Research)** if research/ML-user signal: 5 modules as listed
-  in `NEXT_PHASES.md`
-- **Phase 71 (Agent Economics)** if monetization pressure: pricing engine,
-  outcome verification, revenue share, credit system, invoicing
-
-Don't open both in parallel.
+Do not open two at once. The last wave's breadth is the reason we need
+this consolidation wave.
 
 ---
 
-## Out of scope for this wave
+## Explicitly out of scope for this wave
 
-- Phases 73–74, 76–80 from `NEXT_PHASES.md` remain deferred until Phase
-  63 + Phase 75 ship and at least one design partner is live.
-- `AGENT_NEXT_STEPS.md` is historical (pre-refactor) — retain for context
-  but do not plan against it.
+- New agent tools. The current 21-tool surface is already hard to eval.
+- New integration surfaces (Teams, Notion, etc.). Slack/Discord/Jira/
+  Linear are sufficient until a partner asks.
+- Additional storage backends. JSON/SQLite/Postgres is enough.
 
 ---
 
 ## Execution guidance
 
-- Keep the 5-subtask-per-phase shape.
-- Every subtask: `lib/*.js` + `routes/*.js` + `tests/*.test.js` + wire in
-  `routes/index.js::mountAllRoutes`.
-- Do not ship without tests — coverage floor is the contract.
-- Run `npm run eval:ci` on every PR that touches `lib/agent-*`,
-  `lib/gbrain*`, `lib/eval-*`, or `lib/repo-rag.js`.
-- Use parallel worktrees (one per subtask) as with Phase 51–70; the
-  `AGENT_*_WIRING.md` pattern worked well and should continue.
+- One PR per P0 subtask. Keep review small. Merge before moving on.
+- Every P1 subtask ships code + test + doc. Missing doc = not done.
+- P0.3 (coverage floor) is a gate on all P1 work — do not raise the floor
+  and open a new front in the same PR.
+- Run `npm run eval:ci` on any PR touching `lib/agent-*`, `lib/repo-rag.js`,
+  `lib/pr-review-agent.js`, `lib/test-gen.js`, or `lib/eval-*`.
+- Prefer shrinking `server.js` and `routes/index.js` over growing them.
