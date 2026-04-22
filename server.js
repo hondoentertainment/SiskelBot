@@ -58,6 +58,8 @@ import { emitEvent, listWebhooks, addWebhook, removeWebhook, validateWebhookUrl 
 import { list as listNotifications, markRead as markNotificationRead, markAllRead as markAllNotificationsRead } from "./lib/notifications.js";
 import { isQuotaConfigured, checkQuota, getWorkspaceQuota, getWorkspaceTokensUsed, isQuotaAdmin, setWorkspaceQuotaOverride, getQuotaOverrides } from "./lib/quotas.js";
 import { createBackup, listBackups, restoreBackup } from "./lib/backup.js";
+import { createAuthMiddleware } from "./lib/server-auth-middleware.js";
+import { validateAutomationRecipe } from "./lib/automation-recipe-validator.js";
 import { adminAuth } from "./lib/admin-auth.js";
 // import { adminIpAllowlist } from "./lib/admin-ip-allowlist.js";
 import { listAllUsers, listAllWorkspaces, getRecentAuditLog } from "./lib/admin-data.js";
@@ -550,102 +552,17 @@ async function setQuotaHeaders(res, workspace, userId) {
   }
 }
 
-// Auth middleware
-// Secret rotation: accepts API_KEY_PREVIOUS during key rollover.
-function apiKeyAuth(req, res, next) {
-  if (!API_KEY) return next();
-  const auth = req.headers.authorization;
-  const bearer = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : null;
-  const xKey = req.headers["x-api-key"];
-  const key = bearer || xKey;
-  const matchesCurrent = key && key === API_KEY;
-  const matchesPrevious = !matchesCurrent && API_KEY_PREVIOUS && key === API_KEY_PREVIOUS;
-  if (!key || (!matchesCurrent && !matchesPrevious)) {
-    return apiError(res, 401, "AUTH_REQUIRED", "Unauthorized", "Use Authorization: Bearer <key> or x-api-key header.");
-  }
-  if (matchesPrevious) {
-    res.setHeader("X-API-Key-Deprecated", "true");
-    console.warn("[auth] Request authenticated with API_KEY_PREVIOUS. Rotate clients to new key.");
-  }
-  req.authenticatedViaDeploymentKey = true;
-  req.apiKeyScopes = API_KEY_SCOPES.length ? API_KEY_SCOPES : ["read", "write"];
-  req.apiKeyId = "deployment";
-  next();
-}
-
-function chatAuth(req, res, next) {
-  if (!API_KEY) return userAuth(req, res, next);
-  const bearer = req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7).trim() : null;
-  const xApiKey = req.headers["x-api-key"];
-  const xUserKey = req.headers["x-user-api-key"];
-  const key = xApiKey || xUserKey || bearer;
-  if (!key) return apiError(res, 401, "AUTH_REQUIRED", "Unauthorized", "Use Authorization: Bearer <key>, x-api-key, or x-user-api-key header.");
-  if (key === API_KEY || (API_KEY_PREVIOUS && key === API_KEY_PREVIOUS)) {
-    req.authenticatedViaDeploymentKey = true;
-    req.apiKeyScopes = API_KEY_SCOPES.length ? API_KEY_SCOPES : ["read", "write"];
-    req.apiKeyId = "deployment";
-    req.userId = "anonymous";
-    if (API_KEY_PREVIOUS && key === API_KEY_PREVIOUS) {
-      res.setHeader("X-API-Key-Deprecated", "true");
-      console.warn("[auth] Request authenticated with API_KEY_PREVIOUS. Rotate clients to new key.");
-    }
-    return next();
-  }
-  return userAuth(req, res, next);
-}
-
-function evalAuth(req, res, next) {
-  const adminKey = process.env.ADMIN_API_KEY;
-  const apiKey = API_KEY;
-  if (!adminKey && !apiKey) return next();
-  const bearer = req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7).trim() : null;
-  const xKey = req.headers["x-api-key"] || req.headers["x-admin-api-key"];
-  const key = bearer || xKey;
-  if (!key) return apiError(res, 401, "AUTH_REQUIRED", "Eval endpoints require ADMIN_API_KEY or API_KEY", "Use Authorization: Bearer <key> or x-api-key header.");
-  const adminKeyPrev = process.env.ADMIN_API_KEY_PREVIOUS;
-  const apiKeyPrev = API_KEY_PREVIOUS;
-  if ((adminKey && key === adminKey) || (apiKey && key === apiKey)) return next();
-  if ((adminKeyPrev && key === adminKeyPrev) || (apiKeyPrev && key === apiKeyPrev)) {
-    console.warn("[auth] Eval request authenticated with previous key. Rotate clients to new key.");
-    return next();
-  }
-  return apiError(res, 401, "AUTH_REQUIRED", "Invalid key", "Use ADMIN_API_KEY or API_KEY.");
-}
-
-function backupAdminAuth(req, res, next) {
-  const adminKey = process.env.ADMIN_API_KEY || process.env.BACKUP_ADMIN_KEY;
-  const bearer = req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7).trim() : null;
-  const xKey = req.headers["x-api-key"] || req.headers["x-backup-admin-key"];
-  const key = bearer || xKey;
-  if (adminKey && key && key === adminKey) return next();
-  if (adminKey && !key) return apiError(res, 403, "FORBIDDEN", "Backup requires admin", "Use ADMIN_API_KEY, BACKUP_ADMIN_KEY, or be in QUOTA_ADMIN_USER_IDS.");
-  if (!isAuthConfigured() && !adminKey) return next();
-  userAuth(req, res, () => {
-    if (req.userId && isQuotaAdmin(req.userId)) return next();
-    return apiError(res, 403, "FORBIDDEN", "Backup requires admin", "Use ADMIN_API_KEY, BACKUP_ADMIN_KEY, or be in QUOTA_ADMIN_USER_IDS.");
+// Auth middleware — extracted to lib/server-auth-middleware.js
+const { apiKeyAuth, chatAuth, evalAuth, backupAdminAuth, resolveDeveloperKey: _resolveDeveloperKey } =
+  createAuthMiddleware({
+    API_KEY,
+    API_KEY_PREVIOUS,
+    API_KEY_SCOPES,
+    apiError,
+    userAuth,
+    isAuthConfigured,
+    isQuotaAdmin,
   });
-}
-
-// Phase 34.4: Detect developer API keys (skdev-…) on the inbound request so the
-// logger can record usage on finish. Best-effort: never blocks the request.
-async function _resolveDeveloperKey(req) {
-  if (req.developerKeyId !== undefined) return; // already resolved
-  req.developerKeyId = null;
-  const bearer = req.headers.authorization?.startsWith("Bearer ")
-    ? req.headers.authorization.slice(7).trim()
-    : null;
-  const xKey = req.headers["x-api-key"];
-  const candidate = bearer || xKey;
-  if (!candidate || typeof candidate !== "string" || !candidate.startsWith("skdev-")) return;
-  try {
-    const info = await findDeveloperByRawKey(candidate);
-    if (info) {
-      req.developerKeyId = info.keyId;
-      req.developerId = info.developerId;
-      req.developerTier = info.tier;
-    }
-  } catch (_) { /* ignore */ }
-}
 
 // Request logging middleware
 function logRequest(req, res, next) {
@@ -752,56 +669,7 @@ const evalRateLimiter = rateLimit({
   },
 });
 
-// Automation recipe validation helper
-const AUTOMATION_MAX_RECIPE_BYTES = 64 * 1024;
-const AUTOMATION_MAX_NAME_LENGTH = 128;
-const AUTOMATION_MAX_STEP_ACTION_LENGTH = 512;
-
-function validateAutomationRecipe(recipe) {
-  const errors = [];
-  if (!recipe || typeof recipe !== "object") {
-    return { valid: false, errors: ["Recipe must be an object"] };
-  }
-  if (typeof recipe.name !== "string" || !recipe.name.trim()) {
-    errors.push("name: required non-empty string");
-  } else if (recipe.name.length > AUTOMATION_MAX_NAME_LENGTH) {
-    errors.push(`name: max ${AUTOMATION_MAX_NAME_LENGTH} chars`);
-  }
-  if (recipe.trigger !== undefined && typeof recipe.trigger !== "string") {
-    errors.push("trigger: must be string");
-  }
-  if (!Array.isArray(recipe.steps)) {
-    errors.push("steps: required array");
-  } else {
-    recipe.steps.forEach((s, i) => {
-      if (!s || typeof s !== "object") {
-        errors.push(`steps[${i}]: must be object`);
-      } else if (!s.action || typeof s.action !== "string" || !String(s.action).trim()) {
-        errors.push(`steps[${i}]: action required non-empty string`);
-      } else if (String(s.action).length > AUTOMATION_MAX_STEP_ACTION_LENGTH) {
-        errors.push(`steps[${i}]: action max ${AUTOMATION_MAX_STEP_ACTION_LENGTH} chars`);
-      }
-      if (s.payload !== undefined && (s.payload === null || Array.isArray(s.payload) || typeof s.payload !== "object")) {
-        errors.push(`steps[${i}]: payload must be object`);
-      }
-    });
-  }
-  if (recipe.inputs !== undefined && (recipe.inputs === null || Array.isArray(recipe.inputs) || typeof recipe.inputs !== "object")) {
-    errors.push("inputs: must be object");
-  }
-  if (recipe.outputs !== undefined && (recipe.outputs === null || Array.isArray(recipe.outputs) || typeof recipe.outputs !== "object")) {
-    errors.push("outputs: must be object");
-  }
-  try {
-    const bytes = new TextEncoder().encode(JSON.stringify(recipe)).length;
-    if (bytes > AUTOMATION_MAX_RECIPE_BYTES) {
-      errors.push(`Recipe exceeds max size (${AUTOMATION_MAX_RECIPE_BYTES} bytes)`);
-    }
-  } catch (_) {
-    errors.push("Recipe serialization failed");
-  }
-  return { valid: errors.length === 0, errors };
-}
+// Automation recipe validation — extracted to lib/automation-recipe-validator.js
 
 // ─── Mount all route modules ────────────────────────────────────────────────
 

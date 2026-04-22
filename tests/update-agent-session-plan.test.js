@@ -86,7 +86,7 @@ test("executeAgentToolBatch appends tool_failed session event when tool returns 
         type: "function",
         function: {
           name: "workspace_read_file",
-          arguments: JSON.stringify({ path: "does-not-exist.txt" }),
+          arguments: JSON.stringify({ path: join(wsRoot, "does-not-exist.txt") }),
         },
       },
     ];

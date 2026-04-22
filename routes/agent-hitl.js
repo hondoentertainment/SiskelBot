@@ -13,7 +13,7 @@
 //   404 → NOT_FOUND            (no approval for this id)
 //   409 → CONFLICT              (state present but already resolved / inconsistent)
 
-import { takeHitlState } from "../lib/agent-hitl-store.js";
+import { takeHitlState, isHitlConsumed } from "../lib/agent-hitl-store.js";
 
 const VALID_DECISIONS = new Set(["approve", "deny"]);
 
@@ -44,16 +44,25 @@ export function mountAgentHitlRoutes(app, deps) {
       }
 
       // Atomic consume: takeHitlState returns the state and deletes it in
-      // one synchronous step. If null, the token was already consumed (or
-      // never existed) — return 409 so concurrent callers get a clear signal.
+      // one synchronous step. If null, distinguish between already-consumed
+      // (409 CONFLICT) and never-existed (404 NOT_FOUND).
       const taken = takeHitlState(approvalId, { decision });
       if (!taken) {
+        if (isHitlConsumed(approvalId)) {
+          return apiError(
+            res,
+            409,
+            "CONFLICT",
+            "Approval already resolved",
+            "Another request consumed this approval id.",
+          );
+        }
         return apiError(
           res,
-          409,
-          "CONFLICT",
-          "Approval already resolved",
-          "Another request consumed this approval id.",
+          404,
+          "NOT_FOUND",
+          "Approval not found",
+          "No pending approval exists for this id.",
         );
       }
 

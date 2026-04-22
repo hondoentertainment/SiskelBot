@@ -287,14 +287,14 @@ test("legacy: diverse tool calls -> not stagnant (boolean)", () => {
   assert.equal(detectStagnation(log), false);
 });
 
-test("legacy: same tool with different arg values but same keys -> stagnant (pattern match)", () => {
-  // The N-cycle detector fingerprints by tool name + sorted arg keys (not values),
-  // so search_context({q:"hello"}) and search_context({q:"world"}) are the same pattern.
+test("legacy: same tool with different arg values but same keys -> not stagnant (values matter)", () => {
+  // The fingerprint includes arg values, so different values produce different
+  // fingerprints and should NOT trigger stagnation detection.
   const log = [
     { name: "search_context", args: { q: "hello" }, iteration: 1 },
     { name: "search_context", args: { q: "world" }, iteration: 2 },
   ];
-  assert.equal(detectStagnation(log), true);
+  assert.equal(detectStagnation(log), false);
 });
 
 test("legacy: same tool with different arg structure -> not stagnant (boolean)", () => {
