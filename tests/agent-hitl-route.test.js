@@ -75,7 +75,7 @@ test("POST /agent/hitl/:approvalId returns 404 when no approval matches the id",
   assert.equal(res.body.code, "NOT_FOUND");
 });
 
-test("POST /agent/hitl/:approvalId second request for the same id returns 404 (already consumed)", async () => {
+test("POST /agent/hitl/:approvalId second request for the same id returns 409 (already consumed)", async () => {
   const { saveHitlState } = await import("../lib/agent-hitl-store.js");
   const token = saveHitlState({ sample: true });
   const { request, app } = await buildHarness();
@@ -88,8 +88,8 @@ test("POST /agent/hitl/:approvalId second request for the same id returns 404 (a
     .post(`/api/v1/agent/hitl/${token}`)
     .set("Content-Type", "application/json")
     .send({ decision: "approve" });
-  assert.equal(second.status, 404);
-  assert.equal(second.body.code, "NOT_FOUND");
+  assert.equal(second.status, 409);
+  assert.equal(second.body.code, "CONFLICT");
 });
 
 test("POST /agent/hitl/:approvalId returns 401 when auth is missing", async () => {
