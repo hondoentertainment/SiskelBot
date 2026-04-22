@@ -1,0 +1,65 @@
+{
+  "id": "golden",
+  "name": "Golden Eval Suite (50 cases)",
+  "description": "Offline-executable golden cases covering chat, task planning, trace assertions, and staging traces. Runs in CI without a live LLM. Used to catch agent-quality regressions on every branch.",
+  "cases": [
+    { "id": "g01-chat-greeting", "target": "chat", "prompt": "Say hello in one word.", "expectedContains": "hello" },
+    { "id": "g02-chat-yesno", "target": "chat", "prompt": "Reply with exactly 'yes'.", "expectedContains": "yes" },
+    { "id": "g03-chat-number", "target": "chat", "prompt": "What is 2+2? Reply with just the digit.", "expectedContains": "4" },
+    { "id": "g04-chat-color", "target": "chat", "prompt": "Name a primary color.", "expectedContains": "red" },
+    { "id": "g05-chat-season", "target": "chat", "prompt": "Name a season.", "expectedContains": "spring" },
+
+    { "id": "g06-task-plan-basic", "target": "task", "prompt": "Create a plan to send a thank-you note.", "expectedJson": ["type", "name", "steps"] },
+    { "id": "g07-task-plan-travel", "target": "task", "prompt": "Create a plan to book a flight.", "expectedJson": ["type", "name", "steps"] },
+    { "id": "g08-task-plan-cook", "target": "task", "prompt": "Plan how to make pasta.", "expectedJson": ["type", "name", "steps"] },
+    { "id": "g09-task-plan-deploy", "target": "task", "prompt": "Plan a deployment rollout.", "expectedJson": ["type", "name", "steps"] },
+    { "id": "g10-task-plan-onboard", "target": "task", "prompt": "Plan onboarding a new teammate.", "expectedJson": ["type", "name", "steps"] },
+
+    { "id": "g11-trace-list-search", "target": "trace", "trace": [{ "name": "list_context", "arguments": {} }, { "name": "search_context", "arguments": { "query": "docs" } }], "expectedToolSequence": ["list_context", "search_context"] },
+    { "id": "g12-trace-search-only", "target": "trace", "trace": [{ "name": "search_context", "arguments": { "query": "hello" } }], "expectedToolSequence": ["search_context"] },
+    { "id": "g13-trace-get-recipe", "target": "trace", "trace": [{ "name": "get_recipe", "arguments": { "name": "deploy" } }], "expectedToolSequence": ["get_recipe"] },
+    { "id": "g14-trace-chain", "target": "trace", "trace": [{ "name": "list_recipes", "arguments": {} }, { "name": "get_recipe", "arguments": { "name": "deploy" } }], "expectedToolSequence": ["list_recipes", "get_recipe"] },
+    { "id": "g15-trace-memory", "target": "trace", "trace": [{ "name": "list_workspace_memory", "arguments": {} }], "expectedToolSequence": ["list_workspace_memory"] },
+    { "id": "g16-trace-semantic", "target": "trace", "trace": [{ "name": "semantic_search_context", "arguments": { "query": "deploy" } }], "expectedToolSequence": ["semantic_search_context"] },
+    { "id": "g17-trace-kg", "target": "trace", "trace": [{ "name": "search_knowledge_graph", "arguments": {} }], "expectedToolSequence": ["search_knowledge_graph"] },
+    { "id": "g18-trace-fetch", "target": "trace", "trace": [{ "name": "fetch_allowed_url", "arguments": { "url": "https://example.com" } }], "expectedToolSequence": ["fetch_allowed_url"] },
+    { "id": "g19-trace-doc", "target": "trace", "trace": [{ "name": "get_context_document", "arguments": { "id": "doc1" } }], "expectedToolSequence": ["get_context_document"] },
+    { "id": "g20-trace-remember", "target": "trace", "trace": [{ "name": "remember_workspace_fact", "arguments": { "fact": "X" } }], "expectedToolSequence": ["remember_workspace_fact"] },
+
+    { "id": "g21-trace-two-search", "target": "trace", "trace": [{ "name": "search_context", "arguments": { "query": "a" } }, { "name": "search_context", "arguments": { "query": "b" } }], "expectedToolSequence": ["search_context", "search_context"] },
+    { "id": "g22-trace-list-twice", "target": "trace", "trace": [{ "name": "list_context", "arguments": {} }, { "name": "list_context", "arguments": {} }], "expectedToolSequence": ["list_context", "list_context"] },
+    { "id": "g23-trace-mixed", "target": "trace", "trace": [{ "name": "list_context", "arguments": {} }, { "name": "search_knowledge_graph", "arguments": {} }, { "name": "get_context_document", "arguments": { "id": "d1" } }], "expectedToolSequence": ["list_context", "search_knowledge_graph", "get_context_document"] },
+    { "id": "g24-trace-recipes-chain", "target": "trace", "trace": [{ "name": "list_recipes", "arguments": {} }, { "name": "get_recipe", "arguments": { "name": "a" } }, { "name": "get_recipe", "arguments": { "name": "b" } }], "expectedToolSequence": ["list_recipes", "get_recipe", "get_recipe"] },
+    { "id": "g25-trace-scratchpad", "target": "trace", "trace": [{ "name": "write_scratchpad", "arguments": { "key": "k", "value": "v" } }, { "name": "read_scratchpad", "arguments": { "key": "k" } }], "expectedToolSequence": ["write_scratchpad", "read_scratchpad"] },
+
+    { "id": "g26-trace-chain-tools", "target": "trace", "trace": [{ "name": "chain_tools", "arguments": { "steps": [] } }], "expectedToolSequence": ["chain_tools"] },
+    { "id": "g27-trace-recall", "target": "trace", "trace": [{ "name": "recall_reasoning", "arguments": { "query": "test" } }], "expectedToolSequence": ["recall_reasoning"] },
+    { "id": "g28-trace-consensus", "target": "trace", "trace": [{ "name": "consensus_query", "arguments": { "prompt": "test" } }], "expectedToolSequence": ["consensus_query"] },
+    { "id": "g29-trace-spawn", "target": "trace", "trace": [{ "name": "spawn_subagent", "arguments": { "goal": "g" } }], "expectedToolSequence": ["spawn_subagent"] },
+    { "id": "g30-trace-recommend", "target": "trace", "trace": [{ "name": "recommend_tools", "arguments": { "task": "x" } }], "expectedToolSequence": ["recommend_tools"] },
+
+    { "id": "g31-chat-count", "target": "chat", "prompt": "How many sides does a triangle have? Reply with just the number.", "expectedContains": "3" },
+    { "id": "g32-chat-capital", "target": "chat", "prompt": "Capital of France? One word.", "expectedContains": "Paris" },
+    { "id": "g33-chat-planet", "target": "chat", "prompt": "Third planet from the sun?", "expectedContains": "Earth" },
+    { "id": "g34-chat-animal", "target": "chat", "prompt": "Name an aquatic mammal.", "expectedContains": "whale" },
+    { "id": "g35-chat-math", "target": "chat", "prompt": "What is 10 times 10?", "expectedContains": "100" },
+
+    { "id": "g36-task-plan-test", "target": "task", "prompt": "Plan to write unit tests.", "expectedJson": ["type", "name", "steps"] },
+    { "id": "g37-task-plan-release", "target": "task", "prompt": "Plan a product launch.", "expectedJson": ["type", "name", "steps"] },
+    { "id": "g38-task-plan-backup", "target": "task", "prompt": "Plan a data backup procedure.", "expectedJson": ["type", "name", "steps"] },
+    { "id": "g39-task-plan-audit", "target": "task", "prompt": "Plan a security audit.", "expectedJson": ["type", "name", "steps"] },
+    { "id": "g40-task-plan-migrate", "target": "task", "prompt": "Plan a database migration.", "expectedJson": ["type", "name", "steps"] },
+
+    { "id": "g41-trace-workspace-memory", "target": "trace", "trace": [{ "name": "list_workspace_memory", "arguments": {} }, { "name": "remember_workspace_fact", "arguments": { "fact": "x" } }], "expectedToolSequence": ["list_workspace_memory", "remember_workspace_fact"] },
+    { "id": "g42-trace-session-plan", "target": "trace", "trace": [{ "name": "update_agent_session_plan", "arguments": { "plan": {} } }], "expectedToolSequence": ["update_agent_session_plan"] },
+    { "id": "g43-trace-search-kg-combo", "target": "trace", "trace": [{ "name": "search_context", "arguments": { "query": "a" } }, { "name": "search_knowledge_graph", "arguments": {} }], "expectedToolSequence": ["search_context", "search_knowledge_graph"] },
+    { "id": "g44-trace-semantic-then-doc", "target": "trace", "trace": [{ "name": "semantic_search_context", "arguments": { "query": "q" } }, { "name": "get_context_document", "arguments": { "id": "d" } }], "expectedToolSequence": ["semantic_search_context", "get_context_document"] },
+    { "id": "g45-trace-list-all", "target": "trace", "trace": [{ "name": "list_recipes", "arguments": {} }, { "name": "list_context", "arguments": {} }, { "name": "list_workspace_memory", "arguments": {} }], "expectedToolSequence": ["list_recipes", "list_context", "list_workspace_memory"] },
+
+    { "id": "g46-chat-negation", "target": "chat", "prompt": "Reply 'no' if the sky is green.", "expectedContains": "no" },
+    { "id": "g47-chat-boolean", "target": "chat", "prompt": "Is water wet? Reply 'yes' or 'no'.", "expectedContains": "yes" },
+    { "id": "g48-chat-simple-def", "target": "chat", "prompt": "Define the word 'cat' in three words.", "expectedContains": "animal" },
+    { "id": "g49-chat-list-numbers", "target": "chat", "prompt": "List the numbers 1 2 3 in order.", "expectedContains": "1" },
+    { "id": "g50-chat-acronym", "target": "chat", "prompt": "What does CPU stand for? Expand it.", "expectedContains": "Central" }
+  ]
+}

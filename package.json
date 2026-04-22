@@ -41,6 +41,7 @@
     "test:e2e": "npx playwright test",
     "test:e2e:api": "npx playwright test --project=api",
     "eval:ci": "node scripts/run-eval-ci.mjs",
+    "eval:golden": "node scripts/run-golden-evals.mjs",
     "test:load": "node scripts/load-test.mjs",
     "openapi:generate": "node scripts/generate-openapi.mjs",
     "eval:live": "node scripts/run-eval-live.mjs",
