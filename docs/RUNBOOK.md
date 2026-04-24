@@ -1507,3 +1507,154 @@ Merge order for LLM requests: client messages → **Phase 60** `AGENT_DEFAULT_SY
 | **CI eval** | `npm run eval:ci` runs `data/eval-sets/ci-offline.json` (trace + staging_trace, including swarm/stopReason shapes). Wired in `.github/workflows/ci.yml`. Optional live: `EVAL_LIVE=1 npm run eval:live`. See `docs/AGENT_SLI.md` for agent SLIs. |
 
 See `docs/AGENT_NEXT_STEPS.md` for a short backlog of further agent improvements.
+
+## Secret Rotation
+
+Zero-downtime rotation procedures for SiskelBot's three critical secret types. Follow these steps sequentially; do not skip verification.
+
+`SESSION_SECRET_PREVIOUS` and `API_KEY_PREVIOUS` are documented in `.env.example`.
+
+---
+
+### SESSION_SECRET rotation
+
+SiskelBot accepts both `SESSION_SECRET` and `SESSION_SECRET_PREVIOUS` simultaneously, so existing sessions remain valid while new sessions are issued under the new secret.
+
+1. Set `SESSION_SECRET_PREVIOUS` to the current value of `SESSION_SECRET`:
+   ```
+   SESSION_SECRET_PREVIOUS=<current SESSION_SECRET value>
+   ```
+2. Generate a new secret:
+   ```bash
+   openssl rand -hex 32
+   ```
+3. Set `SESSION_SECRET` to the new value.
+4. Deploy with both env vars set. Existing sessions validate against `SESSION_SECRET_PREVIOUS`; new sessions use `SESSION_SECRET`.
+5. On Kubernetes, update the secret and trigger a rolling restart:
+   ```bash
+   kubectl create secret generic siskelbot-secrets \
+     --from-literal=SESSION_SECRET=<new> \
+     --from-literal=SESSION_SECRET_PREVIOUS=<old> \
+     --dry-run=client -o yaml | kubectl apply -f -
+   kubectl rollout restart deployment/siskelbot
+   kubectl rollout status deployment/siskelbot
+   ```
+6. After all sessions have expired (wait at least `SESSION_TTL_MS`, default 24h) or after forcing all users to re-authenticate, remove `SESSION_SECRET_PREVIOUS` and redeploy.
+
+---
+
+### API_KEY / ADMIN_API_KEY rotation
+
+SiskelBot accepts `API_KEY_PREVIOUS` alongside `API_KEY` so existing callers are not immediately locked out.
+
+1. Set `API_KEY_PREVIOUS` to the current value of `API_KEY`:
+   ```
+   API_KEY_PREVIOUS=<current API_KEY value>
+   ```
+2. Generate a new key:
+   ```bash
+   openssl rand -hex 32
+   ```
+3. Set `API_KEY` to the new value.
+4. Deploy with both `API_KEY` and `API_KEY_PREVIOUS` set. Both keys are accepted simultaneously.
+5. On Kubernetes:
+   ```bash
+   kubectl create secret generic siskelbot-secrets \
+     --from-literal=API_KEY=<new> \
+     --from-literal=API_KEY_PREVIOUS=<old> \
+     --dry-run=client -o yaml | kubectl apply -f -
+   kubectl rollout restart deployment/siskelbot
+   kubectl rollout status deployment/siskelbot
+   ```
+6. Notify API consumers of the new key via an out-of-band channel (email, Slack, internal docs).
+7. Allow at least 48 hours for consumers to migrate. Then remove `API_KEY_PREVIOUS` and redeploy.
+
+**ADMIN_API_KEY:** Follow the same pattern using `ADMIN_API_KEY_PREVIOUS` if implemented. If not, use a blue-green approach: deploy a second instance with the new `ADMIN_API_KEY`, redirect admin traffic, then decommission the old instance.
+
+---
+
+### DATABASE_URL / database password rotation
+
+No built-in dual-credential support. Use a rolling restart to minimize connection errors.
+
+**Pre-requisite:** The app database user (`siskelbot`) must be a dedicated PostgreSQL role so its password can be changed without affecting other users.
+
+1. Change the password in PostgreSQL:
+   ```sql
+   ALTER USER siskelbot PASSWORD 'newpass';
+   ```
+2. Update the Kubernetes secret with the new `DATABASE_URL`:
+   ```bash
+   kubectl create secret generic siskelbot-secrets \
+     --from-literal=DATABASE_URL=postgres://siskelbot:newpass@host/db \
+     --dry-run=client -o yaml | kubectl apply -f -
+   ```
+3. Trigger a rolling restart. New pods pick up the new URL; old pods continue using existing connections until terminated:
+   ```bash
+   kubectl rollout restart deployment/siskelbot
+   ```
+4. Verify the rollout completes without errors:
+   ```bash
+   kubectl rollout status deployment/siskelbot
+   ```
+5. Confirm connectivity:
+   ```bash
+   kubectl exec -it deployment/siskelbot -- node -e \
+     "import('./lib/storage.js').then(m => console.log('ok'))"
+   ```
+
+---
+
+### External secrets (external-secrets-operator)
+
+If using AWS Secrets Manager, GCP Secret Manager, or HashiCorp Vault via the external-secrets-operator:
+
+1. Update the secret value in the upstream store (Secrets Manager / Secret Manager / Vault).
+2. The `ExternalSecret` object refreshes automatically per its `refreshInterval` (default 1h).
+3. Force an immediate refresh without waiting:
+   ```bash
+   kubectl annotate externalsecret siskelbot-secrets \
+     force-sync=$(date +%s) --overwrite
+   ```
+4. Verify the secret was picked up:
+   ```bash
+   kubectl describe externalsecret siskelbot-secrets
+   ```
+5. Trigger a rolling restart if the secret drives environment variables (required for env-var-based secrets; not required for volume-mounted secrets with live reload):
+   ```bash
+   kubectl rollout restart deployment/siskelbot
+   kubectl rollout status deployment/siskelbot
+   ```
+
+---
+
+### Emergency rotation checklist
+
+Use this table when rotation is urgent (suspected compromise). Act fast — accept the rollback risk where noted.
+
+| Secret | Variable | Rollback risk | Steps |
+|--------|----------|---------------|-------|
+| Session secret | `SESSION_SECRET` | All active sessions invalidated immediately | Rotate + restart; set `SESSION_SECRET_PREVIOUS` if time allows |
+| API key | `API_KEY` | Callers locked out until notified | Rotate + set `API_KEY_PREVIOUS` bridge + notify consumers |
+| Admin API key | `ADMIN_API_KEY` | Admin access interrupted until new key distributed | Rotate + restart; distribute new key to admins immediately |
+| Database password | `DATABASE_URL` | Brief connection errors during rolling restart | Rotate DB password + update secret + rolling restart |
+
+**Suspected compromise — immediate steps:**
+
+```bash
+# 1. Generate new secrets
+NEW_SESSION_SECRET=$(openssl rand -hex 32)
+NEW_API_KEY=$(openssl rand -hex 32)
+
+# 2. Update Kubernetes secrets (omit PREVIOUS to force immediate invalidation)
+kubectl create secret generic siskelbot-secrets \
+  --from-literal=SESSION_SECRET=$NEW_SESSION_SECRET \
+  --from-literal=API_KEY=$NEW_API_KEY \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# 3. Rolling restart
+kubectl rollout restart deployment/siskelbot
+kubectl rollout status deployment/siskelbot
+```
+
+After restart, distribute new keys to legitimate consumers and rotate any downstream secrets that may have been exposed.
