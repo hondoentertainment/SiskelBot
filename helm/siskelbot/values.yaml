@@ -158,6 +158,12 @@ metrics:
     scrapeTimeout: 10s
     labels: {}
     namespace: ""
+  alerting:
+    enabled: false
+    labels: {}
+    namespace: ""
+    # Additional custom rules appended to the default rule group
+    additionalRules: []
 
 networkPolicy:
   enabled: false

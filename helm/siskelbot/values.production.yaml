@@ -108,6 +108,11 @@ metrics:
     scrapeTimeout: 10s
     labels:
       release: prometheus
+  alerting:
+    enabled: true
+    labels:
+      release: prometheus
+    namespace: ""
 
 networkPolicy:
   enabled: true

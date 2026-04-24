@@ -1,0 +1,91 @@
+{{- if and .Values.metrics.enabled .Values.metrics.alerting.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "siskelbot.fullname" . }}
+  namespace: {{ .Values.metrics.alerting.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "siskelbot.labels" . | nindent 4 }}
+    {{- with .Values.metrics.alerting.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: siskelbot.rules
+      interval: 30s
+      rules:
+        - alert: SiskelBotHighErrorRate
+          expr: |
+            rate(http_requests_total{job="{{ include "siskelbot.fullname" . }}", status=~"5.."}[5m])
+            /
+            rate(http_requests_total{job="{{ include "siskelbot.fullname" . }}"}[5m])
+            > 0.05
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High HTTP error rate"
+            description: "Error rate is {{ "{{ $value | humanizePercentage }}" }} over the last 5 minutes."
+        - alert: SiskelBotHighLatency
+          expr: |
+            histogram_quantile(0.95,
+              rate(http_request_duration_seconds_bucket{job="{{ include "siskelbot.fullname" . }}"}[5m])
+            ) > 10
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High p95 latency on chat completions"
+            description: "p95 latency is {{ "{{ $value | humanizeDuration }}" }} (threshold: 10s)."
+        - alert: SiskelBotCircuitBreakerOpen
+          expr: |
+            siskelbot_circuit_breaker_state{job="{{ include "siskelbot.fullname" . }}"} == 1
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Circuit breaker is open"
+            description: "Backend circuit breaker has been open for 2+ minutes. Check backend health."
+        - alert: SiskelBotAgentLoopTimeouts
+          expr: |
+            rate(siskelbot_agent_loop_timeouts_total{job="{{ include "siskelbot.fullname" . }}"}[10m]) > 0.1
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Elevated agent loop timeout rate"
+            description: "Agent loop is timing out at {{ "{{ $value | humanize }}" }} per second."
+        - alert: SiskelBotWebhookDLQGrowing
+          expr: |
+            siskelbot_webhook_dlq_size{job="{{ include "siskelbot.fullname" . }}"} > 10
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Webhook DLQ is growing"
+            description: "{{ "{{ $value }}" }} events in the dead-letter queue for 15+ minutes."
+        - alert: SiskelBotPodMemoryHigh
+          expr: |
+            container_memory_working_set_bytes{pod=~"{{ include "siskelbot.fullname" . }}-.*", container="{{ .Chart.Name }}"}
+            /
+            container_spec_memory_limit_bytes{pod=~"{{ include "siskelbot.fullname" . }}-.*", container="{{ .Chart.Name }}"}
+            > 0.85
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod memory usage is high"
+            description: "Pod {{ "{{ $labels.pod }}" }} memory is at {{ "{{ $value | humanizePercentage }}" }} of limit."
+        - alert: SiskelBotNoPodAvailable
+          expr: |
+            kube_deployment_status_replicas_available{deployment="{{ include "siskelbot.fullname" . }}"} == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "No pods available"
+            description: "Deployment has 0 available replicas."
+        {{- with .Values.metrics.alerting.additionalRules }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+{{- end }}
