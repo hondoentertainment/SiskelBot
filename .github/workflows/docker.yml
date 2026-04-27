@@ -45,7 +45,7 @@ jobs:
             type=sha,prefix=sha-
 
       - name: Build (local, for scanning)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           load: true
@@ -82,7 +82,7 @@ jobs:
           retention-days: 30
 
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: ${{ (github.event_name == 'workflow_dispatch' && inputs.push_ghcr) || (github.event_name == 'push' && vars.GHCR_PUSH == '1') }}
