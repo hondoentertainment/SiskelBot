@@ -143,6 +143,7 @@ export function mountRealtimeWs(httpServer, deps = {}) {
   } catch (err) {
     throw new Error(
       "mountRealtimeWs: the `ws` package is required but not installed. Run `npm install ws`.",
+      { cause: err },
     );
   }
 

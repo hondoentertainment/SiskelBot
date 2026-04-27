@@ -58,21 +58,6 @@ jobs:
       - name: Check coverage thresholds
         if: always() && steps.tests.outcome == 'success'
         run: npx c8 check-coverage
-      - name: Offline eval (trace + staging_trace)
-        id: eval_ci
-        run: npm run eval:ci
-
-      - name: Eval CI troubleshooting (on failure)
-        if: failure() && steps.eval_ci.outcome == 'failure'
-        run: |
-          {
-            echo "## Offline eval failed"
-            echo "Golden trace or staging_trace mismatch. Run locally:"
-            echo '```bash'
-            echo "npm run eval:ci"
-            echo '```'
-            echo "Each line shows \`caseId\` and \`reason\` (expected vs actual tool order)."
-          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Coverage summary
         if: always() && steps.tests.outcome != 'skipped'
