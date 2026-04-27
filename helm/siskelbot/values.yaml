@@ -234,6 +234,56 @@ priorityClassName: ""
 # Termination grace period
 terminationGracePeriodSeconds: 30
 
+# Postgres backup CronJob (runs pg_dump and uploads to S3)
+# NOTE: The default image (ghcr.io/hondoentertainment/pgbackup:16-aws) is
+# hypothetical. Operators should either build a custom image containing
+# pg_dump (matching their Postgres major version) and the AWS CLI, or swap
+# in a public alternative such as prodrigestivill/postgres-backup-local
+# (which uses a different env contract and would require template changes).
+# The main app image is NOT suitable — it lacks pg_dump and the AWS CLI.
+backup:
+  enabled: false
+  # Cron schedule (default: daily at 02:00 UTC)
+  schedule: "0 2 * * *"
+  # Retention in days; older backups are deleted
+  retentionDays: 7
+  # Job control
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 600
+  backoffLimit: 2
+  activeDeadlineSeconds: 3600
+  # Container image (must include pg_dump + aws CLI)
+  image:
+    repository: ghcr.io/hondoentertainment/pgbackup
+    tag: "16-aws"
+    pullPolicy: IfNotPresent
+  # Secret containing DATABASE_URL env var
+  databaseUrlSecret:
+    name: ""    # e.g. siskelbot-secrets
+  # S3 destination
+  s3:
+    bucket: ""
+    prefix: "siskelbot/backups"
+    region: ""
+    # Optional S3-compatible endpoint (e.g. for MinIO)
+    endpoint: ""
+    # Secret containing AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
+    credentialsSecret:
+      name: ""    # leave empty to use IRSA / workload identity
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  # Size of /tmp emptyDir (must fit the largest dump uncompressed)
+  tmpSize: 10Gi
+  nodeSelector: {}
+  tolerations: []
+
 # Update strategy for the Deployment
 updateStrategy:
   type: RollingUpdate
