@@ -181,6 +181,19 @@ spec:
           annotations:
             summary: "Embedding cache thrashing"
             description: "LRU evictions {{ "{{" }} $value {{ "}}" }}/sec with hit rate < 50%. Consider increasing EMBEDDING_CACHE_MAX_SIZE."
+        # Cost-budget alert: $50/hour is a starting default. Operators should
+        # tune Values.metrics.alerting.costBudgetUsdPerHour if their workload
+        # warrants a different threshold (not parameterized yet).
+        - alert: SiskelBotWorkspaceCostBudget
+          expr: |
+            increase(siskelbot_llm_cost_usd_total{job="{{ include "siskelbot.fullname" . }}"}[1h]) > 50
+          for: 5m
+          labels:
+            severity: warning
+            type: cost
+          annotations:
+            summary: "Workspace exceeded $50/hour cost"
+            description: "Workspace {{ "{{" }} $labels.workspace {{ "}}" }} burned ${{ "{{" }} $value | printf \"%.2f\" {{ "}}" }} in the past hour."
         {{- with .Values.metrics.alerting.additionalRules }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
