@@ -11,6 +11,87 @@ metadata:
     {{- end }}
 spec:
   groups:
+    - name: siskelbot.slo
+      interval: 30s
+      rules:
+        - record: job:siskelbot_http_requests:rate5m
+          expr: |
+            sum by (job) (
+              rate(http_requests_total{job="{{ include "siskelbot.fullname" . }}"}[5m])
+            )
+        - record: job:siskelbot_http_errors:rate5m
+          expr: |
+            sum by (job) (
+              rate(http_requests_total{job="{{ include "siskelbot.fullname" . }}", status=~"5.."}[5m])
+            )
+        - record: job:siskelbot_http_error_ratio:rate5m
+          expr: |
+            job:siskelbot_http_errors:rate5m
+            /
+            job:siskelbot_http_requests:rate5m
+        - record: job:siskelbot_http_error_ratio:rate30m
+          expr: |
+            sum by (job) (rate(http_requests_total{job="{{ include "siskelbot.fullname" . }}", status=~"5.."}[30m]))
+            /
+            sum by (job) (rate(http_requests_total{job="{{ include "siskelbot.fullname" . }}"}[30m]))
+        - record: job:siskelbot_http_error_ratio:rate1h
+          expr: |
+            sum by (job) (rate(http_requests_total{job="{{ include "siskelbot.fullname" . }}", status=~"5.."}[1h]))
+            /
+            sum by (job) (rate(http_requests_total{job="{{ include "siskelbot.fullname" . }}"}[1h]))
+        - record: job:siskelbot_http_error_ratio:rate6h
+          expr: |
+            sum by (job) (rate(http_requests_total{job="{{ include "siskelbot.fullname" . }}", status=~"5.."}[6h]))
+            /
+            sum by (job) (rate(http_requests_total{job="{{ include "siskelbot.fullname" . }}"}[6h]))
+        - record: job:siskelbot_http_request_duration:p99_5m
+          expr: |
+            histogram_quantile(0.99,
+              sum by (job, le) (
+                rate(http_request_duration_seconds_bucket{job="{{ include "siskelbot.fullname" . }}"}[5m])
+              )
+            )
+        - record: job:siskelbot_http_request_duration:p95_5m
+          expr: |
+            histogram_quantile(0.95,
+              sum by (job, le) (
+                rate(http_request_duration_seconds_bucket{job="{{ include "siskelbot.fullname" . }}"}[5m])
+              )
+            )
+        - alert: SiskelBotErrorBudgetBurnFast
+          expr: |
+            job:siskelbot_http_error_ratio:rate5m > (14.4 * 0.001)
+            and
+            job:siskelbot_http_error_ratio:rate1h > (14.4 * 0.001)
+          for: 2m
+          labels:
+            severity: critical
+            slo: availability
+          annotations:
+            summary: "Burning error budget fast (2% of monthly budget in 1h)"
+            description: "Current 5m error rate {{ "{{" }} $value | humanizePercentage {{ "}}" }} exceeds 14.4x SLO threshold. At this rate, the monthly error budget is exhausted in 2 days."
+        - alert: SiskelBotErrorBudgetBurnSlow
+          expr: |
+            job:siskelbot_http_error_ratio:rate30m > (6 * 0.001)
+            and
+            job:siskelbot_http_error_ratio:rate6h > (6 * 0.001)
+          for: 15m
+          labels:
+            severity: warning
+            slo: availability
+          annotations:
+            summary: "Burning error budget slowly (5% of monthly budget in 6h)"
+            description: "30m error rate {{ "{{" }} $value | humanizePercentage {{ "}}" }} exceeds 6x SLO threshold. Monthly budget exhausted in ~5 days at this rate."
+        - alert: SiskelBotLatencySLOBreach
+          expr: |
+            job:siskelbot_http_request_duration:p99_5m > 15
+          for: 10m
+          labels:
+            severity: warning
+            slo: latency
+          annotations:
+            summary: "p99 latency SLO breach (>15s for 10m)"
+            description: "p99 latency is {{ "{{" }} $value | humanizeDuration {{ "}}" }}, exceeds 15s SLO target."
     - name: siskelbot.rules
       interval: 30s
       rules:
