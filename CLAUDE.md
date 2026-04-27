@@ -300,6 +300,112 @@ Key variables (see `.env.example` for the full list):
 | `WORKSPACE_FILE_TOOLS` | Enable workspace file read tool (`1` to enable) |
 | `WORKSPACE_ROOT` | Root directory for workspace file tools |
 | `AGENT_TOOLS_ALLOWLIST` | Comma-separated tool names to expose (empty = all) |
+| `AGENT_REPLAN_ON_FAILURE` | Disable re-plan nudge on permanent tool failure (`0` to disable, default on) |
+| `AGENT_MAX_REPLANS` | Re-plan attempts before exhaustion (default `3`) |
+| `AGENT_PERSIST_FAILURES` | Disable per-workspace failure store writes (`0` to disable, default on) |
+| `AGENT_PERSIST_OUTCOMES` | Disable per-tool outcome (genealogy) writes (`0` to disable, default on) |
+| `AGENT_GENEALOGY_HINT` | Disable injection of reliability hint at run start (`0` to disable, default on) |
+| `AGENT_PROMPT_PATCH` | Disable injection of the active prompt patch (`0` to disable, default on) |
+| `AGENT_TOOL_ALTERNATIVE_RECOMMEND` | Disable genealogy-driven alternative recommendations in re-plan nudge (`0` to disable, default on) |
+| `AGENT_TOOL_RESULT_JUDGE` | Enable post-execution LLM judge of tool results (`1` to enable, default off — costs an extra LLM call) |
+| `AGENT_TOOL_RESULT_JUDGE_TIMEOUT_MS` | Judge call timeout (default `8000`) |
+| `JUDGE_SKIP_TOOLS` | Comma-separated tool names to skip judging (overrides default skip list of `list_*`/`search_*`) |
+| `AGENT_TOOL_ARG_REPAIR` | Enable inline LLM repair of semantic-validator failures (`1` to enable, default off) |
+| `AGENT_TOOL_ARG_REPAIR_TIMEOUT_MS` | Repair call timeout (default `10000`) |
+| `AGENT_CONTENT_SCRUB` | Disable secrets/PII/prompt-injection scrubber on tool outputs (`0` to disable, default on) |
+| `TOOL_SEMANTIC_VALIDATION` | Disable semantic argument validation (`0` to disable, default on) |
+| `TOOL_COOLDOWN_ENABLED` | Disable per-tool circuit-breaker cooldowns (`0` to disable, default on) |
+| `COOLDOWN_TERMINAL_THRESHOLD` | Terminal failures before auto-cooldown (default `5`) |
+| `COOLDOWN_DURATION_MS` | Cooldown window duration (default `1800000` / 30min) |
+| `SWARM_CONFLICT_LOG` | Disable persistent log of detected swarm conflicts (`0` to disable, default on) |
+| `PROMPT_CANARY_ENABLED` | Disable canary A/B routing for prompt patches (`0` to disable, default on; routing skipped when no canary active) |
+| `QUALITY_JOBS_ENABLED` | Enable recurring quality agents at boot: nightly benchmark, weekly safety, daily patch synth, hourly health-score (`1` to enable, default off; multi-replica safe via leader election) |
+| `QUALITY_JOB_REAL_MODEL` | Have nightly-benchmark use a real LLM instead of the mock (`1` to enable; requires backend config) |
+| `TRACE_SHARE_SECRET` | HMAC secret for signed shareable trace URLs (default: random per-process with stderr warning) |
+
+## Agent quality machinery (added in agent-improvement waves)
+
+A self-operating quality stack lives alongside the core agent loop. All
+subsystems are env-gated and best-effort on the hot path.
+
+### Stores
+
+| Module | Purpose |
+|---|---|
+| `lib/agent-failure-store.js` | Per-workspace per-(tool, category) failure counts; `rankChronicFailures` + `isChronicallyBroken` |
+| `lib/agent-genealogy.js` | Per-workspace per-tool success rates; `buildReliabilityHint({taskText})` task-aware hint |
+| `lib/swarm-conflict-store.js` | Persistent log of detected swarm specialist disagreements |
+| `lib/agent-feedback-store.js` | Per-run thumbs/tags/comment from users |
+| `lib/agent-prompt-tuner.js` | Synthesizes pending prompt patches from failure + genealogy + conflict + feedback signals |
+| `lib/agent-prompt-canary.js` | Canary A/B rollout: deterministic traffic split + outcome comparison + auto-rollback |
+| `lib/eval-history-store.js` | Time-series of benchmark/safety/feedback/health samples (10k ring buffer per workspace, day/hour/week buckets) |
+| `lib/tool-cooldown-store.js` | Per-tool circuit breaker; auto-trips on N terminal failures |
+| `lib/trace-share-store.js` | HMAC-signed, TTL-bound, anonymized shareable trace URLs |
+
+### Core analysis modules
+
+| Module | Purpose |
+|---|---|
+| `lib/agent-tool-failure-analyzer.js` | Classifies failures into 12 categories with LLM-friendly hints; tracks repeats |
+| `lib/tool-semantic-validators.js` | Post-schema arg validation (https URLs, min query, abs path, placeholders) |
+| `lib/tool-arg-repair.js` | Inline LLM repair of semantic-validator failures |
+| `lib/tool-result-judge.js` | Post-execution LLM judge of tool results vs user intent (advisory, fail-open) |
+| `lib/content-scrubber.js` | 23 rules (12 secrets, 4 PII, 7 prompt-injection); per-call rule toggles |
+| `lib/swarm-conflict-resolver.js` | Detects polarity/numeric/divergent/partial conflicts; judge-based reconciliation |
+| `lib/tool-alternative-recommender.js` | Genealogy-scored top-3 alternative tool suggestions for re-plan nudges |
+| `lib/agent-health-score.js` | Composite 0-1 quality score: weighted blend of bench / safety / feedback / reliability + chronic-tools/conflicts penalties |
+| `lib/eval-agent-quality.js` | Internal scripted scenarios with feature-on/off comparison |
+| `lib/benchmark-harness.js` + `lib/benchmark-scorer.js` + `lib/benchmark-suites/mini-tasks.js` | Public-benchmark-shaped harness; subprocess-isolated code execution; SWE-bench-ready |
+| `lib/benchmark-real-agent.js` | Adapters for openai/anthropic/ollama/vllm/siskelbot-proxy backends |
+| `lib/safety-eval-suite.js` + `lib/safety-probes/{jailbreak,pii-leak,hallucination}.js` | 30 deterministic safety probes, no-network |
+| `lib/agent-quality-scheduler.js` | Recurring jobs: nightly-benchmark, weekly-safety, daily-patch-synth, hourly-health-score (boots from `server.js` under leader election when `QUALITY_JOBS_ENABLED=1`) |
+
+### Admin routes (all admin-authed under `/api/admin/`)
+
+| Route | Purpose |
+|---|---|
+| `/agent-stats/{failures,reliability,swarm-conflicts}` | Per-workspace failure + reliability + conflict snapshots |
+| `/prompt-patches` | List / get / synthesize / apply / reject / diff |
+| `/prompt-canary` | Start / promote / rollback / evaluate canary deployments |
+| `/traces`, `/traces/:runId` | Completed-run trace metadata + full payload |
+| `/traces/:sessionId/stream` | SSE live event stream of an active run |
+| `/agent-feedback`, `/agent-feedback/aggregate` | List + aggregate human feedback |
+| `/quality-jobs`, `/quality-jobs/:name/{run,enable}` | Recurring scheduler control |
+| `/eval-history`, `/eval-history/series`, `/eval-history/latest` | Time-series query of benchmark/safety/health/feedback metrics |
+| `/health-score`, `/health-score/refresh` | Composite quality score for a workspace |
+| `/trace-share` | Mint signed/TTL'd anonymized shareable trace URLs |
+
+### Static admin pages (under `client/`)
+
+| Page | Purpose |
+|---|---|
+| `/admin-dashboard.html` | One-pane overview aggregating 7 admin endpoints |
+| `/admin-agent-stats.html` | Failures + reliability + conflicts (drill-down) |
+| `/admin-prompt-patches.html` | Review / diff / apply / reject pending patches |
+| `/trace-viewer.html` | Browse completed traces |
+| `/trace-live.html` | Live SSE event stream of an active run |
+| `/trace-share.html?t=<token>` | Public anonymized shared trace |
+
+### Operator scripts (under `scripts/`)
+
+| Script | Purpose |
+|---|---|
+| `run-benchmark.js` | Run the mini benchmark suite (mock or HTTP agent) |
+| `run-benchmark-real.js` | Run mini suite against a real LLM backend; optionally records to eval-history |
+| `run-safety-eval.js` | Run 30 safety probes; exits non-zero when pass rate < 0.9 |
+| `tune-prompts.js` | Synthesize prompt patches; `--apply`, `--all`, `--watch` modes |
+| `record-eval-result.js` | Record a benchmark/safety report into eval-history-store |
+| `install-quality-jobs.js` | Install recurring jobs into the scheduler state file |
+| `ci-regression-gate.js` + `ci-pr-comment.js` | CI gate that blocks PRs on benchmark/safety/eval regressions; backed by `.github/workflows/agent-regression.yml` |
+
+### Prometheus metrics added
+
+```
+siskelbot_agent_tool_failure_total{tool, category}
+siskelbot_agent_tool_outcome_total{tool, outcome}
+siskelbot_swarm_conflict_total{type}
+siskelbot_agent_health_score{workspace}
+```
 
 ## Agent system
 

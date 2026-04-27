@@ -49,6 +49,12 @@ import { resolveAgentMaxIterations } from "./lib/agent-iterations.js";
 import * as storage from "./lib/storage.js";
 import * as scheduleStore from "./lib/schedules.js";
 import { start as schedulerStart, stop as schedulerStop, refresh as schedulerRefresh, runRecipeNow, runDueJobsVercel } from "./lib/scheduler.js";
+import {
+  installAllJobs as installQualityJobs,
+  startJobs as startQualityJobs,
+  stopJobs as stopQualityJobs,
+  qualityJobsEnabled,
+} from "./lib/agent-quality-scheduler.js";
 import { startPromptEvolutionScheduler } from "./lib/prompt-evolution.js";
 import { userAuth, isAuthConfigured } from "./lib/auth.js";
 import { recordUsage, getSummary, getTotalTokensInWindow, getRecordsForPeriod, estimate } from "./lib/usage-tracker.js";
@@ -1370,6 +1376,9 @@ if (process.env.VERCEL !== "1") {
         httpServer.close(async () => {
           try {
             if (process.env.ENABLE_SCHEDULED_RECIPES === "1") schedulerStop();
+            if (qualityJobsEnabled()) {
+              try { await stopQualityJobs(); } catch (_) {}
+            }
             if (process.env.ENABLE_SYNTHETIC_MONITORING === "1") {
               try { getSyntheticMonitor().stop(); } catch (_) {}
             }
@@ -1416,6 +1425,42 @@ if (process.env.VERCEL !== "1") {
           } catch (e) {
             console.warn("[prompt-evolution] Start failed:", e.message);
           }
+        }
+        // Recurring agent-quality jobs (nightly benchmark, weekly safety,
+        // daily patch synthesis, hourly health-score). Multi-replica safe:
+        // only the leader runs the loop; transitions toggle start/stop.
+        if (qualityJobsEnabled()) {
+          (async () => {
+            try {
+              await installQualityJobs();
+              const election = getLeaderElection();
+              const acquireLeadership = async () => {
+                try { return await election.acquire(); } catch { return false; }
+              };
+              const isLeader = await acquireLeadership();
+              if (isLeader) {
+                await startQualityJobs();
+                console.log("[quality-jobs] Started (leader)");
+              } else {
+                console.log("[quality-jobs] Not leader; jobs will start on leader transition");
+              }
+              election.onLeaderChange(async (becameLeader) => {
+                try {
+                  if (becameLeader) {
+                    await startQualityJobs();
+                    console.log("[quality-jobs] Started after gaining leadership");
+                  } else {
+                    await stopQualityJobs();
+                    console.log("[quality-jobs] Stopped after losing leadership");
+                  }
+                } catch (e) {
+                  console.warn("[quality-jobs] Leader-transition handler failed:", e.message);
+                }
+              });
+            } catch (e) {
+              console.warn("[quality-jobs] Boot failed:", e.message);
+            }
+          })();
         }
         if (process.env.ENABLE_SYNTHETIC_MONITORING === "1") {
           try {
