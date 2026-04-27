@@ -113,6 +113,10 @@ metrics:
     labels:
       release: prometheus
     namespace: ""
+  dashboard:
+    enabled: true
+    label:
+      grafana_dashboard: "1"
 
 networkPolicy:
   enabled: true
@@ -195,3 +199,27 @@ affinity:
 priorityClassName: high-priority
 
 terminationGracePeriodSeconds: 60
+
+# Postgres backup to S3
+# Requires:
+#   1. Image with pg_dump + aws CLI (or build a custom one)
+#   2. DATABASE_URL in siskelbot-secrets
+#   3. S3 bucket pre-created
+#   4. IRSA role bound to the ServiceAccount, OR aws-credentials secret
+backup:
+  enabled: true
+  schedule: "0 2 * * *"
+  retentionDays: 30
+  databaseUrlSecret:
+    name: siskelbot-secrets
+  s3:
+    bucket: siskelbot-prod-backups
+    prefix: "postgres/daily"
+    region: us-east-1
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi

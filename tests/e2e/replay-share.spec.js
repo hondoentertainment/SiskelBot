@@ -40,7 +40,7 @@ test.describe("Replay share flow", () => {
 
   test("mints a replay token for an owned session", async () => {
     test.skip(!share, "REPLAY_TOKEN_SECRET not configured in this environment");
-    expect(share.token).toMatch(/^[A-Za-z0-9_.\-]+$/);
+    expect(share.token).toMatch(/^[A-Za-z0-9_.-]+$/);
     expect(share.url).toBe(`/r/${share.token}`);
   });
 
