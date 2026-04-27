@@ -164,6 +164,12 @@ metrics:
     namespace: ""
     # Additional custom rules appended to the default rule group
     additionalRules: []
+  dashboard:
+    enabled: false
+    namespace: ""
+    # Label that the Grafana sidecar watches for (kube-prometheus-stack default)
+    label:
+      grafana_dashboard: "1"
 
 networkPolicy:
   enabled: false

@@ -113,6 +113,10 @@ metrics:
     labels:
       release: prometheus
     namespace: ""
+  dashboard:
+    enabled: true
+    label:
+      grafana_dashboard: "1"
 
 networkPolicy:
   enabled: true
