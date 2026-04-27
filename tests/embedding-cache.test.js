@@ -11,6 +11,7 @@ import {
   hashText,
   createEmbeddingCache,
   globalEmbeddingCache,
+  getCacheStats,
 } from "../lib/embedding-cache.js";
 
 const MODEL = "text-embedding-3-small";
@@ -302,4 +303,75 @@ test("globalEmbeddingCache: exists and supports basic ops", async () => {
   assert.equal(globalEmbeddingCache.size(), 0);
   // initialSize is irrelevant after clear; assert post-clear state.
   assert(initialSize >= 0);
+});
+
+// ─── observability counters / getCacheStats ────────────────────────────────
+
+test("getCacheStats: returns 0 hits/misses on a fresh global cache", () => {
+  globalEmbeddingCache.clear();
+  const s = getCacheStats();
+  assert.equal(s.hits, 0);
+  assert.equal(s.misses, 0);
+  assert.equal(s.evictions.lru, 0);
+  assert.equal(s.evictions.ttl, 0);
+  assert.equal(s.evictions.manual, 0);
+  assert.equal(s.size, 0);
+  assert(typeof s.maxSize === "number" && s.maxSize > 0);
+});
+
+test("getCacheStats: after get-miss, set, get-hit shows 1 miss and 1 hit", async () => {
+  globalEmbeddingCache.clear();
+  await globalEmbeddingCache.get("stats-fresh", MODEL); // miss
+  await globalEmbeddingCache.set("stats-fresh", MODEL, vec(9));
+  await globalEmbeddingCache.get("stats-fresh", MODEL); // hit
+  const s = getCacheStats();
+  assert.equal(s.hits, 1);
+  assert.equal(s.misses, 1);
+  assert.equal(s.size, 1);
+  globalEmbeddingCache.clear();
+});
+
+test("evictions: filling cache to max+1 increments lru eviction counter", async () => {
+  const c = createEmbeddingCache({ maxSize: 2 });
+  await c.set("a", MODEL, vec(1));
+  await c.set("b", MODEL, vec(2));
+  assert.equal(c.stats().evictions.lru, 0);
+  await c.set("c", MODEL, vec(3)); // triggers LRU eviction of "a"
+  const s = c.stats();
+  assert.equal(s.evictions.lru, 1);
+  assert.equal(s.size, 2);
+});
+
+test("evictions: manual evict() increments manual eviction counter", async () => {
+  const c = createEmbeddingCache({ maxSize: 5 });
+  await c.set("k", MODEL, vec(1));
+  assert.equal(c.stats().evictions.manual, 0);
+  const removed = c.evict("k", MODEL);
+  assert.equal(removed, true);
+  const s = c.stats();
+  assert.equal(s.evictions.manual, 1);
+  assert.equal(s.size, 0);
+  // Evicting a missing key is a no-op
+  assert.equal(c.evict("missing", MODEL), false);
+  assert.equal(c.stats().evictions.manual, 1);
+});
+
+test("renderPrometheus: contains embedding cache metric lines", async () => {
+  process.env.ENABLE_METRICS = "1";
+  globalEmbeddingCache.clear();
+  await globalEmbeddingCache.get("prom-miss", MODEL); // miss
+  await globalEmbeddingCache.set("prom-hit", MODEL, vec(1));
+  await globalEmbeddingCache.get("prom-hit", MODEL); // hit
+  const { renderPrometheus } = await import("../lib/metrics.js");
+  const out = renderPrometheus();
+  assert.match(out, /# HELP siskelbot_embedding_cache_hits_total/);
+  assert.match(out, /# TYPE siskelbot_embedding_cache_hits_total counter/);
+  assert.match(out, /^siskelbot_embedding_cache_hits_total \d+/m);
+  assert.match(out, /^siskelbot_embedding_cache_misses_total \d+/m);
+  assert.match(out, /^siskelbot_embedding_cache_evictions_total\{reason="lru"\} \d+/m);
+  assert.match(out, /^siskelbot_embedding_cache_evictions_total\{reason="ttl"\} \d+/m);
+  assert.match(out, /^siskelbot_embedding_cache_evictions_total\{reason="manual"\} \d+/m);
+  assert.match(out, /# TYPE siskelbot_embedding_cache_size gauge/);
+  assert.match(out, /^siskelbot_embedding_cache_size \d+/m);
+  globalEmbeddingCache.clear();
 });

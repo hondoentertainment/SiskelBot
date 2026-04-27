@@ -166,6 +166,21 @@ spec:
           annotations:
             summary: "No pods available"
             description: "Deployment has 0 available replicas."
+        - alert: SiskelBotEmbeddingCacheThrashing
+          expr: |
+            rate(siskelbot_embedding_cache_evictions_total{reason="lru"}[5m]) > 10
+            and
+            sum(rate(siskelbot_embedding_cache_hits_total[5m]))
+            /
+            (sum(rate(siskelbot_embedding_cache_hits_total[5m])) + sum(rate(siskelbot_embedding_cache_misses_total[5m])))
+            < 0.5
+          for: 15m
+          labels:
+            severity: warning
+            type: performance
+          annotations:
+            summary: "Embedding cache thrashing"
+            description: "LRU evictions {{ "{{" }} $value {{ "}}" }}/sec with hit rate < 50%. Consider increasing EMBEDDING_CACHE_MAX_SIZE."
         {{- with .Values.metrics.alerting.additionalRules }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

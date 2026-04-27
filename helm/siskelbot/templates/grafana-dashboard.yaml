@@ -160,6 +160,21 @@ data:
               "refId": "A"
             }
           ]
+        },
+        {
+          "title": "Embedding cache hit rate",
+          "type": "timeseries",
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32},
+          "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum(rate(siskelbot_embedding_cache_hits_total[5m])) / (sum(rate(siskelbot_embedding_cache_hits_total[5m])) + sum(rate(siskelbot_embedding_cache_misses_total[5m])))",
+              "legendFormat": "hit rate",
+              "refId": "A"
+            }
+          ]
         }
       ],
       "refresh": "30s",
