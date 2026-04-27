@@ -54,6 +54,57 @@ No secrets needed for push; the workflow uses `GITHUB_TOKEN` (automatically prov
 
 ---
 
+## Load Test Baselines
+
+The `load-test` job in `ci.yml` is a regression gate: it fails the build when latency or error rate has drifted significantly from the committed baseline at `tests/load-baseline.json`. This document explains when and how to refresh that baseline.
+
+### When to refresh
+
+Refresh the baseline only when a change is real, intentional, and persistent:
+
+- **After a deliberate perf improvement.** A landed change reduces p99 by a meaningful margin and you want future runs to hold the new bar.
+- **After a Node major version bump.** New runtime, new performance characteristics; the previous numbers are no longer representative.
+- **After a change in CI runner class.** GitHub-hosted runners get periodic hardware changes; if the baseline starts producing chronic noise on a stable codebase, regenerate it.
+- **After a structural change to the load test itself.** New endpoints, weights, or warm-up behaviour can shift numbers without indicating a perf regression.
+
+Do **not** refresh the baseline to silence a real regression. If a PR makes the system slower, that needs an explicit perf decision — not a baseline bump.
+
+### How to refresh
+
+1. Go to **Actions** → **Load Test Baseline Refresh** → **Run workflow** (the workflow is `.github/workflows/load-baseline.yml`, dispatch-only).
+2. Optionally tweak `duration`, `concurrency`, `rps`. Defaults match the CI gate.
+3. The workflow:
+   - Spins up the server.
+   - Runs `scripts/load-test.mjs --update-baseline=tests/load-baseline.json`.
+   - Opens a PR titled `chore: refresh load test baseline` via `peter-evans/create-pull-request@v6`.
+4. Review the PR diff. The new numbers should look plausible; large jumps deserve scrutiny.
+5. Merge.
+
+### How to interpret a failure
+
+When the `load-test` job fails, the step summary lists the threshold breach. Walk this checklist before treating the failure as a real regression:
+
+1. **Re-run the job.** Network jitter, runner contention, and noisy neighbours produce occasional false positives. A single flake should not block a merge.
+2. **Check the runner.** A pattern of failures on the same runner ID suggests hardware variability, not a code regression.
+3. **Compare against recent main.** If main is also failing, the regression predates the current PR.
+4. **Inspect the failure category.**
+   - `errorRate exceeds ...` — the server returned 4xx/5xx. Look at the server logs in the job for the cause.
+   - `p99 exceeds ...` — absolute latency cap blown. Likely a real perf hit or a stalled request.
+   - `p99 regressed: Xms vs baseline Yms (+Z%, threshold +30%)` — relative drift. Often the most actionable signal: a code change made the system measurably slower without crossing the absolute cap.
+
+If after this you conclude the change really did move performance (in either direction) and the new behaviour is intentional, refresh the baseline (see above).
+
+### Why 30% / 100%?
+
+The relative-regression thresholds are intentionally generous:
+
+- **p99 regression: +30%.** Tail latency on small CI samples is noisy. A 30% gate catches real regressions (e.g. a new sync I/O call in a hot path) while tolerating the run-to-run variance you get from a 15-second test on a shared runner. Tightening this to e.g. +10% would produce frequent false positives and erode trust in the gate.
+- **errorRate regression: +100% (i.e. doubling).** When the baseline error rate is already low (often zero), small absolute changes are large in relative terms. Doubling is a clear signal. The absolute `--max-error-rate=1%` gate independently catches outright failures, so this relative gate is a backstop for the case where errors creep up without breaching the absolute cap.
+
+Both thresholds are tunable in `scripts/load-test.mjs` (`BASELINE_P99_REGRESSION_PCT`, `BASELINE_ERROR_RATE_REGRESSION_PCT`). Tighten them once the test is provably stable across many runs.
+
+---
+
 ## Phase 38: CLI Client
 
 Command-line client for SiskelBot. Connects to local or deployed instances via REST API.

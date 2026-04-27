@@ -216,7 +216,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: [smoke]
     timeout-minutes: 5
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -243,14 +242,54 @@ jobs:
           echo "::error::Server did not respond on $url within 45s"
           exit 1
       - name: Run load test
-        run: npm run test:load -- --url=http://127.0.0.1:${{ env.PORT }} --duration=15 --concurrency=5 --rps=30
+        id: load
+        run: |
+          npm run test:load -- \
+            --url=http://127.0.0.1:${{ env.PORT }} \
+            --duration=15 --concurrency=5 --rps=30 \
+            --max-error-rate=1 --max-p99=3000 \
+            --json-output=load-results.json \
+            --baseline=tests/load-baseline.json
       - name: Upload load test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-results
+          path: load-results.json
+          retention-days: 30
+      - name: Upload legacy load-test-results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: load-test-results
           path: load-test-results.json
           retention-days: 14
+      - name: Load test failure summary
+        if: failure() && steps.load.outcome == 'failure'
+        run: |
+          {
+            echo "## Load Test Failed"
+            echo ""
+            if [ -f load-results.json ]; then
+              echo "### Threshold breaches"
+              echo '```json'
+              node --input-type=module -e "import {readFileSync} from 'node:fs';const r=JSON.parse(readFileSync('./load-results.json','utf8'));console.log(JSON.stringify({passed:r.passed,failures:r.failures,latency:r.latency,errorRate:r.errorRate,thresholds:r.thresholds},null,2));"
+              echo '```'
+            else
+              echo "No load-results.json was produced. See job logs for the failure."
+            fi
+            echo ""
+            echo "Reproduce locally:"
+            echo '```bash'
+            echo "BACKEND=ollama PORT=3000 npm start &"
+            echo "npm run test:load -- --url=http://127.0.0.1:3000 --duration=15 --concurrency=5 --rps=30 \\"
+            echo "  --max-error-rate=1 --max-p99=3000 --json-output=load-results.json \\"
+            echo "  --baseline=tests/load-baseline.json"
+            echo '```'
+            echo ""
+            echo "If this is a flake (network jitter, runner contention), re-run the job."
+            echo "If the regression is real and intentional (e.g. a deliberate perf change), refresh the baseline by triggering the \`Load Test Baseline Refresh\` workflow manually."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   eval:
     runs-on: ubuntu-latest
