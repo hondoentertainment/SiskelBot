@@ -194,6 +194,36 @@ spec:
           annotations:
             summary: "Workspace exceeded $50/hour cost"
             description: "Workspace {{ "{{" }} $labels.workspace {{ "}}" }} burned ${{ "{{" }} $value | printf \"%.2f\" {{ "}}" }} in the past hour."
+        - alert: SiskelBotProbeDown
+          expr: |
+            probe_success{job="{{ include "siskelbot.fullname" . }}-synthetic"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            type: availability
+          annotations:
+            summary: "Synthetic probe failing"
+            description: "Probe target {{ "{{" }} $labels.instance {{ "}}" }} has been failing for 2+ minutes from external prober."
+        - alert: SiskelBotProbeSlowResponse
+          expr: |
+            probe_duration_seconds{job="{{ include "siskelbot.fullname" . }}-synthetic"} > 5
+          for: 5m
+          labels:
+            severity: warning
+            type: availability
+          annotations:
+            summary: "Synthetic probe slow"
+            description: "Probe target {{ "{{" }} $labels.instance {{ "}}" }} responded in {{ "{{" }} $value | humanizeDuration {{ "}}" }} (threshold 5s)."
+        - alert: SiskelBotTLSCertExpiringSoon
+          expr: |
+            probe_ssl_earliest_cert_expiry{job="{{ include "siskelbot.fullname" . }}-synthetic"} - time() < 86400 * 14
+          for: 30m
+          labels:
+            severity: warning
+            type: availability
+          annotations:
+            summary: "TLS certificate expiring soon"
+            description: "Cert for {{ "{{" }} $labels.instance {{ "}}" }} expires in {{ "{{" }} $value | humanizeDuration {{ "}}" }}."
         {{- with .Values.metrics.alerting.additionalRules }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

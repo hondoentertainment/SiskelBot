@@ -10,6 +10,7 @@ Helm chart: `helm/siskelbot/` — chart version `1.0.0`, app version `1.0.0`.
 - [NGINX Ingress Controller](https://kubernetes.github.io/ingress-nginx/)
 - (Optional) [external-secrets-operator](https://external-secrets.io/) for secret management via AWS/GCP/Vault
 - (Optional) [Prometheus Operator](https://prometheus-operator.dev/) for `ServiceMonitor` and alerting
+- (Optional) External uptime probes — see [docs/SYNTHETIC_MONITORING.md](./SYNTHETIC_MONITORING.md)
 
 ## Quick install
 
@@ -144,10 +145,6 @@ helm upgrade siskelbot ./helm/siskelbot \
 ```
 
 The deployment uses `RollingUpdate` with `maxUnavailable: 0` — zero-downtime by default. The PDB (`minAvailable: 2`) ensures at least two pods remain healthy during a rollout.
-
-For progressive, SLO-gated rollouts via Argo Rollouts (recommended for
-production), see [`CANARY.md`](./CANARY.md). The production values file
-already enables canary mode by default.
 
 ## Rollback
 

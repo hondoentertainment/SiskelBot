@@ -170,6 +170,22 @@ metrics:
     # Label that the Grafana sidecar watches for (kube-prometheus-stack default)
     label:
       grafana_dashboard: "1"
+  synthetic:
+    enabled: false
+    namespace: ""
+    labels: {}
+    # blackbox-exporter service URL (must be reachable by Prometheus)
+    blackboxExporterUrl: "http://blackbox-exporter.monitoring.svc.cluster.local:9115"
+    proberPath: "/probe"
+    # Module from blackbox-exporter config — e.g. http_2xx, http_post_2xx
+    module: "http_2xx"
+    interval: 30s
+    scrapeTimeout: 15s
+    # Public URLs to probe (commonly external load balancer / ingress)
+    targets: []
+      # - https://siskelbot.example.com/health/deep
+      # - https://siskelbot.example.com/health/live
+    staticLabels: {}
 
 networkPolicy:
   enabled: false
