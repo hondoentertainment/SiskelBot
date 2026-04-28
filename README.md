@@ -1,6 +1,6 @@
 # Siskel Bot
 
-[![CI](https://github.com/YOUR_USERNAME/experimentagent/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/experimentagent/actions) [![Docker](https://github.com/YOUR_USERNAME/experimentagent/actions/workflows/docker.yml/badge.svg)](https://github.com/YOUR_USERNAME/experimentagent/actions)
+[![CI](https://github.com/hondoentertainment/SiskelBot/actions/workflows/ci.yml/badge.svg)](https://github.com/hondoentertainment/SiskelBot/actions/workflows/ci.yml) [![Docker](https://github.com/hondoentertainment/SiskelBot/actions/workflows/docker.yml/badge.svg)](https://github.com/hondoentertainment/SiskelBot/actions/workflows/docker.yml)
 
 *Streaming assistant (OpenAI-compatible API for Ollama, vLLM, or OpenAI). Repository package name: `experimentagent`.*
 
@@ -253,6 +253,12 @@ Copy `.env.example` to `.env`:
 | `AGENT_TOOLS_ALLOWLIST` | -- | Comma-separated tool names to expose (empty = all) |
 
 See `.env.example` for the full list of supported variables.
+
+### Production on Vercel
+
+Use `BACKEND=openai`, `OPENAI_API_KEY`, and `API_KEY` for the hosted chat API. For durable workspace, recipe, conversation, memory, and audit data on Vercel, set `STORAGE_BACKEND=postgres` with `DATABASE_URL`; the default JSON file storage is ephemeral in serverless deployments.
+
+If scheduled recipes are enabled, also set `CRON_SECRET` and `ALLOW_RECIPE_STEP_EXECUTION=1`. If OAuth or SSO is enabled, set a strong `SESSION_SECRET` and the relevant provider credentials.
 
 ## Agent system
 
