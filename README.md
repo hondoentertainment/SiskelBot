@@ -4,6 +4,8 @@
 
 *Streaming assistant (OpenAI-compatible API for Ollama, vLLM, or OpenAI). Repository package name: `experimentagent`.*
 
+> **New contributor?** Read [CONTRIBUTING.md](./CONTRIBUTING.md) and use the included [.devcontainer](./.devcontainer/) for a one-command setup.
+
 Realtime streaming assistant proxy for Ollama, vLLM, or OpenAI. Node.js proxy that streams chat completions to clients with workspace management, agent orchestration, knowledge graphs, workflow automation, and integrations with GitHub, Vercel, Jira, Linear, Slack, and Discord.
 
 ## Architecture
