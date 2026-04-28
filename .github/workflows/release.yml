@@ -98,6 +98,30 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64
 
+      - name: Generate SBOM (CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
+          format: cyclonedx-json
+          output-file: sbom.cyclonedx.json
+          artifact-name: sbom.cyclonedx.json
+
+      - name: Generate SBOM (SPDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+          artifact-name: sbom.spdx.json
+
+      - name: Attach SBOMs to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            sbom.cyclonedx.json
+            sbom.spdx.json
+          tag_name: v${{ steps.version.outputs.version }}
+
   # Phase 99: Cross-platform desktop builds
   desktop-windows:
     runs-on: windows-latest
