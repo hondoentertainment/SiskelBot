@@ -32,6 +32,7 @@
     "lint": "node scripts/syntax-check.mjs && eslint .",
     "lint:eslint": "eslint .",
     "test": "node scripts/run-tests.mjs",
+    "test:chaos": "node --test --test-timeout=30000 tests/chaos/*.test.js",
     "test:coverage": "c8 node scripts/run-tests.mjs && npm run coverage:critical",
     "coverage:critical": "node scripts/check-critical-coverage.mjs",
     "test:ci": "c8 node scripts/run-tests.mjs --ci && npm run coverage:critical",
