@@ -55,6 +55,9 @@ jobs:
         id: tests
         run: npm run test:ci
 
+      - name: Tenant isolation regression test
+        run: node --test --test-timeout=30000 tests/tenant-isolation.test.js
+
       - name: Check coverage thresholds
         if: always() && steps.tests.outcome == 'success'
         run: npx c8 check-coverage
