@@ -18,6 +18,7 @@ export function mountMemoryRoutes(app, deps) {
   const {
     apiRoute,
     apiError,
+    userAuth,
     sanitizeWorkspace,
     storageRateLimiter,
   } = deps;
@@ -25,10 +26,10 @@ export function mountMemoryRoutes(app, deps) {
   const limiter = storageRateLimiter || ((req, res, next) => next());
 
   // GET /api/v1/memory — list memories
-  apiRoute("get", "/memory", limiter, async (req, res) => {
+  apiRoute("get", "/memory", limiter, userAuth, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
-      const userId = req.userId || "anonymous";
+      const userId = req.userId;
       const category = req.query?.category || undefined;
       const limit = req.query?.limit ? Number(req.query.limit) : undefined;
       const offset = req.query?.offset ? Number(req.query.offset) : undefined;
@@ -47,10 +48,10 @@ export function mountMemoryRoutes(app, deps) {
   });
 
   // GET /api/v1/memory/search — search memories
-  apiRoute("get", "/memory/search", limiter, async (req, res) => {
+  apiRoute("get", "/memory/search", limiter, userAuth, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
-      const userId = req.userId || "anonymous";
+      const userId = req.userId;
       const q = req.query?.q || "";
       const category = req.query?.category || undefined;
       const limit = req.query?.limit ? Number(req.query.limit) : undefined;
@@ -72,10 +73,10 @@ export function mountMemoryRoutes(app, deps) {
   });
 
   // GET /api/v1/memory/stats — memory statistics
-  apiRoute("get", "/memory/stats", limiter, async (req, res) => {
+  apiRoute("get", "/memory/stats", limiter, userAuth, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
-      const userId = req.userId || "anonymous";
+      const userId = req.userId;
 
       const stats = await getMemoryStats(userId, workspace);
       res.json({ _version: 1, ...stats });
@@ -85,10 +86,10 @@ export function mountMemoryRoutes(app, deps) {
   });
 
   // POST /api/v1/memory — add memory
-  apiRoute("post", "/memory", limiter, async (req, res) => {
+  apiRoute("post", "/memory", limiter, userAuth, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.body?.workspace);
-      const userId = req.userId || "anonymous";
+      const userId = req.userId;
       const { content, category, importance, source, metadata } = req.body || {};
 
       if (!content || typeof content !== "string" || !content.trim()) {
@@ -112,10 +113,10 @@ export function mountMemoryRoutes(app, deps) {
   });
 
   // DELETE /api/v1/memory/:id — forget
-  apiRoute("delete", "/memory/:id", limiter, async (req, res) => {
+  apiRoute("delete", "/memory/:id", limiter, userAuth, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
-      const userId = req.userId || "anonymous";
+      const userId = req.userId;
 
       const result = await forget(userId, workspace, req.params.id);
       if (!result.ok) {

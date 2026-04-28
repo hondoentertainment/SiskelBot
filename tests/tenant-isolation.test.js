@@ -365,18 +365,120 @@ describe("tenant isolation", () => {
     });
   });
 
-  test(
-    "TODO: routes/memory.js — no userAuth, every handler defaults to 'anonymous'",
-    { todo: true },
-    () => {
-      // routes/memory.js wires only a rate limiter; it never calls userAuth.
-      // Every handler does `const userId = req.userId || "anonymous"`, so two
-      // distinct USER_API_KEYS users land in the same memory store.
-      //
-      // Fix: add userAuth + requireScope to each route, and rely on
-      // req.userId being authenticated rather than falling back to anonymous.
-    },
-  );
+  describe("memory", () => {
+    test("an unauthenticated caller cannot list memories", async () => {
+      const res = await request(app).get(`/api/v1/memory?workspace=${workspaceA}`);
+      assert.equal(res.status, 401, `expected 401, got ${res.status}: ${JSON.stringify(res.body)}`);
+      assert.equal(res.body.code, "AUTH_REQUIRED");
+    });
+
+    test("an unauthenticated caller cannot create a memory", async () => {
+      const res = await request(app)
+        .post("/api/v1/memory")
+        .send({ workspace: workspaceA, content: "anonymous memory" });
+      assert.equal(res.status, 401, `expected 401, got ${res.status}: ${JSON.stringify(res.body)}`);
+      assert.equal(res.body.code, "AUTH_REQUIRED");
+    });
+
+    test("an unauthenticated caller cannot search memories", async () => {
+      const res = await request(app).get(`/api/v1/memory/search?workspace=${workspaceA}&q=hello`);
+      assert.equal(res.status, 401, `expected 401, got ${res.status}: ${JSON.stringify(res.body)}`);
+      assert.equal(res.body.code, "AUTH_REQUIRED");
+    });
+
+    test("user_a stores a memory in workspace_a; user_b cannot list/recall/forget it", async () => {
+      const create = await withKey(request(app).post("/api/v1/memory"), USER_A_KEY).send({
+        workspace: workspaceA,
+        content: "user_a private memory contents",
+        category: "fact",
+        importance: 4,
+      });
+      assert.equal(create.status, 201, `create memory: ${create.status} ${JSON.stringify(create.body)}`);
+      const memoryId = create.body.id;
+      assert.ok(memoryId, "memory id must be set");
+
+      // user_a sees their own memory in their list
+      const listA = await withKey(
+        request(app).get(`/api/v1/memory?workspace=${workspaceA}`),
+        USER_A_KEY,
+      );
+      assert.equal(listA.status, 200);
+      const idsA = (listA.body.memories || []).map((m) => m.id);
+      assert.ok(idsA.includes(memoryId), "user_a must see their own memory");
+
+      // user_b sees nothing in workspace_a (different storage namespace)
+      const listB = await withKey(
+        request(app).get(`/api/v1/memory?workspace=${workspaceA}`),
+        USER_B_KEY,
+      );
+      assert.equal(listB.status, 200);
+      const idsB = (listB.body.memories || []).map((m) => m.id);
+      assert.ok(
+        !idsB.includes(memoryId),
+        `user_b must NOT see user_a's memory; got: ${JSON.stringify(idsB)}`,
+      );
+
+      // user_b cannot recall user_a's memory via search
+      const searchB = await withKey(
+        request(app).get(`/api/v1/memory/search?workspace=${workspaceA}&q=private`),
+        USER_B_KEY,
+      );
+      assert.equal(searchB.status, 200);
+      const searchIdsB = (searchB.body.memories || []).map((m) => m.id);
+      assert.ok(
+        !searchIdsB.includes(memoryId),
+        `user_b must NOT recall user_a's memory; got: ${JSON.stringify(searchIdsB)}`,
+      );
+
+      // user_b cannot forget user_a's memory
+      const delB = await withKey(
+        request(app).delete(`/api/v1/memory/${memoryId}?workspace=${workspaceA}`),
+        USER_B_KEY,
+      );
+      assert.notEqual(delB.status, 204, "delete must not have succeeded for user_b");
+      assert.ok(
+        delB.status === 404 || delB.status === 403,
+        `expected 404 or 403, got ${delB.status}: ${JSON.stringify(delB.body)}`,
+      );
+
+      // user_a's memory is still intact
+      const listAAfter = await withKey(
+        request(app).get(`/api/v1/memory?workspace=${workspaceA}`),
+        USER_A_KEY,
+      );
+      assert.equal(listAAfter.status, 200);
+      const idsAAfter = (listAAfter.body.memories || []).map((m) => m.id);
+      assert.ok(idsAAfter.includes(memoryId), "user_a's memory must survive user_b's attempts");
+    });
+
+    test("two USER_API_KEYS users get distinct memory namespaces", async () => {
+      // user_a writes to workspace_a, user_b writes to workspace_b. user_b
+      // peeking at workspace_a (by guessing its id) must not see user_a's
+      // memory because the storage namespace is keyed by req.userId too.
+      const createA = await withKey(request(app).post("/api/v1/memory"), USER_A_KEY).send({
+        workspace: workspaceA,
+        content: "user_a-only namespace memory",
+      });
+      assert.equal(createA.status, 201);
+
+      const createB = await withKey(request(app).post("/api/v1/memory"), USER_B_KEY).send({
+        workspace: workspaceB,
+        content: "user_b-only namespace memory",
+      });
+      assert.equal(createB.status, 201);
+
+      const peek = await withKey(
+        request(app).get(`/api/v1/memory?workspace=${workspaceA}`),
+        USER_B_KEY,
+      );
+      assert.equal(peek.status, 200);
+      const peekIds = (peek.body.memories || []).map((m) => m.id);
+      assert.ok(
+        !peekIds.includes(createA.body.id),
+        `user_b peeking at workspace_a must not see user_a's memory; got: ${JSON.stringify(peekIds)}`,
+      );
+    });
+  });
 
   test(
     "TODO: routes/knowledge.js /context CRUD — POST/PUT/DELETE/:id GET drop req.userId",
