@@ -213,6 +213,7 @@ import mountHeapDiffRoutes from "./heap-diff.js";
 import mountStepLatencyRoutes from "./step-latency.js";
 import mountLogAnalysisRoutes from "./log-analysis.js";
 import mountStatusPageRoutes from "./status-page.js";
+import mountAlertmanagerWebhookRoutes from "./alertmanager-webhook.js";
 
 // Phase 61.2-3, 61.5, 62.1-5 (Agent C — 8 modules)
 import mountWebhookInspectorRoutes from "./webhook-inspector.js";
@@ -471,6 +472,7 @@ const mountFunctions = [
   mountStepLatencyRoutes,
   mountLogAnalysisRoutes,
   mountStatusPageRoutes,
+  mountAlertmanagerWebhookRoutes,
 
   // Agent C — dev platform finish + customer support vertical
   mountWebhookInspectorRoutes,
