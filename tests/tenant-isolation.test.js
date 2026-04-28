@@ -25,10 +25,6 @@
  *   - routes/memory.js: same shape — no userAuth on any handler, falls back to
  *     `req.userId || "anonymous"` so two distinct USER_API_KEYS users share
  *     the same memory store.
- *   - routes/knowledge.js /context POST/PUT/DELETE/:id GET: do not pass
- *     req.userId to storage. POST writes under "anonymous", GET (list) reads
- *     from req.userId — so a user cannot even see the doc they just created.
- *     This both is broken and leaks across tenants.
  *
  * See the trailing `it.todo` block for the canonical list and references.
  */
@@ -480,20 +476,77 @@ describe("tenant isolation", () => {
     });
   });
 
-  test(
-    "TODO: routes/knowledge.js /context CRUD — POST/PUT/DELETE/:id GET drop req.userId",
-    { todo: true },
-    () => {
-      // GET /api/v1/context lists with `storage.listItems("context", workspace, req.userId)`
-      // (correct), but POST, PUT /:id, GET /:id, and DELETE /:id all call the
-      // storage layer without passing req.userId. The result is that a doc
-      // created via POST is stored under "anonymous" and never appears in the
-      // owner's list (which is scoped by req.userId), and any other caller
-      // that knows the workspace can read/modify/delete it.
-      //
-      // Fix: pass req.userId (or resolveStorageUserId(...)) to every storage
-      // call; the simplest fix is to make all five handlers consistent with
-      // the GET-list handler.
-    },
-  );
+  describe("context", () => {
+    test("an unauthenticated caller cannot create a context doc", async () => {
+      const res = await request(app)
+        .post("/api/v1/context")
+        .send({ workspace: workspaceA, title: "anon", content: "anon" });
+      assert.equal(res.status, 401, `expected 401, got ${res.status}: ${JSON.stringify(res.body)}`);
+      assert.equal(res.body.code, "AUTH_REQUIRED");
+    });
+
+    test("user_a creates a context doc in workspace_a; user_b cannot see it", async () => {
+      const create = await withKey(request(app).post("/api/v1/context"), USER_A_KEY).send({
+        workspace: workspaceA,
+        title: "user_a-context",
+        content: "secret content from user_a",
+      });
+      assert.equal(create.status, 201, `create context: ${create.status} ${JSON.stringify(create.body)}`);
+      const docId = create.body.id;
+      assert.ok(docId, "context doc id must be set");
+
+      // user_a sees their own context doc in their list
+      const listA = await withKey(
+        request(app).get(`/api/v1/context?workspace=${workspaceA}`),
+        USER_A_KEY,
+      );
+      assert.equal(listA.status, 200);
+      const idsA = (listA.body.items || []).map((c) => c.id);
+      assert.ok(idsA.includes(docId), "user_a must see their own context doc");
+
+      // user_b sees nothing in workspace_a (different storage namespace)
+      const listB = await withKey(
+        request(app).get(`/api/v1/context?workspace=${workspaceA}`),
+        USER_B_KEY,
+      );
+      assert.equal(listB.status, 200);
+      const idsB = (listB.body.items || []).map((c) => c.id);
+      assert.ok(
+        !idsB.includes(docId),
+        `user_b must NOT see user_a's context doc; got: ${JSON.stringify(idsB)}`,
+      );
+
+      // user_b cannot GET user_a's context doc by id
+      const getB = await withKey(
+        request(app).get(`/api/v1/context/${docId}?workspace=${workspaceA}`),
+        USER_B_KEY,
+      );
+      assert.equal(getB.status, 404, `expected 404, got ${getB.status}: ${JSON.stringify(getB.body)}`);
+
+      // user_b cannot PUT user_a's context doc by id
+      const putB = await withKey(request(app).put(`/api/v1/context/${docId}`), USER_B_KEY).send({
+        workspace: workspaceA,
+        title: "hijacked",
+        content: "hijacked content",
+      });
+      assert.equal(putB.status, 404, `expected 404, got ${putB.status}: ${JSON.stringify(putB.body)}`);
+
+      // user_b cannot DELETE user_a's context doc by id
+      const delB = await withKey(
+        request(app).delete(`/api/v1/context/${docId}?workspace=${workspaceA}`),
+        USER_B_KEY,
+      );
+      assert.equal(delB.status, 404, `expected 404, got ${delB.status}: ${JSON.stringify(delB.body)}`);
+
+      // user_a's context doc is still intact and unmodified
+      const getA = await withKey(
+        request(app).get(`/api/v1/context/${docId}?workspace=${workspaceA}`),
+        USER_A_KEY,
+      );
+      assert.equal(getA.status, 200);
+      assert.equal(getA.body.id, docId);
+      assert.equal(getA.body.title, "user_a-context", "title must not have been hijacked by user_b");
+      assert.equal(getA.body.content, "secret content from user_a", "content must not have been hijacked by user_b");
+    });
+  });
 });
