@@ -287,23 +287,83 @@ describe("tenant isolation", () => {
    * covered. Fix the underlying routes first; then drop the `todo` flag and
    * implement an assertion that user_b cannot read user_a's data.
    */
-  test(
-    "TODO: routes/conversations.js — no userAuth and storage calls omit req.userId",
-    { todo: true },
-    () => {
-      // Every handler in routes/conversations.js calls storage.listItems /
-      // .getItem / .mergeItems / .updateItem / .deleteItem WITHOUT passing
-      // req.userId, so storage falls back to the "anonymous" sentinel for all
-      // callers. There is also no userAuth middleware on the chain. As a
-      // result, conversations are partitioned only by workspace id; any
-      // caller that knows a workspace UUID can read or mutate everyone else's
-      // conversations.
-      //
-      // Fix: wire `userAuth` into the route, then pass `req.userId` (or the
-      // result of `resolveStorageUserId(req.userId, workspace)`) to every
-      // storage call.
-    },
-  );
+  describe("conversations", () => {
+    test("an unauthenticated caller cannot list conversations", async () => {
+      const res = await request(app).get(`/api/v1/conversations?workspace=${workspaceA}`);
+      assert.equal(res.status, 401, `expected 401, got ${res.status}: ${JSON.stringify(res.body)}`);
+      assert.equal(res.body.code, "AUTH_REQUIRED");
+    });
+
+    test("an unauthenticated caller cannot create a conversation", async () => {
+      const res = await request(app)
+        .post("/api/v1/conversations")
+        .send({ workspace: workspaceA, title: "anon", messages: [] });
+      assert.equal(res.status, 401, `expected 401, got ${res.status}: ${JSON.stringify(res.body)}`);
+      assert.equal(res.body.code, "AUTH_REQUIRED");
+    });
+
+    test("user_a creates a conversation in workspace_a; user_b cannot see it", async () => {
+      const create = await withKey(request(app).post("/api/v1/conversations"), USER_A_KEY).send({
+        workspace: workspaceA,
+        title: "user_a-conv",
+        messages: [{ role: "user", content: "hi" }],
+      });
+      assert.equal(create.status, 201, `create conv: ${create.status} ${JSON.stringify(create.body)}`);
+      const convId = create.body.id;
+      assert.ok(convId, "conversation id must be set");
+
+      // user_a sees their own conversation in their list
+      const listA = await withKey(
+        request(app).get(`/api/v1/conversations?workspace=${workspaceA}`),
+        USER_A_KEY,
+      );
+      assert.equal(listA.status, 200);
+      const idsA = (listA.body.items || []).map((c) => c.id);
+      assert.ok(idsA.includes(convId), "user_a must see their own conversation");
+
+      // user_b sees nothing in workspace_a (different storage namespace)
+      const listB = await withKey(
+        request(app).get(`/api/v1/conversations?workspace=${workspaceA}`),
+        USER_B_KEY,
+      );
+      assert.equal(listB.status, 200);
+      const idsB = (listB.body.items || []).map((c) => c.id);
+      assert.ok(
+        !idsB.includes(convId),
+        `user_b must NOT see user_a's conversation; got: ${JSON.stringify(idsB)}`,
+      );
+
+      // user_b cannot GET user_a's conversation by id
+      const getB = await withKey(
+        request(app).get(`/api/v1/conversations/${convId}?workspace=${workspaceA}`),
+        USER_B_KEY,
+      );
+      assert.equal(getB.status, 404, `expected 404, got ${getB.status}: ${JSON.stringify(getB.body)}`);
+
+      // user_b cannot PUT user_a's conversation by id
+      const putB = await withKey(request(app).put(`/api/v1/conversations/${convId}`), USER_B_KEY).send({
+        workspace: workspaceA,
+        title: "hijacked",
+      });
+      assert.equal(putB.status, 404, `expected 404, got ${putB.status}: ${JSON.stringify(putB.body)}`);
+
+      // user_b cannot DELETE user_a's conversation by id
+      const delB = await withKey(
+        request(app).delete(`/api/v1/conversations/${convId}?workspace=${workspaceA}`),
+        USER_B_KEY,
+      );
+      assert.equal(delB.status, 404, `expected 404, got ${delB.status}: ${JSON.stringify(delB.body)}`);
+
+      // user_a's conversation is still intact and unmodified
+      const getA = await withKey(
+        request(app).get(`/api/v1/conversations/${convId}?workspace=${workspaceA}`),
+        USER_A_KEY,
+      );
+      assert.equal(getA.status, 200);
+      assert.equal(getA.body.id, convId);
+      assert.equal(getA.body.title, "user_a-conv", "title must not have been hijacked by user_b");
+    });
+  });
 
   test(
     "TODO: routes/memory.js — no userAuth, every handler defaults to 'anonymous'",
