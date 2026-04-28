@@ -284,6 +284,31 @@ backup:
   nodeSelector: {}
   tolerations: []
 
+# Argo Rollouts canary deployment (replaces standard Deployment when enabled)
+canary:
+  enabled: false
+  # Traffic routing — leave empty for replica-based traffic split, or configure for service mesh / ingress integration
+  trafficRouting: {}
+    # nginx:
+    #   stableIngress: siskelbot-stable
+  # Promotion steps: percentages of traffic + pause windows
+  steps:
+    - setWeight: 10
+    - pause: { duration: 5m }
+    - setWeight: 25
+    - pause: { duration: 10m }
+    - setWeight: 50
+    - pause: { duration: 10m }
+    - setWeight: 75
+    - pause: { duration: 5m }
+  analysis:
+    startingStep: 1
+    interval: 1m
+    failureLimit: 3
+    maxErrorRate: 0.01
+    maxP99Seconds: 15
+    prometheusAddress: "http://prometheus.monitoring.svc.cluster.local:9090"
+
 # Update strategy for the Deployment
 updateStrategy:
   type: RollingUpdate

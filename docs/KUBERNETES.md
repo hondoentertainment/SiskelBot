@@ -145,6 +145,10 @@ helm upgrade siskelbot ./helm/siskelbot \
 
 The deployment uses `RollingUpdate` with `maxUnavailable: 0` — zero-downtime by default. The PDB (`minAvailable: 2`) ensures at least two pods remain healthy during a rollout.
 
+For progressive, SLO-gated rollouts via Argo Rollouts (recommended for
+production), see [`CANARY.md`](./CANARY.md). The production values file
+already enables canary mode by default.
+
 ## Rollback
 
 ```bash

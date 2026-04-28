@@ -1,0 +1,34 @@
+{{- if .Values.canary.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: {{ include "siskelbot.fullname" . }}-slo-analysis
+  labels:
+    {{- include "siskelbot.labels" . | nindent 4 }}
+spec:
+  args:
+    - name: service-name
+  metrics:
+    - name: error-rate
+      interval: {{ .Values.canary.analysis.interval | default "1m" }}
+      successCondition: result[0] <= {{ .Values.canary.analysis.maxErrorRate | default 0.01 }}
+      failureLimit: {{ .Values.canary.analysis.failureLimit | default 3 }}
+      provider:
+        prometheus:
+          address: {{ .Values.canary.analysis.prometheusAddress | quote }}
+          query: |
+            sum(rate(http_requests_total{service="{{ "{{" }}args.service-name{{ "}}" }}",status=~"5.."}[2m]))
+            /
+            sum(rate(http_requests_total{service="{{ "{{" }}args.service-name{{ "}}" }}"}[2m]))
+    - name: p99-latency
+      interval: {{ .Values.canary.analysis.interval | default "1m" }}
+      successCondition: result[0] <= {{ .Values.canary.analysis.maxP99Seconds | default 15 }}
+      failureLimit: {{ .Values.canary.analysis.failureLimit | default 3 }}
+      provider:
+        prometheus:
+          address: {{ .Values.canary.analysis.prometheusAddress | quote }}
+          query: |
+            histogram_quantile(0.99,
+              sum by (le) (rate(http_request_duration_seconds_bucket{service="{{ "{{" }}args.service-name{{ "}}" }}"}[2m]))
+            )
+{{- end }}
