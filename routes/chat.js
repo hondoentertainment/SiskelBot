@@ -9,6 +9,11 @@ import {
   recordAdapterUsage,
 } from "../lib/lora-adapters.js";
 import { defaultChannelRegistry } from "../lib/realtime-channels.js";
+import {
+  checkQuota as checkTenantQuota,
+  recordRequest as recordTenantRequest,
+  recordTokens as recordTenantTokens,
+} from "../lib/tenant-quotas.js";
 
 const ENABLE_PROMPT_GUARD = process.env.ENABLE_PROMPT_GUARD === "1";
 const ENABLE_OUTPUT_GUARD = process.env.ENABLE_OUTPUT_GUARD === "1";
@@ -70,6 +75,25 @@ export default function mountChatRoutes(app, deps) {
     try {
       const workspace = req.body?.agentOptions?.workspace || "default";
       const userId = req.userId || null;
+
+      // Per-tenant rate/token quota check (lib/tenant-quotas.js)
+      try {
+        const tenantQuota = await checkTenantQuota(workspace, { storage: deps.storage });
+        if (!tenantQuota.allowed) {
+          res.set("Retry-After", String(tenantQuota.retryAfter));
+          return apiError(
+            res,
+            429,
+            "QUOTA_EXCEEDED",
+            tenantQuota.reason || "tenant quota exceeded",
+            JSON.stringify({ currentUsage: tenantQuota.currentUsage, limits: tenantQuota.limits })
+          );
+        }
+        recordTenantRequest(workspace);
+      } catch (e) {
+        // Fail-open: log but do not block requests on quota infra errors
+        console.warn("[tenant-quotas] check failed:", e?.message || e);
+      }
 
       // Per-workspace token quota check
       if (isQuotaConfigured()) {
@@ -300,6 +324,7 @@ export default function mountChatRoutes(app, deps) {
 
         outputTokens = estimate.outputFromChars(content?.length || 0);
         recordTokensUsed(inputTokens, outputTokens);
+        try { recordTenantTokens(workspace, (inputTokens || 0) + (outputTokens || 0)); } catch (_) {}
         await recordUsage({ timestamp: new Date().toISOString(), model, inputTokens, outputTokens, backend: BACKEND, workspace, userId }).catch(() => {});
 
         // Phase 26: Output guard — check response safety
@@ -458,6 +483,7 @@ export default function mountChatRoutes(app, deps) {
       const outputTokens = usageFromApi?.completion_tokens ?? estimate.outputFromChars(outputChars);
       const finalInputTokens = usageFromApi?.prompt_tokens ?? inputTokens;
       recordTokensUsed(finalInputTokens, outputTokens);
+      try { recordTenantTokens(workspace, (finalInputTokens || 0) + (outputTokens || 0)); } catch (_) {}
       await recordUsage({
         timestamp: new Date().toISOString(),
         model,
