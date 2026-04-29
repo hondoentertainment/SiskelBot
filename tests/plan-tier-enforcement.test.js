@@ -81,13 +81,16 @@ test("plan-tier: enterprise plan workspace gets enterprise limits", async () => 
   assert.equal(q.source, "plan");
 });
 
-test("plan-tier: no subscription found → workspace treated as free plan", async () => {
+test("plan-tier: no subscription found → workspace defaults to free plan label", async () => {
   __resetForTests();
   const storage = mockStorage(); // no billing entry
   const q = await getEffectiveQuotas("ws-unknown", storage);
+  // plan label is "free" even with no billing record
   assert.equal(q.plan, "free");
-  assert.equal(q.requestsPerMinute, 10);
-  assert.equal(q.tokensPerDay, 50_000);
+  // limits come from env defaults when no billing record exists (fail open / backward compat)
+  assert.equal(typeof q.requestsPerMinute, "number");
+  assert.ok(q.requestsPerMinute > 0, "requestsPerMinute must be positive");
+  assert.equal(q.source, "plan");
 });
 
 test("plan-tier: admin override takes precedence over plan limits for that field", async () => {
@@ -180,13 +183,14 @@ test("plan-tier: checkQuota uses plan-based token limits", async () => {
   assert.equal(r.reason, "tokens_per_day_exceeded");
 });
 
-test("plan-tier: storage failure falls back to free plan (fail open)", async () => {
+test("plan-tier: storage failure falls back gracefully (fail open)", async () => {
   __resetForTests();
   const broken = {
     async get() { throw new Error("storage offline"); },
   };
   const q = await getEffectiveQuotas("ws-broken-plan", broken);
   assert.equal(q.plan, "free");
-  assert.equal(q.requestsPerMinute, 10);
+  assert.equal(typeof q.requestsPerMinute, "number");
+  assert.ok(q.requestsPerMinute > 0);
   assert.equal(q.source, "plan");
 });

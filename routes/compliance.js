@@ -44,6 +44,86 @@ export function mountComplianceRoutes(app, deps) {
   const { apiRoute, apiError, logRequest, adminAuth, storageRateLimiter } = deps;
   const limiter = storageRateLimiter || ((req, res, next) => next());
 
+  // GET /api/v1/admin/compliance/evidence — run collection now and return result
+  apiRoute(
+    "get",
+    "/admin/compliance/evidence",
+    limiter,
+    adminAuth,
+    logRequest,
+    async (req, res) => {
+      try {
+        const evidence = await collectEvidence();
+        res.json({ _version: 1, ...evidence });
+      } catch (err) {
+        console.error("Compliance evidence error:", err.message);
+        return apiError(res, 500, "INTERNAL_ERROR", err.message, "Failed to collect compliance evidence.");
+      }
+    }
+  );
+
+  // GET /api/v1/admin/compliance/evidence/history — list past snapshots
+  apiRoute(
+    "get",
+    "/admin/compliance/evidence/history",
+    limiter,
+    adminAuth,
+    logRequest,
+    async (req, res) => {
+      try {
+        const limit = Math.min(parseInt(String(req.query?.limit || "30"), 10) || 30, 90);
+        const snapshots = await listEvidenceSnapshots({ limit });
+        res.json({ _version: 1, snapshots });
+      } catch (err) {
+        console.error("Compliance evidence history error:", err.message);
+        return apiError(res, 500, "INTERNAL_ERROR", err.message, "Failed to list evidence snapshots.");
+      }
+    }
+  );
+
+  // GET /api/v1/admin/compliance/evidence/history/:date — get snapshot by date
+  apiRoute(
+    "get",
+    "/admin/compliance/evidence/history/:date",
+    limiter,
+    adminAuth,
+    logRequest,
+    async (req, res) => {
+      try {
+        const date = String(req.params?.date || "").trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+          return apiError(res, 400, "VALIDATION_ERROR", "date must be YYYY-MM-DD");
+        }
+        const evidence = await getEvidenceByDate(date);
+        if (!evidence) {
+          return apiError(res, 404, "NOT_FOUND", `No evidence snapshot found for ${date}`);
+        }
+        res.json({ _version: 1, ...evidence });
+      } catch (err) {
+        console.error("Compliance evidence fetch error:", err.message);
+        return apiError(res, 500, "INTERNAL_ERROR", err.message, "Failed to fetch evidence snapshot.");
+      }
+    }
+  );
+
+  // POST /api/v1/admin/compliance/evidence/collect — trigger manual collection + save
+  apiRoute(
+    "post",
+    "/admin/compliance/evidence/collect",
+    limiter,
+    adminAuth,
+    logRequest,
+    async (req, res) => {
+      try {
+        const { evidence, key } = await collectAndSave();
+        res.status(201).json({ _version: 1, key, ...evidence });
+      } catch (err) {
+        console.error("Compliance evidence collect error:", err.message);
+        return apiError(res, 500, "INTERNAL_ERROR", err.message, "Failed to collect and save evidence snapshot.");
+      }
+    }
+  );
+
   // GET /api/v1/compliance/soc2
   apiRoute(
     "get",

@@ -8,25 +8,29 @@ import {
 } from "../lib/usage-reports.js";
 import { __resetForTests, recordRequest, recordTokens } from "../lib/tenant-quotas.js";
 
-function makeMockStorage(items = []) {
-  const store = new Map();
-  for (const item of items) {
-    store.set(item.id, item);
+function makeMockStorage(quotaOverrides = {}, alertItems = []) {
+  const alertStore = new Map();
+  for (const item of alertItems) {
+    alertStore.set(item.id, item);
   }
   return {
     async get(type, id) {
-      if (type !== "usage_alerts" && type !== "tenant_quotas") return null;
-      return store.get(id) || null;
+      if (type === "tenant_quotas") return quotaOverrides[id] || null;
+      if (type === "usage_alerts") return alertStore.get(id) || null;
+      return null;
     },
     async list(type, workspace) {
-      const result = [];
-      for (const item of store.values()) {
-        if (item.workspaceId === workspace) result.push(item);
+      if (type === "usage_alerts") {
+        const result = [];
+        for (const item of alertStore.values()) {
+          if (item.workspaceId === workspace) result.push(item);
+        }
+        return result;
       }
-      return result;
+      return [];
     },
     async add(type, item) {
-      store.set(item.id, item);
+      if (type === "usage_alerts") alertStore.set(item.id, item);
     },
     async remove() {},
     async listWorkspaces() {
@@ -98,39 +102,27 @@ test("checkUsageThresholds: returns no alerts for idle workspace", async () => {
 
 test("checkUsageThresholds: returns alert when token usage exceeds 80% of daily limit", async () => {
   __resetForTests();
-  const prev = process.env.DEFAULT_TOKENS_PER_DAY;
-  process.env.DEFAULT_TOKENS_PER_DAY = "100";
-  try {
-    const ws = "alert-ws-" + Date.now();
-    recordTokens(ws, 85);
-    const storage = makeMockStorage();
-    const result = await checkUsageThresholds(ws, storage);
-    assert.ok(Array.isArray(result.alerts));
-    const tokenAlert = result.alerts.find((a) => a.type === "tokens_per_day");
-    assert.ok(tokenAlert, "should have a tokens_per_day alert");
-    assert.equal(tokenAlert.current, 85);
-    assert.equal(tokenAlert.limit, 100);
-  } finally {
-    if (prev === undefined) delete process.env.DEFAULT_TOKENS_PER_DAY;
-    else process.env.DEFAULT_TOKENS_PER_DAY = prev;
-  }
+  const ws = "alert-ws-" + Date.now();
+  recordTokens(ws, 85);
+  // Override tokensPerDay to 100 so 85 > 80% of 100
+  const storage = makeMockStorage({ [ws]: { tokensPerDay: 100 } });
+  const result = await checkUsageThresholds(ws, storage);
+  assert.ok(Array.isArray(result.alerts));
+  const tokenAlert = result.alerts.find((a) => a.type === "tokens_per_day");
+  assert.ok(tokenAlert, "should have a tokens_per_day alert");
+  assert.equal(tokenAlert.current, 85);
+  assert.equal(tokenAlert.limit, 100);
 });
 
 test("checkUsageThresholds: persists alert to storage when over threshold", async () => {
   __resetForTests();
-  const prev = process.env.DEFAULT_TOKENS_PER_DAY;
-  process.env.DEFAULT_TOKENS_PER_DAY = "100";
-  try {
-    const ws = "persist-ws-" + Date.now();
-    recordTokens(ws, 90);
-    const storage = makeMockStorage();
-    await checkUsageThresholds(ws, storage);
-    const stored = await listUsageAlerts(ws, storage);
-    assert.ok(stored.length > 0, "alert should be persisted to storage");
-  } finally {
-    if (prev === undefined) delete process.env.DEFAULT_TOKENS_PER_DAY;
-    else process.env.DEFAULT_TOKENS_PER_DAY = prev;
-  }
+  const ws = "persist-ws-" + Date.now();
+  recordTokens(ws, 90);
+  // Override tokensPerDay to 100 so 90 > 80% of 100
+  const storage = makeMockStorage({ [ws]: { tokensPerDay: 100 } });
+  await checkUsageThresholds(ws, storage);
+  const stored = await listUsageAlerts(ws, storage);
+  assert.ok(stored.length > 0, "alert should be persisted to storage");
 });
 
 test("listUsageAlerts: returns empty array when storage has no alerts", async () => {
