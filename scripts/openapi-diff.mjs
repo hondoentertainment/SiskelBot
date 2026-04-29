@@ -17,6 +17,7 @@
  * script remains usable whether or not a YAML library is installed.
  */
 import { readFileSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 async function tryImport(name) {
   try {
@@ -206,8 +207,7 @@ export function formatMarkdown(diffResult, oldVersion, newVersion) {
 // CLI entry point: only run when this file is invoked directly.
 const isMain = (() => {
   try {
-    const here = new URL(import.meta.url).pathname;
-    return process.argv[1] && (here === process.argv[1] || here.endsWith(process.argv[1]));
+    return process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
   } catch {
     return false;
   }

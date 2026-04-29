@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   parseArgs,
   welchT,
@@ -19,6 +20,8 @@ import {
   formatReport,
   analyzeData,
 } from "../scripts/ab-analyze.mjs";
+
+const SCRIPT = fileURLToPath(new URL("../scripts/ab-analyze.mjs", import.meta.url));
 
 // --- welchT ---
 
@@ -234,7 +237,7 @@ test("CLI: end-to-end run with JSON input emits Recommendation", () => {
     const result = spawnSync(
       process.execPath,
       [
-        new URL("../scripts/ab-analyze.mjs", import.meta.url).pathname,
+        SCRIPT,
         "--experiment=swarm-v2",
         "--metric=latency",
         `--input=${inputPath}`,
@@ -255,7 +258,7 @@ test("CLI: end-to-end run with JSON input emits Recommendation", () => {
 test("CLI: missing --experiment exits with code 2", () => {
   const result = spawnSync(
     process.execPath,
-    [new URL("../scripts/ab-analyze.mjs", import.meta.url).pathname],
+    [SCRIPT],
     { encoding: "utf8" }
   );
   assert.equal(result.status, 2);

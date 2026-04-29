@@ -23,6 +23,7 @@
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 // Math.erfc polyfill (Abramowitz & Stegun 7.1.26)
 if (!Math.erfc) {
@@ -244,8 +245,7 @@ async function main() {
 
 // Run only when invoked directly (not when imported by tests)
 const invokedDirectly =
-  import.meta.url === `file://${process.argv[1]}` ||
-  process.argv[1]?.endsWith("ab-analyze.mjs");
+  process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 
 if (invokedDirectly) {
   main().catch((err) => {
