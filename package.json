@@ -45,6 +45,7 @@
     "eval:golden": "node scripts/run-golden-evals.mjs",
     "test:load": "node scripts/load-test.mjs",
     "openapi:generate": "node scripts/generate-openapi.mjs",
+    "postman:generate": "npm run openapi:generate && node scripts/openapi-to-postman.mjs --input=docs/openapi.yaml --output=postman/SiskelBot.postman_collection.json",
     "eval:live": "node scripts/run-eval-live.mjs",
     "test:integration": "node scripts/integration-test.mjs",
     "test:recipes": "node scripts/test-recipes.mjs",

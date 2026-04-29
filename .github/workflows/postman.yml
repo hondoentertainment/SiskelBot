@@ -1,0 +1,45 @@
+# Regenerate Postman collection on changes to OpenAPI source
+name: Postman collection
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'lib/openapi-spec.js'
+      - 'lib/openapi-overrides.js'
+      - 'routes/**'
+      - 'scripts/openapi-to-postman.mjs'
+      - 'scripts/generate-openapi.mjs'
+      - 'docs/openapi.yaml'
+  workflow_dispatch:
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Generate collection
+        run: npm run postman:generate
+
+      - name: Open PR if collection changed
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore: refresh Postman collection from OpenAPI"
+          title: "chore: refresh Postman collection"
+          branch: chore/refresh-postman
+          body: |
+            Auto-generated from OpenAPI spec changes.
+          add-paths: |
+            postman/SiskelBot.postman_collection.json
