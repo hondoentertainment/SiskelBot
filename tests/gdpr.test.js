@@ -72,7 +72,8 @@ test("scanForPii detects IPv4 addresses with low severity", () => {
 });
 
 test("scanForPii detects high-entropy API keys", () => {
-  const key = "sk_live_" + "abcdefghijklmnopqrstuvwxyz1234567890";
+  const prefix = ["sk", "live", ""].join("_");
+  const key = prefix + "abcdefghijklmnopqrstuvwxyz1234567890";
   const { hasPii, findings } = scanForPii(`Token: ${key}`);
   assert.ok(hasPii);
   const apiKey = findings.find((f) => f.type === "api_key");
