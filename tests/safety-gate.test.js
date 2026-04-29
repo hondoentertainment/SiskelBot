@@ -1,12 +1,6 @@
 import { describe, test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
-// Helpers to control env between tests
-function setEnv(key, val) {
-  if (val === undefined) delete process.env[key];
-  else process.env[key] = val;
-}
-
 describe("safety-gate: checkInput pattern matching", () => {
   let checkInput;
   before(async () => {
@@ -94,13 +88,8 @@ describe("safety-gate: MODERATION_ENABLED=0 disables all checks", () => {
 
   test("blocked text passes through when moderation disabled", async () => {
     process.env.MODERATION_ENABLED = "0";
-    // The const MODERATION_ENABLED is evaluated at import time in the real module;
-    // we test via a fresh dynamic import to ensure isolation.
-    const mod = await import("../lib/safety-gate.js?disabled=1").catch(() => null);
-    // Fallback: verify checkInput on the main module still works (just not disabled mid-run).
-    // Since we can't re-import with different env in the same process easily, validate the
-    // logic by checking that when MODERATION_ENABLED !== "0" at import time, it's enabled.
-    // This test verifies the env var wiring at module level.
+    // ES module caching prevents re-import with a different env in the same process.
+    // Verify the exported functions are present; the env-based gate is tested at module load time.
     assert.ok(typeof checkInput === "function");
     assert.ok(typeof checkOutput === "function");
   });

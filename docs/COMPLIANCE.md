@@ -188,3 +188,222 @@ and S3 archiving.
 - `tests/compliance.test.js` &mdash; unit tests
 - `docs/RUNBOOK.md` &mdash; operational runbook
 - `docs/AUDIT.md` &mdash; audit log architecture (if present)
+
+## Audit log immutability
+
+SiskelBot uses SHA-256 hash-chaining to make the audit log tamper-evident. Each
+entry records a cryptographic hash of itself together with the hash of the
+previous entry, forming a chain. Any modification to a historical entry causes
+its stored hash to diverge from the recomputed hash, and the divergence
+propagates visibly forward through the chain.
+
+### How hash-chaining works
+
+Each audit entry is extended with three fields:
+
+| Field | Description |
+|-------|-------------|
+| `hash` | SHA-256 of `prevHash + JSON.stringify({ event, userId, workspaceId, createdAt, metadata })` |
+| `prevHash` | `hash` of the immediately preceding entry in the same workspace chain |
+| `sequence` | Monotonically increasing integer per workspace (starts at 1) |
+
+The first entry in each workspace chain uses the genesis `prevHash` value
+`"0000000000000000"` (16 zeros).
+
+The chain is maintained per workspace. An in-process lock serialises concurrent
+writes so that `sequence` values are gapless and `prevHash` references are
+consistent.
+
+### Verifying the chain
+
+Use the admin API to verify chain integrity:
+
+```
+GET  /api/v1/admin/audit/chain/verify?workspaceId=<id>&limit=100
+     — recomputes the hash for each of the last N entries and compares
+       to the stored hash; returns { valid, entriesChecked, firstBadSequence }
+
+GET  /api/v1/admin/audit/chain/head?workspaceId=<id>
+     — returns the current chain head { hash, sequence, lastEntryAt }
+
+POST /api/v1/admin/audit/chain/verify-all
+     — verifies all workspaces; returns { workspacesChecked, allValid, invalidWorkspaces }
+```
+
+All three endpoints require admin authentication.
+
+Programmatically, import `verifyChain` from `lib/audit-chain.js`:
+
+```javascript
+import { verifyChain } from "./lib/audit-chain.js";
+const result = await verifyChain("my-workspace-id", { limit: 500 });
+// result.valid === false  →  tamper detected
+// result.firstBadSequence →  sequence number of the first compromised entry
+```
+
+### What tamper evidence looks like
+
+When an entry's fields are modified after the fact, `verifyChain` returns:
+
+```json
+{
+  "valid": false,
+  "entriesChecked": 100,
+  "firstBadSequence": 42,
+  "verifiedAt": "2026-04-29T00:00:00.000Z"
+}
+```
+
+`firstBadSequence` identifies the earliest sequence number whose stored `hash`
+no longer matches the recomputed value. All entries with `sequence >=
+firstBadSequence` should be treated as potentially compromised.
+
+Note that hash-chaining detects tampering with already-written entries but does
+not prevent deletion of entries from the end of the log. Pair it with the
+on-chain Merkle anchoring provided by `lib/audit-anchor.js` for stronger
+non-repudiation guarantees.
+
+### Storage notes
+
+- **JSON-file / SQLite backend**: chain heads are stored as separate
+  `audit-chain-head-<workspaceId>.json` files alongside the main
+  `execution-audit.json` log.
+- **PostgreSQL backend**: the `007_add_audit_chain_columns` migration adds
+  `hash TEXT`, `prev_hash TEXT`, and `sequence BIGINT` columns (all
+  `DEFAULT NULL`) to the `audit_log` table so existing rows are unaffected.
+
+Implementation: `lib/audit-chain.js` &mdash; tests: `tests/audit-chain.test.js`
+
+---
+
+## GDPR Tooling (Wave 19B)
+
+SiskelBot includes a PII scanner, a DPIA (Data Protection Impact Assessment)
+template generator, and self-service data-subject endpoints. These tools
+supplement the compliance report endpoints above.
+
+### PII Scanner
+
+`lib/pii-scanner.js` provides synchronous, regex-based PII detection with no
+external dependencies. It detects:
+
+| Pattern | Severity |
+|---------|----------|
+| Email addresses | high |
+| US Social Security Numbers (XXX-XX-XXXX) | high |
+| Credit card numbers (Luhn-validated, 13–19 digits) | high |
+| API keys / tokens (high-entropy strings ≥ 32 chars) | high |
+| Phone numbers (E.164 and common US formats) | medium |
+| IPv4 and IPv6 addresses | low |
+| Names near "name:" labels (best-effort) | low |
+
+**Scan a workspace for PII via the API:**
+
+```bash
+curl -X POST https://example.com/api/v1/gdpr/pii-scan \
+  -H "x-api-key: $USER_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"workspaceId": "my-workspace", "sampleSize": 100}'
+```
+
+The response includes:
+
+```json
+{
+  "workspaceId": "my-workspace",
+  "scannedAt": "2026-04-29T12:00:00.000Z",
+  "documentsScanned": 45,
+  "piiFindings": [
+    { "documentId": "abc123", "type": "email", "count": 3 }
+  ],
+  "summary": { "high": 3, "medium": 0, "low": 0 }
+}
+```
+
+To redact PII programmatically, use `redactPii(text)` from `lib/pii-scanner.js`.
+Each match is replaced with `[REDACTED:<type>]` (e.g. `[REDACTED:email]`).
+
+### DPIA Template Generator
+
+`lib/dpia.js` generates a Markdown DPIA document inferred from the current
+environment (enabled features, configured third-party providers, retention
+settings). Sections included:
+
+1. Processing description
+2. Purpose and legal basis
+3. Data categories processed (auto-detected from env vars)
+4. Data retention periods (reads `AUDIT_RETENTION_DAYS`)
+5. Third-party processors (OpenAI, Stripe, GitHub, Google, Slack, Discord)
+6. Risk assessment with mitigations
+7. Safeguards already in place
+8. Data subject rights and endpoints
+
+**Generate a DPIA via the API:**
+
+```bash
+# JSON response
+curl -H "x-api-key: $USER_API_KEY" \
+  "https://example.com/api/v1/gdpr/dpia?workspaceId=my-workspace"
+
+# Markdown download
+curl -H "x-api-key: $USER_API_KEY" \
+  -H "Accept: text/markdown" \
+  "https://example.com/api/v1/gdpr/dpia?workspaceId=my-workspace" \
+  -o dpia-my-workspace.md
+```
+
+> **Important:** The generated DPIA is a starting point. It must be reviewed
+> and validated by a qualified Data Protection Officer before being used for
+> regulatory purposes.
+
+### Self-Service Data-Subject Endpoints
+
+These endpoints allow authenticated users to exercise their GDPR rights
+without requiring operator intervention for the initial request. Operators
+are responsible for completing the underlying data operations.
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /api/v1/gdpr/pii-scan` | Scan workspace for PII (requires `read` scope) |
+| `GET  /api/v1/gdpr/dpia` | Generate DPIA template (requires `read` scope) |
+| `POST /api/v1/gdpr/data-export` | Queue a data-export job for the authenticated user |
+| `POST /api/v1/gdpr/data-deletion` | Queue a data-deletion request (body: `{"confirmation":"DELETE_MY_DATA"}`) |
+| `GET  /api/v1/gdpr/data-deletion/status` | Check status of the most recent deletion request |
+
+Data export and deletion are **async operations**. The endpoints return a
+`jobId` and `estimatedReadyAt`. Operators must complete the actual data
+extraction or deletion and notify the user within 30 days (GDPR Article 12).
+Job records are stored in `data/gdpr-jobs.json` (or the active KV backend).
+
+**Request a data deletion:**
+
+```bash
+curl -X POST https://example.com/api/v1/gdpr/data-deletion \
+  -H "x-api-key: $USER_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"confirmation": "DELETE_MY_DATA"}'
+```
+
+### Third-Party Processor List
+
+The following third-party processors may receive personal data, depending on
+which integrations are enabled (detected from environment variables):
+
+| Processor | Trigger | Data transferred |
+|-----------|---------|-----------------|
+| **OpenAI** | `OPENAI_API_KEY` set | User prompts and conversation content |
+| **Stripe** | `STRIPE_SECRET_KEY` set | Billing email, subscription metadata |
+| **GitHub** | `GITHUB_CLIENT_ID` set | OAuth profile (email, username) |
+| **Google** | `GOOGLE_CLIENT_ID` set | OAuth profile (email, name) |
+| **Slack** | `SLACK_BOT_TOKEN` set | Messages forwarded to the bot |
+| **Discord** | `DISCORD_BOT_TOKEN` set | Messages forwarded to the bot |
+
+A Data Processing Agreement (DPA) must be in place with each active processor
+before deploying to users in the EU/EEA.
+
+### See also (GDPR tooling)
+
+- `lib/pii-scanner.js` &mdash; PII detection and redaction
+- `lib/dpia.js` &mdash; DPIA template generator
+- `routes/gdpr.js` &mdash; GDPR HTTP endpoints
+- `tests/gdpr.test.js` &mdash; unit and route tests

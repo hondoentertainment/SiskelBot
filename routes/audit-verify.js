@@ -1,7 +1,6 @@
 import { verifyChain, getChainHead } from "../lib/audit-chain.js";
-import { readJsonPath } from "../lib/json-path-store.js";
+import { readJsonPath, getDataDir } from "../lib/json-path-store.js";
 import { join } from "node:path";
-import { getDataDir } from "../lib/json-path-store.js";
 
 function auditLogPath() {
   return join(getDataDir(), "execution-audit.json");
