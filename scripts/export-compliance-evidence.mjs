@@ -9,7 +9,6 @@
  */
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 const args = process.argv.slice(2);
 
@@ -22,7 +21,7 @@ function getArg(flag, defaultVal) {
 const outputFile = getArg("--output", null);
 const days = parseInt(getArg("--days", "90"), 10) || 90;
 
-const { listEvidenceSnapshots, collectEvidence } = await import("../lib/compliance-evidence.js");
+const { listEvidenceSnapshots } = await import("../lib/compliance-evidence.js");
 
 const limit = Math.min(days, 365);
 const snapshots = await listEvidenceSnapshots({ limit });

@@ -6,7 +6,7 @@ import {
   checkUsageThresholds,
   listUsageAlerts,
 } from "../lib/usage-reports.js";
-import { __resetForTests, recordRequest, recordTokens } from "../lib/tenant-quotas.js";
+import { __resetForTests, recordTokens } from "../lib/tenant-quotas.js";
 
 function makeMockStorage(quotaOverrides = {}, alertItems = []) {
   const alertStore = new Map();
