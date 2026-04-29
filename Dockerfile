@@ -2,7 +2,7 @@
 # Multi-stage build for production image
 
 # --- Build stage ---
-FROM node:20-alpine AS builder
+FROM node:25-alpine AS builder
 WORKDIR /app
 
 # Build deps for optional better-sqlite3 (native module)
@@ -13,7 +13,7 @@ COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev
 
 # --- Production stage ---
-FROM node:20-alpine
+FROM node:25-alpine
 
 LABEL org.opencontainers.image.title="SiskelBot" \
       org.opencontainers.image.description="Realtime streaming assistant proxy for Ollama, vLLM, or OpenAI" \

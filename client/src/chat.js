@@ -1262,12 +1262,20 @@
     const refreshReposBtn = document.getElementById('refresh-repos-btn');
     const refreshDeploymentsBtn = document.getElementById('refresh-deployments-btn');
     const integrationsList = document.getElementById('integrations-list');
+    const integrationsHint = document.getElementById('integrations-hint');
+
+    function setIntegrationsHint(message) {
+      if (integrationsHint) integrationsHint.textContent = message;
+    }
 
     async function loadIntegrationsStatus() {
       if (!githubStatusEl || !vercelStatusEl) return;
       try {
         const res = await fetch('/api/integrations/status');
-        if (!res.ok) return;
+        if (!res.ok) {
+          setIntegrationsHint('Could not load integration status. Check the server logs and integration environment variables.');
+          return;
+        }
         const data = await res.json();
         githubStatusEl.textContent = 'GitHub: ' + (data.github ? 'connected' : 'missing');
         githubStatusEl.className = data.github ? 'connected' : 'missing';
@@ -1275,7 +1283,17 @@
         vercelStatusEl.className = data.vercel ? 'connected' : 'missing';
         if (refreshReposBtn) refreshReposBtn.disabled = !data.github;
         if (refreshDeploymentsBtn) refreshDeploymentsBtn.disabled = !data.vercel;
-      } catch (_) {}
+        if (data.github && data.vercel) {
+          setIntegrationsHint('GitHub and Vercel are connected. Use recipes with deploy steps to turn changes into deployments.');
+        } else {
+          const missing = [];
+          if (!data.github) missing.push('GITHUB_TOKEN');
+          if (!data.vercel) missing.push('VERCEL_TOKEN');
+          setIntegrationsHint('Missing server-side ' + missing.join(' and ') + '. Set tokens to unlock repos, deployments, and deploy recipes.');
+        }
+      } catch (err) {
+        setIntegrationsHint('Could not load integration status: ' + (err.message || 'request failed'));
+      }
     }
 
     async function refreshRepos() {
@@ -1291,7 +1309,7 @@
         }
         const repos = Array.isArray(data) ? data : [];
         if (repos.length === 0) {
-          integrationsList.innerHTML = '<li class="integrations-list empty">No repos</li>';
+          integrationsList.innerHTML = '<li class="integrations-list empty">No repos found. Confirm GITHUB_TOKEN has access to the repositories you expect.</li>';
           return;
         }
         integrationsList.innerHTML = repos.slice(0, 50).map(r => {
@@ -1318,7 +1336,7 @@
         }
         const deployments = data.deployments || (Array.isArray(data) ? data : []);
         if (deployments.length === 0) {
-          integrationsList.innerHTML = '<li class="integrations-list empty">No deployments</li>';
+          integrationsList.innerHTML = '<li class="integrations-list empty">No deployments found. Confirm VERCEL_TOKEN can access the target Vercel team and project.</li>';
           return;
         }
         integrationsList.innerHTML = deployments.slice(0, 50).map(d => {
