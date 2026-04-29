@@ -100,6 +100,20 @@ redis:
   existingSecret: siskelbot-redis-credentials
   existingSecretPasswordKey: password
 
+pgbouncer:
+  enabled: true
+  replicas: 3
+  poolMode: transaction
+  maxClientConn: 5000
+  defaultPoolSize: 50
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+
 metrics:
   enabled: true
   serviceMonitor:

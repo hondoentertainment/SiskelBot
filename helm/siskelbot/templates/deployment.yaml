@@ -53,9 +53,24 @@ spec:
             - name: http
               containerPort: {{ .Values.service.targetPort }}
               protocol: TCP
-          {{- with .Values.env }}
+          {{- if or .Values.env .Values.pgbouncer.enabled }}
           env:
+            {{- with .Values.env }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- if .Values.pgbouncer.enabled }}
+            # Override DATABASE_URL to route through PgBouncer.
+            # NOTE: this entry must come AFTER any envFrom Secret that also sets
+            # DATABASE_URL — Kubernetes resolves explicit `env` after `envFrom`,
+            # so this value wins.
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgresql.existingSecret | quote }}
+                  key: {{ .Values.postgresql.existingSecretPasswordKey | quote }}
+            - name: DATABASE_URL
+              value: "postgres://{{ .Values.postgresql.username }}:$(DATABASE_PASSWORD)@{{ include "siskelbot.fullname" . }}-pgbouncer:6432/{{ .Values.postgresql.database }}"
+            {{- end }}
           {{- end }}
           envFrom:
             {{- range .Values.envFrom.secretRefs }}

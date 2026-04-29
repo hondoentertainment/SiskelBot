@@ -148,6 +148,28 @@ redis:
   existingSecret: ""
   existingSecretPasswordKey: password
 
+# Connection pooling for Postgres
+pgbouncer:
+  enabled: false
+  replicas: 2
+  image:
+    repository: bitnami/pgbouncer
+    tag: "1.23.1"
+    pullPolicy: IfNotPresent
+  # transaction (best for typical web traffic) | session | statement
+  poolMode: transaction
+  # Total client connections accepted across all pgbouncer instances
+  maxClientConn: 1000
+  # Connections per database/user pair to backend
+  defaultPoolSize: 25
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
 metrics:
   enabled: true
   port: 3000
