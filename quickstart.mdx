@@ -1,0 +1,35 @@
+---
+title: 'Quickstart'
+description: 'Get SiskelBot running in 60 seconds'
+---
+
+## Local
+
+```bash
+git clone https://github.com/hondoentertainment/SiskelBot.git
+cd SiskelBot
+npm install
+cp .env.example .env
+# Edit .env: set BACKEND=openai and OPENAI_API_KEY
+npm start
+```
+
+Open http://localhost:3000.
+
+## Docker
+
+```bash
+docker run -d --name siskelbot \
+  -e BACKEND=openai \
+  -e OPENAI_API_KEY=sk-... \
+  -p 3000:3000 \
+  ghcr.io/hondoentertainment/siskelbot:latest
+```
+
+## Kubernetes
+
+See [the Kubernetes deployment guide](/docs/KUBERNETES).
+
+## Vercel
+
+See [the deployment guide](/docs/DEPLOYMENT).

@@ -1,0 +1,103 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "SiskelBot",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "favicon": "/favicon.png",
+  "colors": {
+    "primary": "#0EA5E9",
+    "light": "#38BDF8",
+    "dark": "#0284C7"
+  },
+  "topbarLinks": [
+    {
+      "name": "GitHub",
+      "url": "https://github.com/hondoentertainment/SiskelBot"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Get started",
+    "url": "/quickstart"
+  },
+  "tabs": [
+    { "name": "Guides", "url": "guides" },
+    { "name": "API Reference", "url": "api-reference" },
+    { "name": "Operations", "url": "operations" }
+  ],
+  "anchors": [
+    { "name": "GitHub", "icon": "github", "url": "https://github.com/hondoentertainment/SiskelBot" }
+  ],
+  "navigation": [
+    {
+      "group": "Getting started",
+      "pages": [
+        "introduction",
+        "quickstart",
+        "docs/BACKENDS",
+        "docs/DEPLOYMENT"
+      ]
+    },
+    {
+      "group": "Operations",
+      "pages": [
+        "docs/KUBERNETES",
+        "docs/RUNBOOK",
+        "docs/GO_LIVE_CHECKLIST",
+        "docs/SSO",
+        "docs/LOGGING",
+        "docs/PGBOUNCER"
+      ]
+    },
+    {
+      "group": "Security",
+      "pages": [
+        "docs/SECURITY_SCANNING",
+        "docs/IMAGE_SIGNING",
+        "docs/SBOM",
+        "docs/COMPLIANCE",
+        "docs/DATA_RETENTION"
+      ]
+    },
+    {
+      "group": "Reliability",
+      "pages": [
+        "docs/CANARY",
+        "docs/CHAOS_TESTING",
+        "docs/SYNTHETIC_MONITORING",
+        "docs/STATUS_PAGE"
+      ]
+    },
+    {
+      "group": "Product",
+      "pages": [
+        "docs/FEATURE_FLAGS",
+        "docs/AB_TESTING",
+        "docs/TENANT_QUOTAS",
+        "docs/API_VERSIONING"
+      ]
+    },
+    {
+      "group": "Runbooks",
+      "pages": [
+        "docs/RUNBOOKS/agent_loop_runaway",
+        "docs/RUNBOOKS/backend_down",
+        "docs/RUNBOOKS/database_restore",
+        "docs/RUNBOOKS/database_slow",
+        "docs/RUNBOOKS/disk_full",
+        "docs/RUNBOOKS/high_error_rate",
+        "docs/RUNBOOKS/latency_spike",
+        "docs/RUNBOOKS/memory_leak",
+        "docs/RUNBOOKS/migration_failure",
+        "docs/RUNBOOKS/quota_exhausted",
+        "docs/RUNBOOKS/region_failover",
+        "docs/RUNBOOKS/webhook_dlq_drain",
+        "docs/RUNBOOKS/webhook_dlq_growing"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/hondoentertainment/SiskelBot"
+  }
+}

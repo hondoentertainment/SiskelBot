@@ -8,6 +8,16 @@
 
 Realtime streaming assistant proxy for Ollama, vLLM, or OpenAI. Node.js proxy that streams chat completions to clients with workspace management, agent orchestration, knowledge graphs, workflow automation, and integrations with GitHub, Vercel, Jira, Linear, Slack, and Discord.
 
+## Documentation
+
+Full docs: [docs.siskelbot.dev](https://docs.siskelbot.dev) (or browse [docs/](./docs/) directly)
+
+Quick links:
+- [Quickstart](./quickstart.mdx)
+- [Backends config](./docs/BACKENDS.md)
+- [Kubernetes deployment](./docs/KUBERNETES.md)
+- [Operations runbook](./docs/RUNBOOK.md)
+
 ## Architecture
 
 ```
