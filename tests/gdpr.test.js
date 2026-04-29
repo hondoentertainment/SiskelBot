@@ -190,13 +190,13 @@ function buildApp({ authenticated = true } = {}) {
           req.userId = "test-user";
           next();
         }
-      : (req, res, next) => res.status(401).json({ error: "Unauthorized", code: "UNAUTHORIZED" }),
+      : (req, res, _next) => res.status(401).json({ error: "Unauthorized", code: "UNAUTHORIZED" }),
     requireScope: () => (req, res, next) => next(),
     logRequest: (req, res, next) => next(),
     storageRateLimiter: (req, res, next) => next(),
     sanitizeWorkspace: (ws) =>
       String(ws || "default")
-        .replace(/[^a-zA-Z0-9_.\-]/g, "")
+        .replace(/[^a-zA-Z0-9_.-]/g, "")
         .slice(0, 50) || "default",
   };
 
@@ -315,7 +315,7 @@ test("GET /api/v1/gdpr/data-deletion/status returns not_requested for a fresh us
     storageRateLimiter: (req, res, next) => next(),
     sanitizeWorkspace: (ws) =>
       String(ws || "default")
-        .replace(/[^a-zA-Z0-9_.\-]/g, "")
+        .replace(/[^a-zA-Z0-9_.-]/g, "")
         .slice(0, 50) || "default",
   };
   mountGdprRoutes(freshApp, freshDeps);
@@ -326,7 +326,6 @@ test("GET /api/v1/gdpr/data-deletion/status returns not_requested for a fresh us
 
 test("GET /api/v1/gdpr/data-deletion/status reflects queued deletion job", async () => {
   const userId = `user-status-${Date.now()}`;
-  const app = buildApp({ authenticated: true });
 
   const appWithUser = express();
   appWithUser.use(express.json());
@@ -346,7 +345,7 @@ test("GET /api/v1/gdpr/data-deletion/status reflects queued deletion job", async
     storageRateLimiter: (req, res, next) => next(),
     sanitizeWorkspace: (ws) =>
       String(ws || "default")
-        .replace(/[^a-zA-Z0-9_.\-]/g, "")
+        .replace(/[^a-zA-Z0-9_.-]/g, "")
         .slice(0, 50) || "default",
   };
   mountGdprRoutes(appWithUser, depsWithUser);
