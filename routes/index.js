@@ -158,6 +158,7 @@ import { mountCryptoPaymentRoutes } from "./crypto-payments.js";
 import { mountWalletAuthRoutes } from "./wallet-auth.js";
 import { mountDecentralizedStorageRoutes } from "./decentralized-storage.js";
 import { mountAuditAnchorRoutes } from "./audit-anchor.js";
+import { mountAuditVerifyRoutes } from "./audit-verify.js";
 import { mountVrRoomsRoutes } from "./vr-rooms.js";
 import { mountAvatarAgentsRoutes } from "./avatar-agents.js";
 import { mountSpatialGraphRoutes } from "./spatial-graph.js";
@@ -275,6 +276,7 @@ import mountExperimentBridgeRoutes from "./experiment-bridge.js";
 import mountReproducibilityRoutes from "./reproducibility-checks.js";
 
 // Phase 71 — Agent Economics (5 modules)
+import { mountGdprRoutes } from "./gdpr.js";
 import mountPricingRoutes from "./pricing-engine.js";
 import mountOutcomeRoutes from "./outcome-verification.js";
 import mountRevenueShareRoutes from "./revenue-share.js";
@@ -418,6 +420,7 @@ const mountFunctions = [
   mountWalletAuthRoutes,
   mountDecentralizedStorageRoutes,
   mountAuditAnchorRoutes,
+  mountAuditVerifyRoutes,
   mountVrRoomsRoutes,
   mountAvatarAgentsRoutes,
   mountSpatialGraphRoutes,
@@ -533,6 +536,9 @@ const mountFunctions = [
   mountCitationGraphRoutes,
   mountExperimentBridgeRoutes,
   mountReproducibilityRoutes,
+
+  // Wave 19B — GDPR / DPIA tooling
+  mountGdprRoutes,
 
   // Phase 71 — Agent Economics
   mountPricingRoutes,
