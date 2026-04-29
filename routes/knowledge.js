@@ -291,7 +291,7 @@ export default function mountKnowledgeRoutes(app, deps) {
 
   const validateCreateContext = validate({ body: { title: "string", content: "string" } });
 
-  apiRoute("post", "/context", storageRateLimiter, requireScope("write"), logRequest, validateCreateContext, async (req, res) => {
+  apiRoute("post", "/context", storageRateLimiter, userAuth, requireScope("write"), logRequest, validateCreateContext, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.body?.workspace);
       let { title, content } = req.body || {};
@@ -320,9 +320,9 @@ export default function mountKnowledgeRoutes(app, deps) {
         content: typeof content === "string" ? content : "",
         createdAt: new Date().toISOString(),
       };
-      const merged = await storage.mergeItems("context", workspace, [doc]);
+      const merged = await storage.mergeItems("context", workspace, [doc], req.userId);
       const item = merged.find((x) => x.id === id) || doc;
-      await logActivity(workspace, "context_added", req.userId || "anonymous", { title: doc.title, id: doc.id });
+      await logActivity(workspace, "context_added", req.userId, { title: doc.title, id: doc.id });
       res.status(201).json(item);
     } catch (err) {
       console.error("Storage context add error:", err.message);
@@ -330,10 +330,10 @@ export default function mountKnowledgeRoutes(app, deps) {
     }
   });
 
-  apiRoute("get", "/context/:id", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+  apiRoute("get", "/context/:id", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
-      const item = await storage.getItem("context", req.params.id, workspace);
+      const item = await storage.getItem("context", req.params.id, workspace, req.userId);
       if (!item) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
       res.json(item);
     } catch (err) {
@@ -342,7 +342,7 @@ export default function mountKnowledgeRoutes(app, deps) {
     }
   });
 
-  apiRoute("put", "/context/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
+  apiRoute("put", "/context/:id", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.body?.workspace);
       const { title, content } = req.body || {};
@@ -350,7 +350,7 @@ export default function mountKnowledgeRoutes(app, deps) {
         if (typeof title === "string" && title.trim()) existing.title = title.trim().slice(0, 500);
         if (content !== undefined) existing.content = typeof content === "string" ? content : "";
         return existing;
-      });
+      }, req.userId);
       if (!updated) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
       res.json(updated);
     } catch (err) {
@@ -359,10 +359,10 @@ export default function mountKnowledgeRoutes(app, deps) {
     }
   });
 
-  apiRoute("delete", "/context/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
+  apiRoute("delete", "/context/:id", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
-      const deleted = await storage.deleteItem("context", req.params.id, workspace);
+      const deleted = await storage.deleteItem("context", req.params.id, workspace, req.userId);
       if (!deleted) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
       res.status(204).send();
     } catch (err) {
@@ -371,12 +371,12 @@ export default function mountKnowledgeRoutes(app, deps) {
     }
   });
 
-  apiRoute("post", "/context/sync", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
+  apiRoute("post", "/context/sync", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.body?.workspace);
       const items = Array.isArray(req.body?.items) ? req.body.items : [];
       const valid = items.filter((x) => x && x.id && typeof x.title === "string");
-      const merged = await storage.mergeItems("context", workspace, valid);
+      const merged = await storage.mergeItems("context", workspace, valid, req.userId);
       res.json({ _version: 1, items: merged });
     } catch (err) {
       console.error("Storage context sync error:", err.message);

@@ -3,16 +3,52 @@
  * Load test script for SiskelBot.
  *
  * Usage:
- *   node scripts/load-test.mjs [--url=http://localhost:3000] [--duration=30]
- *     [--concurrency=10] [--rps=50] [--max-error-rate=5] [--max-p99=2000]
+ *   node scripts/load-test.mjs [options]
+ *
+ * Options:
+ *   --url=<url>                  Target server URL (default: http://localhost:3000)
+ *   --duration=<sec>             Test duration in seconds (default: 30)
+ *   --concurrency=<n>            Number of concurrent workers (default: 10)
+ *   --rps=<n>                    Target requests per second (default: 50)
+ *   --max-error-rate=<pct>       Max acceptable error rate, percent (default: 5)
+ *   --max-p99=<ms>               Max acceptable p99 latency, ms (default: 2000)
+ *   --json-output=<path>         Write structured results JSON to this path
+ *   --baseline=<path>            Compare against a previous results JSON. Fails when
+ *                                p99 regressed >30% or errorRate regressed >100%.
+ *                                Missing files are warned about (not fatal).
+ *   --update-baseline=<path>     After a passing run, write current results to this
+ *                                path so CI can refresh the baseline post-merge.
+ *   --help                       Print this help.
+ *
+ * Baseline note:
+ *   The committed baseline at tests/load-baseline.json should be regenerated
+ *   periodically by running this script with --update-baseline=tests/load-baseline.json
+ *   against a stable build, then committing the result. See the load-baseline.yml
+ *   GitHub Actions workflow which automates this via manual dispatch.
  */
 
-import { writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
 
 // ---------------------------------------------------------------------------
 // Arg parsing
 // ---------------------------------------------------------------------------
+
+function printHelp() {
+  console.log(`Usage: node scripts/load-test.mjs [options]
+
+Options:
+  --url=<url>                  Target server URL (default: http://localhost:3000)
+  --duration=<sec>             Test duration in seconds (default: 30)
+  --concurrency=<n>            Number of concurrent workers (default: 10)
+  --rps=<n>                    Target requests per second (default: 50)
+  --max-error-rate=<pct>       Max acceptable error rate, percent (default: 5)
+  --max-p99=<ms>               Max acceptable p99 latency, ms (default: 2000)
+  --json-output=<path>         Write structured results JSON to this path
+  --baseline=<path>            Compare against a previous results JSON
+  --update-baseline=<path>     After a passing run, write results to this path
+  --help                       Print this help`);
+}
 
 function parseArgs(argv) {
   const defaults = {
@@ -22,10 +58,24 @@ function parseArgs(argv) {
     rps: 50,
     maxErrorRate: 5,
     maxP99: 2000,
+    jsonOutput: null,
+    baseline: null,
+    updateBaseline: null,
+    help: false,
   };
   for (const arg of argv.slice(2)) {
+    if (arg === '--help' || arg === '-h') {
+      defaults.help = true;
+      continue;
+    }
     const m = arg.match(/^--(\w[\w-]*)=(.+)$/);
-    if (!m) continue;
+    if (!m) {
+      // Bare flags handled above, otherwise warn.
+      if (arg.startsWith('--')) {
+        console.error(`Unknown or malformed argument: ${arg}`);
+      }
+      continue;
+    }
     const [, key, val] = m;
     if (key === 'url') defaults.url = val;
     else if (key === 'duration') defaults.duration = Number(val);
@@ -33,11 +83,36 @@ function parseArgs(argv) {
     else if (key === 'rps') defaults.rps = Number(val);
     else if (key === 'max-error-rate') defaults.maxErrorRate = Number(val);
     else if (key === 'max-p99') defaults.maxP99 = Number(val);
+    else if (key === 'json-output') defaults.jsonOutput = val;
+    else if (key === 'baseline') defaults.baseline = val;
+    else if (key === 'update-baseline') defaults.updateBaseline = val;
+    else console.error(`Unknown argument: --${key}`);
   }
   return defaults;
 }
 
 const opts = parseArgs(process.argv);
+
+if (opts.help) {
+  printHelp();
+  process.exit(0);
+}
+
+if (!Number.isFinite(opts.duration) || opts.duration <= 0) {
+  console.error('Invalid --duration: must be a positive number');
+  printHelp();
+  process.exit(2);
+}
+if (!Number.isFinite(opts.concurrency) || opts.concurrency <= 0) {
+  console.error('Invalid --concurrency: must be a positive number');
+  printHelp();
+  process.exit(2);
+}
+if (!Number.isFinite(opts.rps) || opts.rps <= 0) {
+  console.error('Invalid --rps: must be a positive number');
+  printHelp();
+  process.exit(2);
+}
 
 // ---------------------------------------------------------------------------
 // Endpoint definitions (weighted)
@@ -178,13 +253,83 @@ async function worker(baseUrl, bucket, endTime) {
 }
 
 // ---------------------------------------------------------------------------
+// Baseline comparison
+// ---------------------------------------------------------------------------
+
+const BASELINE_P99_REGRESSION_PCT = 30; // fail if p99 grew by >30%
+const BASELINE_ERROR_RATE_REGRESSION_PCT = 100; // fail if errorRate grew by >100%
+
+function loadBaseline(path) {
+  if (!path) return null;
+  if (!existsSync(path)) {
+    console.warn(`[load-test] WARN: baseline file not found at ${path} - skipping baseline comparison`);
+    return null;
+  }
+  try {
+    const raw = readFileSync(path, 'utf8');
+    const parsed = JSON.parse(raw);
+    return parsed;
+  } catch (err) {
+    console.warn(`[load-test] WARN: failed to read baseline ${path}: ${err.message}`);
+    return null;
+  }
+}
+
+function compareToBaseline(current, baseline) {
+  // Returns array of failure messages (empty if no regression).
+  const failures = [];
+  if (!baseline) return failures;
+
+  const basep99 = baseline?.latency?.p99;
+  if (Number.isFinite(basep99) && basep99 > 0) {
+    const allowed = basep99 * (1 + BASELINE_P99_REGRESSION_PCT / 100);
+    if (current.latency.p99 > allowed) {
+      const growthPct = ((current.latency.p99 - basep99) / basep99) * 100;
+      failures.push(
+        `p99 regressed: ${current.latency.p99}ms vs baseline ${basep99}ms (+${growthPct.toFixed(1)}%, threshold +${BASELINE_P99_REGRESSION_PCT}%)`,
+      );
+    }
+  }
+
+  const baseErr = baseline?.errorRate;
+  if (Number.isFinite(baseErr)) {
+    if (baseErr === 0) {
+      // If baseline had zero errors, any non-trivial current error rate is treated
+      // as the absolute threshold gate (handled separately). Skip relative check.
+    } else {
+      const allowed = baseErr * (1 + BASELINE_ERROR_RATE_REGRESSION_PCT / 100);
+      if (current.errorRate > allowed) {
+        const growthPct = ((current.errorRate - baseErr) / baseErr) * 100;
+        failures.push(
+          `errorRate regressed: ${(current.errorRate * 100).toFixed(2)}% vs baseline ${(baseErr * 100).toFixed(2)}% (+${growthPct.toFixed(1)}%, threshold +${BASELINE_ERROR_RATE_REGRESSION_PCT}%)`,
+        );
+      }
+    }
+  }
+
+  return failures;
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
 async function main() {
-  const { url, duration, concurrency, rps, maxErrorRate, maxP99 } = opts;
+  const {
+    url,
+    duration,
+    concurrency,
+    rps,
+    maxErrorRate,
+    maxP99,
+    jsonOutput,
+    baseline,
+    updateBaseline,
+  } = opts;
 
-  console.log(`Starting load test: ${url} for ${duration}s with ${concurrency} workers @ ${rps} rps`);
+  console.log(
+    `Starting load test: ${url} for ${duration}s with ${concurrency} workers @ ${rps} rps`,
+  );
 
   await warmUp(url);
 
@@ -204,18 +349,25 @@ async function main() {
   const p99 = Math.round(percentile(sorted, 99));
   const max = Math.round(sorted.length ? sorted[sorted.length - 1] : 0);
   const throughput = totalRequests / duration;
-  const errorRate = totalRequests > 0 ? ((clientErrors + serverErrors) / totalRequests) * 100 : 0;
+  const errors = clientErrors + serverErrors;
+  // errorRate as fraction in [0,1] (matches JSON schema in task spec).
+  const errorRateFraction = totalRequests > 0 ? errors / totalRequests : 0;
+  const errorRatePct = errorRateFraction * 100;
   const successRate = totalRequests > 0 ? (successCount / totalRequests) * 100 : 0;
 
   // Print results.
   const fmt = (n) => n.toLocaleString('en-US');
   console.log('');
   console.log(`Load Test Results (${duration}s, ${concurrency} workers)`);
-  console.log('\u2500'.repeat(35));
+  console.log('─'.repeat(35));
   console.log(`Total requests:  ${fmt(totalRequests)}`);
   console.log(`Successful:      ${fmt(successCount)} (${successRate.toFixed(1)}%)`);
-  console.log(`Client errors:   ${fmt(clientErrors)} (${(totalRequests > 0 ? (clientErrors / totalRequests) * 100 : 0).toFixed(1)}%)`);
-  console.log(`Server errors:   ${fmt(serverErrors)} (${(totalRequests > 0 ? (serverErrors / totalRequests) * 100 : 0).toFixed(1)}%)`);
+  console.log(
+    `Client errors:   ${fmt(clientErrors)} (${(totalRequests > 0 ? (clientErrors / totalRequests) * 100 : 0).toFixed(1)}%)`,
+  );
+  console.log(
+    `Server errors:   ${fmt(serverErrors)} (${(totalRequests > 0 ? (serverErrors / totalRequests) * 100 : 0).toFixed(1)}%)`,
+  );
   console.log('');
   console.log('Latency (ms):');
   console.log(`  p50:  ${p50}`);
@@ -225,36 +377,118 @@ async function main() {
   console.log('');
   console.log(`Throughput: ${throughput.toFixed(1)} req/s`);
 
-  // Write results to JSON.
-  const results = {
+  // Build the structured result object (used by --json-output and baseline writers).
+  // maxErrorRate is in percent on the CLI; store as fraction in JSON for baseline math.
+  const maxErrorRateFraction = maxErrorRate / 100;
+  const structured = {
     timestamp: new Date().toISOString(),
-    config: { url, duration, concurrency, rps },
-    totals: {
-      requests: totalRequests,
-      successful: successCount,
-      clientErrors,
-      serverErrors,
-    },
+    url,
+    duration,
+    concurrency,
+    rps,
+    totalRequests,
+    successful: successCount,
+    clientErrors,
+    serverErrors,
+    errors,
+    errorRate: Number(errorRateFraction.toFixed(6)),
     latency: { p50, p95, p99, max },
     throughput: Number(throughput.toFixed(1)),
-    errorRate: Number(errorRate.toFixed(2)),
+    thresholds: { maxErrorRate: maxErrorRateFraction, maxP99Ms: maxP99 },
+    passed: false,
+    failures: [],
   };
 
-  const outPath = resolve('load-test-results.json');
-  writeFileSync(outPath, JSON.stringify(results, null, 2) + '\n');
-  console.log(`\nResults written to ${outPath}`);
+  // Always write the legacy results file (kept for backward compat with
+  // existing CI artifact uploads).
+  const legacyOutPath = resolve('load-test-results.json');
+  writeFileSync(
+    legacyOutPath,
+    JSON.stringify(
+      {
+        timestamp: structured.timestamp,
+        config: { url, duration, concurrency, rps },
+        totals: {
+          requests: totalRequests,
+          successful: successCount,
+          clientErrors,
+          serverErrors,
+        },
+        latency: { p50, p95, p99, max },
+        throughput: structured.throughput,
+        errorRate: Number(errorRatePct.toFixed(2)),
+      },
+      null,
+      2,
+    ) + '\n',
+  );
+  console.log(`\nLegacy results written to ${legacyOutPath}`);
 
-  // Exit with error if thresholds exceeded.
-  if (errorRate > maxErrorRate) {
-    console.error(`\nFAIL: Error rate ${errorRate.toFixed(2)}% exceeds threshold ${maxErrorRate}%`);
-    process.exit(1);
+  // Determine threshold failures (absolute).
+  const failures = [];
+  let p99Failure = null;
+  let errFailure = null;
+  if (errorRatePct > maxErrorRate) {
+    errFailure = `errorRate=${errorRatePct.toFixed(2)}% exceeds ${maxErrorRate}%`;
+    failures.push(errFailure);
   }
   if (p99 > maxP99) {
-    console.error(`\nFAIL: p99 latency ${p99}ms exceeds threshold ${maxP99}ms`);
-    process.exit(1);
+    p99Failure = `p99=${p99}ms exceeds ${maxP99}ms`;
+    failures.push(p99Failure);
   }
 
-  console.log('\nPASS: All thresholds met.');
+  // Baseline comparison failures.
+  const baselineData = loadBaseline(baseline);
+  if (baselineData) {
+    const baselineFailures = compareToBaseline(structured, baselineData);
+    failures.push(...baselineFailures);
+    if (baselineFailures.length === 0) {
+      console.log(`\n[load-test] baseline OK (vs ${baseline})`);
+    }
+  }
+
+  structured.passed = failures.length === 0;
+  structured.failures = failures;
+
+  // Write structured JSON output if requested.
+  if (jsonOutput) {
+    const outPath = resolve(jsonOutput);
+    mkdirSync(dirname(outPath), { recursive: true });
+    writeFileSync(outPath, JSON.stringify(structured, null, 2) + '\n');
+    console.log(`Structured results written to ${outPath}`);
+  }
+
+  // Format the canonical PASS/FAIL summary.
+  if (structured.passed) {
+    console.log(
+      `\n[load-test] PASS: errorRate=${errorRatePct.toFixed(2)}% (max ${maxErrorRate.toFixed(2)}%), p99=${p99}ms (max ${maxP99}ms)`,
+    );
+
+    // Update the baseline only on a passing run.
+    if (updateBaseline) {
+      const outPath = resolve(updateBaseline);
+      mkdirSync(dirname(outPath), { recursive: true });
+      const baselineWrite = {
+        url: structured.url,
+        duration: structured.duration,
+        totalRequests: structured.totalRequests,
+        errors: structured.errors,
+        errorRate: structured.errorRate,
+        latency: structured.latency,
+        thresholds: structured.thresholds,
+        passed: true,
+        updatedAt: structured.timestamp,
+      };
+      writeFileSync(outPath, JSON.stringify(baselineWrite, null, 2) + '\n');
+      console.log(`[load-test] Updated baseline at ${outPath}`);
+    }
+    process.exit(0);
+  } else {
+    const summary = failures.join(' / ');
+    console.error(`\n[load-test] FAIL: ${summary}`);
+    console.error('Exit code 1');
+    process.exit(1);
+  }
 }
 
 main().catch((err) => {

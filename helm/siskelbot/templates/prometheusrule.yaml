@@ -166,6 +166,64 @@ spec:
           annotations:
             summary: "No pods available"
             description: "Deployment has 0 available replicas."
+        - alert: SiskelBotEmbeddingCacheThrashing
+          expr: |
+            rate(siskelbot_embedding_cache_evictions_total{reason="lru"}[5m]) > 10
+            and
+            sum(rate(siskelbot_embedding_cache_hits_total[5m]))
+            /
+            (sum(rate(siskelbot_embedding_cache_hits_total[5m])) + sum(rate(siskelbot_embedding_cache_misses_total[5m])))
+            < 0.5
+          for: 15m
+          labels:
+            severity: warning
+            type: performance
+          annotations:
+            summary: "Embedding cache thrashing"
+            description: "LRU evictions {{ "{{" }} $value {{ "}}" }}/sec with hit rate < 50%. Consider increasing EMBEDDING_CACHE_MAX_SIZE."
+        # Cost-budget alert: $50/hour is a starting default. Operators should
+        # tune Values.metrics.alerting.costBudgetUsdPerHour if their workload
+        # warrants a different threshold (not parameterized yet).
+        - alert: SiskelBotWorkspaceCostBudget
+          expr: |
+            increase(siskelbot_llm_cost_usd_total{job="{{ include "siskelbot.fullname" . }}"}[1h]) > 50
+          for: 5m
+          labels:
+            severity: warning
+            type: cost
+          annotations:
+            summary: "Workspace exceeded $50/hour cost"
+            description: "Workspace {{ "{{" }} $labels.workspace {{ "}}" }} burned ${{ "{{" }} $value | printf \"%.2f\" {{ "}}" }} in the past hour."
+        - alert: SiskelBotProbeDown
+          expr: |
+            probe_success{job="{{ include "siskelbot.fullname" . }}-synthetic"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            type: availability
+          annotations:
+            summary: "Synthetic probe failing"
+            description: "Probe target {{ "{{" }} $labels.instance {{ "}}" }} has been failing for 2+ minutes from external prober."
+        - alert: SiskelBotProbeSlowResponse
+          expr: |
+            probe_duration_seconds{job="{{ include "siskelbot.fullname" . }}-synthetic"} > 5
+          for: 5m
+          labels:
+            severity: warning
+            type: availability
+          annotations:
+            summary: "Synthetic probe slow"
+            description: "Probe target {{ "{{" }} $labels.instance {{ "}}" }} responded in {{ "{{" }} $value | humanizeDuration {{ "}}" }} (threshold 5s)."
+        - alert: SiskelBotTLSCertExpiringSoon
+          expr: |
+            probe_ssl_earliest_cert_expiry{job="{{ include "siskelbot.fullname" . }}-synthetic"} - time() < 86400 * 14
+          for: 30m
+          labels:
+            severity: warning
+            type: availability
+          annotations:
+            summary: "TLS certificate expiring soon"
+            description: "Cert for {{ "{{" }} $labels.instance {{ "}}" }} expires in {{ "{{" }} $value | humanizeDuration {{ "}}" }}."
         {{- with .Values.metrics.alerting.additionalRules }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

@@ -1,0 +1,60 @@
+# Validate Mintlify docs config and (optionally) trigger deploy.
+# Mintlify auto-deploys via GitHub App once installed; this workflow only validates.
+name: Docs
+
+on:
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'mint.json'
+      - 'introduction.mdx'
+      - 'quickstart.mdx'
+      - 'docs/**'
+  push:
+    branches: [main, master]
+    paths:
+      - 'mint.json'
+      - 'introduction.mdx'
+      - 'quickstart.mdx'
+      - 'docs/**'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Mintlify CLI
+        run: npm install -g mintlify
+
+      - name: Validate config
+        run: mintlify broken-links
+
+      - name: Check that all referenced pages exist
+        run: |
+          # Extract page references from mint.json
+          node -e "
+            const cfg = JSON.parse(require('fs').readFileSync('mint.json','utf8'));
+            const fs = require('fs');
+            const missing = [];
+            function visit(group) {
+              for (const p of group.pages || []) {
+                if (typeof p === 'string') {
+                  const candidates = [p + '.md', p + '.mdx'];
+                  if (!candidates.some(c => fs.existsSync(c))) missing.push(p);
+                } else if (p.pages) visit(p);
+              }
+            }
+            for (const nav of cfg.navigation || []) visit(nav);
+            if (missing.length) {
+              console.error('Missing pages:');
+              for (const m of missing) console.error('  ' + m);
+              process.exit(1);
+            }
+            console.log('All', cfg.navigation.length, 'navigation groups have valid pages.');
+          "

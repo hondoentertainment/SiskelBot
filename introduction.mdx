@@ -1,0 +1,26 @@
+---
+title: 'Introduction'
+description: 'A realtime streaming assistant proxy for Ollama, vLLM, and OpenAI'
+---
+
+SiskelBot is a Node.js Express server plus a vanilla-JS SPA that fronts LLM backends with:
+
+- OpenAI-compatible `/v1/chat/completions` with SSE streaming
+- Workspace + user management with RBAC and SSO
+- Agent orchestration: single-agent tool loop and multi-specialist swarm
+- Knowledge base with embeddings and a typed knowledge graph
+- DAG workflow engine, plugin marketplace, webhooks
+- Integrations: GitHub, Vercel, Jira, Linear, Slack, Discord, MCP
+
+## Why SiskelBot?
+
+| Need | What SiskelBot provides |
+|---|---|
+| Front a self-hosted LLM with auth | OAuth/OIDC/SAML, RBAC, tenant quotas |
+| Build agents | Tool loop + swarm with circuit breaker, HITL gates |
+| RAG / knowledge | Embeddings + chunking + knowledge graph |
+| Operational maturity | SLO alerts, canary deploys, chaos tests, DR |
+
+## Quickstart
+
+See [the quickstart guide](/quickstart).

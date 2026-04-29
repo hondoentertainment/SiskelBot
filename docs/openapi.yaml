@@ -265,7 +265,7 @@ components:
       type: http
       scheme: bearer
       bearerFormat: API Key
-      description: User API key (USER_API_KEYS) or deployment API key (API_KEY). Use `Authorization: Bearer <key>` or `x-user-api-key` header.
+      description: "User API key (USER_API_KEYS) or deployment API key (API_KEY). Use `Authorization: Bearer <key>` or `x-user-api-key` header."
   schemas:
     ContextList:
       type: object

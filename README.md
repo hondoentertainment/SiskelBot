@@ -4,6 +4,8 @@
 
 *Streaming assistant (OpenAI-compatible API for Ollama, vLLM, or OpenAI). Repository package name: `experimentagent`.*
 
+> **New contributor?** Read [CONTRIBUTING.md](./CONTRIBUTING.md) and use the included [.devcontainer](./.devcontainer/) for a one-command setup.
+
 Realtime streaming assistant proxy for Ollama, vLLM, or OpenAI. Node.js proxy that streams chat completions to clients with workspace management, agent orchestration, knowledge graphs, workflow automation, and integrations with GitHub, Vercel, Jira, Linear, Slack, and Discord.
 
 ## Architecture
@@ -377,6 +379,20 @@ siskelbot/
 | [docs/AGENT_MODE.md](docs/AGENT_MODE.md) | Agent and swarm mode details |
 | [docs/TASK_SCHEMA.md](docs/TASK_SCHEMA.md) | Task plan JSON schema |
 | [docs/TEST_PLAN.md](docs/TEST_PLAN.md) | Comprehensive test plan |
+| [docs/SDKS.md](docs/SDKS.md) | TypeScript and Python SDK guide and publish steps |
+
+## SDKs
+
+Official client libraries live under [`sdk/`](sdk/):
+
+| Language | Package | Path |
+|----------|---------|------|
+| TypeScript / Node.js | [`@siskelbot/sdk`](sdk/typescript/) | [`sdk/typescript/`](sdk/typescript/) |
+| Python | [`siskelbot`](sdk/python/) | [`sdk/python/`](sdk/python/) |
+
+Both ship with typed clients, SSE streaming, exponential-backoff retries on 5xx/429,
+and configurable timeouts. See [docs/SDKS.md](docs/SDKS.md) for usage details and
+publishing instructions (npm + PyPI).
 
 ## License
 

@@ -159,3 +159,202 @@ test("buildHistoryStrip marks a day red when a critical incident ran that day", 
   const redDays = buckets.filter((b) => b.state === STATUS_RED);
   assert.ok(redDays.length >= 1);
 });
+
+// ─── Alertmanager → external status page bridge ───────────────────────────
+
+const { processAlertmanagerPayload } = await import("../lib/status-page.js");
+
+const STATUS_PAGE_ENV_KEYS = [
+  "STATUS_PAGE_ENABLED",
+  "STATUS_PAGE_PROVIDER",
+  "STATUSPAGE_API_KEY",
+  "STATUSPAGE_PAGE_ID",
+  "STATUS_PAGE_COMPONENT_MAP",
+];
+
+function snapshotStatusPageEnv() {
+  const snap = {};
+  for (const k of STATUS_PAGE_ENV_KEYS) snap[k] = process.env[k];
+  return snap;
+}
+
+function restoreStatusPageEnv(snap) {
+  for (const k of STATUS_PAGE_ENV_KEYS) {
+    if (snap[k] === undefined) delete process.env[k];
+    else process.env[k] = snap[k];
+  }
+}
+
+function makeAlert({
+  alertname = "SiskelBotProbeDown",
+  status = "firing",
+  severity = "critical",
+  summary = "Probe failing",
+  description = "the probe is down",
+} = {}) {
+  return {
+    status,
+    labels: { alertname, severity },
+    annotations: { summary, description },
+  };
+}
+
+test("processAlertmanagerPayload: disabled (env not set) returns posted=0 and skips all alerts without calling fetch", async () => {
+  const snap = snapshotStatusPageEnv();
+  const origFetch = global.fetch;
+  let fetchCalls = 0;
+  global.fetch = () => { fetchCalls += 1; return Promise.resolve({ ok: true, text: async () => "" }); };
+  try {
+    delete process.env.STATUS_PAGE_ENABLED;
+    const result = await processAlertmanagerPayload({ alerts: [makeAlert(), makeAlert()] });
+    assert.equal(result.posted, 0);
+    assert.equal(result.skipped, 2);
+    assert.deepEqual(result.errors, []);
+    assert.equal(fetchCalls, 0);
+  } finally {
+    global.fetch = origFetch;
+    restoreStatusPageEnv(snap);
+  }
+});
+
+test("processAlertmanagerPayload: alert with mapped component posts to Statuspage with correct URL and body", async () => {
+  const snap = snapshotStatusPageEnv();
+  const origFetch = global.fetch;
+  const calls = [];
+  global.fetch = (url, opts) => {
+    calls.push({ url, opts });
+    return Promise.resolve({ ok: true, text: async () => "" });
+  };
+  try {
+    process.env.STATUS_PAGE_ENABLED = "1";
+    process.env.STATUS_PAGE_PROVIDER = "statuspage";
+    process.env.STATUSPAGE_API_KEY = "test-key";
+    process.env.STATUSPAGE_PAGE_ID = "page123";
+    process.env.STATUS_PAGE_COMPONENT_MAP = JSON.stringify({ SiskelBotProbeDown: "comp-abc" });
+
+    const result = await processAlertmanagerPayload({ alerts: [makeAlert()] });
+
+    assert.equal(result.posted, 1);
+    assert.equal(result.skipped, 0);
+    assert.deepEqual(result.errors, []);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, "https://api.statuspage.io/v1/pages/page123/incidents");
+    assert.equal(calls[0].opts.method, "POST");
+    assert.equal(calls[0].opts.headers["Authorization"], "OAuth test-key");
+    assert.equal(calls[0].opts.headers["Content-Type"], "application/json");
+    const body = JSON.parse(calls[0].opts.body);
+    assert.equal(body.incident.name, "Probe failing");
+    assert.equal(body.incident.status, "investigating");
+    assert.equal(body.incident.impact_override, "major");
+    assert.deepEqual(body.incident.component_ids, ["comp-abc"]);
+    assert.equal(body.incident.components["comp-abc"], "major_outage");
+  } finally {
+    global.fetch = origFetch;
+    restoreStatusPageEnv(snap);
+  }
+});
+
+test("processAlertmanagerPayload: alert without mapped component is skipped (no fetch call)", async () => {
+  const snap = snapshotStatusPageEnv();
+  const origFetch = global.fetch;
+  let fetchCalls = 0;
+  global.fetch = () => { fetchCalls += 1; return Promise.resolve({ ok: true, text: async () => "" }); };
+  try {
+    process.env.STATUS_PAGE_ENABLED = "1";
+    process.env.STATUS_PAGE_PROVIDER = "statuspage";
+    process.env.STATUSPAGE_API_KEY = "test-key";
+    process.env.STATUSPAGE_PAGE_ID = "page123";
+    process.env.STATUS_PAGE_COMPONENT_MAP = JSON.stringify({ SiskelBotProbeDown: "comp-abc" });
+
+    const result = await processAlertmanagerPayload({
+      alerts: [makeAlert({ alertname: "UnmappedAlert" })],
+    });
+
+    assert.equal(result.posted, 0);
+    assert.equal(result.skipped, 1);
+    assert.deepEqual(result.errors, []);
+    assert.equal(fetchCalls, 0);
+  } finally {
+    global.fetch = origFetch;
+    restoreStatusPageEnv(snap);
+  }
+});
+
+test("processAlertmanagerPayload: fetch failure is recorded in errors[] but does not throw", async () => {
+  const snap = snapshotStatusPageEnv();
+  const origFetch = global.fetch;
+  global.fetch = () => Promise.resolve({ ok: false, status: 500, text: async () => "internal error" });
+  try {
+    process.env.STATUS_PAGE_ENABLED = "1";
+    process.env.STATUS_PAGE_PROVIDER = "statuspage";
+    process.env.STATUSPAGE_API_KEY = "test-key";
+    process.env.STATUSPAGE_PAGE_ID = "page123";
+    process.env.STATUS_PAGE_COMPONENT_MAP = JSON.stringify({ SiskelBotProbeDown: "comp-abc" });
+
+    const result = await processAlertmanagerPayload({ alerts: [makeAlert()] });
+
+    assert.equal(result.posted, 0);
+    assert.equal(result.skipped, 0);
+    assert.equal(result.errors.length, 1);
+    assert.equal(result.errors[0].alertname, "SiskelBotProbeDown");
+    assert.match(result.errors[0].error, /Statuspage API 500/);
+  } finally {
+    global.fetch = origFetch;
+    restoreStatusPageEnv(snap);
+  }
+});
+
+test("processAlertmanagerPayload: malformed STATUS_PAGE_COMPONENT_MAP yields empty map and all alerts skipped", async () => {
+  const snap = snapshotStatusPageEnv();
+  const origFetch = global.fetch;
+  let fetchCalls = 0;
+  global.fetch = () => { fetchCalls += 1; return Promise.resolve({ ok: true, text: async () => "" }); };
+  try {
+    process.env.STATUS_PAGE_ENABLED = "1";
+    process.env.STATUS_PAGE_PROVIDER = "statuspage";
+    process.env.STATUSPAGE_API_KEY = "test-key";
+    process.env.STATUSPAGE_PAGE_ID = "page123";
+    process.env.STATUS_PAGE_COMPONENT_MAP = "{not valid json";
+
+    const result = await processAlertmanagerPayload({
+      alerts: [makeAlert(), makeAlert({ alertname: "SiskelBotHighErrorRate", severity: "warning" })],
+    });
+
+    assert.equal(result.posted, 0);
+    assert.equal(result.skipped, 2);
+    assert.deepEqual(result.errors, []);
+    assert.equal(fetchCalls, 0);
+  } finally {
+    global.fetch = origFetch;
+    restoreStatusPageEnv(snap);
+  }
+});
+
+test("processAlertmanagerPayload: resolved alert sets component status to operational and impact-aware status", async () => {
+  const snap = snapshotStatusPageEnv();
+  const origFetch = global.fetch;
+  const calls = [];
+  global.fetch = (url, opts) => {
+    calls.push({ url, opts });
+    return Promise.resolve({ ok: true, text: async () => "" });
+  };
+  try {
+    process.env.STATUS_PAGE_ENABLED = "1";
+    process.env.STATUS_PAGE_PROVIDER = "statuspage";
+    process.env.STATUSPAGE_API_KEY = "test-key";
+    process.env.STATUSPAGE_PAGE_ID = "page123";
+    process.env.STATUS_PAGE_COMPONENT_MAP = JSON.stringify({ SiskelBotProbeDown: "comp-abc" });
+
+    const result = await processAlertmanagerPayload({
+      alerts: [makeAlert({ status: "resolved" })],
+    });
+
+    assert.equal(result.posted, 1);
+    const body = JSON.parse(calls[0].opts.body);
+    assert.equal(body.incident.status, "resolved");
+    assert.equal(body.incident.components["comp-abc"], "operational");
+  } finally {
+    global.fetch = origFetch;
+    restoreStatusPageEnv(snap);
+  }
+});

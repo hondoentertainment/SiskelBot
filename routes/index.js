@@ -55,6 +55,8 @@ import mountAdminTracesRoutes from "./admin-traces.js";
 import mountAdminTraceStreamRoutes from "./admin-trace-stream.js";
 import mountTraceShareRoutes from "./trace-share.js";
 import mountAdminPromptPatchesRoutes from "./admin-prompt-patches.js";
+import mountAdminQuotaRoutes from "./admin-quotas.js";
+import mountAdminFeatureFlagRoutes from "./admin-feature-flags.js";
 import { mountAgentFeedbackRoutes } from "./agent-feedback.js";
 import mountDocsRoutes from "./docs.js";
 import { mountBackupRoutes } from "./backup.js";
@@ -212,6 +214,7 @@ import mountHeapDiffRoutes from "./heap-diff.js";
 import mountStepLatencyRoutes from "./step-latency.js";
 import mountLogAnalysisRoutes from "./log-analysis.js";
 import mountStatusPageRoutes from "./status-page.js";
+import mountAlertmanagerWebhookRoutes from "./alertmanager-webhook.js";
 
 // Phase 61.2-3, 61.5, 62.1-5 (Agent C — 8 modules)
 import mountWebhookInspectorRoutes from "./webhook-inspector.js";
@@ -312,6 +315,8 @@ const mountFunctions = [
   mountAdminTraceStreamRoutes,
   mountTraceShareRoutes,
   mountAdminPromptPatchesRoutes,
+  mountAdminQuotaRoutes,
+  mountAdminFeatureFlagRoutes,
   mountAgentFeedbackRoutes,
   mountDocsRoutes,
   mountBackupRoutes,
@@ -469,6 +474,7 @@ const mountFunctions = [
   mountStepLatencyRoutes,
   mountLogAnalysisRoutes,
   mountStatusPageRoutes,
+  mountAlertmanagerWebhookRoutes,
 
   // Agent C — dev platform finish + customer support vertical
   mountWebhookInspectorRoutes,

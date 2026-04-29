@@ -10,6 +10,7 @@ Helm chart: `helm/siskelbot/` — chart version `1.0.0`, app version `1.0.0`.
 - [NGINX Ingress Controller](https://kubernetes.github.io/ingress-nginx/)
 - (Optional) [external-secrets-operator](https://external-secrets.io/) for secret management via AWS/GCP/Vault
 - (Optional) [Prometheus Operator](https://prometheus-operator.dev/) for `ServiceMonitor` and alerting
+- (Optional) External uptime probes — see [docs/SYNTHETIC_MONITORING.md](./SYNTHETIC_MONITORING.md)
 
 ## Quick install
 

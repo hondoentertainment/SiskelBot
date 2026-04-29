@@ -100,6 +100,20 @@ redis:
   existingSecret: siskelbot-redis-credentials
   existingSecretPasswordKey: password
 
+pgbouncer:
+  enabled: true
+  replicas: 3
+  poolMode: transaction
+  maxClientConn: 5000
+  defaultPoolSize: 50
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+
 metrics:
   enabled: true
   serviceMonitor:
@@ -117,6 +131,18 @@ metrics:
     enabled: true
     label:
       grafana_dashboard: "1"
+  # NOTE: Replace `siskelbot.example.com` below with your real public hostname.
+  synthetic:
+    enabled: true
+    blackboxExporterUrl: "http://blackbox-exporter.monitoring.svc.cluster.local:9115"
+    interval: 30s
+    scrapeTimeout: 15s
+    targets:
+      - https://siskelbot.example.com/health/live
+      - https://siskelbot.example.com/health/deep
+    staticLabels:
+      environment: production
+      region: us-east-1
 
 networkPolicy:
   enabled: true
@@ -223,3 +249,20 @@ backup:
     limits:
       cpu: 1000m
       memory: 1Gi
+
+# Argo Rollouts canary deployment for production
+canary:
+  enabled: true
+  steps:
+    - setWeight: 5
+    - pause: { duration: 10m }
+    - setWeight: 25
+    - pause: { duration: 15m }
+    - setWeight: 50
+    - pause: { duration: 15m }
+    - setWeight: 100
+  analysis:
+    interval: 30s
+    failureLimit: 2
+    maxErrorRate: 0.005
+    maxP99Seconds: 12

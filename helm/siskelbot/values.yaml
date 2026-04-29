@@ -148,6 +148,28 @@ redis:
   existingSecret: ""
   existingSecretPasswordKey: password
 
+# Connection pooling for Postgres
+pgbouncer:
+  enabled: false
+  replicas: 2
+  image:
+    repository: bitnami/pgbouncer
+    tag: "1.23.1"
+    pullPolicy: IfNotPresent
+  # transaction (best for typical web traffic) | session | statement
+  poolMode: transaction
+  # Total client connections accepted across all pgbouncer instances
+  maxClientConn: 1000
+  # Connections per database/user pair to backend
+  defaultPoolSize: 25
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
 metrics:
   enabled: true
   port: 3000
@@ -170,6 +192,22 @@ metrics:
     # Label that the Grafana sidecar watches for (kube-prometheus-stack default)
     label:
       grafana_dashboard: "1"
+  synthetic:
+    enabled: false
+    namespace: ""
+    labels: {}
+    # blackbox-exporter service URL (must be reachable by Prometheus)
+    blackboxExporterUrl: "http://blackbox-exporter.monitoring.svc.cluster.local:9115"
+    proberPath: "/probe"
+    # Module from blackbox-exporter config — e.g. http_2xx, http_post_2xx
+    module: "http_2xx"
+    interval: 30s
+    scrapeTimeout: 15s
+    # Public URLs to probe (commonly external load balancer / ingress)
+    targets: []
+      # - https://siskelbot.example.com/health/deep
+      # - https://siskelbot.example.com/health/live
+    staticLabels: {}
 
 networkPolicy:
   enabled: false
@@ -283,6 +321,31 @@ backup:
   tmpSize: 10Gi
   nodeSelector: {}
   tolerations: []
+
+# Argo Rollouts canary deployment (replaces standard Deployment when enabled)
+canary:
+  enabled: false
+  # Traffic routing — leave empty for replica-based traffic split, or configure for service mesh / ingress integration
+  trafficRouting: {}
+    # nginx:
+    #   stableIngress: siskelbot-stable
+  # Promotion steps: percentages of traffic + pause windows
+  steps:
+    - setWeight: 10
+    - pause: { duration: 5m }
+    - setWeight: 25
+    - pause: { duration: 10m }
+    - setWeight: 50
+    - pause: { duration: 10m }
+    - setWeight: 75
+    - pause: { duration: 5m }
+  analysis:
+    startingStep: 1
+    interval: 1m
+    failureLimit: 3
+    maxErrorRate: 0.01
+    maxP99Seconds: 15
+    prometheusAddress: "http://prometheus.monitoring.svc.cluster.local:9090"
 
 # Update strategy for the Deployment
 updateStrategy:
