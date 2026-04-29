@@ -5,13 +5,17 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, existsSync, unlinkSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // Use an isolated STORAGE_PATH so the speaker store doesn't pollute real data.
 const TMP = mkdtempSync(join(tmpdir(), "siskel-diar-"));
+const ORIGINAL_OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const ORIGINAL_WHISPER_API_KEY = process.env.WHISPER_API_KEY;
 process.env.STORAGE_PATH = TMP;
+delete process.env.OPENAI_API_KEY;
+delete process.env.WHISPER_API_KEY;
 
 const lib = await import("../lib/diarization.js");
 const {
@@ -36,6 +40,10 @@ const {
 } = lib;
 
 test.after(() => {
+  if (ORIGINAL_OPENAI_API_KEY === undefined) delete process.env.OPENAI_API_KEY;
+  else process.env.OPENAI_API_KEY = ORIGINAL_OPENAI_API_KEY;
+  if (ORIGINAL_WHISPER_API_KEY === undefined) delete process.env.WHISPER_API_KEY;
+  else process.env.WHISPER_API_KEY = ORIGINAL_WHISPER_API_KEY;
   try {
     rmSync(TMP, { recursive: true, force: true });
   } catch {

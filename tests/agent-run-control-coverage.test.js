@@ -7,11 +7,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO = join(__dirname, "..");
+const AGENT_RUN_CONTROL_URL = pathToFileURL(join(REPO, "lib", "agent-run-control.js")).href;
 
 // Import the module under the default "unlimited" configuration (MAX_CONCURRENT=0).
 // This covers the getMaxConcurrentRunsPerWorkspace / ok-path branches.
@@ -110,7 +111,7 @@ test("release of current controller removes entry so subsequent cancel is NO_ACT
 test("with AGENT_MAX_CONCURRENT_RUNS_PER_WORKSPACE=1 the second run is blocked and end decrements", () => {
   const script = `
     import assert from "node:assert/strict";
-    const m = await import("${REPO.replace(/\\/g, "/")}/lib/agent-run-control.js");
+    const m = await import("${AGENT_RUN_CONTROL_URL}");
     assert.equal(m.getMaxConcurrentRunsPerWorkspace(), 1);
     const a = m.tryBeginWorkspaceAgentRun("ws1");
     assert.deepEqual(a, { ok: true });

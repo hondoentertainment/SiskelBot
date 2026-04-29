@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import {
   recordFailure,
@@ -18,15 +18,15 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO = join(__dirname, "..");
+const CIRCUIT_BREAKER_URL = pathToFileURL(join(REPO, "lib", "circuit-breaker.js")).href;
 
 test("recordFailure returns true once threshold reached, false otherwise", () => {
   const backend = "cb-cov-threshold-" + Date.now();
   recordSuccess(backend);
-  let opened = false;
   for (let i = 0; i < 4; i++) {
     assert.equal(recordFailure(backend), false, `failure ${i + 1} should not open`);
   }
-  opened = recordFailure(backend);
+  const opened = recordFailure(backend);
   assert.equal(opened, true, "5th failure should open");
 });
 
@@ -80,7 +80,7 @@ test("isOpen below threshold short-circuits and does not touch openUntil", () =>
 test("isOpen transitions back to closed after cooldown elapses", () => {
   const script = `
     import assert from "node:assert/strict";
-    const m = await import("${REPO.replace(/\\/g, "/")}/lib/circuit-breaker.js");
+    const m = await import("${CIRCUIT_BREAKER_URL}");
     const backend = "child-cooldown";
     for (let i = 0; i < 3; i++) m.recordFailure(backend);
     assert.equal(m.isOpen(backend).open, true);
@@ -136,7 +136,7 @@ test("getBreakerState: transitions closed -> open after N failures", () => {
 test("tri-state: open -> half_open after cooldown; success -> closed", () => {
   const script = `
     import assert from "node:assert/strict";
-    const m = await import("${REPO.replace(/\\/g, "/")}/lib/circuit-breaker.js");
+    const m = await import("${CIRCUIT_BREAKER_URL}");
     const backend = "child-tri-success";
     // Drive to open
     for (let i = 0; i < 3; i++) m.recordFailure(backend);
@@ -172,7 +172,7 @@ test("tri-state: open -> half_open after cooldown; success -> closed", () => {
 test("tri-state: half_open failure -> open with fresh cooldown", () => {
   const script = `
     import assert from "node:assert/strict";
-    const m = await import("${REPO.replace(/\\/g, "/")}/lib/circuit-breaker.js");
+    const m = await import("${CIRCUIT_BREAKER_URL}");
     const backend = "child-tri-fail";
     for (let i = 0; i < 3; i++) m.recordFailure(backend);
     assert.equal(m.getBreakerState(backend), "open");
@@ -210,7 +210,7 @@ test("tri-state: half_open failure -> open with fresh cooldown", () => {
 test("isOpen: halfOpenAsOpen:true reports half_open as open:true", () => {
   const script = `
     import assert from "node:assert/strict";
-    const m = await import("${REPO.replace(/\\/g, "/")}/lib/circuit-breaker.js");
+    const m = await import("${CIRCUIT_BREAKER_URL}");
     const backend = "child-halfopen-flag";
     for (let i = 0; i < 3; i++) m.recordFailure(backend);
     // Wait past cooldown.

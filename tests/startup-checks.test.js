@@ -20,14 +20,14 @@ test.before(() => {
 
 await test("runStartupChecks returns an array of results", async () => {
   const { runStartupChecks } = await import("../lib/startup-checks.js");
-  const results = await runStartupChecks();
+  const results = await runStartupChecks({ log: false });
   assert.ok(Array.isArray(results));
   assert.ok(results.length > 0);
 });
 
 await test("each result has name, status, and message", async () => {
   const { runStartupChecks } = await import("../lib/startup-checks.js");
-  const results = await runStartupChecks();
+  const results = await runStartupChecks({ log: false });
   for (const r of results) {
     assert.ok(typeof r.name === "string", `name should be string: ${JSON.stringify(r)}`);
     assert.ok(["ok", "fail", "skip"].includes(r.status), `status should be ok/fail/skip: ${r.status}`);
@@ -37,7 +37,7 @@ await test("each result has name, status, and message", async () => {
 
 await test("unconfigured integrations return skip status", async () => {
   const { runStartupChecks } = await import("../lib/startup-checks.js");
-  const results = await runStartupChecks();
+  const results = await runStartupChecks({ log: false });
 
   const slack = results.find(r => r.name === "slack");
   assert.ok(slack);
@@ -66,7 +66,7 @@ await test("unconfigured integrations return skip status", async () => {
 
 await test("backend check runs and returns ok or fail", async () => {
   const { runStartupChecks } = await import("../lib/startup-checks.js");
-  const results = await runStartupChecks();
+  const results = await runStartupChecks({ log: false });
   const backend = results.find(r => r.name === "backend");
   assert.ok(backend);
   assert.ok(["ok", "fail"].includes(backend.status));
@@ -74,7 +74,7 @@ await test("backend check runs and returns ok or fail", async () => {
 
 await test("storage check runs", async () => {
   const { runStartupChecks } = await import("../lib/startup-checks.js");
-  const results = await runStartupChecks();
+  const results = await runStartupChecks({ log: false });
   const storage = results.find(r => r.name === "storage");
   assert.ok(storage);
   assert.ok(["ok", "fail"].includes(storage.status));
@@ -88,7 +88,7 @@ await test("getCachedResults returns results after runStartupChecks", async () =
 
 await test("runStartupChecks covers all expected integrations", async () => {
   const { runStartupChecks } = await import("../lib/startup-checks.js");
-  const results = await runStartupChecks();
+  const results = await runStartupChecks({ log: false });
   const names = results.map(r => r.name);
   assert.ok(names.includes("backend"));
   assert.ok(names.includes("storage"));

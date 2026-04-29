@@ -205,7 +205,16 @@ test("synthesizeSpeech rejects when not configured", async () => {
 
 async function loadApp(env = {}) {
   const original = { ...process.env };
-  Object.assign(process.env, env, { VERCEL: "1" });
+  process.env = {
+    VERCEL: "1",
+    PATH: original.PATH,
+    Path: original.Path,
+    SystemRoot: original.SystemRoot,
+    WINDIR: original.WINDIR,
+    TEMP: original.TEMP,
+    TMP: original.TMP,
+    ...env,
+  };
   const moduleUrl = new URL(`../server.js?test=${Date.now()}${Math.random()}`, import.meta.url);
   const { default: app } = await import(moduleUrl.href);
   process.env = original;
@@ -263,18 +272,35 @@ test("POST /api/v1/voice/synthesize returns 400 for empty text", async () => {
 
 test("POST /api/v1/voice/transcribe returns 503 when STT not configured", async () => {
   const app = await loadApp({ BACKEND: "ollama", WHISPER_API_KEY: "", OPENAI_API_KEY: "" });
-  const res = await request(app)
-    .post("/api/v1/voice/transcribe")
-    .attach("audio", Buffer.from("fake-audio"), { filename: "test.wav", contentType: "audio/wav" });
-  // Should be 503 (not configured) or 400 (invalid audio)
-  assert.ok([400, 503].includes(res.status));
+  const original = { openai: process.env.OPENAI_API_KEY, whisper: process.env.WHISPER_API_KEY };
+  process.env.OPENAI_API_KEY = "";
+  process.env.WHISPER_API_KEY = "";
+  try {
+    const res = await request(app)
+      .post("/api/v1/voice/transcribe")
+      .attach("audio", Buffer.from("fake-audio"), { filename: "test.wav", contentType: "audio/wav" });
+    // Should be 503 (not configured) or 400 (invalid audio)
+    assert.ok([400, 503].includes(res.status));
+  } finally {
+    if (original.openai === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = original.openai;
+    if (original.whisper === undefined) delete process.env.WHISPER_API_KEY;
+    else process.env.WHISPER_API_KEY = original.whisper;
+  }
 });
 
 test("POST /api/v1/voice/synthesize returns 503 when TTS not configured", async () => {
   const app = await loadApp({ BACKEND: "ollama", OPENAI_API_KEY: "" });
-  const res = await request(app)
-    .post("/api/v1/voice/synthesize")
-    .send({ text: "Hello world" });
-  // Should be 503 when OPENAI_API_KEY is not set
-  assert.ok([400, 503].includes(res.status));
+  const original = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "";
+  try {
+    const res = await request(app)
+      .post("/api/v1/voice/synthesize")
+      .send({ text: "Hello world" });
+    // Should be 503 when OPENAI_API_KEY is not set
+    assert.ok([400, 503].includes(res.status));
+  } finally {
+    if (original === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = original;
+  }
 });

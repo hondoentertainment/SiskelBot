@@ -168,9 +168,9 @@ test("server.js exports installDefaultAppRedirect with the same shape", async ()
   // and assert the expected tokens are present so future refactors cannot
   // silently drift away from the tested contract.
   const { readFileSync } = await import("node:fs");
-  const { dirname } = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
   const serverSrc = readFileSync(
-    join(dirname(new URL(import.meta.url).pathname), "..", "server.js"),
+    fileURLToPath(new URL("../server.js", import.meta.url)),
     "utf8",
   );
   assert.ok(

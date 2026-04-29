@@ -22,6 +22,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import express from "express";
 import request from "supertest";
 
@@ -120,7 +121,7 @@ test("server.js exports the substitution helpers and uses the same regex", () =>
   // present so future refactors cannot silently drift away from the tested
   // regex shape.
   const serverSrc = readFileSync(
-    join(dirname(new URL(import.meta.url).pathname), "..", "server.js"),
+    fileURLToPath(new URL("../server.js", import.meta.url)),
     "utf8",
   );
   assert.ok(
