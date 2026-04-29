@@ -1,13 +1,19 @@
 /**
  * Phase 33.5: Compliance reporting routes.
+ * Wave 19A: SOC2 evidence collector endpoints.
  *
- *   GET  /api/v1/compliance/soc2?startDate=&endDate=           — SOC 2 report
- *   GET  /api/v1/compliance/hipaa?startDate=&endDate=          — HIPAA report
- *   GET  /api/v1/compliance/gdpr?startDate=&endDate=           — GDPR report
- *   GET  /api/v1/compliance/dashboard                          — overview
- *   POST /api/v1/compliance/data-subject-request?userId=X      — GDPR Article 15
- *   POST /api/v1/compliance/right-to-erasure?userId=X          — GDPR Article 17
- *   GET  /api/v1/compliance/export/:userId?format=json|csv|zip — GDPR Article 20
+ *   GET  /api/v1/compliance/soc2?startDate=&endDate=                — SOC 2 report
+ *   GET  /api/v1/compliance/hipaa?startDate=&endDate=               — HIPAA report
+ *   GET  /api/v1/compliance/gdpr?startDate=&endDate=                — GDPR report
+ *   GET  /api/v1/compliance/dashboard                               — overview
+ *   POST /api/v1/compliance/data-subject-request?userId=X           — GDPR Article 15
+ *   POST /api/v1/compliance/right-to-erasure?userId=X               — GDPR Article 17
+ *   GET  /api/v1/compliance/export/:userId?format=json|csv|zip      — GDPR Article 20
+ *
+ *   GET  /api/v1/admin/compliance/evidence                          — run + return evidence
+ *   GET  /api/v1/admin/compliance/evidence/history                  — list past snapshots
+ *   GET  /api/v1/admin/compliance/evidence/history/:date            — get snapshot by date
+ *   POST /api/v1/admin/compliance/evidence/collect                  — trigger + save snapshot
  *
  * All routes require admin authentication.
  */
@@ -20,6 +26,12 @@ import {
   executeRightToErasure,
   exportUserData,
 } from "../lib/compliance.js";
+import {
+  collectEvidence,
+  collectAndSave,
+  listEvidenceSnapshots,
+  getEvidenceByDate,
+} from "../lib/compliance-evidence.js";
 
 function parsePeriodQuery(query) {
   const period = {};

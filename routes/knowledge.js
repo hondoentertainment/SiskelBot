@@ -11,6 +11,7 @@ import {
   rollbackDocument,
   diffVersions,
 } from "../lib/document-versioning.js";
+import { checkStorageQuota } from "../lib/tenant-quotas.js";
 
 export default function mountKnowledgeRoutes(app, deps) {
   const {
@@ -101,6 +102,11 @@ export default function mountKnowledgeRoutes(app, deps) {
         const textBytes = Buffer.byteLength(text, "utf8");
         if (textBytes > KNOWLEDGE_MAX_DOC_BYTES) {
           return apiError(res, 413, "DOC_TOO_LARGE", `Document exceeds max size (${KNOWLEDGE_MAX_DOC_BYTES} bytes)`, `Reduce document size. Max ${Math.round(KNOWLEDGE_MAX_DOC_BYTES / 1024)}KB per document.`);
+        }
+
+        const storageCheck = await checkStorageQuota(workspace, textBytes, storage);
+        if (!storageCheck.allowed) {
+          return apiError(res, 507, "STORAGE_QUOTA_EXCEEDED", `Storage quota exceeded for plan '${storageCheck.plan}' (${storageCheck.current} / ${storageCheck.limit} bytes used)`, "Upgrade your plan or remove unused documents to free space.");
         }
 
         let embedding;

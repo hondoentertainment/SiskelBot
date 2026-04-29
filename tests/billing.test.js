@@ -323,3 +323,138 @@ await test("tenant isolation: scopeQuery with empty string returns WHERE", async
   const result = scopeQuery("", "ws-y");
   assert.ok(result.includes("WHERE workspace_id = 'ws-y'"));
 });
+
+// ---------------------------------------------------------------------------
+// Wave 18A — Stripe billing integration tests
+// ---------------------------------------------------------------------------
+
+await test("getPlanCatalog returns pro and enterprise plans", async () => {
+  const { getPlanCatalog } = await import("../lib/billing.js");
+  const catalog = getPlanCatalog();
+  assert.ok(catalog.pro);
+  assert.equal(catalog.pro.name, "SiskelBot Pro");
+  assert.equal(catalog.pro.requestsPerMinute, 60);
+  assert.equal(catalog.pro.tokensPerDay, 1_000_000);
+  assert.ok(catalog.enterprise);
+  assert.equal(catalog.enterprise.name, "SiskelBot Enterprise");
+  assert.equal(catalog.enterprise.requestsPerMinute, 300);
+  assert.equal(catalog.enterprise.tokensPerDay, 10_000_000);
+});
+
+await test("getWorkspaceSubscription returns free plan for unknown workspace", async () => {
+  const { getWorkspaceSubscription } = await import("../lib/billing.js");
+  const sub = await getWorkspaceSubscription("stripe-unknown-ws-" + Date.now());
+  assert.equal(sub.plan, "free");
+  assert.equal(sub.status, "active");
+  assert.equal(sub.stripeCustomerId, null);
+  assert.equal(sub.stripeSubscriptionId, null);
+  assert.equal(sub.updatedAt, null);
+});
+
+await test("createCheckoutSession returns null URL when STRIPE_SECRET_KEY is not set", async () => {
+  const savedKey = process.env.STRIPE_SECRET_KEY;
+  delete process.env.STRIPE_SECRET_KEY;
+  // Reset module cache so getStripe() re-evaluates
+  const { createCheckoutSession } = await import("../lib/billing.js");
+  const result = await createCheckoutSession({
+    workspaceId: "ws-test",
+    userId: "user-test",
+    planId: "pro",
+    successUrl: "https://example.com/success",
+    cancelUrl: "https://example.com/cancel",
+  });
+  assert.equal(result.url, null);
+  assert.equal(result.sessionId, null);
+  if (savedKey) process.env.STRIPE_SECRET_KEY = savedKey;
+});
+
+await test("createCheckoutSession throws on unknown planId", async () => {
+  const { createCheckoutSession } = await import("../lib/billing.js");
+  const savedKey = process.env.STRIPE_SECRET_KEY;
+  process.env.STRIPE_SECRET_KEY = "sk_test_fake";
+  try {
+    await assert.rejects(
+      () => createCheckoutSession({
+        workspaceId: "ws-test",
+        userId: "user-test",
+        planId: "nonexistent",
+        successUrl: "https://example.com/success",
+        cancelUrl: "https://example.com/cancel",
+      }),
+      /Unknown plan/
+    );
+  } finally {
+    if (savedKey) process.env.STRIPE_SECRET_KEY = savedKey;
+    else delete process.env.STRIPE_SECRET_KEY;
+  }
+});
+
+await test("handleWebhookEvent throws on invalid signature", async () => {
+  const { handleWebhookEvent } = await import("../lib/billing.js");
+  const savedKey = process.env.STRIPE_SECRET_KEY;
+  const savedSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  process.env.STRIPE_SECRET_KEY = "sk_test_fake";
+  process.env.STRIPE_WEBHOOK_SECRET = "whsec_testsecret";
+  try {
+    await assert.rejects(
+      () => handleWebhookEvent(Buffer.from('{"type":"test"}'), "invalid-sig"),
+      /signature/i
+    );
+  } finally {
+    if (savedKey) process.env.STRIPE_SECRET_KEY = savedKey;
+    else delete process.env.STRIPE_SECRET_KEY;
+    if (savedSecret) process.env.STRIPE_WEBHOOK_SECRET = savedSecret;
+    else delete process.env.STRIPE_WEBHOOK_SECRET;
+  }
+});
+
+await test("handleWebhookEvent returns stripe_disabled when no key configured", async () => {
+  const savedKey = process.env.STRIPE_SECRET_KEY;
+  delete process.env.STRIPE_SECRET_KEY;
+  const { handleWebhookEvent } = await import("../lib/billing.js");
+  const result = await handleWebhookEvent(Buffer.from("{}"), "sig");
+  assert.equal(result.handled, false);
+  assert.equal(result.event, "stripe_disabled");
+  if (savedKey) process.env.STRIPE_SECRET_KEY = savedKey;
+});
+
+await test("handleWebhookEvent throws when STRIPE_WEBHOOK_SECRET is missing", async () => {
+  const savedKey = process.env.STRIPE_SECRET_KEY;
+  const savedSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  process.env.STRIPE_SECRET_KEY = "sk_test_fake";
+  delete process.env.STRIPE_WEBHOOK_SECRET;
+  const { handleWebhookEvent } = await import("../lib/billing.js");
+  try {
+    await assert.rejects(
+      () => handleWebhookEvent(Buffer.from("{}"), "sig"),
+      /STRIPE_WEBHOOK_SECRET/
+    );
+  } finally {
+    if (savedKey) process.env.STRIPE_SECRET_KEY = savedKey;
+    else delete process.env.STRIPE_SECRET_KEY;
+    if (savedSecret) process.env.STRIPE_WEBHOOK_SECRET = savedSecret;
+  }
+});
+
+await test("getWorkspaceSubscription reflects stored subscription data", async () => {
+  const { getWorkspaceSubscription } = await import("../lib/billing.js");
+  const { writeJsonPath, getDataDir } = await import("../lib/json-path-store.js");
+  const { join } = await import("path");
+
+  const workspaceId = "stripe-stored-ws-" + Date.now();
+  const path = join(getDataDir(), "billing-subscriptions", `${workspaceId}.json`);
+  await writeJsonPath(path, {
+    plan: "pro",
+    status: "active",
+    stripeCustomerId: "cus_test123",
+    stripeSubscriptionId: "sub_test456",
+    updatedAt: "2026-04-01T00:00:00.000Z",
+  });
+
+  const sub = await getWorkspaceSubscription(workspaceId);
+  assert.equal(sub.plan, "pro");
+  assert.equal(sub.status, "active");
+  assert.equal(sub.stripeCustomerId, "cus_test123");
+  assert.equal(sub.stripeSubscriptionId, "sub_test456");
+  assert.equal(sub.updatedAt, "2026-04-01T00:00:00.000Z");
+});

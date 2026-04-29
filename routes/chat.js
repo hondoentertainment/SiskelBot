@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { validate } from "../lib/validate.js";
 import { detectPromptInjection, sanitizeInput } from "../lib/prompt-guard.js";
 import { checkOutputSafety } from "../lib/output-guard.js";
+import { inputModerationMiddleware, checkOutput } from "../lib/safety-gate.js";
 import { estimateRequestCost, checkCostLimit, recordCost } from "../lib/cost-controls.js";
 import {
   getActiveAdapter,
@@ -18,6 +19,7 @@ import {
 const ENABLE_PROMPT_GUARD = process.env.ENABLE_PROMPT_GUARD === "1";
 const ENABLE_OUTPUT_GUARD = process.env.ENABLE_OUTPUT_GUARD === "1";
 const ENABLE_COST_LIMITS = process.env.ENABLE_COST_LIMITS === "1";
+const moderationMiddleware = inputModerationMiddleware();
 
 export default function mountChatRoutes(app, deps) {
   const {
@@ -69,7 +71,7 @@ export default function mountChatRoutes(app, deps) {
   const validateChat = validate({ body: { messages: "array", model: "?string", stream: "?boolean" } });
 
   // POST /v1/chat/completions
-  app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRateLimiter, chatRateLimiter, logRequest, validateChat, async (req, res) => {
+  app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRateLimiter, chatRateLimiter, logRequest, validateChat, moderationMiddleware, async (req, res) => {
     recordChatRequest();
     const _startTime = Date.now();
     try {
@@ -335,6 +337,14 @@ export default function mountChatRoutes(app, deps) {
           }
         }
 
+        // Wave 17B: Safety gate — moderation check on agent output
+        if (typeof content === "string") {
+          const modResult = await checkOutput(content, { workspaceId: workspace, userId }).catch(() => ({ allowed: true }));
+          if (!modResult.allowed) {
+            console.warn("[safety-gate] Output blocked:", modResult.category);
+          }
+        }
+
         // Phase 26: Cost controls — record actual cost
         if (ENABLE_COST_LIMITS) {
           const actualCost = estimateRequestCost(model, inputTokens, outputTokens);
@@ -499,6 +509,14 @@ export default function mountChatRoutes(app, deps) {
         const safety = checkOutputSafety(outputContent);
         if (!safety.safe) {
           console.warn("[output-guard] Issues in streaming response:", safety.issues.map((i) => i.type).join(", "));
+        }
+      }
+
+      // Wave 17B: Safety gate — moderation check on streamed output
+      if (outputContent) {
+        const modResult = await checkOutput(outputContent, { workspaceId: workspace, userId }).catch(() => ({ allowed: true }));
+        if (!modResult.allowed) {
+          console.warn("[safety-gate] Streamed output blocked:", modResult.category);
         }
       }
 

@@ -3,12 +3,18 @@
  *
  * GET  /api/v1/billing/usage?workspace=X&period=30d   — usage summary
  * GET  /api/v1/billing/invoice?workspace=X&period=2026-03 — invoice data
- * GET  /api/v1/billing/plans                          — list available plans
+ * GET  /api/v1/billing/plans                          — list available plans (public)
  * GET  /api/v1/billing/plan?workspace=X               — current plan
  * PUT  /api/v1/billing/plan                           — change plan
+ *
+ * Wave 18A — Stripe integration:
+ * GET  /api/v1/billing/subscription  — current workspace Stripe subscription (auth required)
+ * POST /api/v1/billing/checkout      — create Stripe Checkout Session (auth required)
+ * POST /api/v1/billing/webhook       — Stripe webhook (raw body, signature verified)
  */
-import { createBillingManager } from "../lib/billing.js";
+import { createBillingManager, createCheckoutSession, handleWebhookEvent, getWorkspaceSubscription, getPlanCatalog } from "../lib/billing.js";
 import { listPlans, getPlan, setPlan } from "../lib/plans.js";
+import express from "express";
 
 export function mountBillingRoutes(app, deps) {
   const {
@@ -17,6 +23,7 @@ export function mountBillingRoutes(app, deps) {
     logRequest,
     sanitizeWorkspace,
     storageRateLimiter,
+    userAuth,
   } = deps;
 
   const limiter = storageRateLimiter || ((req, res, next) => next());
@@ -46,11 +53,12 @@ export function mountBillingRoutes(app, deps) {
     }
   });
 
-  // GET /api/v1/billing/plans — list available plans
+  // GET /api/v1/billing/plans — list available plans (public, no auth)
   apiRoute("get", "/billing/plans", logRequest, (req, res) => {
     try {
       const plans = listPlans();
-      res.json({ plans });
+      const stripePlans = getPlanCatalog();
+      res.json({ plans, stripePlans });
     } catch (err) {
       return apiError(res, 500, "INTERNAL_ERROR", err.message);
     }
@@ -87,4 +95,69 @@ export function mountBillingRoutes(app, deps) {
       return apiError(res, 500, "INTERNAL_ERROR", err.message);
     }
   });
+
+  // Wave 18A — Stripe routes
+
+  // GET /api/v1/billing/subscription — current workspace Stripe subscription
+  apiRoute("get", "/billing/subscription", userAuth, logRequest, async (req, res) => {
+    try {
+      const workspaceId = sanitizeWorkspace(req.query?.workspace || req.body?.workspaceId || "default");
+      const subscription = await getWorkspaceSubscription(workspaceId);
+      res.json({ workspaceId, subscription });
+    } catch (err) {
+      return apiError(res, 500, "INTERNAL_ERROR", err.message);
+    }
+  });
+
+  // POST /api/v1/billing/checkout — create Stripe Checkout Session
+  apiRoute("post", "/billing/checkout", userAuth, logRequest, async (req, res) => {
+    try {
+      const { planId, successUrl, cancelUrl, workspaceId: bodyWs } = req.body || {};
+      const workspaceId = sanitizeWorkspace(bodyWs || "default");
+      const userId = req.userId || "anonymous";
+
+      if (!planId || typeof planId !== "string") {
+        return apiError(res, 400, "INVALID_INPUT", "planId is required");
+      }
+      if (!successUrl || typeof successUrl !== "string") {
+        return apiError(res, 400, "INVALID_INPUT", "successUrl is required");
+      }
+      if (!cancelUrl || typeof cancelUrl !== "string") {
+        return apiError(res, 400, "INVALID_INPUT", "cancelUrl is required");
+      }
+
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return apiError(res, 503, "STRIPE_DISABLED", "Stripe is not configured on this server");
+      }
+
+      const result = await createCheckoutSession({ workspaceId, userId, planId, successUrl, cancelUrl });
+      res.json(result);
+    } catch (err) {
+      const msg = err.message || "Checkout session creation failed";
+      const status = msg.includes("Unknown plan") || msg.includes("No price") ? 400 : 500;
+      return apiError(res, status, "CHECKOUT_ERROR", msg);
+    }
+  });
+
+  // POST /api/v1/billing/webhook — Stripe webhook (raw body required for sig verification)
+  // This route is registered directly on app (not via apiRoute/dualRegister) so we can
+  // use express.raw() middleware before the handler without affecting other routes.
+  app.post(
+    "/api/v1/billing/webhook",
+    express.raw({ type: "application/json" }),
+    async (req, res) => {
+      const signature = req.headers["stripe-signature"];
+      if (!signature) {
+        return res.status(400).json({ error: "Missing stripe-signature header" });
+      }
+      try {
+        const result = await handleWebhookEvent(req.body, signature);
+        res.json({ received: true, ...result });
+      } catch (err) {
+        const msg = err.message || "Webhook processing failed";
+        const status = msg.includes("signature") || msg.includes("No signatures") || msg.includes("timestamp") ? 400 : 500;
+        res.status(status).json({ error: msg });
+      }
+    }
+  );
 }
