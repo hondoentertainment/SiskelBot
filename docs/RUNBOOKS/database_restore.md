@@ -27,7 +27,7 @@ Do **not** use this runbook for transient query slowness — see `database_slow.
 | Metric | Target |
 |---|---|
 | RPO (Recovery Point Objective) | 24 hours (daily backups) |
-| RTO (Recovery Time Objective) | 1 hour for <10 GB, 4 hours for <100 GB |
+| RTO (Recovery Time Objective) | 1 hour for `<10 GB`, 4 hours for `<100 GB` |
 
 If the business requires a tighter RPO than 24 h, change the backup CronJob schedule to run more frequently (e.g. `schedule: "0 */6 * * *"` for every 6 hours).
 
