@@ -297,6 +297,19 @@ import mountPreferenceRoutes from "./preference-collection.js";
 import mountBisectionRoutes from "./regression-bisection.js";
 import mountSyntheticUsersRoutes from "./synthetic-users.js";
 
+// Devin parity — secrets vault + GitHub dev workflow + all new modules
+import { mountSecretsRoutes } from "./secrets.js";
+import { mountGithubWorkflowRoutes } from "./github-workflow.js";
+import { mountMachineSnapshotRoutes } from "./machine-snapshots.js";
+import { mountPlaybookRoutes } from "./playbooks.js";
+import { mountWikiRoutes } from "./wiki.js";
+import { mountCodebaseSearchRoutes } from "./codebase-search.js";
+import { mountIssuePickupRoutes } from "./issue-pickup.js";
+import { mountDesktopAgentRoutes } from "./desktop-agent.js";
+import { mountSessionInsightsRoutes } from "./session-insights.js";
+import { mountSessionPatchRoutes } from "./session-patch.js";
+import { mountMultiRepoRoutes } from "./multi-repo.js";
+
 import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
@@ -560,6 +573,19 @@ const mountFunctions = [
   mountPreferenceRoutes,
   mountBisectionRoutes,
   mountSyntheticUsersRoutes,
+
+  // Devin parity — all new modules
+  mountSecretsRoutes,
+  mountGithubWorkflowRoutes,
+  mountMachineSnapshotRoutes,
+  mountPlaybookRoutes,
+  mountWikiRoutes,
+  mountCodebaseSearchRoutes,
+  mountIssuePickupRoutes,
+  mountDesktopAgentRoutes,
+  mountSessionInsightsRoutes,
+  mountSessionPatchRoutes,
+  mountMultiRepoRoutes,
 ];
 
 /**
