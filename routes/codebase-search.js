@@ -1,7 +1,7 @@
 import { searchCodebase, findDefinition, findReferences } from "../lib/codebase-search.js";
 
 export function mountCodebaseSearchRoutes(app, deps) {
-  const { apiRoute, apiError, userAuth, requireScope, logRequest, dualRegister } = deps;
+  const { apiRoute, apiError, userAuth, requireScope, logRequest } = deps;
 
   const noopAuth = (_req, _res, next) => next();
   const noopScope = (_s) => (_req, _res, next) => next();

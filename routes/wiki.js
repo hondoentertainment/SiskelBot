@@ -10,8 +10,7 @@ import {
 } from "../lib/repo-wiki-generator.js";
 
 export function mountWikiRoutes(app, deps) {
-  const { dualRegister, apiError } = deps;
-  const reg = dualRegister || ((path, handler) => { app.use(path, handler); });
+  const { apiError } = deps;
 
   app.get("/api/v1/workspaces/:workspaceId/wiki", async (req, res) => {
     try {

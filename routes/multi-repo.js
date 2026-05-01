@@ -5,7 +5,7 @@ import {
 } from "../lib/multi-repo-workspace.js";
 
 export function mountMultiRepoRoutes(app, deps) {
-  const { apiRoute, apiError, dualRegister } = deps;
+  const { apiError, dualRegister } = deps;
 
   dualRegister("get", "/workspaces/:workspaceId/repositories", async (req, res) => {
     const { workspaceId } = req.params;

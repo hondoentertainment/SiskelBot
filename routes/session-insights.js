@@ -6,7 +6,7 @@ import {
 } from "../lib/session-insights.js";
 
 export function mountSessionInsightsRoutes(app, deps) {
-  const { apiRoute, apiError, dualRegister } = deps;
+  const { apiError, dualRegister } = deps;
 
   dualRegister("get", "/workspaces/:workspaceId/session-insights", async (req, res) => {
     const { workspaceId } = req.params;
