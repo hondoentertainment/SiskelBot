@@ -52,7 +52,7 @@ Deep voice integration beyond basic STT/TTS.
 
 | # | Subtask | Description |
 |---|---------|-------------|
-| 44.1 | **Real-time voice conversation** | Streaming STT + TTS with low latency (<500ms) |
+| 44.1 | **Real-time voice conversation** | Streaming STT + TTS with low latency (`<500ms`) |
 | 44.2 | **Voice cloning** | Custom voice output trained on user samples |
 | 44.3 | **Speaker diarization** | Identify multiple speakers in meeting transcripts |
 | 44.4 | **Voice commands** | "Hey SiskelBot" wake word, voice-only navigation |

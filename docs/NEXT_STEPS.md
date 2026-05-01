@@ -59,7 +59,7 @@ opening Phase 73/74/76–80 until the consolidation wave lands.
 ### P0 — Consolidation (ship before anything new)
 
 1. **`server.js` extract.** Carve `server.js` down to a composition root
-   (<600 lines). Targets: middleware stack, startup checks, WebSocket
+   (`<600` lines). Targets: middleware stack, startup checks, WebSocket
    upgrade wiring, graceful-shutdown hooks → each to a focused module in
    `lib/`. One PR per extraction to keep review cheap.
 
