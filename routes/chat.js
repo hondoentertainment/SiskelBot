@@ -15,10 +15,13 @@ import {
   recordRequest as recordTenantRequest,
   recordTokens as recordTenantTokens,
 } from "../lib/tenant-quotas.js";
+import { createBillingManager } from "../lib/billing.js";
 
 const ENABLE_PROMPT_GUARD = process.env.ENABLE_PROMPT_GUARD === "1";
 const ENABLE_OUTPUT_GUARD = process.env.ENABLE_OUTPUT_GUARD === "1";
 const ENABLE_COST_LIMITS = process.env.ENABLE_COST_LIMITS === "1";
+const ENABLE_PLAN_QUOTA = process.env.QUOTA_ENABLED === "1";
+const planBilling = ENABLE_PLAN_QUOTA ? createBillingManager() : null;
 const moderationMiddleware = inputModerationMiddleware();
 
 export default function mountChatRoutes(app, deps) {
@@ -95,6 +98,25 @@ export default function mountChatRoutes(app, deps) {
       } catch (e) {
         // Fail-open: log but do not block requests on quota infra errors
         console.warn("[tenant-quotas] check failed:", e?.message || e);
+      }
+
+      // Plan-level monthly token quota (Stripe billing tier).
+      // Gated on QUOTA_ENABLED=1 so self-hosted users without billing aren't blocked.
+      if (planBilling) {
+        try {
+          const limits = await planBilling.checkPlanLimits(workspace);
+          if (!limits.allowed) {
+            return apiError(
+              res,
+              429,
+              "PLAN_QUOTA_EXCEEDED",
+              `Token quota exceeded for plan ${limits.planName}. Used: ${limits.used}, Limit: ${limits.limit}. Upgrade at /pricing.html`
+            );
+          }
+        } catch (e) {
+          // Fail-open on infrastructure errors so quota check can't take chat down.
+          console.warn("[plan-quota] check failed:", e?.message || e);
+        }
       }
 
       // Per-workspace token quota check

@@ -12,7 +12,7 @@
  * POST /api/v1/billing/checkout      — create Stripe Checkout Session (auth required)
  * POST /api/v1/billing/webhook       — Stripe webhook (raw body, signature verified)
  */
-import { createBillingManager, createCheckoutSession, handleWebhookEvent, getWorkspaceSubscription, getPlanCatalog } from "../lib/billing.js";
+import { createBillingManager, createCheckoutSession, createBillingPortalSession, handleWebhookEvent, getWorkspaceSubscription, getPlanCatalog } from "../lib/billing.js";
 import { listPlans, getPlan, setPlan } from "../lib/plans.js";
 import express from "express";
 
@@ -112,30 +112,57 @@ export function mountBillingRoutes(app, deps) {
   // POST /api/v1/billing/checkout — create Stripe Checkout Session
   apiRoute("post", "/billing/checkout", userAuth, logRequest, async (req, res) => {
     try {
-      const { planId, successUrl, cancelUrl, workspaceId: bodyWs } = req.body || {};
+      const { planId, workspaceId: bodyWs } = req.body || {};
       const workspaceId = sanitizeWorkspace(bodyWs || "default");
       const userId = req.userId || "anonymous";
+      const userEmail = req.user?.email || req.userEmail || undefined;
+      const baseUrl = process.env.APP_BASE_URL || "";
+      const successUrl = req.body?.successUrl || (baseUrl ? `${baseUrl}/billing/success` : null);
+      const cancelUrl = req.body?.cancelUrl || (baseUrl ? `${baseUrl}/billing/cancel` : null);
 
       if (!planId || typeof planId !== "string") {
         return apiError(res, 400, "INVALID_INPUT", "planId is required");
       }
       if (!successUrl || typeof successUrl !== "string") {
-        return apiError(res, 400, "INVALID_INPUT", "successUrl is required");
+        return apiError(res, 400, "INVALID_INPUT", "successUrl is required (or set APP_BASE_URL)");
       }
       if (!cancelUrl || typeof cancelUrl !== "string") {
-        return apiError(res, 400, "INVALID_INPUT", "cancelUrl is required");
+        return apiError(res, 400, "INVALID_INPUT", "cancelUrl is required (or set APP_BASE_URL)");
       }
 
       if (!process.env.STRIPE_SECRET_KEY) {
         return apiError(res, 503, "STRIPE_DISABLED", "Stripe is not configured on this server");
       }
 
-      const result = await createCheckoutSession({ workspaceId, userId, planId, successUrl, cancelUrl });
+      const result = await createCheckoutSession({ workspaceId, userId, planId, successUrl, cancelUrl, userEmail });
       res.json(result);
     } catch (err) {
       const msg = err.message || "Checkout session creation failed";
       const status = msg.includes("Unknown plan") || msg.includes("No price") ? 400 : 500;
       return apiError(res, status, "CHECKOUT_ERROR", msg);
+    }
+  });
+
+  // POST /api/v1/billing/portal — create a Stripe Billing Portal session so
+  // a customer can manage their subscription (update card, cancel, invoices).
+  apiRoute("post", "/billing/portal", userAuth, logRequest, async (req, res) => {
+    if (!process.env.STRIPE_SECRET_KEY) {
+      return apiError(res, 503, "STRIPE_DISABLED", "Stripe is not configured on this server");
+    }
+    const workspaceId = sanitizeWorkspace(req.body?.workspaceId || "default");
+    const baseUrl = process.env.APP_BASE_URL || "";
+    const returnUrl = req.body?.returnUrl || (baseUrl ? `${baseUrl}/billing` : null);
+    if (!returnUrl) {
+      return apiError(res, 400, "INVALID_INPUT", "returnUrl is required (or set APP_BASE_URL)");
+    }
+    try {
+      const result = await createBillingPortalSession({ workspaceId, returnUrl });
+      res.json(result);
+    } catch (err) {
+      if (err.code === "NO_SUBSCRIPTION") {
+        return apiError(res, 404, "NO_SUBSCRIPTION", err.message);
+      }
+      return apiError(res, 500, "PORTAL_ERROR", err.message || "Portal session creation failed");
     }
   });
 

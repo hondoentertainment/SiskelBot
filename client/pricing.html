@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>Pricing — SiskelBot</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background: #0f172a;
+      color: #e2e8f0;
+      line-height: 1.5;
+    }
+    a:focus-visible, button:focus-visible {
+      outline: 2px solid #60a5fa;
+      outline-offset: 2px;
+    }
+    header {
+      padding: 1rem 1.5rem;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    header h1 { margin: 0; font-size: 1.125rem; font-weight: 600; }
+    header nav { margin-left: auto; display: flex; gap: 1rem; font-size: 0.9rem; }
+    header nav a { color: #cbd5e1; text-decoration: none; }
+    header nav a:hover { color: #fff; }
+    main { max-width: 1100px; margin: 0 auto; padding: 3rem 1.5rem; }
+    main h2 {
+      text-align: center;
+      font-size: 2rem;
+      margin: 0 0 0.5rem;
+      font-weight: 700;
+    }
+    main p.lede {
+      text-align: center;
+      color: #94a3b8;
+      margin: 0 0 2.5rem;
+    }
+    .plans {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+    }
+    .plan {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 1.75rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+    }
+    .plan.featured {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 1px #60a5fa66;
+    }
+    .plan h3 {
+      margin: 0 0 0.5rem;
+      font-size: 1.25rem;
+    }
+    .plan .price {
+      font-size: 2.25rem;
+      font-weight: 700;
+      margin: 0.5rem 0;
+    }
+    .plan .price small {
+      font-size: 0.95rem;
+      color: #94a3b8;
+      font-weight: 400;
+    }
+    .plan ul {
+      margin: 1rem 0 1.5rem;
+      padding: 0;
+      list-style: none;
+      flex: 1;
+    }
+    .plan li {
+      padding: 0.35rem 0;
+      color: #cbd5e1;
+      font-size: 0.95rem;
+    }
+    .plan li::before {
+      content: "✓";
+      color: #4ade80;
+      margin-right: 0.5rem;
+      font-weight: 700;
+    }
+    .plan button {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      border-radius: 6px;
+      border: 1px solid #334155;
+      background: #0f172a;
+      color: #e2e8f0;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .plan.featured button {
+      background: #2563eb;
+      border-color: #2563eb;
+      color: #fff;
+    }
+    .plan button:hover { filter: brightness(1.1); }
+    .plan button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .note {
+      text-align: center;
+      color: #64748b;
+      font-size: 0.85rem;
+      margin-top: 2rem;
+    }
+    #status {
+      text-align: center;
+      margin-top: 1rem;
+      min-height: 1.5em;
+      color: #fbbf24;
+    }
+    #status.error { color: #f87171; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SiskelBot</h1>
+    <nav>
+      <a href="/">Chat</a>
+      <a href="/pricing.html">Pricing</a>
+      <a href="/docs">API Docs</a>
+    </nav>
+  </header>
+  <main>
+    <h2>Simple, honest pricing</h2>
+    <p class="lede">Local-first AI with a knowledge graph and multi-agent swarm. Your data never leaves your machine on self-hosted plans.</p>
+
+    <div class="plans" id="plans">
+      <!-- Filled in by JS, with a static fallback below. -->
+      <div class="plan" data-plan-id="free">
+        <h3>Free</h3>
+        <div class="price">$0<small> / month</small></div>
+        <ul>
+          <li>100K tokens / month</li>
+          <li>Up to 2 workspaces</li>
+          <li>Up to 3 members</li>
+          <li>Chat + knowledge base</li>
+        </ul>
+        <button data-plan-id="free" disabled>Current plan</button>
+      </div>
+      <div class="plan featured" data-plan-id="pro">
+        <h3>Pro</h3>
+        <div class="price">$29<small> / month</small></div>
+        <ul>
+          <li>1M tokens / month</li>
+          <li>Up to 10 workspaces, 20 members</li>
+          <li>Multi-agent swarm orchestration</li>
+          <li>Workflows + integrations (GitHub, Slack, Vercel, Linear, Jira)</li>
+          <li>Knowledge graph + semantic search</li>
+        </ul>
+        <button data-plan-id="pro">Upgrade to Pro</button>
+      </div>
+      <div class="plan" data-plan-id="enterprise">
+        <h3>Enterprise</h3>
+        <div class="price">$299<small> / month</small></div>
+        <ul>
+          <li>Unlimited tokens</li>
+          <li>Unlimited workspaces and members</li>
+          <li>SSO, SCIM, audit trails</li>
+          <li>Custom data residency</li>
+          <li>Priority support</li>
+        </ul>
+        <button data-plan-id="enterprise">Contact us</button>
+      </div>
+    </div>
+
+    <div id="status" role="status" aria-live="polite"></div>
+
+    <p class="note">
+      Manage your subscription, update payment methods, or download invoices via the
+      <a href="#" id="portal-link" style="color:#60a5fa;">customer portal</a>.
+    </p>
+  </main>
+
+  <script>
+    const status = document.getElementById('status');
+
+    function setStatus(msg, isError) {
+      status.textContent = msg || '';
+      status.classList.toggle('error', !!isError);
+    }
+
+    async function refreshPlans() {
+      try {
+        const r = await fetch('/api/v1/billing/plans');
+        if (!r.ok) return;
+        const data = await r.json();
+        const plans = Array.isArray(data.plans) ? data.plans : [];
+        for (const plan of plans) {
+          const card = document.querySelector(`.plan[data-plan-id="${plan.id}"]`);
+          if (!card) continue;
+          const priceEl = card.querySelector('.price');
+          if (priceEl) {
+            priceEl.innerHTML = `$${plan.priceMonthly}<small> / month</small>`;
+          }
+        }
+      } catch (_) { /* fall back to static */ }
+    }
+
+    async function startCheckout(planId) {
+      setStatus('Creating checkout session…');
+      try {
+        const baseUrl = window.location.origin;
+        const r = await fetch('/api/v1/billing/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            planId,
+            successUrl: `${baseUrl}/billing/success`,
+            cancelUrl: `${baseUrl}/pricing.html`,
+          }),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          setStatus(data.error || data.message || 'Checkout failed', true);
+          return;
+        }
+        if (data.url) {
+          window.location.href = data.url;
+          return;
+        }
+        setStatus('Stripe is not configured on this server.', true);
+      } catch (err) {
+        setStatus(err.message || 'Network error', true);
+      }
+    }
+
+    async function openPortal() {
+      setStatus('Opening customer portal…');
+      try {
+        const baseUrl = window.location.origin;
+        const r = await fetch('/api/v1/billing/portal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ returnUrl: `${baseUrl}/pricing.html` }),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          setStatus(data.error || data.message || 'Portal unavailable', true);
+          return;
+        }
+        if (data.url) {
+          window.location.href = data.url;
+          return;
+        }
+        setStatus('Customer portal is unavailable.', true);
+      } catch (err) {
+        setStatus(err.message || 'Network error', true);
+      }
+    }
+
+    document.getElementById('plans').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-plan-id]');
+      if (!btn || btn.disabled) return;
+      const planId = btn.dataset.planId;
+      if (planId === 'enterprise') {
+        window.location.href = 'mailto:sales@siskelbot.com?subject=Enterprise%20plan';
+        return;
+      }
+      startCheckout(planId);
+    });
+
+    document.getElementById('portal-link').addEventListener('click', (e) => {
+      e.preventDefault();
+      openPortal();
+    });
+
+    refreshPlans();
+  </script>
+</body>
+</html>

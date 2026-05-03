@@ -436,6 +436,43 @@ await test("handleWebhookEvent throws when STRIPE_WEBHOOK_SECRET is missing", as
   }
 });
 
+await test("createBillingPortalSession returns null when STRIPE_SECRET_KEY is missing", async () => {
+  const savedKey = process.env.STRIPE_SECRET_KEY;
+  delete process.env.STRIPE_SECRET_KEY;
+  const { createBillingPortalSession } = await import("../lib/billing.js");
+  const result = await createBillingPortalSession({
+    workspaceId: "ws-portal-noop-" + Date.now(),
+    returnUrl: "https://example.com/back",
+  });
+  assert.equal(result.url, null);
+  if (savedKey) process.env.STRIPE_SECRET_KEY = savedKey;
+});
+
+await test("createBillingPortalSession throws NO_SUBSCRIPTION when no Stripe customer", async () => {
+  const savedKey = process.env.STRIPE_SECRET_KEY;
+  process.env.STRIPE_SECRET_KEY = "sk_test_fake";
+  try {
+    const { createBillingPortalSession } = await import("../lib/billing.js");
+    await assert.rejects(
+      () => createBillingPortalSession({
+        workspaceId: "ws-portal-missing-" + Date.now(),
+        returnUrl: "https://example.com/back",
+      }),
+      (err) => err.code === "NO_SUBSCRIPTION"
+    );
+  } finally {
+    if (savedKey) process.env.STRIPE_SECRET_KEY = savedKey;
+    else delete process.env.STRIPE_SECRET_KEY;
+  }
+});
+
+await test("enterprise plan price is at least $299", async () => {
+  const { getPlanDefinition } = await import("../lib/plans.js");
+  const ent = getPlanDefinition("enterprise");
+  assert.ok(ent);
+  assert.ok(ent.priceMonthly >= 299, `expected enterprise priceMonthly >= 299, got ${ent.priceMonthly}`);
+});
+
 await test("getWorkspaceSubscription reflects stored subscription data", async () => {
   const { getWorkspaceSubscription } = await import("../lib/billing.js");
   const { writeJsonPath, getDataDir } = await import("../lib/json-path-store.js");

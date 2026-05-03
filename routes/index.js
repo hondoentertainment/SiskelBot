@@ -139,53 +139,14 @@ import { mountLongMissionRoutes } from "./long-missions.js";
 import { mountScimRoutes } from "./scim.js";
 import { mountAgentConsensusRoutes } from "./agent-consensus.js";
 import { mountMeetingBotRoutes } from "./meeting-bot.js";
-import { mountBpeTokenizerRoutes } from "./bpe-tokenizer.js";
-import { mountPreferenceDatasetRoutes } from "./preference-datasets.js";
-import { mountGBrainRoutes } from "./gbrain.js";
-import { mountFederatedTrainingRoutes } from "./federated-training.js";
-import { mountFlConsortiumRoutes } from "./fl-consortium.js";
-import { mountPrivacyAccountingRoutes } from "./privacy-accounting.js";
-import { mountSecureAggregationRoutes } from "./secure-aggregation.js";
-import { mountDifferentialPrivacyRoutes } from "./differential-privacy.js";
-import { mountPqJwtRoutes } from "./pq-jwt.js";
-import { mountPqMigrationRoutes } from "./pq-migration.js";
-import { mountPqTlsRoutes } from "./pq-tls.js";
-import { mountPqDilithiumRoutes } from "./pq-dilithium.js";
-import { mountPqKyberRoutes } from "./pq-kyber.js";
-import { mountXrRoutes } from "./xr.js";
-import { mountNftGatingRoutes } from "./nft-gating.js";
-import { mountCryptoPaymentRoutes } from "./crypto-payments.js";
-import { mountWalletAuthRoutes } from "./wallet-auth.js";
-import { mountDecentralizedStorageRoutes } from "./decentralized-storage.js";
 import { mountAuditAnchorRoutes } from "./audit-anchor.js";
 import { mountAuditVerifyRoutes } from "./audit-verify.js";
-import { mountVrRoomsRoutes } from "./vr-rooms.js";
-import { mountAvatarAgentsRoutes } from "./avatar-agents.js";
-import { mountSpatialGraphRoutes } from "./spatial-graph.js";
-import { mountGestureControlRoutes } from "./gesture-control.js";
-import { mountJailbreakDetectorRoutes } from "./jailbreak-detector.js";
-import { mountConstitutionalAiRoutes } from "./constitutional-ai.js";
-import { mountSelfConsistencyRoutes } from "./self-consistency.js";
-import { mountVerificationLoopRoutes } from "./verification-loop.js";
-import { mountTreeOfThoughtRoutes } from "./tree-of-thought.js";
-import { mountGraphOfThoughtRoutes } from "./graph-of-thought.js";
 import { mountToolGraphRoutes } from "./tool-graph.js";
-import { mountVideoUnderstandingRoutes } from "./video-understanding.js";
 import { mountToolCompositionRoutes } from "./tool-composition.js";
-import { mountOutputClassifiersRoutes } from "./output-classifiers.js";
-import { mountImageGenerationRoutes } from "./image-generation.js";
-import { mountAudioClassificationRoutes } from "./audio-classification.js";
-import { mount3dAssetsRoutes } from "./3d-assets.js";
-import { mountScreenControlRoutes } from "./screen-control.js";
-import { mountShellAgentRoutes } from "./shell-agent.js";
-import { mountBrowserAgentRoutes } from "./browser-agent.js";
-import { mountDocumentLayoutRoutes } from "./document-layout.js";
-import { mountFsAgentRoutes } from "./fs-agent.js";
 import { mountAgentSandboxRoutes } from "./agent-sandbox.js";
 import { mountBenchmarkRunnerRoutes } from "./benchmark-runner.js";
 import { mountCurriculumRoutes } from "./curriculum.js";
 import { mountSpeculativeDecodingRoutes } from "./speculative-decoding.js";
-import { mountSyntheticTasksRoutes } from "./synthetic-tasks.js";
 import { mountDegradationTiersRoutes } from "./degradation-tiers.js";
 import { mountQuantizationRoutes } from "./quantization.js";
 import { mountChaosEngineeringRoutes } from "./chaos-engineering.js";
@@ -198,7 +159,6 @@ import { mountDevSetupRoutes } from "./dev-setup.js";
 // Phase 51.4-5, 52.4, 57, 58 (Agent A — 11 modules)
 import mountPolicyAuditRoutes from "./policy-audit.js";
 import mountRiskyOpsQuotaRoutes from "./risky-ops-quota.js";
-import mountNeuroSymbolicRoutes from "./neuro-symbolic.js";
 import mountDagPipelineRoutes from "./dag-pipeline.js";
 import mountDataQualityRoutes from "./data-quality.js";
 import mountSchemaEvolutionRoutes from "./schema-evolution.js";
@@ -232,16 +192,8 @@ import mountModelApprovalRoutes from "./model-approval.js";
 import mountUsagePoliciesRoutes from "./usage-policies.js";
 import mountBudgetAllocationRoutes from "./budget-allocation.js";
 import mountAuditReportsRoutes from "./audit-reports.js";
-import mountAiRiskScoringRoutes from "./ai-risk-scoring.js";
-import mountHashDetectionRoutes from "./hash-detection.js";
-import mountCopyrightSimilarityRoutes from "./copyright-similarity.js";
-import mountFactualityCrossrefRoutes from "./factuality-crossref.js";
-import mountBrandSafetyRoutes from "./brand-safety.js";
-import mountHitlModerationRoutes from "./hitl-moderation.js";
 import mountWebIngestionRoutes from "./web-ingestion.js";
 import mountLargeRetrievalRoutes from "./large-retrieval.js";
-import mountFactVerificationRoutes from "./fact-verification.js";
-import mountSourceCredibilityRoutes from "./source-credibility.js";
 import mountFreshnessSlaRoutes from "./freshness-sla.js";
 
 // Wave 1 web interface — realtime agent run stream + replay
@@ -284,11 +236,6 @@ import mountCreditRoutes from "./credit-system.js";
 import mountInvoicingRoutes from "./invoicing.js";
 
 // Phase 72 — Trust & Safety Pro (5 modules)
-import mountRedTeamRoutes from "./red-team-harness.js";
-import mountModelCardRoutes from "./model-card-generator.js";
-import mountBiasEvalRoutes from "./bias-eval-suite.js";
-import mountKTelemetryRoutes from "./k-anonymous-telemetry.js";
-import mountSafetySlaRoutes from "./safety-sla.js";
 
 // Phase 75 — Evaluation 2.0 (5 modules)
 import mountEvalInProdRoutes from "./eval-in-prod.js";
@@ -414,53 +361,14 @@ const mountFunctions = [
   mountScimRoutes,
   mountAgentConsensusRoutes,
   mountMeetingBotRoutes,
-  mountBpeTokenizerRoutes,
-  mountPreferenceDatasetRoutes,
-  mountGBrainRoutes,
-  mountFederatedTrainingRoutes,
-  mountFlConsortiumRoutes,
-  mountPrivacyAccountingRoutes,
-  mountSecureAggregationRoutes,
-  mountDifferentialPrivacyRoutes,
-  mountPqJwtRoutes,
-  mountPqMigrationRoutes,
-  mountPqTlsRoutes,
-  mountPqDilithiumRoutes,
-  mountPqKyberRoutes,
-  mountXrRoutes,
-  mountNftGatingRoutes,
-  mountCryptoPaymentRoutes,
-  mountWalletAuthRoutes,
-  mountDecentralizedStorageRoutes,
   mountAuditAnchorRoutes,
   mountAuditVerifyRoutes,
-  mountVrRoomsRoutes,
-  mountAvatarAgentsRoutes,
-  mountSpatialGraphRoutes,
-  mountGestureControlRoutes,
-  mountJailbreakDetectorRoutes,
-  mountConstitutionalAiRoutes,
-  mountSelfConsistencyRoutes,
-  mountVerificationLoopRoutes,
-  mountTreeOfThoughtRoutes,
-  mountGraphOfThoughtRoutes,
   mountToolGraphRoutes,
-  mountVideoUnderstandingRoutes,
   mountToolCompositionRoutes,
-  mountOutputClassifiersRoutes,
-  mountImageGenerationRoutes,
-  mountAudioClassificationRoutes,
-  mount3dAssetsRoutes,
-  mountScreenControlRoutes,
-  mountShellAgentRoutes,
-  mountBrowserAgentRoutes,
-  mountDocumentLayoutRoutes,
-  mountFsAgentRoutes,
   mountAgentSandboxRoutes,
   mountBenchmarkRunnerRoutes,
   mountCurriculumRoutes,
   mountSpeculativeDecodingRoutes,
-  mountSyntheticTasksRoutes,
   mountDegradationTiersRoutes,
   mountQuantizationRoutes,
   mountChaosEngineeringRoutes,
@@ -473,7 +381,6 @@ const mountFunctions = [
   // Agent A — safety audit, data engineering, cost
   mountPolicyAuditRoutes,
   mountRiskyOpsQuotaRoutes,
-  mountNeuroSymbolicRoutes,
   mountDagPipelineRoutes,
   mountDataQualityRoutes,
   mountSchemaEvolutionRoutes,
@@ -507,16 +414,8 @@ const mountFunctions = [
   mountUsagePoliciesRoutes,
   mountBudgetAllocationRoutes,
   mountAuditReportsRoutes,
-  mountAiRiskScoringRoutes,
-  mountHashDetectionRoutes,
-  mountCopyrightSimilarityRoutes,
-  mountFactualityCrossrefRoutes,
-  mountBrandSafetyRoutes,
-  mountHitlModerationRoutes,
   mountWebIngestionRoutes,
   mountLargeRetrievalRoutes,
-  mountFactVerificationRoutes,
-  mountSourceCredibilityRoutes,
   mountFreshnessSlaRoutes,
 
   // Wave 1 web interface — realtime agent run stream + replay
@@ -561,11 +460,6 @@ const mountFunctions = [
   mountInvoicingRoutes,
 
   // Phase 72 — Trust & Safety Pro
-  mountRedTeamRoutes,
-  mountModelCardRoutes,
-  mountBiasEvalRoutes,
-  mountKTelemetryRoutes,
-  mountSafetySlaRoutes,
 
   // Phase 75 — Evaluation 2.0
   mountEvalInProdRoutes,
