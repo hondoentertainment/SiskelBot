@@ -113,3 +113,21 @@ export default function workflowRoutes({ apiError, storageRateLimiter, requireSc
 
   return router;
 }
+
+function deprecationWorkflow(req, res, next) {
+  res.setHeader("X-API-Deprecated", "use /api/v1/");
+  res.setHeader("Sunset", "2027-01-01T00:00:00Z");
+  res.setHeader("Deprecation", "true");
+  next();
+}
+
+export function mountWorkflowRoutes(app, deps) {
+  const router = workflowRoutes({
+    apiError: deps.apiError,
+    storageRateLimiter: deps.storageRateLimiter,
+    requireScope: deps.requireScope,
+    logRequest: deps.logRequest,
+  });
+  app.use("/api/v1/workflows", router);
+  app.use("/api/workflows", deprecationWorkflow, router);
+}

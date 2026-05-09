@@ -45,6 +45,9 @@ import mountHealthRoutes from "./health.js";
 import mountIntegrationsRoutes from "./integrations.js";
 import mountUsageRoutes from "./usage.js";
 import mountKnowledgeRoutes from "./knowledge.js";
+import { mountDatasetRoutes } from "./datasets.js";
+import { mountSearchRoutes } from "./search.js";
+import { mountWorkflowRoutes } from "./workflows.js";
 import mountWorkspacesRoutes from "./workspaces.js";
 import mountRecipesRoutes from "./recipes.js";
 import mountTeamsRoutes from "./teams.js";
@@ -320,6 +323,9 @@ const mountFunctions = [
   mountIntegrationsRoutes,
   mountUsageRoutes,
   mountKnowledgeRoutes,
+  mountDatasetRoutes,
+  mountSearchRoutes,
+  mountWorkflowRoutes,
   mountWorkspacesRoutes,
   mountRecipesRoutes,
   mountTeamsRoutes,

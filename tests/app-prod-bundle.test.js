@@ -114,30 +114,30 @@ test("substituteAppEntry swaps the /src/app.js script tag", () => {
   );
 });
 
-test("server.js exports the substitution helpers and uses the same regex", () => {
+test("server re-exports substitution helpers (implementation in lib/server-configured-app.js)", () => {
   // Light sanity check that server.js's helper logic matches ours. We do not
   // import server.js here (booting it requires real storage/auth wiring).
   // Instead we re-read the source file and assert the expected tokens are
   // present so future refactors cannot silently drift away from the tested
   // regex shape.
   const serverSrc = readFileSync(
-    fileURLToPath(new URL("../server.js", import.meta.url)),
+    fileURLToPath(new URL("../lib/server-configured-app.js", import.meta.url)),
     "utf8",
   );
   assert.ok(
     serverSrc.includes("export function renderAppHtml"),
-    "expected server.js to export renderAppHtml",
+    "expected server-configured-app.js to export renderAppHtml",
   );
   assert.ok(
     serverSrc.includes("export function substituteAppEntry"),
-    "expected server.js to export substituteAppEntry",
+    "expected server-configured-app.js to export substituteAppEntry",
   );
   // Exact regex literal used for substitution.
   assert.ok(
     serverSrc.includes(
       '/<script\\s+type="module"\\s+src="\\/src\\/app\\.js"\\s*>\\s*<\\/script>/',
     ),
-    "expected server.js to use the canonical /src/app.js substitution regex",
+    "expected server-configured-app.js to use the canonical /src/app.js substitution regex",
   );
 });
 

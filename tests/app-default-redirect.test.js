@@ -161,7 +161,7 @@ test("with UI_DEFAULT_APP=1, other static asset paths are NOT redirected", async
   }
 });
 
-test("server.js exports installDefaultAppRedirect with the same shape", async () => {
+test("installDefaultAppRedirect is implemented in server-configured-app.js", async () => {
   // Source-level parity check: server.js must expose the helper used by the
   // tests above and call it before the static middleware. We do not import
   // server.js (that would boot the whole app); instead we re-read the source
@@ -170,24 +170,24 @@ test("server.js exports installDefaultAppRedirect with the same shape", async ()
   const { readFileSync } = await import("node:fs");
   const { fileURLToPath } = await import("node:url");
   const serverSrc = readFileSync(
-    fileURLToPath(new URL("../server.js", import.meta.url)),
+    fileURLToPath(new URL("../lib/server-configured-app.js", import.meta.url)),
     "utf8",
   );
   assert.ok(
     serverSrc.includes("export function installDefaultAppRedirect"),
-    "expected server.js to export installDefaultAppRedirect",
+    "expected server-configured-app.js to export installDefaultAppRedirect",
   );
   assert.ok(
     serverSrc.includes("UI_DEFAULT_APP"),
-    "expected server.js to reference the UI_DEFAULT_APP env var",
+    "expected server-configured-app.js to reference the UI_DEFAULT_APP env var",
   );
   assert.ok(
     serverSrc.includes('res.redirect(302, "/app/chat"'),
-    "expected server.js to issue an explicit 302 redirect to /app/chat",
+    "expected server-configured-app.js to issue an explicit 302 redirect to /app/chat",
   );
   // The install call must precede the static middleware mount.
   const installIdx = serverSrc.indexOf("installDefaultAppRedirect(app)");
-  const staticIdx = serverSrc.indexOf('express.static(join(__dirname, "client"');
+  const staticIdx = serverSrc.indexOf('express.static(join(ROOT_DIR, "client"');
   assert.ok(installIdx > -1, "expected installDefaultAppRedirect(app) call");
   assert.ok(staticIdx > -1, "expected express.static(client) mount");
   assert.ok(

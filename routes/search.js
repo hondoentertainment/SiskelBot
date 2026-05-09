@@ -5,7 +5,23 @@ import {
   searchConversations,
   reindex,
 } from "../lib/conversation-search.js";
-import { listAllDocs } from "../lib/knowledge-store.js";
+import { list, getDocumentById } from "../lib/knowledge-store.js";
+
+async function loadKnowledgeDocsForReindex(workspace) {
+  const listed = await list({ workspace });
+  if (listed.error) {
+    const err = new Error(listed.error);
+    err.code = listed.code;
+    throw err;
+  }
+  const out = [];
+  for (const item of listed.items || []) {
+    const doc = await getDocumentById({ workspace, id: item.id });
+    if (doc.error) continue;
+    out.push(doc);
+  }
+  return out;
+}
 
 export function mountSearchRoutes(app, deps) {
   const {
@@ -58,7 +74,7 @@ export function mountSearchRoutes(app, deps) {
       const userId = req.userId || "anonymous";
 
       // Fetch knowledge docs for this workspace
-      const knowledgeDocs = await listAllDocs({ workspace });
+      const knowledgeDocs = await loadKnowledgeDocsForReindex(workspace);
 
       const result = await reindex(userId, workspace, knowledgeDocs);
 

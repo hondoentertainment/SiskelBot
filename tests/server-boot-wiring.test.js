@@ -20,12 +20,19 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createChannelRegistry } from "../lib/realtime-channels.js";
 
-const SERVER_PATH = join(
+const LISTENER_PATH = join(
   dirname(fileURLToPath(import.meta.url)),
   "..",
-  "server.js",
+  "lib",
+  "server-production-listener.js",
 );
 
+const CONFIGURED_APP_PATH = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "lib",
+  "server-configured-app.js",
+);
 // ──────────────────────────────────────────────────────────────────────
 // Inline copies of the production helpers. Kept in sync with server.js
 // by the "server.js source contains canonical wiring" test below.
@@ -219,33 +226,31 @@ test("lib/metrics.js exports the realtime backpressure counter API", async () =>
 // server.js source parity check
 // ──────────────────────────────────────────────────────────────────────
 
-test("server.js source contains the canonical boot wiring", () => {
-  const src = readFileSync(SERVER_PATH, "utf8");
+test("server-production-listener.js contains the canonical boot wiring", () => {
+  const src = readFileSync(LISTENER_PATH, "utf8");
 
-  // buildRunIndexFromSessions is imported and invoked at boot.
   assert.ok(
     src.includes("buildRunIndexFromSessions"),
-    "expected server.js to reference buildRunIndexFromSessions",
+    "expected listener to reference buildRunIndexFromSessions",
   );
   assert.match(
     src,
     /buildRunIndexFromSessions\s*\(\s*\)\s*\.\s*then/,
-    "expected server.js to invoke buildRunIndexFromSessions() with a .then handler",
+    "expected listener to invoke buildRunIndexFromSessions() with a .then handler",
   );
 
-  // Slow-subscriber + error hooks are wired via the install helper.
   assert.ok(
     src.includes("installRealtimeMetricsHooks(defaultChannelRegistry)"),
-    "expected server.js to call installRealtimeMetricsHooks(defaultChannelRegistry)",
+    "expected listener to call installRealtimeMetricsHooks(defaultChannelRegistry)",
   );
 
-  // Metrics functions are imported from lib/metrics.js.
+  const cfgSrc = readFileSync(CONFIGURED_APP_PATH, "utf8");
   assert.ok(
-    src.includes("incrementRealtimeBackpressure"),
-    "expected server.js to import incrementRealtimeBackpressure",
+    cfgSrc.includes("incrementRealtimeBackpressure"),
+    "expected server-configured-app.js to import incrementRealtimeBackpressure",
   );
   assert.ok(
-    src.includes("incrementRealtimeSubscriberError"),
-    "expected server.js to import incrementRealtimeSubscriberError",
+    cfgSrc.includes("incrementRealtimeSubscriberError"),
+    "expected server-configured-app.js to import incrementRealtimeSubscriberError",
   );
 });
