@@ -31,6 +31,8 @@ jobs:
           cache: "npm"
       - name: Install dependencies
         run: npm ci
+      - name: Offline golden eval gate
+        run: npm run eval:golden
       - name: Syntax check (node --check)
         run: npm run lint
 

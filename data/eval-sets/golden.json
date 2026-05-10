@@ -51,7 +51,7 @@
     { "id": "g40-task-plan-migrate", "target": "task", "prompt": "Plan a database migration.", "expectedJson": ["type", "name", "steps"] },
 
     { "id": "g41-trace-workspace-memory", "target": "trace", "trace": [{ "name": "list_workspace_memory", "arguments": {} }, { "name": "remember_workspace_fact", "arguments": { "fact": "x" } }], "expectedToolSequence": ["list_workspace_memory", "remember_workspace_fact"] },
-    { "id": "g42-trace-session-plan", "target": "trace", "trace": [{ "name": "update_agent_session_plan", "arguments": { "plan": {} } }], "expectedToolSequence": ["update_agent_session_plan"] },
+    { "id": "g42-trace-session-plan", "target": "trace", "trace": [{ "name": "update_agent_session_plan", "arguments": { "planSummary": "x", "planDag": { "steps": [] } } }], "expectedToolSequence": ["update_agent_session_plan"] },
     { "id": "g43-trace-search-kg-combo", "target": "trace", "trace": [{ "name": "search_context", "arguments": { "query": "a" } }, { "name": "search_knowledge_graph", "arguments": {} }], "expectedToolSequence": ["search_context", "search_knowledge_graph"] },
     { "id": "g44-trace-semantic-then-doc", "target": "trace", "trace": [{ "name": "semantic_search_context", "arguments": { "query": "q" } }, { "name": "get_context_document", "arguments": { "id": "d" } }], "expectedToolSequence": ["semantic_search_context", "get_context_document"] },
     { "id": "g45-trace-list-all", "target": "trace", "trace": [{ "name": "list_recipes", "arguments": {} }, { "name": "list_context", "arguments": {} }, { "name": "list_workspace_memory", "arguments": {} }], "expectedToolSequence": ["list_recipes", "list_context", "list_workspace_memory"] },

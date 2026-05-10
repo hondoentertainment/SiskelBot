@@ -69,6 +69,7 @@ Pulled from `CLAUDE.md`:
 - `npm run test:e2e` — Playwright (requires `npx playwright install` first)
 - `npm run test:chaos` — chaos suite (slower; intentional failure injection)
 - `npm run test:load` — load test via `scripts/load-test.mjs`
+- `npm run eval:golden` — offline golden JSON gate (`data/eval-sets/golden.json`, no server; runs in CI lint job)
 - `npm run eval:ci` — eval set regression gate
 
 Single test file:
@@ -78,6 +79,14 @@ node --test tests/foo.test.js
 ```
 
 When adding a test, match patterns in `tests/health-deep.test.js` or `tests/server.test.js`.
+
+### Deployment (GitHub + Vercel)
+
+- **GitHub:** Push branches and open PRs against `main`. CI runs on every PR (lint, tests, smoke, golden evals, etc.).
+- **Vercel previews:** In the [Vercel dashboard](https://vercel.com), link this GitHub repo so each PR receives a **Preview** deployment automatically.
+- **Production:** Merge to `main` triggers Production when Git integration is enabled; you can also deploy from a trusted machine with `npx vercel deploy --prod --yes` from the repo root (requires `vercel link` once).
+- **Smoke checks:** After deploy, `npm run smoke-test -- https://your-deployment.vercel.app` (or set `BASE_URL`). CI runs offline golden evals via `npm run eval:golden`; the **Production smoke** workflow exercises live `/health/live` and `/config` on a schedule.
+- **Workspace root:** Open the repository folder that contains `package.json` and `.git` (not an empty parent directory).
 
 ## 7. Submitting a PR
 
