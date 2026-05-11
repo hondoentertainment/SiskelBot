@@ -4,6 +4,7 @@
  *
  * - Every top-level routes/*.js (except index.js) must be imported from routes/index.js
  *   or wired from lib/server-configured-app.js (e.g. agent-sessions).
+ *   Files listed in routes/.wire-check-ignore are skipped (intentionally unmounted DEFER/DELETE tiers).
  * - Every routes/v2/*.js (except index.js) must be imported from routes/v2/index.js.
  */
 import { readdirSync, readFileSync } from "node:fs";
@@ -33,12 +34,25 @@ function wireHaystack() {
   ].join("\n");
 }
 
+function loadRouteWireIgnores() {
+  try {
+    return readFileSync(join(ROUTES_DIR, ".wire-check-ignore"), "utf8")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith("#"));
+  } catch {
+    return [];
+  }
+}
+
 function main() {
   const hay = wireHaystack();
+  const ignoreRoutes = new Set(loadRouteWireIgnores());
   const missing = [];
 
   for (const name of listJs(ROUTES_DIR)) {
     if (name === "index.js") continue;
+    if (ignoreRoutes.has(name)) continue;
     const ok =
       hay.includes(`./${name}`) ||
       hay.includes(`/routes/${name}`) ||
@@ -68,7 +82,8 @@ function main() {
     console.error("[wire-check] Route modules not referenced by route indexes:\n");
     for (const m of missing) console.error(`  - ${m}`);
     console.error("\nFix: import and mount the module from routes/index.js or routes/v2/index.js,");
-    console.error("or reference it from lib/server-configured-app.js for sidecar mounts.");
+    console.error("reference it from lib/server-configured-app.js for sidecar mounts, or add the basename");
+    console.error("to routes/.wire-check-ignore when the route is intentionally unmounted (DEFER/DELETE).");
     process.exit(1);
   }
 
