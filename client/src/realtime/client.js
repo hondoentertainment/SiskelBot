@@ -11,7 +11,7 @@
  *
  * Features:
  *   - One WebSocket per tab, multiplexing many channels.
- *   - Exponential-backoff reconnect (1s, 2s, 4s, 8s, max 30s).
+ *   - Exponential-backoff reconnect with jitter (1s base, max 30s cap).
  *   - On reconnect, automatically re-subscribes to every active channel
  *     with sinceSeq=<last received seq> so the server replays missed
  *     events from its bounded backlog.
@@ -214,7 +214,9 @@ export class RealtimeClient {
   _scheduleReconnect() {
     if (this._closed) return;
     const attempt = this._reconnectAttempt++;
-    const delay = Math.min(MAX_BACKOFF_MS, MIN_BACKOFF_MS * Math.pow(2, attempt));
+    const base = Math.min(MAX_BACKOFF_MS, MIN_BACKOFF_MS * 2 ** attempt);
+    const jitter = 1 + (Math.random() * 0.5 - 0.25);
+    const delay = Math.min(MAX_BACKOFF_MS, base * jitter);
     this._reconnectTimer = setTimeout(() => {
       this._reconnectTimer = null;
       this.connect();
