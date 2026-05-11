@@ -83,7 +83,7 @@ jobs:
           retention-days: 30
 
       - name: Create pull request
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           commit-message: "chore: refresh load test baseline"
           title: "chore: refresh load test baseline"

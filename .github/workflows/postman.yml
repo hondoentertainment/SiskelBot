@@ -34,7 +34,7 @@ jobs:
         run: npm run postman:generate
 
       - name: Open PR if collection changed
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           commit-message: "chore: refresh Postman collection from OpenAPI"
           title: "chore: refresh Postman collection"
