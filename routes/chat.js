@@ -15,11 +15,14 @@ import {
   recordRequest as recordTenantRequest,
   recordTokens as recordTenantTokens,
 } from "../lib/tenant-quotas.js";
+import { createBillingManager } from "../lib/billing.js";
 
 const ENABLE_PROMPT_GUARD = process.env.ENABLE_PROMPT_GUARD === "1";
 const ENABLE_OUTPUT_GUARD = process.env.ENABLE_OUTPUT_GUARD === "1";
 const ENABLE_COST_LIMITS = process.env.ENABLE_COST_LIMITS === "1";
+const PLAN_QUOTA_ENABLED = process.env.QUOTA_ENABLED === "1";
 const moderationMiddleware = inputModerationMiddleware();
+const _billingManager = createBillingManager();
 
 export default function mountChatRoutes(app, deps) {
   const {
@@ -95,6 +98,25 @@ export default function mountChatRoutes(app, deps) {
       } catch (e) {
         // Fail-open: log but do not block requests on quota infra errors
         console.warn("[tenant-quotas] check failed:", e?.message || e);
+      }
+
+      // Plan-level token quota check (free 100K/mo, pro 1M/mo, enterprise unlimited).
+      // Gated by QUOTA_ENABLED=1 so existing deployments without billing data are unaffected.
+      if (PLAN_QUOTA_ENABLED) {
+        try {
+          const planLimits = await _billingManager.checkPlanLimits(workspace);
+          if (!planLimits.allowed) {
+            return apiError(
+              res,
+              429,
+              "QUOTA_EXCEEDED",
+              `Token quota exceeded for plan ${planLimits.planName}. Used: ${planLimits.used}, Limit: ${planLimits.limit}`,
+              JSON.stringify({ plan: planLimits.plan, used: planLimits.used, limit: planLimits.limit })
+            );
+          }
+        } catch (e) {
+          console.warn("[billing] plan quota check failed:", e?.message || e);
+        }
       }
 
       // Per-workspace token quota check

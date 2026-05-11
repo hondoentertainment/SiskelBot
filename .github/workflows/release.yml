@@ -167,6 +167,11 @@ jobs:
         run: npm run desktop:dist
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Windows code signing (electron-builder reads CSC_LINK / CSC_KEY_PASSWORD).
+          # Set CSC_LINK to a base64-encoded .pfx or an https:// URL to it. Optional —
+          # if unset, the binary still builds but is unsigned.
+          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
       - name: Upload Windows artifacts to release
         uses: softprops/action-gh-release@v2
         with:
