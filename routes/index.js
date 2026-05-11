@@ -10,10 +10,8 @@
  *   mountAllRoutes(app, deps);
  *
  * Surface area is deliberately scoped to CORE + SUPPORTING per docs/ROUTE_AUDIT.md.
- * Modules in the DEFER and DELETE tiers from that audit are intentionally not
- * mounted here. Their files remain on disk so internal tests can still import
- * them, but they are not exposed over HTTP. Re-mount on demand only when there
- * is a paying customer asking for the feature.
+ * Most DEFER/DELETE-tier modules stay off this router (see routes/.wire-check-ignore).
+ * Edge cache, mobile, and voice stacks remain mounted — CI and mobile/voice clients depend on them.
  */
 
 // CORE
@@ -87,6 +85,10 @@ import { mountExplainabilityRoutes } from "./explainability.js";
 import { mountScheduledAgentRoutes } from "./scheduled-agents.js";
 import mountPushNotificationRoutes from "./push-notifications.js";
 import { mountCostEstimateRoutes } from "./cost-estimate.js";
+import { mountEdgeCacheRoutes } from "./edge-cache.js";
+import { mountMobileRoutes } from "./mobile.js";
+import { mountVoiceRoutes } from "./voice.js";
+import mountVoiceCloningRoutes from "./voice-cloning.js";
 
 import { mountV2Routes } from "./v2/index.js";
 
@@ -170,6 +172,12 @@ const mountFunctions = [
   mountPluginRoutes,
   mountScheduledAgentRoutes,
   mountPushNotificationRoutes,
+
+  // SUPPORTING — edge CDN, mobile API, voice (mounted for regression tests & clients)
+  mountEdgeCacheRoutes,
+  mountMobileRoutes,
+  mountVoiceRoutes,
+  mountVoiceCloningRoutes,
 ];
 
 /**

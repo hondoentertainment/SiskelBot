@@ -50,7 +50,6 @@ diarization.js
 differential-privacy.js
 distillation.js
 document-layout.js
-edge-cache.js
 entitlement-reviews.js
 error-budget.js
 escalation-rules.js
@@ -98,7 +97,6 @@ machine-snapshots.js
 meeting-bot.js
 migration-assistant.js
 mobile-automation.js
-mobile.js
 model-approval.js
 model-card-generator.js
 model-registry.js
@@ -170,10 +168,8 @@ tree-of-thought.js
 usage-policies.js
 verification-loop.js
 video-understanding.js
-voice-cloning.js
 voice-commands.js
 voice-realtime.js
-voice.js
 vr-rooms.js
 wallet-auth.js
 web-ingestion.js
