@@ -22,7 +22,13 @@ export const installDefaultAppRedirect = configured.installDefaultAppRedirect;
 const app = configured.default;
 export default app;
 
-if (process.env.VERCEL !== "1") {
+// Skip binding an HTTP listener on serverless hosts (Vercel exposes the Express app as a function).
+const ON_SERVERLESS =
+  process.env.VERCEL === "1" ||
+  process.env.VERCEL === "true" ||
+  Boolean(process.env.VERCEL_ENV || process.env.VERCEL_URL);
+
+if (!ON_SERVERLESS) {
   const listenerModuleUrl = new URL("./lib/server-production-listener.js", bootUrl);
   listenerModuleUrl.search = bootUrl.search;
   const { attachProductionListener } = await import(listenerModuleUrl.href);
