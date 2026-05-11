@@ -7,11 +7,9 @@ initErrorReporting();
 loadPlugins();
 discoverPacks();
 
-const bootUrl = new URL(import.meta.url);
-const configuredModuleUrl = new URL("./lib/server-configured-app.js", bootUrl);
-configuredModuleUrl.search = bootUrl.search;
-
-const configured = await import(configuredModuleUrl.href);
+// Use relative specifiers (not file:// URLs from `new URL`) so Vercel's Node
+// bundler traces and ships these modules — absolute paths break at /var/task.
+const configured = await import("./lib/server-configured-app.js");
 
 export const renderAppHtml = configured.renderAppHtml;
 export const substituteAppEntry = configured.substituteAppEntry;
@@ -29,9 +27,7 @@ const ON_SERVERLESS =
   Boolean(process.env.VERCEL_ENV || process.env.VERCEL_URL);
 
 if (!ON_SERVERLESS) {
-  const listenerModuleUrl = new URL("./lib/server-production-listener.js", bootUrl);
-  listenerModuleUrl.search = bootUrl.search;
-  const { attachProductionListener } = await import(listenerModuleUrl.href);
+  const { attachProductionListener } = await import("./lib/server-production-listener.js");
   attachProductionListener(app, {
     PORT: configured.PORT,
     BACKEND: configured.BACKEND,
