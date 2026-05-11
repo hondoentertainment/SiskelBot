@@ -49,7 +49,11 @@ async function main() {
   // 3. Config (unauthenticated)
   try {
     const r = await fetchJson(`${url}/config`);
-    results.push({ name: "GET /config", ok: r.ok && r.body?.backend, status: r.status });
+    results.push({
+      name: "GET /config",
+      ok: Boolean(r.ok && r.body?.backend),
+      status: r.status,
+    });
   } catch (e) {
     results.push({ name: "GET /config", ok: false, error: e.message });
   }
