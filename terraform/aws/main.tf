@@ -136,6 +136,7 @@ resource "aws_route_table_association" "private" {
 # Security groups
 ###############################################################################
 
+#trivy:ignore:AVD-AWS-0104 # Reviewed 2026-05-11: Broad egress required for ACM health checks, image pulls, and app outbound APIs; tighten with VPC endpoints in a dedicated hardening pass.
 resource "aws_security_group" "alb" {
   name        = "${local.name_prefix}-alb-sg"
   description = "Ingress to the SiskelBot ALB"
@@ -173,6 +174,7 @@ resource "aws_security_group" "alb" {
   }
 }
 
+#trivy:ignore:AVD-AWS-0104 # Reviewed 2026-05-11: ECS tasks need default egress for registries, DNS, and third-party HTTPS; replace with curated prefixes after traffic baselining.
 resource "aws_security_group" "ecs" {
   name        = "${local.name_prefix}-ecs-sg"
   description = "SiskelBot ECS task security group"
@@ -408,6 +410,7 @@ resource "aws_lb_target_group" "ecs" {
   deregistration_delay = 30
 }
 
+#trivy:ignore:AVD-AWS-0054 # Reviewed 2026-05-11: Port 80 forwards plaintext only when local.enable_https is false (dev/bootstrap without ACM); prod uses enable_https with redirect to 443.
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.this.arn
   port              = 80

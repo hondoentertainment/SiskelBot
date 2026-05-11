@@ -117,6 +117,7 @@ resource "azurerm_log_analytics_workspace" "this" {
 # Key Vault
 ###############################################################################
 
+#trivy:ignore:AVD-AZU-0013 # Reviewed 2026-05-11: RBAC-only vault acceptable for this module; default Deny network ACLs require env-specific IP rules and break Terraform/GitHub OIDC secret provisioning without private runners.
 resource "azurerm_key_vault" "this" {
   name                       = local.kv_name
   resource_group_name        = azurerm_resource_group.this.name
