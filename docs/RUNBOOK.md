@@ -396,9 +396,9 @@ Existing workspaces without `type` default to `personal`.
 
 | File | Purpose |
 |------|---------|
-| `data/workspace-members.json` | workspaceId → { ownerId, members: [{ userId, role }] } |
-| `data/team-invites.json` | Invite codes (code, workspaceId, createdBy, usedCount, expiresAt?, maxUses?) |
-| `data/workspace-activity.json` | byWorkspace[workspaceId]: [{ timestamp, action, userId, ... }] |
+| `data/workspace-members.json` | `workspaceId → { ownerId, members: [{ userId, role }] }` |
+| `data/team-invites.json` | `Invite codes (code, workspaceId, createdBy, usedCount, expiresAt?, maxUses?)` |
+| `data/workspace-activity.json` | `byWorkspace[workspaceId]: [{ timestamp, action, userId, ... }]` |
 
 ### Roles
 

@@ -34,14 +34,7 @@
     "syncWithServer": "Sincronizar con servidor",
     "loadFromServer": "Cargar desde servidor",
     "refresh": "Actualizar",
-    "fullReport": "Informe completo"
-  },
-  "install": {
-    "prompt": "Instalar Siskel Bot para acceso rápido",
-    "install": "Instalar",
-    "dismiss": "Cerrar"
-  },
-  "health": {
+  "header": {
     "backend": "Backend",
     "reachable": "Alcanzable",
     "latency": "Latencia",
