@@ -40,18 +40,19 @@ test.describe("Agent run hero view", () => {
     await page.locator(".sb-shell").waitFor();
   });
 
-  test("renders the 4 panes (Plan, Timeline, Artifacts, Approvals)", async ({ page }) => {
+  test("renders five pane headings (Plan, Timeline, Tree, Artifacts, Approvals)", async ({ page }) => {
     await mountAgentRun(page, sessionId);
 
     const runRoot = page.locator(`.agent-run[data-session-id="${sessionId}"]`);
     await expect(runRoot).toBeVisible();
 
     const paneHeads = runRoot.locator(".ar-pane-head");
-    await expect(paneHeads).toHaveCount(4);
+    await expect(paneHeads).toHaveCount(5);
     await expect(paneHeads.nth(0)).toHaveText("Plan");
     await expect(paneHeads.nth(1)).toHaveText("Timeline");
-    await expect(paneHeads.nth(2)).toHaveText("Artifacts");
-    await expect(paneHeads.nth(3)).toHaveText("Approvals");
+    await expect(paneHeads.nth(2)).toHaveText("Tree");
+    await expect(paneHeads.nth(3)).toHaveText("Artifacts");
+    await expect(paneHeads.nth(4)).toHaveText("Approvals");
   });
 
   test("footer exposes Pause, Resume, and Cancel controls", async ({ page }) => {

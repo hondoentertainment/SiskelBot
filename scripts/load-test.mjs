@@ -119,19 +119,12 @@ if (!Number.isFinite(opts.rps) || opts.rps <= 0) {
 // ---------------------------------------------------------------------------
 
 const ENDPOINTS = [
-  { method: 'GET', path: '/health/live', weight: 40 },
-  { method: 'GET', path: '/config', weight: 30 },
-  { method: 'GET', path: '/api/context?workspace=default', weight: 20 },
-  {
-    method: 'POST',
-    path: '/v1/chat/completions',
-    weight: 10,
-    body: JSON.stringify({
-      model: 'test',
-      messages: [{ role: 'user', content: 'ping' }],
-    }),
-    headers: { 'Content-Type': 'application/json' },
-  },
+  // Keep this mix to fast, deterministic routes. LLM proxy (/v1/chat/completions) is
+  // intentionally omitted: CI uses BACKEND=ollama without a reachable model and those
+  // requests time out, inflating p99 and error rate unrelated to HTTP handler perf.
+  { method: 'GET', path: '/health/live', weight: 50 },
+  { method: 'GET', path: '/config', weight: 35 },
+  { method: 'GET', path: '/api/context?workspace=default', weight: 15 },
 ];
 
 // Build a cumulative-weight lookup for weighted random selection.
