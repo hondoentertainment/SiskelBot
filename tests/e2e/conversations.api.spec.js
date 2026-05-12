@@ -26,7 +26,7 @@ test.describe("Conversations API", () => {
   test("GET /api/v1/conversations lists conversations", async ({ request }) => {
     // Ensure at least one conversation exists
     await request.post("/api/v1/conversations", {
-      data: { workspace, title: "List Test" },
+      data: { workspace, title: "List Test", messages: [] },
       headers: { "Content-Type": "application/json" },
     });
 
@@ -44,7 +44,7 @@ test.describe("Conversations API", () => {
   test("GET /api/v1/conversations/:id returns a conversation", async ({ request }) => {
     // Create a conversation to fetch
     const createRes = await request.post("/api/v1/conversations", {
-      data: { workspace, title: "Fetch Me" },
+      data: { workspace, title: "Fetch Me", messages: [] },
       headers: { "Content-Type": "application/json" },
     });
     const created = await createRes.json();
@@ -106,7 +106,7 @@ test.describe("Conversations API", () => {
   test("DELETE /api/v1/conversations/:id removes a conversation", async ({ request }) => {
     // Create a conversation to delete
     const createRes = await request.post("/api/v1/conversations", {
-      data: { workspace, title: "Delete Me" },
+      data: { workspace, title: "Delete Me", messages: [] },
       headers: { "Content-Type": "application/json" },
     });
     const created = await createRes.json();

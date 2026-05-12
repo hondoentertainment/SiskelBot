@@ -28,7 +28,6 @@ test.describe("Agent run hero view", () => {
 
   test.beforeAll(async ({ request }) => {
     const session = await createAgentSession(request, {
-      workspace: "e2e-agent-run",
       title: "Hero view seed",
     });
     sessionId = session.id;

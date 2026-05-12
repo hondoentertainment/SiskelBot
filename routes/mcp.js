@@ -43,7 +43,8 @@ export function mountMcpRoutes(app, deps) {
     };
   }
 
-  const validateMcp = validate({ body: { method: "string", id: "?string" } });
+  // JSON-RPC allows id to be string, number, or null — do not validate it here.
+  const validateMcp = validate({ body: { method: "string" } });
 
   // POST /mcp — JSON-RPC endpoint
   app.post("/mcp", mcpRateLimiter, apiKeyAuth, requireScope("write"), logRequest, validateMcp, async (req, res) => {

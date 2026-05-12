@@ -1,5 +1,8 @@
 import { test, expect } from "@playwright/test";
+import { platform } from "node:process";
 import { loginAsTestUser } from "./_helpers.js";
+
+const MOD = platform === "darwin" ? "Meta" : "Control";
 
 /**
  * SPA shell + command palette coverage.
@@ -35,7 +38,7 @@ test.describe("SPA shell and command palette", () => {
 
   test("Meta+K opens palette, typing filters, Enter navigates", async ({ page }) => {
     // Route that "chat" should land on.
-    await page.keyboard.press("Meta+K");
+    await page.keyboard.press(`${MOD}+KeyK`);
 
     const palette = page.getByRole("dialog", { name: /command palette/i });
     await expect(palette).toBeVisible();
@@ -54,12 +57,12 @@ test.describe("SPA shell and command palette", () => {
 
   test("Meta+/ toggles the inspector", async ({ page }) => {
     const shell = page.locator(".sb-shell");
-    const inspector = page.getByRole("complementary", { name: /inspector/i });
+    const inspector = page.locator(".sb-inspector");
     const wasCollapsed = await shell.evaluate((el) =>
       el.classList.contains("is-inspector-collapsed"),
     );
 
-    await page.keyboard.press("Meta+/");
+    await page.keyboard.press(`${MOD}+Slash`);
 
     const nowCollapsed = await shell.evaluate((el) =>
       el.classList.contains("is-inspector-collapsed"),
@@ -75,7 +78,7 @@ test.describe("SPA shell and command palette", () => {
       el.classList.contains("is-nav-collapsed"),
     );
 
-    await page.keyboard.press("Meta+\\");
+    await page.keyboard.press(`${MOD}+Backslash`);
 
     const nowCollapsed = await shell.evaluate((el) =>
       el.classList.contains("is-nav-collapsed"),
@@ -85,7 +88,11 @@ test.describe("SPA shell and command palette", () => {
 
   test("g c chord navigates to /chat", async ({ page }) => {
     // Ensure focus is on the body, not any input (chords ignore typing contexts).
-    await page.locator("body").click({ position: { x: 2, y: 2 } });
+    await page.evaluate(() => {
+      document.body.focus();
+      const ae = document.activeElement;
+      if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA")) ae.blur();
+    });
 
     await page.keyboard.press("g");
     await page.keyboard.press("c");

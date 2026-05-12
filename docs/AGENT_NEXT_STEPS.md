@@ -6,11 +6,11 @@
 
 ## Recent additions (agent quality & desktop)
 
-- **CI offline eval:** `npm run eval:ci` + [`data/eval-sets/ci-offline.json`](data/eval-sets/ci-offline.json) in GitHub Actions; optional `EVAL_LIVE=1 npm run eval:live`. See [`docs/AGENT_SLI.md`](AGENT_SLI.md), [`docs/RUNBOOK.md`](RUNBOOK.md) (CI eval row).
-- **HITL `execute_step`:** `AGENT_EXECUTE_STEP_HITL` / `requireExecuteStepApproval`; `POST /v1/agent/resume-execute-step`; SSE `agent_pending_execution`. See [`docs/AGENT_MODE.md`](AGENT_MODE.md).
+- **CI offline eval:** `npm run eval:ci` + [`data/eval-sets/ci-offline.json`](https://github.com/hondoentertainment/SiskelBot/blob/main/data/eval-sets/ci-offline.json) in GitHub Actions; optional `EVAL_LIVE=1 npm run eval:live`. See [docs/AGENT_SLI](/docs/AGENT_SLI), [docs/RUNBOOK](/docs/RUNBOOK) (CI eval row).
+- **HITL `execute_step`:** `AGENT_EXECUTE_STEP_HITL` / `requireExecuteStepApproval`; `POST /v1/agent/resume-execute-step`; SSE `agent_pending_execution`. See [docs/AGENT_MODE](/docs/AGENT_MODE).
 - **`AGENT_VERIFY_PASS`:** Optional post-success verification paragraph in the agent loop.
-- **Marketplace signing helper:** `computeUnsignedManifestDigestHex`, [`scripts/marketplace-manifest-digest.mjs`](scripts/marketplace-manifest-digest.mjs).
-- **SDK:** [`examples/sdk-starter.ts`](examples/sdk-starter.ts) — `chatCompletions` / `agentChatExample`.
+- **Marketplace signing helper:** `computeUnsignedManifestDigestHex`, [`scripts/marketplace-manifest-digest.mjs`](https://github.com/hondoentertainment/SiskelBot/blob/main/scripts/marketplace-manifest-digest.mjs).
+- **SDK:** [`examples/sdk-starter.ts`](https://github.com/hondoentertainment/SiskelBot/blob/main/examples/sdk-starter.ts) — `chatCompletions` / `agentChatExample`.
 
 ## Previously shipped
 
@@ -40,7 +40,7 @@ All items from the original P0–P3 roadmap have been implemented:
 
 ### P0 — Immediate / high leverage
 
-1. **World-class agent program** — Follow [`AGENT_WORLD_CLASS_ROADMAP.md`](AGENT_WORLD_CLASS_ROADMAP.md): finish **Phase 6 (browser)** (domain allowlists, HITL, golden evals), **Phase 8** (planner on session + re-plan after tool failure — partial: upfront plan persists to session and agent checkpoints now carry `upfrontPlanDag` when `AGENT_UPFRONT_PLAN=1`), and expand **golden traces** for each new tool class.
+1. **World-class agent program** — Follow [docs/AGENT_WORLD_CLASS_ROADMAP](/docs/AGENT_WORLD_CLASS_ROADMAP): finish **Phase 6 (browser)** (domain allowlists, HITL, golden evals), **Phase 8** (planner on session + re-plan after tool failure — partial: upfront plan persists to session and agent checkpoints now carry `upfrontPlanDag` when `AGENT_UPFRONT_PLAN=1`), and expand **golden traces** for each new tool class.
 
 2. **CI reliability** — `npm run test:ci` uses `npx c8` for portable Windows/Linux behavior; ensure `npm ci` completes (avoid OneDrive-locked `node_modules`). Optionally require `lint`, `test`, and Trivy on `main` via GitHub branch protection.
 

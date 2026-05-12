@@ -278,7 +278,7 @@ sudo systemctl reload nginx
 
 ## Docker Deployment
 
-For Docker-based deployments, see [`docs/DOCKER.md`](DOCKER.md) and [`docs/DOCKER_COMPOSE.md`](DOCKER_COMPOSE.md).
+For Docker-based deployments, see [docs/DOCKER](/docs/DOCKER) and [docs/DOCKER_COMPOSE](/docs/DOCKER_COMPOSE).
 
 Quick start:
 

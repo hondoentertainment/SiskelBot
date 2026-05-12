@@ -23,7 +23,6 @@ test.describe("Replay share flow", () => {
   test.beforeAll(async ({ request }) => {
     // No login required: test server runs without USER_API_KEYS → anonymous.
     const session = await createAgentSession(request, {
-      workspace: "e2e-replay-share",
       title: "Replay share seed",
     });
     sessionId = session.id;
