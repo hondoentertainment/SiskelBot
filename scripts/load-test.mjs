@@ -18,6 +18,9 @@
  *                                Missing files are warned about (not fatal).
  *   --update-baseline=<path>     After a passing run, write current results to this
  *                                path so CI can refresh the baseline post-merge.
+ *   --include-chat               Include POST /v1/chat/completions in the weighted mix.
+ *                                Same as LOAD_TEST_INCLUDE_CHAT=1 (omit by default: CI uses
+ *                                BACKEND=ollama without a reachable model, so chat skews p99).
  *   --help                       Print this help.
  *
  * Baseline note:
@@ -47,10 +50,14 @@ Options:
   --json-output=<path>         Write structured results JSON to this path
   --baseline=<path>            Compare against a previous results JSON
   --update-baseline=<path>     After a passing run, write results to this path
+  --include-chat               Add weighted POST /v1/chat/completions (needs real backend)
   --help                       Print this help`);
 }
 
 function parseArgs(argv) {
+  const envChat =
+    process.env.LOAD_TEST_INCLUDE_CHAT === '1' ||
+    /^true$/i.test(process.env.LOAD_TEST_INCLUDE_CHAT || '');
   const defaults = {
     url: 'http://localhost:3000',
     duration: 30,
@@ -61,11 +68,16 @@ function parseArgs(argv) {
     jsonOutput: null,
     baseline: null,
     updateBaseline: null,
+    includeChat: envChat,
     help: false,
   };
   for (const arg of argv.slice(2)) {
     if (arg === '--help' || arg === '-h') {
       defaults.help = true;
+      continue;
+    }
+    if (arg === '--include-chat') {
+      defaults.includeChat = true;
       continue;
     }
     const m = arg.match(/^--(\w[\w-]*)=(.+)$/);
@@ -86,9 +98,64 @@ function parseArgs(argv) {
     else if (key === 'json-output') defaults.jsonOutput = val;
     else if (key === 'baseline') defaults.baseline = val;
     else if (key === 'update-baseline') defaults.updateBaseline = val;
+    else if (key === 'include-chat') {
+      defaults.includeChat = val === '1' || /^true$/i.test(val);
+    }
     else console.error(`Unknown argument: --${key}`);
   }
   return defaults;
+}
+
+// ---------------------------------------------------------------------------
+// Endpoint definitions (weighted)
+// ---------------------------------------------------------------------------
+
+function buildEndpoints(includeChat) {
+  const fastOnly = [
+    // Fast routes only by default — CI uses BACKEND=ollama without a reachable model;
+    // POST /v1/chat/completions would time out and skew p99 / error rate.
+    { method: 'GET', path: '/health/live', weight: 50 },
+    { method: 'GET', path: '/config', weight: 35 },
+    { method: 'GET', path: '/api/context?workspace=default', weight: 15 },
+  ];
+  if (!includeChat) return fastOnly;
+  return [
+    { method: 'GET', path: '/health/live', weight: 40 },
+    { method: 'GET', path: '/config', weight: 28 },
+    { method: 'GET', path: '/api/context?workspace=default', weight: 22 },
+    {
+      method: 'POST',
+      path: '/v1/chat/completions',
+      weight: 10,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'llama3.2',
+        messages: [{ role: 'user', content: 'ping' }],
+        stream: false,
+      }),
+    },
+  ];
+}
+
+function buildCumulative(endpoints) {
+  const totalWeight = endpoints.reduce((s, e) => s + e.weight, 0);
+  const cumulative = [];
+  let running = 0;
+  for (const ep of endpoints) {
+    running += ep.weight;
+    cumulative.push({ threshold: running / totalWeight, endpoint: ep });
+  }
+  return cumulative;
+}
+
+let cumulative = [];
+
+function pickEndpoint() {
+  const r = Math.random();
+  for (const c of cumulative) {
+    if (r < c.threshold) return c.endpoint;
+  }
+  return cumulative[cumulative.length - 1].endpoint;
 }
 
 const opts = parseArgs(process.argv);
@@ -114,34 +181,9 @@ if (!Number.isFinite(opts.rps) || opts.rps <= 0) {
   process.exit(2);
 }
 
-// ---------------------------------------------------------------------------
-// Endpoint definitions (weighted)
-// ---------------------------------------------------------------------------
-
-const ENDPOINTS = [
-  // Keep this mix to fast, deterministic routes. LLM proxy (/v1/chat/completions) is
-  // intentionally omitted: CI uses BACKEND=ollama without a reachable model and those
-  // requests time out, inflating p99 and error rate unrelated to HTTP handler perf.
-  { method: 'GET', path: '/health/live', weight: 50 },
-  { method: 'GET', path: '/config', weight: 35 },
-  { method: 'GET', path: '/api/context?workspace=default', weight: 15 },
-];
-
-// Build a cumulative-weight lookup for weighted random selection.
-const totalWeight = ENDPOINTS.reduce((s, e) => s + e.weight, 0);
-const cumulative = [];
-let running = 0;
-for (const ep of ENDPOINTS) {
-  running += ep.weight;
-  cumulative.push({ threshold: running / totalWeight, endpoint: ep });
-}
-
-function pickEndpoint() {
-  const r = Math.random();
-  for (const c of cumulative) {
-    if (r < c.threshold) return c.endpoint;
-  }
-  return cumulative[cumulative.length - 1].endpoint;
+cumulative = buildCumulative(buildEndpoints(opts.includeChat));
+if (opts.includeChat) {
+  console.log('[load-test] include-chat: POST /v1/chat/completions is in the mix');
 }
 
 // ---------------------------------------------------------------------------
