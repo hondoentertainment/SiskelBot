@@ -306,7 +306,7 @@ When unhandled errors occur (`uncaughtException`, `unhandledRejection`) in produ
 
 ## Docker & Container Support
 
-Docker and docker-compose for self-hosted deployment. See [docs/DOCKER.md](DOCKER.md) for build, run, compose, and health-check details.
+Docker and docker-compose for self-hosted deployment. See [docs/DOCKER](/docs/DOCKER) for build, run, compose, and health-check details.
 
 - **Build:** `docker build -t siskelbot .`
 - **Run:** `docker compose up -d` (includes optional Ollama)
@@ -396,9 +396,9 @@ Existing workspaces without `type` default to `personal`.
 
 | File | Purpose |
 |------|---------|
-| `data/workspace-members.json` | workspaceId → { ownerId, members: [{ userId, role }] } |
-| `data/team-invites.json` | Invite codes (code, workspaceId, createdBy, usedCount, expiresAt?, maxUses?) |
-| `data/workspace-activity.json` | byWorkspace[workspaceId]: [{ timestamp, action, userId, ... }] |
+| `data/workspace-members.json` | `workspaceId → { ownerId, members: [{ userId, role }] }` |
+| `data/team-invites.json` | `Invite codes (code, workspaceId, createdBy, usedCount, expiresAt?, maxUses?)` |
+| `data/workspace-activity.json` | `byWorkspace[workspaceId]: [{ timestamp, action, userId, ... }]` |
 
 ### Roles
 

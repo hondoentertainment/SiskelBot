@@ -96,7 +96,9 @@ paths:
               type: object
               properties:
                 title: { type: string }
-                messages: { type: array }
+                messages:
+                  type: array
+                  description: Optional; omitted or empty starts a conversation with no messages.
                 workspace: { type: string }
       security: [{ bearerAuth: [] }]
       responses:

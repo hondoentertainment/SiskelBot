@@ -21,14 +21,15 @@ export default defineConfig({
     },
     {
       name: "ui",
-      testMatch: /\b(client|admin|eval|spa-shell|agent-run|replay-share)\.spec\.js$/,
+      testMatch: /\b(client|admin|eval|spa-shell|agent-run|replay-share|pricing-page)\.spec\.js$/,
       use: {
         browserName: "chromium",
       },
     },
   ],
   webServer: {
-    command: `BACKEND=ollama PORT=${PORT} node server.js`,
+    // Rely on `env` for BACKEND/PORT so this works on Windows and Unix shells.
+    command: "node server.js",
     port: PORT,
     timeout: 15_000,
     reuseExistingServer: !process.env.CI,

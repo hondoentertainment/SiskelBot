@@ -59,6 +59,8 @@ test("runUpfrontPlanHook: injects plan when flag on and planner succeeds", async
     assert.equal(r.planInjected, true);
     assert.equal(messages.length, 1);
     assert.equal(messages[0].role, "system");
+    assert.ok(r.planDag && r.planDag.kind === "upfront");
+    assert.equal(Array.isArray(r.planDag.steps), true);
   } finally {
     if (prev === undefined) delete process.env.AGENT_UPFRONT_PLAN;
     else process.env.AGENT_UPFRONT_PLAN = prev;

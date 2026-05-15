@@ -23,7 +23,7 @@ SiskelBot publishes SBOMs in two industry-standard formats:
 
 ### Released SBOMs (production artifacts)
 
-Every tagged release attaches both SBOM formats to the corresponding GitHub Release. Look for these files in the **Assets** section of any release at <https://github.com/hondoentertainment/SiskelBot/releases>:
+Every tagged release attaches both SBOM formats to the corresponding GitHub Release. Look for these files in the **Assets** section of any release on [GitHub Releases](https://github.com/hondoentertainment/SiskelBot/releases):
 
 - `sbom.cyclonedx.json` — CycloneDX format
 - `sbom.spdx.json` — SPDX format
