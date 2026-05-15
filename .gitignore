@@ -9,6 +9,8 @@ client/dist/
 coverage/
 load-test-results.json
 eval-results.json
+/test-results/
+/playwright-report/
 *.vsix
 
 # IDE
@@ -38,6 +40,7 @@ data/eval-sets/*
 !data/eval-sets/traces/example-staging.json
 !data/eval-sets/traces/swarm-staging-example.json
 !data/eval-sets/traces/agent-stop-stagnation-example.json
+!data/eval-sets-store.json
 !data/workspace-templates/
 data/workspace-templates/*
 !data/workspace-templates/defaults/

@@ -34,7 +34,7 @@ export function mountConversationRoutes(app, deps) {
     }
   });
 
-  const validateCreateConv = validate({ body: { title: "?string", messages: "array" } });
+  const validateCreateConv = validate({ body: { title: "?string", messages: "?array" } });
 
   apiRoute("post", "/conversations", storageRateLimiter, userAuth, requireScope("write"), logRequest, validateCreateConv, async (req, res) => {
     try {

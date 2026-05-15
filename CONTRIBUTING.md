@@ -11,6 +11,8 @@ npm ci
 npm test
 ```
 
+**Windows / cloud-sync:** Avoid working copies under **OneDrive**, iCloud Drive, or other folder-sync tools. They can lock files during `npm ci` (`EBUSY`) and leave **`node_modules` incomplete** (missing packages, `ERR_MODULE_NOT_FOUND`). Prefer a normal path (for example `C:\dev\SiskelBot`) or the **devcontainer** below.
+
 SiskelBot requires **Node.js >= 18** (see `engines.node` in `package.json`). Node 22 LTS is recommended and is what the devcontainer uses.
 
 ## 2. Recommended: devcontainer
@@ -36,6 +38,10 @@ BACKEND=ollama OLLAMA_URL=http://localhost:11434 npm run dev
 ```
 
 See `.env.example` for the full list of environment variables. Copy it to `.env` and edit as needed.
+
+### 3.1 Optional: protect `main` in GitHub
+
+For teams, enable **branch protection** on `main`: require PRs, and add **required status checks** for `lint`, `test`, and `Trivy filesystem scan` (names must match the jobs in `.github/workflows/ci.yml`). This is configured in the repo’s **Settings → Branches**, not in git.
 
 ## 4. Project structure
 

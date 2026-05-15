@@ -163,17 +163,17 @@ The response includes tool call traces via SSE events, finishing with the agent'
 
 | Topic | Resource |
 |-------|----------|
-| 20+ API recipes | [docs/API_COOKBOOK.md](API_COOKBOOK.md) |
-| Architecture decisions | [docs/ARCHITECTURE.md](ARCHITECTURE.md) |
+| 20+ API recipes | [docs/API_COOKBOOK](/docs/API_COOKBOOK) |
+| Architecture decisions | [docs/ARCHITECTURE](/docs/ARCHITECTURE) |
 | CLI usage | `npx siskelbot --help` or `npm run cli -- --help` |
-| Docker & Compose | [docs/DOCKER.md](DOCKER.md) |
-| Docker Compose reference | [docs/DOCKER_COMPOSE.md](DOCKER_COMPOSE.md) |
-| Deployment guide | [docs/DEPLOYMENT.md](DEPLOYMENT.md) |
-| Desktop app (Electron) | [docs/DESKTOP.md](DESKTOP.md) |
-| Plugin development | [docs/PLUGINS.md](PLUGINS.md) and [docs/PLUGIN_API.md](PLUGIN_API.md) |
-| Webhooks | [docs/WEBHOOKS.md](WEBHOOKS.md) |
-| Operational runbook | [docs/RUNBOOK.md](RUNBOOK.md) |
-| Multi-region HA | [docs/MULTI_REGION_HA.md](MULTI_REGION_HA.md) |
-| SDK guide | [docs/SDK_GUIDE.md](SDK_GUIDE.md) |
+| Docker & Compose | [docs/DOCKER](/docs/DOCKER) |
+| Docker Compose reference | [docs/DOCKER_COMPOSE](/docs/DOCKER_COMPOSE) |
+| Deployment guide | [docs/DEPLOYMENT](/docs/DEPLOYMENT) |
+| Desktop app (Electron) | [docs/DESKTOP](/docs/DESKTOP) |
+| Plugin development | [docs/PLUGINS](/docs/PLUGINS) and [docs/PLUGIN_API](/docs/PLUGIN_API) |
+| Webhooks | [docs/WEBHOOKS](/docs/WEBHOOKS) |
+| Operational runbook | [docs/RUNBOOK](/docs/RUNBOOK) |
+| Multi-region HA | [docs/MULTI_REGION_HA](/docs/MULTI_REGION_HA) |
+| SDK guide | [docs/SDK_GUIDE](/docs/SDK_GUIDE) |
 | VS Code extension | `vscode-extension/` directory |
 | Full environment variable reference | `.env.example` |

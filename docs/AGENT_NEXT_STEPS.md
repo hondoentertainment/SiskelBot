@@ -1,16 +1,16 @@
 # Siskel Bot — recommended next steps
 
-**Last updated:** April 2026
+**Last updated:** May 2026
 
 ---
 
 ## Recent additions (agent quality & desktop)
 
-- **CI offline eval:** `npm run eval:ci` + [`data/eval-sets/ci-offline.json`](data/eval-sets/ci-offline.json) in GitHub Actions; optional `EVAL_LIVE=1 npm run eval:live`. See [`docs/AGENT_SLI.md`](AGENT_SLI.md), [`docs/RUNBOOK.md`](RUNBOOK.md) (CI eval row).
-- **HITL `execute_step`:** `AGENT_EXECUTE_STEP_HITL` / `requireExecuteStepApproval`; `POST /v1/agent/resume-execute-step`; SSE `agent_pending_execution`. See [`docs/AGENT_MODE.md`](AGENT_MODE.md).
+- **CI offline eval:** `npm run eval:ci` + [`data/eval-sets/ci-offline.json`](https://github.com/hondoentertainment/SiskelBot/blob/main/data/eval-sets/ci-offline.json) in GitHub Actions; optional `EVAL_LIVE=1 npm run eval:live`. See [docs/AGENT_SLI](/docs/AGENT_SLI), [docs/RUNBOOK](/docs/RUNBOOK) (CI eval row).
+- **HITL `execute_step`:** `AGENT_EXECUTE_STEP_HITL` / `requireExecuteStepApproval`; `POST /v1/agent/resume-execute-step`; SSE `agent_pending_execution`. See [docs/AGENT_MODE](/docs/AGENT_MODE).
 - **`AGENT_VERIFY_PASS`:** Optional post-success verification paragraph in the agent loop.
-- **Marketplace signing helper:** `computeUnsignedManifestDigestHex`, [`scripts/marketplace-manifest-digest.mjs`](scripts/marketplace-manifest-digest.mjs).
-- **SDK:** [`examples/sdk-starter.ts`](examples/sdk-starter.ts) — `chatCompletions` / `agentChatExample`.
+- **Marketplace signing helper:** `computeUnsignedManifestDigestHex`, [`scripts/marketplace-manifest-digest.mjs`](https://github.com/hondoentertainment/SiskelBot/blob/main/scripts/marketplace-manifest-digest.mjs).
+- **SDK:** [`examples/sdk-starter.ts`](https://github.com/hondoentertainment/SiskelBot/blob/main/examples/sdk-starter.ts) — `chatCompletions` / `agentChatExample`.
 
 ## Previously shipped
 
@@ -40,51 +40,51 @@ All items from the original P0–P3 roadmap have been implemented:
 
 ### P0 — Immediate / high leverage
 
-1. **Extract route handlers from `server.js`** — At 3,954 lines, `server.js` is the largest maintainability bottleneck. Extract route groups into `routes/chat.js`, `routes/admin.js`, `routes/knowledge.js`, `routes/eval.js`, `routes/ocr.js`, and `routes/agents.js`. Keep `server.js` as the composition root that mounts sub-routers. This unblocks parallel development and simplifies code review.
+1. **World-class agent program** — Follow [docs/AGENT_WORLD_CLASS_ROADMAP](/docs/AGENT_WORLD_CLASS_ROADMAP): finish **Phase 6 (browser)** (domain allowlists, HITL, golden evals), **Phase 8** (planner on session + re-plan after tool failure — partial: upfront plan persists to session and agent checkpoints now carry `upfrontPlanDag` when `AGENT_UPFRONT_PLAN=1`), and expand **golden traces** for each new tool class.
 
-2. **Fix stale OCR test** — `tests/server.test.js:711` still asserts that `POST /api/ocr` returns 501, but the endpoint is now implemented (Tesseract.js). Update the test to validate actual OCR functionality (upload an image, assert extracted text).
+2. **CI reliability** — `npm run test:ci` uses `npx c8` for portable Windows/Linux behavior; ensure `npm ci` completes (avoid OneDrive-locked `node_modules`). Optionally require `lint`, `test`, and Trivy on `main` via GitHub branch protection.
 
-3. **Client SPA code splitting** — The main `client/index.html` is ~276KB of inline HTML/JS. Introduce esbuild or a lightweight bundler to split JS into cacheable modules. This improves load times, enables browser caching, and makes the frontend easier to develop and test.
+3. **Continue modular `routes/*`** — `server.js` is the thin bootstrap; composition lives in `lib/server-configured-app.js` + `routes/index.js`. Prefer new `routes/<domain>.js` modules and register them in `mountFunctions`.
 
-4. **Increase E2E test coverage** — The Playwright suite exists but covers only foundational paths. Add tests for: conversation branching, plugin marketplace install flow, eval harness execution, workspace template cloning, and admin dashboard CRUD operations.
+4. **E2E depth** — Suite includes branching, marketplace, admin CRUD, workspace templates, eval, pricing page, etc.; keep adding critical product paths as APIs evolve.
 
 ### P1 — Near-term (next 1–2 iterations)
 
-5. **Add TypeScript to critical modules** — Migrate `lib/agent-loop.js`, `lib/swarm.js`, `lib/storage.js`, and `lib/auth.js` to TypeScript (or add comprehensive JSDoc type annotations with `// @ts-check`). These are the highest-churn, highest-risk modules. Start with JSDoc + tsconfig `checkJs` for zero-build-step adoption.
+5. **Type checking** — `tsconfig.json` uses `checkJs` on a **narrow** include list. To type-check `lib/swarm.js`, add **`@types/node`** and evolve `types/siskelbot.d.ts` until `tsc` is clean, then widen `include`.
 
-6. **Rate limiting improvements** — Add per-workspace rate limits (not just per-user) and sliding window support. Expose rate limit headers (`X-RateLimit-Remaining`, `X-RateLimit-Reset`) consistently across all API endpoints.
+6. **Rate limiting** — Chat, per-key chat, embeddings, and knowledge indexing limiters include a **workspace-derived suffix** when `workspace` / `agentOptions.workspace` / `x-workspace-id` is present; `lib/workspace-rate-limit.js` resolves workspace from param, body, query, `req.workspace`, and header. **Sliding-window** workspace limits remain env-driven (`WORKSPACE_RATE_LIMIT_*`).
 
-7. **Knowledge pipeline V2 enhancements** — Add support for additional document formats (DOCX, XLSX, HTML) in the RAG pipeline. Implement chunking strategy configuration per workspace (chunk size, overlap, metadata extraction).
+7. **Knowledge** — `lib/knowledge-parsers.js` already supports **DOCX, XLSX, HTML**, CSV, JSON, Markdown; per-workspace chunking is in `lib/knowledge-chunking-config.js`. Next: richer metadata extraction and format-specific tuning.
 
-8. **WebSocket reconnection hardening** — Implement exponential backoff with jitter for WebSocket reconnections. Add connection state indicators in the client UI and queue missed events for replay on reconnect.
+8. **WebSocket reconnection hardening** — Exponential backoff with jitter, UI connection state, replay queued events after reconnect.
 
 ### P2 — Medium-term
 
-9. **API versioning enforcement** — The OpenAPI spec and versioning infrastructure exist but response formats aren't locked to versions. Add version-aware response serialization so v1 clients aren't broken by v2 schema changes.
+9. **API versioning enforcement** — Version-aware response serialization so v1 clients stay stable as schemas evolve.
 
-10. **Observability dashboard** — Create a built-in `/admin/observability` page that surfaces key OpenTelemetry metrics (p50/p95 latency, error rates, active agents, token usage) without requiring an external Grafana/Prometheus stack.
+10. **Observability dashboard** — Built-in `/admin/observability` for key OTel-derived metrics without external Grafana.
 
-11. **Agent memory persistence** — Extend conversation memory beyond the session. Allow agents to store and retrieve long-term facts about users/projects across conversations, with explicit user consent and a management UI.
+11. **Agent memory persistence** — Long-term user/project facts across conversations with consent + management UI (reasoning-memory / agent memory tracks exist — productize).
 
-12. **Workspace migration tooling** — Add export/import for complete workspace state (conversations, settings, templates, knowledge base) to enable workspace portability between deployments.
+12. **Workspace migration tooling** — Full export/import of workspace state for portability.
 
 ### P3 — Longer-term / enterprise
 
-13. **RBAC granularity** — Extend team roles beyond basic admin/member. Add custom role definitions with fine-grained permissions (e.g., can manage knowledge base but not billing, can view but not execute agents).
+13. **RBAC granularity** — Custom roles and fine-grained permissions.
 
-14. **Federated deployment** — Support connecting multiple SiskelBot instances into a federation where users can discover and interact with workspaces across instances. Builds on the multi-region HA foundation.
+14. **Federated deployment** — Cross-instance workspace discovery.
 
-15. **Compliance & data residency** — Add data residency controls (per-workspace region pinning), automated PII detection/redaction in conversations, and compliance audit report generation for SOC 2 / GDPR.
+15. **Compliance & data residency** — Region pinning, PII tooling, audit reports.
 
 ---
 
 ## Technical debt & quality
 
-- **`server.js` is 3,954 lines** — See P0.1 above. This is the single highest-impact refactor.
-- **82 lib files with no barrel exports** — Add `lib/index.js` barrel files per domain (e.g., `lib/agent/index.js`) to simplify imports and establish module boundaries.
-- **44 test files, no coverage tracking** — Add `c8` or `istanbul` for code coverage reporting in CI. Set a coverage floor (e.g., 70%) and ratchet up over time.
-- **No linting for client JS** — ESLint only covers server-side code. Extend to `client/` with browser-appropriate rules.
-- **Docker image size** — Audit and reduce the Alpine image layers. Consider multi-stage build optimization and `.dockerignore` review.
+- **Barrel exports** — Optional domain `lib/agent/index.js`-style barrels for clearer imports.
+- **Coverage** — `c8` + `scripts/check-critical-coverage.mjs` in CI; ratchet thresholds as files stabilize.
+- **Client ESLint** — Extend lint to `client/src` with browser globals.
+- **Docker image size** — Multi-stage builds and `.dockerignore` audit.
+- **Legacy client shell** — `client/index.html` may still be large; `scripts/build-client.mjs` + `client/src` provide esbuild **splitting** for modern SPA paths (`client/app.html` / dist manifest).
 
 ---
 

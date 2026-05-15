@@ -253,10 +253,13 @@ jobs:
           done
           echo "::error::Server did not respond on $url within 45s"
           exit 1
+      # Replay token tests skip when neither secret is set; set REPLAY_TOKEN_SECRET or SESSION_SECRET in Actions secrets to run them on CI.
       - name: Run E2E tests
         run: npm run test:e2e
         env:
           CI: "true"
+          REPLAY_TOKEN_SECRET: ${{ secrets.REPLAY_TOKEN_SECRET }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v4
