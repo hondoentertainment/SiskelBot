@@ -66,8 +66,8 @@ Rules of thumb:
 
 | Network situation | STUN only | TURN required |
 |-------------------|-----------|---------------|
-| Home WiFi <-> home WiFi | yes | no |
-| Office NAT <-> home WiFi | usually yes | sometimes |
+| Home WiFi ↔ home WiFi | yes | no |
+| Office NAT ↔ home WiFi | usually yes | sometimes |
 | Symmetric NAT (carrier-grade NAT, mobile data) | no | yes |
 | Strict corporate firewall blocking UDP | no | yes (TCP/443) |
 

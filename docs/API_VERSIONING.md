@@ -65,11 +65,11 @@ When an endpoint, field, or behavior is deprecated:
 
 ## Automated changelog
 
-PRs that touch `lib/openapi-spec.js`, `routes/**`, or the OpenAPI tooling automatically run [`.github/workflows/openapi-diff.yml`](../.github/workflows/openapi-diff.yml). The workflow:
+PRs that touch `lib/openapi-spec.js`, `routes/**`, or the OpenAPI tooling automatically run [`.github/workflows/openapi-diff.yml`](https://github.com/hondoentertainment/SiskelBot/blob/main/.github/workflows/openapi-diff.yml). The workflow:
 
 1. Generates the OpenAPI spec from the PR base (target branch).
 2. Generates the OpenAPI spec from the PR head.
-3. Runs [`scripts/openapi-diff.mjs`](../scripts/openapi-diff.mjs), which categorizes the diff into **Breaking**, **Added**, and **Changed** buckets.
+3. Runs [`scripts/openapi-diff.mjs`](https://github.com/hondoentertainment/SiskelBot/blob/main/scripts/openapi-diff.mjs), which categorizes the diff into **Breaking**, **Added**, and **Changed** buckets.
 4. Posts a Markdown changelog as a PR comment, attaches it as an artifact (`api-changelog`), and writes it to the GitHub Step Summary.
 
 The workflow does **not** fail the build on breaking changes — a human reviewer decides whether the change is intentional and whether it warrants a major version bump.

@@ -34,6 +34,8 @@ const CRITICAL_FILES = [
 
 const PER_FILE_THRESHOLDS = {
   "lib/agent-loop.js": { lines: 75, functions: 66 },
+  // Large surface area; raise floors when adding focused tests (see tests/agent-tools*.test.js).
+  "lib/agent-tools.js": { lines: 73, branches: 68 },
 };
 
 const THRESHOLDS = {
