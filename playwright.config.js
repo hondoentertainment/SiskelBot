@@ -28,7 +28,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `BACKEND=ollama PORT=${PORT} node server.js`,
+    // Rely on `env` for BACKEND/PORT so this works on Windows and Unix shells.
+    command: "node server.js",
     port: PORT,
     timeout: 15_000,
     reuseExistingServer: !process.env.CI,

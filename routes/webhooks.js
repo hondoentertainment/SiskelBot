@@ -35,7 +35,7 @@ export function mountWebhookRoutes(app, deps) {
     }
   });
 
-  const validateCreateWebhook = validate({ body: { url: "string", events: "array" } });
+  const validateCreateWebhook = validate({ body: { url: "?string", events: "array" } });
 
   apiRoute("post", "/webhooks", ...webhooksHandlers, validateCreateWebhook, async (req, res) => {
     try {

@@ -9,6 +9,8 @@ client/dist/
 coverage/
 load-test-results.json
 eval-results.json
+/test-results/
+/playwright-report/
 *.vsix
 
 # IDE
