@@ -15,7 +15,7 @@ log shipper (`LOG_SHIP_*` env vars) is available for environments where
 sidecar/daemonset collection isn't possible; prefer runtime collection where
 you can.
 
-For trace-log correlation, see [`docs/TRACING.md`](TRACING.md). The
+For trace-log correlation, see [docs/TRACING](/docs/TRACING). The
 `siskel.request_id` attribute and the `requestId` log field link logs to
 spans.
 
@@ -239,7 +239,7 @@ production via the collector:
 Always retain `error` and `warn` regardless of sampling. Sampling debug/info
 is fine; sampling errors masks incidents.
 
-For trace sampling, see [`docs/TRACING.md`](TRACING.md#sampling-in-production).
+For trace sampling, see [docs/TRACING — sampling](/docs/TRACING#sampling-in-production).
 The `traceId` field in logs links to the trace; if you tail-sample traces,
 keep the corresponding logs unsampled so post-hoc investigation still
 works.
@@ -275,7 +275,7 @@ are present in production logs:
 | Audit logs | 7 years | Compliance (SOC2, GDPR Article 30) |
 | Access logs | 1 year | Security forensics, abuse investigation |
 
-SiskelBot's audit log (see [`docs/COMPLIANCE.md`](COMPLIANCE.md)) is
+SiskelBot's audit log (see [docs/COMPLIANCE](/docs/COMPLIANCE)) is
 written to the storage backend, **not** to stdout, and has its own
 retention configuration independent of container log retention. Don't
 collapse the two: deleting old container logs does not affect audit

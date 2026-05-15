@@ -147,6 +147,32 @@ test("workspace-rate-limit: override functionality", () => {
   assert.throws(() => setWorkspaceRateLimit("ws-override", -1), /positive/);
 });
 
+test("workspace-rate-limit: resolves workspace from x-workspace-id header", () => {
+  _resetForTesting();
+  setWorkspaceRateLimit("ws-from-header", 2);
+  const mw = workspaceRateLimiter();
+  const req = { params: {}, query: {}, body: {}, headers: { "x-workspace-id": "ws-from-header" } };
+  const res = mockRes();
+  let called = false;
+  mw(req, res, () => { called = true; });
+  assert.ok(called);
+  assert.ok(res._headers["X-RateLimit-Limit"]);
+});
+
+test("workspace-rate-limit: resolves workspace from body.agentOptions.workspace", () => {
+  _resetForTesting();
+  setWorkspaceRateLimit("ws-from-body", 1);
+  const mw = workspaceRateLimiter();
+  const req = { params: {}, query: {}, body: { agentOptions: { workspace: "ws-from-body" } }, headers: {} };
+  const res = mockRes();
+  mw(req, res, () => {});
+  const res2 = mockRes();
+  let blocked = true;
+  mw(req, res2, () => { blocked = false; });
+  assert.ok(blocked);
+  assert.equal(res2._status, 429);
+});
+
 test("workspace-rate-limit: skips when no workspace in request", () => {
   _resetForTesting();
   const mw = workspaceRateLimiter();

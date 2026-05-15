@@ -1,13 +1,13 @@
 # SDKs
 
 SiskelBot ships official client libraries for TypeScript/Node.js and Python. Both
-live under [`sdk/`](../sdk/) in this repo and are versioned together with the
+live under [`sdk/`](https://github.com/hondoentertainment/SiskelBot/tree/main/sdk) in this repo and are versioned together with the
 server.
 
 | Language | Package | Path | Min runtime |
 |----------|---------|------|-------------|
-| TypeScript / Node.js | `@siskelbot/sdk` | [`sdk/typescript/`](../sdk/typescript/) | Node 18+ |
-| Python | `siskelbot` | [`sdk/python/`](../sdk/python/) | Python 3.9+ |
+| TypeScript / Node.js | `@siskelbot/sdk` | [`sdk/typescript/`](https://github.com/hondoentertainment/SiskelBot/tree/main/sdk/typescript) | Node 18+ |
+| Python | `siskelbot` | [`sdk/python/`](https://github.com/hondoentertainment/SiskelBot/tree/main/sdk/python) | Python 3.9+ |
 
 Both clients implement the same conventions:
 
@@ -204,7 +204,7 @@ namespaced methods (`client.chat.*` for v1; future v2 namespaces under
 
 ## See also
 
-- [`sdk/typescript/README.md`](../sdk/typescript/README.md)
-- [`sdk/python/README.md`](../sdk/python/README.md)
-- [`scripts/generate-sdk.mjs`](../scripts/generate-sdk.mjs) — full-spec generator
-- [`lib/openapi-spec.js`](../lib/openapi-spec.js) — input schema
+- [`sdk/typescript/README.md`](https://github.com/hondoentertainment/SiskelBot/blob/main/sdk/typescript/README.md)
+- [`sdk/python/README.md`](https://github.com/hondoentertainment/SiskelBot/blob/main/sdk/python/README.md)
+- [`scripts/generate-sdk.mjs`](https://github.com/hondoentertainment/SiskelBot/blob/main/scripts/generate-sdk.mjs) — full-spec generator
+- [`lib/openapi-spec.js`](https://github.com/hondoentertainment/SiskelBot/blob/main/lib/openapi-spec.js) — input schema
