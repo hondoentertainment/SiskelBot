@@ -22,9 +22,11 @@ export async function loginAsTestUser(_page) {
  * @param {{ workspace?: string, title?: string, planSummary?: string }} [opts]
  */
 export async function createAgentSession(request, opts = {}) {
+  // Agent sessions require a workspace the caller can access (see getWorkspaceAgentAccess).
+  // Anonymous users only have `default` (and any workspace ids from POST /workspaces) in their list.
   const res = await request.post("/api/v1/agent/sessions", {
     data: {
-      workspace: opts.workspace || "e2e-agent-run",
+      workspace: opts.workspace || "default",
       title: opts.title || "E2E agent run",
       planSummary: opts.planSummary || "Seed session for e2e",
     },

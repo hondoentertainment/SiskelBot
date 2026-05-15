@@ -34,7 +34,7 @@
     "syncWithServer": "Sincronizar con servidor",
     "loadFromServer": "Cargar desde servidor",
     "refresh": "Actualizar",
-  "header": {
+    "fullReport": "Informe completo",
     "backend": "Backend",
     "reachable": "Alcanzable",
     "latency": "Latencia",
