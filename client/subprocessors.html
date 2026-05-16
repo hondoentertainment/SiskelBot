@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Subprocessors — Siskel Bot</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.55; }
+    header { padding: 1.25rem 2rem; border-bottom: 1px solid #1e293b; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; }
+    header a { color: #94a3b8; text-decoration: none; }
+    main { max-width: 900px; margin: 0 auto; padding: 2rem; }
+    h1 { margin: 0 0 0.5rem; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1.25rem; font-size: 0.92rem; }
+    th, td { text-align: left; padding: 0.65rem 0.75rem; border-bottom: 1px solid #334155; vertical-align: top; }
+    th { color: #94a3b8; font-weight: 600; }
+    code { font-size: 0.82rem; background: #020617; padding: 0.1rem 0.35rem; border-radius: 4px; }
+    .note { margin-top: 1.5rem; color: #94a3b8; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="/trust.html">← Trust center</a>
+    <a href="/landing.html">Home</a>
+  </header>
+  <main>
+    <h1>Subprocessor checklist</h1>
+    <p style="color:#94a3b8;max-width:42rem;">Vendors commonly introduced when operating a managed Siskel Bot deployment. Customize for your infra — self-hosted installs may omit categories entirely.</p>
+    <table>
+      <thead>
+        <tr><th>Category</th><th>Examples</th><th>Typical processing</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Payments</td><td>Stripe</td><td>Billing identity, subscriptions, invoicing metadata</td></tr>
+        <tr><td>Hosting / CDN</td><td>Vercel, AWS, GCP, Azure</td><td>Runs application workloads, HTTPS termination, edge caching</td></tr>
+        <tr><td>LLM providers</td><td>OpenAI, Anthropic</td><td>Inference payloads when BACKEND routes to vendor APIs</td></tr>
+        <tr><td>Email</td><td>Resend, SendGrid</td><td>Transactional notices if wired</td></tr>
+        <tr><td>Observability</td><td>Datadog, Honeycomb</td><td>Metrics and traces when OTEL exporters configured</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Track version and notify customers when onboarding a new category for enterprise accounts. Hosted operators should expose a changelog or subprocessors RSS as the program matures.</p>
+  </main>
+</body>
+</html>

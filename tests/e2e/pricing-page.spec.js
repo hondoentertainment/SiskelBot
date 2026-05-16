@@ -7,6 +7,7 @@ test.describe("Pricing page", () => {
     await expect(page.locator("h1")).toContainText(/pricing/i);
     await expect(page.locator("main")).toBeVisible();
     await expect(page.locator(".plans")).toBeVisible();
-    await expect(page.getByRole("link", { name: /trust/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Trust", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Home", exact: true })).toHaveAttribute("href", "/landing.html");
   });
 });

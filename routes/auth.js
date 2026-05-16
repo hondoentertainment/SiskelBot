@@ -56,6 +56,15 @@ export default function mountAuthRoutes(app, deps) {
       quotaEnabled: process.env.QUOTA_ENABLED === "1",
       quotaDefaultLimit: process.env.QUOTA_DEFAULT_LIMIT ? Number(process.env.QUOTA_DEFAULT_LIMIT) : null,
       realtimeEnabled: true,
+      stripeEnabled: Boolean(process.env.STRIPE_SECRET_KEY),
+      /** Public signup entry points — same routes as OAuth. */
+      signupUrls:
+        oauthProviders?.github || oauthProviders?.google
+          ? {
+              ...(oauthProviders.github ? { github: "/auth/github" } : {}),
+              ...(oauthProviders.google ? { google: "/auth/google" } : {}),
+            }
+          : {},
       agentEnabled: true,
       agentToolsEnabled: true,
       streamAgentFinalEnabled: STREAM_AGENT_FINAL,

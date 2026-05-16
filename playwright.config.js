@@ -21,7 +21,8 @@ export default defineConfig({
     },
     {
       name: "ui",
-      testMatch: /\b(client|admin|eval|spa-shell|agent-run|replay-share|pricing-page)\.spec\.js$/,
+      testMatch:
+        /\b(client|admin|eval|spa-shell|agent-run|replay-share|pricing-page|landing-page)\.spec\.js$/,
       use: {
         browserName: "chromium",
       },
