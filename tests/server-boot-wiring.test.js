@@ -24,6 +24,13 @@ const SERVER_PATH = join(
   "..",
   "server.js",
 );
+// The boot wiring lives in lib/server-lifecycle.js (extracted from server.js).
+const LIFECYCLE_PATH = join(
+  dirname(new URL(import.meta.url).pathname),
+  "..",
+  "lib",
+  "server-lifecycle.js",
+);
 
 // ──────────────────────────────────────────────────────────────────────
 // Inline copies of the production helpers. Kept in sync with server.js
@@ -220,22 +227,29 @@ test("lib/metrics.js exports the realtime backpressure counter API", async () =>
 
 test("server.js source contains the canonical boot wiring", () => {
   const src = readFileSync(SERVER_PATH, "utf8");
+  const lifecycleSrc = readFileSync(LIFECYCLE_PATH, "utf8");
+
+  // server.js delegates boot to lib/server-lifecycle.js's startServer().
+  assert.ok(
+    src.includes("startServer("),
+    "expected server.js to invoke startServer()",
+  );
 
   // buildRunIndexFromSessions is imported and invoked at boot.
   assert.ok(
-    src.includes("buildRunIndexFromSessions"),
-    "expected server.js to reference buildRunIndexFromSessions",
+    lifecycleSrc.includes("buildRunIndexFromSessions"),
+    "expected server-lifecycle.js to reference buildRunIndexFromSessions",
   );
   assert.match(
-    src,
+    lifecycleSrc,
     /buildRunIndexFromSessions\s*\(\s*\)\s*\.\s*then/,
-    "expected server.js to invoke buildRunIndexFromSessions() with a .then handler",
+    "expected server-lifecycle.js to invoke buildRunIndexFromSessions() with a .then handler",
   );
 
   // Slow-subscriber + error hooks are wired via the install helper.
   assert.ok(
-    src.includes("installRealtimeMetricsHooks(defaultChannelRegistry)"),
-    "expected server.js to call installRealtimeMetricsHooks(defaultChannelRegistry)",
+    lifecycleSrc.includes("installRealtimeMetricsHooks(defaultChannelRegistry)"),
+    "expected server-lifecycle.js to call installRealtimeMetricsHooks(defaultChannelRegistry)",
   );
 
   // Metrics functions are imported from lib/metrics.js.
