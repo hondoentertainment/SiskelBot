@@ -1,9 +1,9 @@
 {
   "check-coverage": true,
-  "lines": 50,
-  "functions": 45,
-  "branches": 40,
-  "statements": 50,
+  "lines": 76,
+  "functions": 83,
+  "branches": 66,
+  "statements": 76,
   "reporter": ["text", "lcov", "json-summary"],
   "exclude": [
     "tests/**",
