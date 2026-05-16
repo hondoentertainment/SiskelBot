@@ -154,6 +154,7 @@ import { agentSessionApiEnabled } from "./lib/agent-session.js";
 import { mountAgentSessionRoutes } from "./routes/agent-sessions.js";
 import { errorMiddleware, errorHandler } from "./lib/error-middleware.js";
 import { runStartupChecks } from "./lib/startup-checks.js";
+import { validateStartupConfig } from "./lib/server-startup.js";
 import { startServer } from "./lib/server-lifecycle.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -204,43 +205,8 @@ const STREAM_SWARM_SYNTH = process.env.STREAM_SWARM_SYNTH === "1";
 const MAX_AGENT_TOOL_CALLS_ENV = Number(process.env.MAX_AGENT_TOOL_CALLS) || 0;
 const AGENT_MAX_WALL_MS_ENV = Number(process.env.AGENT_MAX_WALL_MS) || 0;
 
-// Production security: refuse to start if API_KEY not set (unless explicitly bypassed)
-if (IS_PRODUCTION && !API_KEY) {
-  if (process.env.ALLOW_INSECURE_PRODUCTION === "1") {
-    console.warn(
-      "[SECURITY] NODE_ENV=production but API_KEY is not set. " +
-        "The /v1/chat/completions endpoint is publicly accessible. " +
-        "Continuing because ALLOW_INSECURE_PRODUCTION=1."
-    );
-  } else {
-    console.error(
-      "[SECURITY] NODE_ENV=production but API_KEY is not set. " +
-        "The /v1/chat/completions endpoint is publicly accessible. " +
-        "Set API_KEY in Vercel env vars to protect it. " +
-        "Set ALLOW_INSECURE_PRODUCTION=1 to bypass this check."
-    );
-    process.exit(1);
-  }
-}
-
-// Phase 34: Startup config validation
-function validateStartupConfig() {
-  const requiredMissing = [];
-  if (BACKEND === "openai" && !OPENAI_API_KEY) {
-    requiredMissing.push("OPENAI_API_KEY (required when BACKEND=openai)");
-  }
-  if (IS_PRODUCTION && requiredMissing.length > 0) {
-    console.error("[startup] Required env vars missing:", requiredMissing.join("; "));
-    process.exit(1);
-  }
-  if (isOAuthConfigured() && !process.env.SESSION_SECRET) {
-    console.warn("[startup] OAuth configured but SESSION_SECRET not set.");
-  }
-  if (IS_PRODUCTION && process.env.ALLOW_RECIPE_STEP_EXECUTION === "1" && !process.env.VERCEL_TOKEN) {
-    console.warn("[startup] Recipe execution enabled; VERCEL_TOKEN recommended for deploy steps.");
-  }
-}
-validateStartupConfig();
+// Phase 34: Startup config validation (refuses to start on fatal misconfig).
+validateStartupConfig({ IS_PRODUCTION, API_KEY, BACKEND, OPENAI_API_KEY });
 
 // Model presets per backend (for /config)
 const MODEL_PRESETS = {
