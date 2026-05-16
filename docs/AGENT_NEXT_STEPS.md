@@ -1,6 +1,6 @@
 # Siskel Bot — recommended next steps
 
-**Last updated:** May 2026
+**Last updated:** 2026-05-15
 
 ---
 
@@ -11,6 +11,9 @@
 - **`AGENT_VERIFY_PASS`:** Optional post-success verification paragraph in the agent loop.
 - **Marketplace signing helper:** `computeUnsignedManifestDigestHex`, [`scripts/marketplace-manifest-digest.mjs`](https://github.com/hondoentertainment/SiskelBot/blob/main/scripts/marketplace-manifest-digest.mjs).
 - **SDK:** [`examples/sdk-starter.ts`](https://github.com/hondoentertainment/SiskelBot/blob/main/examples/sdk-starter.ts) — `chatCompletions` / `agentChatExample`.
+- **Vercel/Node bootstrap:** Thin [`server.js`](https://github.com/hondoentertainment/SiskelBot/blob/main/server.js) with relative/static dynamic imports resolved via `bootSearch`; [`tests/server-vercel-bootstrap.test.js`](https://github.com/hondoentertainment/SiskelBot/blob/main/tests/server-vercel-bootstrap.test.js) guards the pattern. Fixes duplicate ESM singleton / stale env in tests.
+- **Eval store:** Seeded [`data/eval-sets-store.json`](https://github.com/hondoentertainment/SiskelBot/blob/main/data/eval-sets-store.json) (not gitignored); `ensureEvalStore` plus serialized legacy migration in `lib/storage-eval.js` for parallel CI.
+- **Wire-check:** [`scripts/wire-check.mjs`](https://github.com/hondoentertainment/SiskelBot/blob/main/scripts/wire-check.mjs), [`routes/.wire-check-ignore`](https://github.com/hondoentertainment/SiskelBot/blob/main/routes/.wire-check-ignore); routers remounted (`edge-cache`, `mobile`, `voice`, `voice-cloning`) after ROUTE_AUDIT so regression tests do not 404.
 
 ## Previously shipped
 
@@ -40,41 +43,49 @@ All items from the original P0–P3 roadmap have been implemented:
 
 ### P0 — Immediate / high leverage
 
-1. **World-class agent program** — Follow [docs/AGENT_WORLD_CLASS_ROADMAP](/docs/AGENT_WORLD_CLASS_ROADMAP): finish **Phase 6 (browser)** (domain allowlists, HITL, golden evals), **Phase 8** (planner on session + re-plan after tool failure — partial: upfront plan persists to session and agent checkpoints now carry `upfrontPlanDag` when `AGENT_UPFRONT_PLAN=1`), and expand **golden traces** for each new tool class.
+1. **World-class agent program** — Follow [docs/AGENT_WORLD_CLASS_ROADMAP](./AGENT_WORLD_CLASS_ROADMAP.md): finish **Phase 6 (browser)** (domain allowlists, HITL, golden evals). **Phase 8:** pursue **8b** — re-plan after tool failure with golden eval (`AGENT_UPFRONT_PLAN=1` **8a** is partially landed: upfront DAG on session/checkpoints — see roadmap). Expand **golden traces** / **`eval:ci`** gates for each new tool class.
 
-2. **CI reliability** — `npm run test:ci` uses `npx c8` for portable Windows/Linux behavior; ensure `npm ci` completes (avoid OneDrive-locked `node_modules`). Optionally require `lint`, `test`, and Trivy on `main` via GitHub branch protection.
+2. **CI reliability** — `main` CI has been stabilized; overlapping pushes cancel superseded workflow runs (watch with `gh run watch` / inspect via `gh run list --json` as needed). `npm run test:ci` uses `npx c8` for portable Windows/Linux behavior; ensure `npm ci` completes (avoid OneDrive-locked `node_modules`). Optionally require `lint`, `test`, and Trivy on `main` via GitHub branch protection.
+   - **Failure triage:** If REST job log URLs hit TLS/handshake issues, prefer `gh run view <id> --log-failed` for failed step output.
+   - **Coverage floors:** [`scripts/check-critical-coverage.mjs`](https://github.com/hondoentertainment/SiskelBot/blob/main/scripts/check-critical-coverage.mjs) defines **PER_FILE_THRESHOLDS** for `lib/agent-tools.js` — treat this as temporary; add tests, then raise per-file floors back toward the default **80/70**.
 
-3. **Continue modular `routes/*`** — `server.js` is the thin bootstrap; composition lives in `lib/server-configured-app.js` + `routes/index.js`. Prefer new `routes/<domain>.js` modules and register them in `mountFunctions`.
+3. **Production auth** — Set `API_KEY` (and scopes) on Vercel production; avoid long-term reliance on `ALLOW_INSECURE_PRODUCTION`.
 
-4. **E2E depth** — Suite includes branching, marketplace, admin CRUD, workspace templates, eval, pricing page, etc.; keep adding critical product paths as APIs evolve.
+4. **Bug follow-up: Content-Type / charset** — Investigate **`unsupported charset "UTF-8"`** logs on `POST /v1/chat/completions` (Content-Type parsing).
+
+5. **Finite boot (CI / local)** — Prefer a health-probe bootstrap or a **“bootstrap exits”** smoke instead of holding `node server` open indefinitely in checks.
+
+6. **Continue modular `routes/*`** — `server.js` is the thin bootstrap; composition lives in `lib/server-configured-app.js` + `routes/index.js`. Prefer new `routes/<domain>.js` modules and register them in `mountFunctions`.
+
+7. **E2E depth** — Suite includes branching, marketplace, admin CRUD, workspace templates, eval, pricing page, etc.; keep adding critical product paths as APIs evolve.
 
 ### P1 — Near-term (next 1–2 iterations)
 
-5. **Type checking** — `tsconfig.json` uses `checkJs` on a **narrow** include list. To type-check `lib/swarm.js`, add **`@types/node`** and evolve `types/siskelbot.d.ts` until `tsc` is clean, then widen `include`.
+8. **Type checking** — `tsconfig.json` uses `checkJs` on a **narrow** include list. To type-check `lib/swarm.js`, add **`@types/node`** and evolve `types/siskelbot.d.ts` until `tsc` is clean, then widen `include`.
 
-6. **Rate limiting** — Chat, per-key chat, embeddings, and knowledge indexing limiters include a **workspace-derived suffix** when `workspace` / `agentOptions.workspace` / `x-workspace-id` is present; `lib/workspace-rate-limit.js` resolves workspace from param, body, query, `req.workspace`, and header. **Sliding-window** workspace limits remain env-driven (`WORKSPACE_RATE_LIMIT_*`).
+9. **Rate limiting** — Chat, per-key chat, embeddings, and knowledge indexing limiters include a **workspace-derived suffix** when `workspace` / `agentOptions.workspace` / `x-workspace-id` is present; `lib/workspace-rate-limit.js` resolves workspace from param, body, query, `req.workspace`, and header. **Sliding-window** workspace limits remain env-driven (`WORKSPACE_RATE_LIMIT_*`).
 
-7. **Knowledge** — `lib/knowledge-parsers.js` already supports **DOCX, XLSX, HTML**, CSV, JSON, Markdown; per-workspace chunking is in `lib/knowledge-chunking-config.js`. Next: richer metadata extraction and format-specific tuning.
+10. **Knowledge** — `lib/knowledge-parsers.js` already supports **DOCX, XLSX, HTML**, CSV, JSON, Markdown; per-workspace chunking is in `lib/knowledge-chunking-config.js`. Next: richer metadata extraction and format-specific tuning.
 
-8. **WebSocket reconnection hardening** — Exponential backoff with jitter, UI connection state, replay queued events after reconnect.
+11. **WebSocket reconnection hardening** — Exponential backoff with jitter, UI connection state, replay queued events after reconnect.
 
 ### P2 — Medium-term
 
-9. **API versioning enforcement** — Version-aware response serialization so v1 clients stay stable as schemas evolve.
+12. **API versioning enforcement** — Version-aware response serialization so v1 clients stay stable as schemas evolve.
 
-10. **Observability dashboard** — Built-in `/admin/observability` for key OTel-derived metrics without external Grafana.
+13. **Observability dashboard** — Built-in `/admin/observability` for key OTel-derived metrics without external Grafana.
 
-11. **Agent memory persistence** — Long-term user/project facts across conversations with consent + management UI (reasoning-memory / agent memory tracks exist — productize).
+14. **Agent memory persistence** — Long-term user/project facts across conversations with consent + management UI (reasoning-memory / agent memory tracks exist — productize).
 
-12. **Workspace migration tooling** — Full export/import of workspace state for portability.
+15. **Workspace migration tooling** — Full export/import of workspace state for portability.
 
 ### P3 — Longer-term / enterprise
 
-13. **RBAC granularity** — Custom roles and fine-grained permissions.
+16. **RBAC granularity** — Custom roles and fine-grained permissions.
 
-14. **Federated deployment** — Cross-instance workspace discovery.
+17. **Federated deployment** — Cross-instance workspace discovery.
 
-15. **Compliance & data residency** — Region pinning, PII tooling, audit reports.
+18. **Compliance & data residency** — Region pinning, PII tooling, audit reports.
 
 ---
 
@@ -82,6 +93,8 @@ All items from the original P0–P3 roadmap have been implemented:
 
 - **Barrel exports** — Optional domain `lib/agent/index.js`-style barrels for clearer imports.
 - **Coverage** — `c8` + `scripts/check-critical-coverage.mjs` in CI; ratchet thresholds as files stabilize.
+- **ESLint noise** — Clear CI annotations (e.g. unused symbols in `lib/agent-tools.js`); tighten code or rules so signal stays high.
+- **GitHub Actions runtimes** — Optional **`actions/setup-node` v6+** and runner **Node 24** migration when dependencies and ecosystem are ready.
 - **Client ESLint** — Extend lint to `client/src` with browser globals.
 - **Docker image size** — Multi-stage builds and `.dockerignore` audit.
 - **Legacy client shell** — `client/index.html` may still be large; `scripts/build-client.mjs` + `client/src` provide esbuild **splitting** for modern SPA paths (`client/app.html` / dist manifest).
