@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>Security & trust — Siskel Bot</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background: #0f172a;
+      color: #e2e8f0;
+      line-height: 1.55;
+    }
+    header {
+      padding: 1.25rem 2rem;
+      border-bottom: 1px solid #1e293b;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    header a { color: #94a3b8; text-decoration: none; }
+    header a:hover { color: #e2e8f0; }
+    main { max-width: 720px; margin: 0 auto; padding: 2rem; }
+    h1 { margin: 0 0 0.5rem; font-size: 1.85rem; }
+    .lede { color: #94a3b8; margin-bottom: 2rem; }
+    h2 { font-size: 1.1rem; margin: 1.75rem 0 0.5rem; color: #f1f5f9; }
+    ul { padding-left: 1.25rem; color: #cbd5e1; }
+    li { margin: 0.4rem 0; }
+    .note { margin-top: 2.5rem; padding: 1rem; border-radius: 8px; background: #1e293b; border: 1px solid #334155; color: #94a3b8; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="/pricing.html">← Pricing</a>
+    <a href="/app.html">Open app</a>
+  </header>
+  <main>
+    <h1>Security &amp; trust</h1>
+    <p class="lede">How Siskel Bot handles credentials, tenancy, payments, and operations. Hosted and self-hosted deployments vary by your configuration.</p>
+
+    <h2>Secrets &amp; backend access</h2>
+    <ul>
+      <li>API keys and OAuth tokens belong in environment variables or your vault — not in shipped client bundles for production builds.</li>
+      <li>Chat traffic is proxied to the LLM backend you configure (e.g. Ollama, vLLM, OpenAI). Prefer private networks between Siskel Bot and your inference tier when possible.</li>
+    </ul>
+
+    <h2>Multi-tenant data</h2>
+    <ul>
+      <li>Workspaces, conversations, knowledge, and usage are partitioned by workspace and user where the product tier supports it.</li>
+      <li>Enable per-workspace rate limits and plan quotas (<code>QUOTA_ENABLED</code>) when monetizing — usage is recorded for billing dashboards when chat completes successfully.</li>
+    </ul>
+
+    <h2>Billing</h2>
+    <ul>
+      <li>Payments are handled by Stripe. Webhooks sync subscription state into workspace plans and tenant quotas so limits match what customers pay for.</li>
+      <li>See <a href="/pricing.html" style="color:#60a5fa;">Pricing</a> for plan limits; successful checkout returns via <code>/billing/success</code>.</li>
+    </ul>
+
+    <h2>Observability</h2>
+    <ul>
+      <li>Structured logs honor request IDs; Prometheus-style metrics may be exposed when configured (see RUNBOOK).</li>
+      <li>Review log redaction policies in your deployment checklist before passing production traffic.</li>
+    </ul>
+
+    <p class="note">This page summarizes product behavior and is not a legal agreement. Compliance programs (SOC 2, etc.) are roadmap items for regulated buyers — negotiate specific terms separately.</p>
+  </main>
+</body>
+</html>

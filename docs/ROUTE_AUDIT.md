@@ -50,6 +50,7 @@ in DELETE is removed from `routes/index.js` and the file is deleted or archived.
 | `admin.js` | `/api/admin/*`, routing, regions | Admin dashboard + quota management |
 | `admin-agent-stats.js` | `/api/admin/agent-stats` | Ops visibility |
 | `admin-quotas.js` | (quota management) | Needed once billing is live |
+| `pricing-engine.js` | `/api/v1/pricing/*` | Advanced admin pricing rules + cost compute (requires admin auth) |
 | `admin-feature-flags.js` | (feature flags) | Safe rollout mechanism |
 | `admin-prompt-patches.js` | (prompt patches) | Ops — override system prompts |
 | `eval.js` | `/api/eval*`, `/api/traces*`, `/api/agent/trajectory*` | Model quality feedback loop |
@@ -151,7 +152,6 @@ asking for them.
 | `invoicing.js` | Custom invoicing. Use Stripe invoicing until enterprise. |
 | `revenue-share.js` | Revenue share program. Defer. |
 | `credit-system.js` | Credit economy. Defer. |
-| `pricing-engine.js` | Dynamic pricing. Use static plans until needed. |
 | `outcome-verification.js` | Agent outcome tracking. Defer. |
 | `agent-negotiation.js` | Multi-agent negotiation. Defer. |
 | `long-missions.js` | Long-horizon agent runs. Defer until agents are stable. |

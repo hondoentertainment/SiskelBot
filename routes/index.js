@@ -25,6 +25,7 @@ import { mountWorkflowRoutes } from "./workflows.js";
 import mountWorkspacesRoutes from "./workspaces.js";
 import { mountConversationRoutes } from "./conversations.js";
 import { mountBillingRoutes } from "./billing.js";
+import { mountPricingRoutes as mountPricingEngineRoutes } from "./pricing-engine.js";
 import { mountMemoryRoutes } from "./memory.js";
 import { mountAgentRunStreamRoutes } from "./agent-run-stream.js";
 import { mountAgentHitlRoutes } from "./agent-hitl.js";
@@ -104,6 +105,7 @@ const mountFunctions = [
   mountWorkspacesRoutes,
   mountConversationRoutes,
   mountBillingRoutes,
+  mountPricingEngineRoutes,
   mountMemoryRoutes,
   mountAgentRunStreamRoutes,
   mountAgentHitlRoutes,

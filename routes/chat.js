@@ -24,6 +24,13 @@ const PLAN_QUOTA_ENABLED = process.env.QUOTA_ENABLED === "1";
 const moderationMiddleware = inputModerationMiddleware();
 const _billingManager = createBillingManager();
 
+/** Mirror usage-tracker totals into billing-usage.json for invoices and QUOTA_ENABLED plan checks. */
+function recordBillingUsage(workspace, inputTokens, outputTokens, model) {
+  const inT = Number(inputTokens) || 0;
+  const outT = Number(outputTokens) || 0;
+  return _billingManager.recordUsage(workspace, { inputTokens: inT, outputTokens: outT }, model).catch(() => {});
+}
+
 export default function mountChatRoutes(app, deps) {
   const {
     chatAuth,
@@ -350,6 +357,7 @@ export default function mountChatRoutes(app, deps) {
         recordTokensUsed(inputTokens, outputTokens);
         try { recordTenantTokens(workspace, (inputTokens || 0) + (outputTokens || 0)); } catch (_) {}
         await recordUsage({ timestamp: new Date().toISOString(), model, inputTokens, outputTokens, backend: BACKEND, workspace, userId }).catch(() => {});
+        await recordBillingUsage(workspace, inputTokens, outputTokens, model);
 
         // Phase 26: Output guard — check response safety
         if (ENABLE_OUTPUT_GUARD && typeof content === "string") {
@@ -526,6 +534,8 @@ export default function mountChatRoutes(app, deps) {
         userId,
       }).catch((e) => console.warn("[usage-tracker] Record failed:", e.message));
 
+      await recordBillingUsage(workspace, finalInputTokens, outputTokens, model);
+
       // Phase 26: Output guard — check streaming response safety
       if (ENABLE_OUTPUT_GUARD && outputContent) {
         const safety = checkOutputSafety(outputContent);
@@ -648,6 +658,7 @@ export default function mountChatRoutes(app, deps) {
       const inputTokens = estimate.inputFromMessages(req.body?.messages || []);
       const outputTokens = estimate.outputFromChars(content?.length || 0);
       recordTokensUsed(inputTokens, outputTokens);
+      try { recordTenantTokens(workspace, (inputTokens || 0) + (outputTokens || 0)); } catch (_) {}
       await recordUsage({
         timestamp: new Date().toISOString(),
         model,
@@ -657,6 +668,7 @@ export default function mountChatRoutes(app, deps) {
         workspace,
         userId,
       }).catch(() => {});
+      await recordBillingUsage(workspace, inputTokens, outputTokens, model);
 
       const chunk = JSON.stringify({
         choices: [{ delta: { content }, index: 0, finish_reason: "stop" }],

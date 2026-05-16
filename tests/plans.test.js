@@ -143,3 +143,30 @@ await test("free plan allows chat and knowledge", async () => {
   const knowledge = await checkFeatureAccess(wsId, "knowledge");
   assert.equal(knowledge.allowed, true);
 });
+
+await test("getPlan prefers Stripe subscription snapshot when subscription is paid and active", async () => {
+  const { getPlan } = await import("../lib/plans.js");
+  const { writeJsonPath, getDataDir } = await import("../lib/json-path-store.js");
+  const { join } = await import("path");
+  const wsId = "stripe-snap-paid-" + Date.now();
+  await writeJsonPath(join(getDataDir(), "billing-subscriptions", `${wsId}.json`), {
+    plan: "pro",
+    status: "active",
+  });
+  const plan = await getPlan(wsId);
+  assert.equal(plan.id, "pro");
+});
+
+await test("getPlan ignores canceled Stripe tier and uses workspace mapping", async () => {
+  const { getPlan, setPlan } = await import("../lib/plans.js");
+  const { writeJsonPath, getDataDir } = await import("../lib/json-path-store.js");
+  const { join } = await import("path");
+  const wsId = "stripe-snap-canceled-" + Date.now();
+  await setPlan(wsId, "free");
+  await writeJsonPath(join(getDataDir(), "billing-subscriptions", `${wsId}.json`), {
+    plan: "pro",
+    status: "canceled",
+  });
+  const plan = await getPlan(wsId);
+  assert.equal(plan.id, "free");
+});

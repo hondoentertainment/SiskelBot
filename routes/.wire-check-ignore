@@ -117,7 +117,6 @@ pq-migration.js
 pq-tls.js
 preference-collection.js
 preference-datasets.js
-pricing-engine.js
 privacy-accounting.js
 profiling.js
 prompt-compression.js

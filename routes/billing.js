@@ -12,9 +12,10 @@
  * POST /api/v1/billing/checkout      — create Stripe Checkout Session (auth required)
  * POST /api/v1/billing/webhook       — Stripe webhook (raw body, signature verified)
  */
-import { createBillingManager, createCheckoutSession, createPortalSession, handleWebhookEvent, getWorkspaceSubscription, getPlanCatalog } from "../lib/billing.js";
+import { createBillingManager, createCheckoutSession, createPortalSession, handleWebhookEvent, getWorkspaceSubscription, getPlanCatalog, writeTenantBillingPlanToStorage } from "../lib/billing.js";
 import { listPlans, getPlan, setPlan } from "../lib/plans.js";
 import express from "express";
+import { join } from "path";
 
 export function mountBillingRoutes(app, deps) {
   const {
@@ -24,7 +25,19 @@ export function mountBillingRoutes(app, deps) {
     sanitizeWorkspace,
     storageRateLimiter,
     userAuth,
+    storage,
   } = deps;
+
+  const rootDir = deps.__dirname || process.cwd();
+  app.get("/billing/success", (_req, res) => {
+    res.sendFile(join(rootDir, "client", "billing", "success.html"));
+  });
+  app.get("/billing/cancel", (_req, res) => {
+    res.sendFile(join(rootDir, "client", "billing", "cancel.html"));
+  });
+  app.get("/billing", (_req, res) => {
+    res.redirect(302, "/pricing.html");
+  });
 
   const limiter = storageRateLimiter || ((req, res, next) => next());
   const billing = createBillingManager();
@@ -89,6 +102,8 @@ export function mountBillingRoutes(app, deps) {
       if (!result.ok) {
         return apiError(res, 400, "INVALID_PLAN", result.error);
       }
+
+      await writeTenantBillingPlanToStorage(storage, workspace, planId).catch(() => {});
 
       res.json({ workspaceId: workspace, plan: result.plan });
     } catch (err) {
@@ -182,7 +197,7 @@ export function mountBillingRoutes(app, deps) {
         return res.status(400).json({ error: "Missing stripe-signature header" });
       }
       try {
-        const result = await handleWebhookEvent(req.body, signature);
+        const result = await handleWebhookEvent(req.body, signature, { storage });
         res.json({ received: true, ...result });
       } catch (err) {
         const msg = err.message || "Webhook processing failed";
