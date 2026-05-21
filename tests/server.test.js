@@ -144,6 +144,21 @@ test("POST /v1/chat/completions requires auth when API_KEY is set", async () => 
   assert.ok(response.body.hint);
 });
 
+test("POST /v1/chat/completions parses body with charset=UTF-8 Content-Type", async () => {
+  const app = await loadApp({ BACKEND: "ollama", API_KEY: "secret-key" });
+  const payload = JSON.stringify({
+    model: "llama3.2",
+    messages: [{ role: "user", content: "hello" }],
+  });
+  const response = await request(app)
+    .post("/v1/chat/completions")
+    .set("Content-Type", "application/json; charset=UTF-8")
+    .send(payload);
+
+  assert.equal(response.status, 401);
+  assert.equal(response.body.code, "AUTH_REQUIRED");
+});
+
 test("API errors return structured format { error, code, hint }", async () => {
   const app = await loadApp({ BACKEND: "ollama", API_KEY: "secret-key" });
   const response = await request(app)

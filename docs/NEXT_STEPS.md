@@ -42,10 +42,10 @@ Resist new surface area until consolidation work is boring and green.
 
 Substance from the code-gen / Phase-63 vertical, compressed. Verify in-repo before treating as done.
 
-- **Golden path (E2E)** — Single scripted flow: workspace → ingest → **repo-rag** → **PR review** → **test-gen** → merge; Playwright + cost/trace budget in **`tests/e2e/`** / **`test:e2e:api`**. **Needs verification** (exists vs partner-grade).
-- **`pr-review-agent` HITL** — Comment/post actions default **draft / approval** via **`lib/agent-hitl-store.js`** (or equivalent). **Needs verification** (defaults and gates).
-- **Cost attribution** — **repo-rag** / **pr-review** / **test-gen** runs metered (**pricing** + usage) to invoice lines. **Open** if not fully wired end-to-end.
-- **Failure-mode docs** — **`docs/PR_REVIEW_AGENT.md`**, **`docs/REPO_RAG.md`**, **`docs/TEST_GEN.md`**: inputs, limits, failures, HITL, disable paths. **Open** unless each exists and is current.
+- **Golden path (E2E)** — Single scripted flow: workspace → ingest → **repo-rag** → **PR review** → **test-gen** → merge; Playwright + cost/trace budget in **`tests/e2e/`** / **`test:e2e:api`**. **Landed:** `tests/e2e/phase63-golden-path.spec.js`.
+- **`pr-review-agent` HITL** — Comment/post actions default **draft / approval** via **`lib/agent-hitl-store.js`** (or equivalent). **Open** (not wired for PR review).
+- **Cost attribution** — **repo-rag** / **pr-review** / **test-gen** runs metered via **`lib/phase63-metering.js`** → `usage.json` + `eval-history` (`suite: phase63`). Wire pricing rules with `modelId` = feature name.
+- **Failure-mode docs** — [docs/PR_REVIEW_AGENT.md](./PR_REVIEW_AGENT.md), [docs/REPO_RAG.md](./REPO_RAG.md), [docs/TEST_GEN.md](./TEST_GEN.md) (operator: inputs, limits, failures, HITL, disable paths). **Landed** May 2026; revise when APIs change.
 - **Eval-in-prod for Phase 63 subjects** — **`lib/eval-in-prod.js`** tracks **pr-review-agent** and **test-gen** (and peers) for regression bisection. **Needs verification** (registration + alerts).
 
 ### P2 — Operational hardening

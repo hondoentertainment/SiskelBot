@@ -28,4 +28,6 @@ jobs:
       - name: Run smoke (--live-only skips readiness/chat probes)
         env:
           BASE_URL: ${{ github.event.inputs.base_url || vars.PRODUCTION_BASE_URL || 'https://siskelbot.vercel.app' }}
+          SMOKE_TEST_API_KEY: ${{ secrets.SMOKE_TEST_API_KEY }}
+          ADMIN_API_KEY: ${{ secrets.SMOKE_TEST_ADMIN_API_KEY }}
         run: npm run smoke-test:ci

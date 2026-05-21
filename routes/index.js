@@ -76,6 +76,7 @@ import { mountCodebaseSearchRoutes } from "./codebase-search.js";
 import { mountGithubWorkflowRoutes } from "./github-workflow.js";
 import mountPrReviewRoutes from "./pr-review-agent.js";
 import mountRepoRagRoutes from "./repo-rag.js";
+import mountTestGenRoutes from "./test-gen.js";
 import { mountSessionInsightsRoutes } from "./session-insights.js";
 import { mountReasoningMemoryRoutes } from "./reasoning-memory.js";
 import { mountPluginRoutes } from "./plugins.js";
@@ -169,6 +170,7 @@ const mountFunctions = [
   mountGithubWorkflowRoutes,
   mountPrReviewRoutes,
   mountRepoRagRoutes,
+  mountTestGenRoutes,
   mountSessionInsightsRoutes,
   mountReasoningMemoryRoutes,
   mountPluginRoutes,

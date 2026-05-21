@@ -7,6 +7,7 @@ import {
   listReviews,
   BUILTIN_RULES,
 } from "../lib/pr-review-agent.js";
+import { meterPhase63Operation } from "../lib/phase63-metering.js";
 
 export function mountPrReviewRoutes(app, deps) {
   const { apiRoute, apiError, logRequest, adminAuth } = deps;
@@ -18,6 +19,13 @@ export function mountPrReviewRoutes(app, deps) {
         return apiError(res, 400, "INVALID_INPUT", "diff is required");
       }
       const review = await reviewDiff({ workspaceId, diff, rules });
+      await meterPhase63Operation({
+        workspaceId,
+        feature: "pr-review",
+        calls: 1,
+        units: (review.comments || []).length,
+        tags: { reviewId: review.reviewId },
+      });
       res.status(201).json(review);
     } catch (err) {
       return apiError(res, 500, "INTERNAL_ERROR", err.message);

@@ -6227,6 +6227,7 @@
         notificationsWsManager = SiskelWSReconnect.createReconnectingWebSocket({
           getTokenUrl: '/api/v1/ws-token',
           workspace: wsWorkspace,
+          getTokenHeaders: typeof getApiHeaders === 'function' ? getApiHeaders : undefined,
           onConnect: function () {
             notificationsWsConnected = true;
             stopNotificationsPoll();

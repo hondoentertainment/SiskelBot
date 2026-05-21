@@ -17,6 +17,7 @@ const {
   listRepos,
   removeRepo,
   _reset,
+  RepoRagLimitError,
 } = await import("../lib/repo-rag.js");
 
 test.after(() => {
@@ -151,4 +152,22 @@ test("removeRepo for unknown repo reports not removed", async () => {
   await _reset("ws-missing");
   const res = await removeRepo({ workspaceId: "ws-missing", repoId: "ghost" });
   assert.equal(res.removed, false);
+});
+
+test("indexRepository rejects corpus exceeding file limit", async () => {
+  await _reset("ws-limit-files");
+  process.env.REPO_RAG_MAX_FILES = "2";
+  await assert.rejects(
+    () => indexRepository({
+      workspaceId: "ws-limit-files",
+      repoId: "big",
+      files: [
+        { path: "a.js", content: "a" },
+        { path: "b.js", content: "b" },
+        { path: "c.js", content: "c" },
+      ],
+    }),
+    (err) => err instanceof RepoRagLimitError && err.code === "REPO_RAG_FILE_LIMIT",
+  );
+  delete process.env.REPO_RAG_MAX_FILES;
 });

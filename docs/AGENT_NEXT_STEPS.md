@@ -49,11 +49,11 @@ All items from the original P0–P3 roadmap have been implemented:
    - **Failure triage:** If REST job log URLs hit TLS/handshake issues, prefer `gh run view <id> --log-failed` for failed step output.
    - **Coverage floors:** [`scripts/check-critical-coverage.mjs`](https://github.com/hondoentertainment/SiskelBot/blob/main/scripts/check-critical-coverage.mjs) defines **PER_FILE_THRESHOLDS** for `lib/agent-tools.js` — treat this as temporary; add tests, then raise per-file floors back toward the default **80/70**.
 
-3. **Production auth** — Set `API_KEY` (and scopes) on Vercel production; avoid long-term reliance on `ALLOW_INSECURE_PRODUCTION`.
+3. **Production auth** — Set `API_KEY` (and scopes) on Vercel production; avoid long-term reliance on `ALLOW_INSECURE_PRODUCTION`. See [docs/PRODUCTION.md](./PRODUCTION.md).
 
-4. **Bug follow-up: Content-Type / charset** — Investigate **`unsupported charset "UTF-8"`** logs on `POST /v1/chat/completions` (Content-Type parsing).
+4. **Bug follow-up: Content-Type / charset** — Investigate **`unsupported charset "UTF-8"`** logs on `POST /v1/chat/completions` (Content-Type parsing). **Mitigation (May 2026):** `normalizeJsonRequestContentType` in `lib/server-configured-app.js` rewrites `application/json*` to `application/json; charset=utf-8` before `express.json()`.
 
-5. **Finite boot (CI / local)** — Prefer a health-probe bootstrap or a **“bootstrap exits”** smoke instead of holding `node server` open indefinitely in checks.
+5. **Finite boot (CI / local)** — Prefer a health-probe bootstrap or a **“bootstrap exits”** smoke instead of holding `node server` open indefinitely in checks. Use **`npm run bootstrap:check`** (`scripts/finite-boot-check.mjs`): imports the app with `VERCEL=1`, ephemeral server, `GET /health/live`, exits.
 
 6. **Continue modular `routes/*`** — `server.js` is the thin bootstrap; composition lives in `lib/server-configured-app.js` + `routes/index.js`. Prefer new `routes/<domain>.js` modules and register them in `mountFunctions`.
 
@@ -67,7 +67,7 @@ All items from the original P0–P3 roadmap have been implemented:
 
 10. **Knowledge** — `lib/knowledge-parsers.js` already supports **DOCX, XLSX, HTML**, CSV, JSON, Markdown; per-workspace chunking is in `lib/knowledge-chunking-config.js`. Next: richer metadata extraction and format-specific tuning.
 
-11. **WebSocket reconnection hardening** — Exponential backoff with jitter, UI connection state, replay queued events after reconnect.
+11. **WebSocket reconnection hardening** — Exponential backoff with jitter, UI connection state, replay queued events after reconnect. **Notifications (May 2026):** `client/src/chat.js` uses **`SiskelWSReconnect.createReconnectingWebSocket`** (`client/js/ws-reconnect.js`) when the bundle exposes it; includes indicator via `renderConnectionIndicator`. Other realtime paths: `client/src/realtime/client.js`.
 
 ### P2 — Medium-term
 

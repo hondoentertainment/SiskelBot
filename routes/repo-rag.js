@@ -7,7 +7,9 @@ import {
   getRepoStats,
   listRepos,
   removeRepo,
+  RepoRagLimitError,
 } from "../lib/repo-rag.js";
+import { meterPhase63Operation } from "../lib/phase63-metering.js";
 
 export function mountRepoRagRoutes(app, deps) {
   const { apiRoute, apiError, logRequest, adminAuth } = deps;
@@ -18,8 +20,18 @@ export function mountRepoRagRoutes(app, deps) {
       if (!repoId) return apiError(res, 400, "INVALID_INPUT", "repoId is required");
       if (!Array.isArray(files)) return apiError(res, 400, "INVALID_INPUT", "files must be an array");
       const out = await indexRepository({ workspaceId, repoId, files });
+      await meterPhase63Operation({
+        workspaceId,
+        feature: "repo-rag",
+        calls: 1,
+        units: out.tokenCount || 0,
+        tags: { repoId, op: "index" },
+      });
       res.status(201).json(out);
     } catch (err) {
+      if (err instanceof RepoRagLimitError) {
+        return apiError(res, 413, err.code, err.message);
+      }
       return apiError(res, 500, "INTERNAL_ERROR", err.message);
     }
   });
@@ -30,6 +42,13 @@ export function mountRepoRagRoutes(app, deps) {
         workspaceId: req.query?.workspaceId,
         query: req.query?.query,
         limit: req.query?.limit ? Number(req.query.limit) : undefined,
+      });
+      await meterPhase63Operation({
+        workspaceId: req.query?.workspaceId,
+        feature: "repo-rag",
+        calls: 1,
+        units: (out.hits || []).length,
+        tags: { op: "search" },
       });
       res.json(out);
     } catch (err) {

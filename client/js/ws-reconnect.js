@@ -16,6 +16,7 @@ const STATES = Object.freeze({
  * @param {object} options
  * @param {string} options.getTokenUrl - URL to fetch a one-time WS token (e.g. "/api/ws-token")
  * @param {string} [options.apiKey] - API key sent as Authorization header when fetching the token
+ * @param {function(): Record<string, string>} [options.getTokenHeaders] - Optional headers for each token fetch; merged after apiKey (overrides shared keys like Authorization)
  * @param {string} [options.workspace="default"] - Workspace id appended to the token URL and WS URL
  * @param {number} [options.maxRetries=10]
  * @param {number} [options.baseDelay=1000] - Initial reconnect delay in ms
@@ -32,6 +33,7 @@ export function createReconnectingWebSocket(options = {}) {
   const {
     getTokenUrl = '/api/ws-token',
     apiKey,
+    getTokenHeaders,
     workspace = 'default',
     maxRetries = 10,
     baseDelay = 1000,
@@ -80,6 +82,12 @@ export function createReconnectingWebSocket(options = {}) {
     const url = `${getTokenUrl}${sep}workspace=${encodeURIComponent(workspace)}`;
     const headers = {};
     if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+    if (typeof getTokenHeaders === 'function') {
+      try {
+        const extra = getTokenHeaders();
+        if (extra && typeof extra === 'object') Object.assign(headers, extra);
+      } catch (_) { /* ignore */ }
+    }
     const res = await fetch(url, { headers, credentials: 'include' });
     if (!res.ok) throw new Error(`ws-token fetch failed: ${res.status}`);
     const data = await res.json();

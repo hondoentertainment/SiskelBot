@@ -4027,10 +4027,8 @@
     }
 
     let notificationsPollTimer = null;
-    let notificationsWs = null;
-    let notificationsWsReconnectDelay = 1000;
-    const NOTIFICATIONS_WS_MAX_BACKOFF = 30000;
     let notificationsWsConnected = false;
+    let notificationsWsManager = null;
 
     function startNotificationsPoll() {
       if (notificationsPollTimer) return;
@@ -4048,46 +4046,45 @@
       }
     }
 
+    /** Notifications stream: use SiskelWSReconnect.createReconnectingWebSocket (client/js/ws-reconnect.js) — backoff, jitter, queue flush, visibility/offline pauses, heartbeats — not a raw WebSocket. */
     function connectNotificationsWs() {
-      if (notificationsWs && notificationsWs.readyState === 1) return;
-      const ws = typeof getSelectedWorkspace === 'function' ? getSelectedWorkspace() : 'default';
-      const headers = getApiHeaders ? getApiHeaders() : { credentials: 'include' };
-      fetch(`/api/ws-token?workspace=${encodeURIComponent(ws)}`, { headers, credentials: 'include' })
-        .then((r) => r.ok ? r.json() : Promise.reject(new Error('ws-token failed')))
-        .then((data) => {
-          const token = data?.token;
-          if (!token) return;
-          const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-          const url = `${proto}//${location.host}/ws?token=${encodeURIComponent(token)}&workspace=${encodeURIComponent(ws)}`;
-          const sock = new WebSocket(url);
-          sock.onopen = () => {
+      if (notificationsWsManager) return;
+      if (window.SiskelWSReconnect) {
+        const wsWorkspace = typeof getSelectedWorkspace === 'function' ? getSelectedWorkspace() : 'default';
+        notificationsWsManager = SiskelWSReconnect.createReconnectingWebSocket({
+          getTokenUrl: '/api/v1/ws-token',
+          workspace: wsWorkspace,
+          getTokenHeaders: typeof getApiHeaders === 'function' ? getApiHeaders : undefined,
+          onConnect: function () {
             notificationsWsConnected = true;
-            notificationsWsReconnectDelay = 1000;
             stopNotificationsPoll();
-          };
-          sock.onmessage = (e) => {
-            try {
-              const msg = JSON.parse(e.data);
-              if (msg?.type === 'notification') refreshNotifications();
-            } catch (_) {}
-          };
-          sock.onclose = () => {
-            notificationsWs = null;
+          },
+          onDisconnect: function () {
             notificationsWsConnected = false;
             startNotificationsPoll();
-            const delay = notificationsWsReconnectDelay;
-            notificationsWsReconnectDelay = Math.min(NOTIFICATIONS_WS_MAX_BACKOFF, notificationsWsReconnectDelay * 2);
-            setTimeout(connectNotificationsWs, delay);
-          };
-          sock.onerror = () => { sock.close(); };
-          notificationsWs = sock;
-        })
-        .catch(() => {
-          startNotificationsPoll();
-          const delay = notificationsWsReconnectDelay;
-          notificationsWsReconnectDelay = Math.min(NOTIFICATIONS_WS_MAX_BACKOFF, notificationsWsReconnectDelay * 2);
-          setTimeout(connectNotificationsWs, delay);
+          },
+          onMessage: function (e) {
+            try {
+              const msg = JSON.parse(e.data);
+              if (msg && msg.type === 'notification') refreshNotifications();
+            } catch (_) {}
+          },
         });
+        notificationsWsManager.connect();
+        const wsIndicatorEl = document.getElementById('ws-connection-indicator');
+        if (wsIndicatorEl) {
+          SiskelWSReconnect.renderConnectionIndicator(wsIndicatorEl, notificationsWsManager);
+        }
+      } else {
+        startNotificationsPoll();
+      }
+    }
+    function disconnectNotificationsWs() {
+      if (notificationsWsManager) {
+        notificationsWsManager.disconnect();
+        notificationsWsManager = null;
+        notificationsWsConnected = false;
+      }
     }
 
     if (document.visibilityState === 'visible') {
@@ -4099,13 +4096,13 @@
         connectNotificationsWs();
         if (!notificationsWsConnected) startNotificationsPoll();
       } else {
-        if (notificationsWs) { notificationsWs.close(); notificationsWs = null; }
+        disconnectNotificationsWs();
         stopNotificationsPoll();
       }
     });
     if (typeof getSelectedWorkspace === 'function' && workspaceSelect) {
       workspaceSelect.addEventListener('change', () => {
-        if (notificationsWs) { notificationsWs.close(); notificationsWs = null; }
+        disconnectNotificationsWs();
         connectNotificationsWs();
       });
     }

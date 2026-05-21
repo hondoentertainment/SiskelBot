@@ -14,7 +14,7 @@ export default defineConfig({
   projects: [
     {
       name: "api",
-      testMatch: /\b(health|chat|knowledge|conversations\.api|knowledge\.api|recipes\.api|workspaces\.api|webhooks\.api|mcp\.api)\.spec\.js$/,
+      testMatch: /\b(health|chat|knowledge|conversations\.api|knowledge\.api|recipes\.api|workspaces\.api|webhooks\.api|mcp\.api|phase63-golden-path)\.spec\.js$/,
       use: {
         // API-only tests — no browser needed
       },
@@ -38,6 +38,7 @@ export default defineConfig({
       BACKEND: "ollama",
       PORT: String(PORT),
       NODE_ENV: "test",
+      ADMIN_API_KEY: "e2e-admin-key",
     },
   },
 });
