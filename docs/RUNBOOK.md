@@ -105,6 +105,34 @@ Both thresholds are tunable in `scripts/load-test.mjs` (`BASELINE_P99_REGRESSION
 
 ---
 
+## Load shedding (`lib/load-shedding.js`)
+
+When in-flight work exceeds configured capacity, lower-priority requests are rejected first (P3 batch → P2 free → P1 paid; P0 health never shed).
+
+### Defaults
+
+| Setting | Default |
+|---------|---------|
+| `softCapacity` | 200 in-flight |
+| `hardCapacity` | 500 in-flight |
+| P1 limit | 400 |
+| P2 limit | 200 |
+| P3 limit | 50 |
+
+Policy persists under `data/load-shedding/config.json` (or KV). Shed events ring-buffer in `data/load-shedding/events.json` (cap via `LOAD_SHEDDING_MAX_EVENTS`, default 1000).
+
+### Tuning in staging
+
+1. Run `npm run test:load` against a staging URL after a baseline deploy.
+2. Watch shed rate in logs/metrics; if P2 chat is shed under normal load, raise `softCapacity` or P2 limit via admin/runtime configure API (see `configureShedding` in `lib/load-shedding.js`).
+3. Document chosen values in this section when changed for production.
+
+### When requests are shed
+
+Clients may receive **503** with structured error; retry with backoff. Agent SSE may emit `agent_shed` when the hook is registered.
+
+---
+
 ## Phase 38: CLI Client
 
 Command-line client for SiskelBot. Connects to local or deployed instances via REST API.

@@ -55,4 +55,4 @@ In-memory signaling requires a **single long-lived instance** or Redis-backed pu
 
 Require status checks: **lint**, **test**, **Trivy filesystem scan**, **smoke** (on merge to main).
 
-See also: [docs/RUNBOOK.md](./RUNBOOK.md), [docs/SELF_HOSTING.md](./SELF_HOSTING.md), [docs/PR_REVIEW_AGENT.md](./PR_REVIEW_AGENT.md), [docs/REPO_RAG.md](./REPO_RAG.md), [docs/TEST_GEN.md](./TEST_GEN.md).
+See [docs/PRODUCTION.md](./PRODUCTION.md) and [docs/BRANCH_PROTECTION.md](./BRANCH_PROTECTION.md).

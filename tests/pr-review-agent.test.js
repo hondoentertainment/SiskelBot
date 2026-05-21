@@ -14,6 +14,8 @@ const {
   reviewDiff,
   getReview,
   listReviews,
+  approveReview,
+  isPrReviewHitlEnabled,
   BUILTIN_RULES,
   _reset,
   _internals,
@@ -143,4 +145,80 @@ ${body}+}
   const review = await reviewDiff({ workspaceId: "ws-long", diff });
   const rules = review.comments.map((c) => c.rule);
   assert.ok(rules.includes("long-function"), `rules should include long-function, got ${rules.join(",")}`);
+});
+
+test("reviewDiff defaults to approved when HITL is disabled", async () => {
+  const prev = process.env.PR_REVIEW_HITL;
+  delete process.env.PR_REVIEW_HITL;
+  try {
+    await _reset("ws-approved");
+    const review = await reviewDiff({ workspaceId: "ws-approved", diff: SIMPLE_DIFF });
+    assert.equal(review.status, "approved");
+    assert.equal(isPrReviewHitlEnabled(), false);
+  } finally {
+    if (prev === undefined) delete process.env.PR_REVIEW_HITL;
+    else process.env.PR_REVIEW_HITL = prev;
+  }
+});
+
+test("reviewDiff creates draft when PR_REVIEW_HITL=1", async () => {
+  const prev = process.env.PR_REVIEW_HITL;
+  process.env.PR_REVIEW_HITL = "1";
+  try {
+    await _reset("ws-hitl");
+    const review = await reviewDiff({ workspaceId: "ws-hitl", diff: SIMPLE_DIFF });
+    assert.equal(review.status, "draft");
+    assert.equal(isPrReviewHitlEnabled(), true);
+    const fetched = await getReview(review.reviewId, "ws-hitl");
+    assert.equal(fetched.status, "draft");
+    const { reviews } = await listReviews("ws-hitl");
+    assert.equal(reviews[0].status, "draft");
+  } finally {
+    if (prev === undefined) delete process.env.PR_REVIEW_HITL;
+    else process.env.PR_REVIEW_HITL = prev;
+  }
+});
+
+test("reviewDiff creates draft when requireApproval is true", async () => {
+  const prev = process.env.PR_REVIEW_HITL;
+  delete process.env.PR_REVIEW_HITL;
+  try {
+    await _reset("ws-req");
+    const review = await reviewDiff({
+      workspaceId: "ws-req",
+      diff: SIMPLE_DIFF,
+      requireApproval: true,
+    });
+    assert.equal(review.status, "draft");
+  } finally {
+    if (prev === undefined) delete process.env.PR_REVIEW_HITL;
+    else process.env.PR_REVIEW_HITL = prev;
+  }
+});
+
+test("approveReview approves draft and rejects duplicate approval", async () => {
+  const prev = process.env.PR_REVIEW_HITL;
+  process.env.PR_REVIEW_HITL = "1";
+  try {
+    await _reset("ws-approve");
+    const draft = await reviewDiff({ workspaceId: "ws-approve", diff: SIMPLE_DIFF });
+    assert.equal(draft.status, "draft");
+
+    const approved = await approveReview(draft.reviewId, "ws-approve", { approvedBy: "reviewer-1" });
+    assert.equal(approved.status, "approved");
+    assert.ok(approved.approvedAt);
+    assert.equal(approved.approvedBy, "reviewer-1");
+
+    const fetched = await getReview(draft.reviewId, "ws-approve");
+    assert.equal(fetched.status, "approved");
+    assert.equal(fetched.approvedBy, "reviewer-1");
+
+    await assert.rejects(
+      () => approveReview(draft.reviewId, "ws-approve", { approvedBy: "reviewer-2" }),
+      (err) => err.code === "ALREADY_APPROVED",
+    );
+  } finally {
+    if (prev === undefined) delete process.env.PR_REVIEW_HITL;
+    else process.env.PR_REVIEW_HITL = prev;
+  }
 });

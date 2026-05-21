@@ -41,6 +41,7 @@
     "smoke-test": "node scripts/smoke-test.js",
     "smoke-test:ci": "node scripts/smoke-test.js --live-only",
     "bootstrap:check": "node scripts/finite-boot-check.mjs",
+    "check:production-env": "node scripts/check-production-env.mjs",
     "test:e2e": "npx playwright test",
     "test:e2e:api": "npx playwright test --project=api",
     "eval:ci": "node scripts/run-eval-ci.mjs",

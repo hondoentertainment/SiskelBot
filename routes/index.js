@@ -77,6 +77,7 @@ import { mountGithubWorkflowRoutes } from "./github-workflow.js";
 import mountPrReviewRoutes from "./pr-review-agent.js";
 import mountRepoRagRoutes from "./repo-rag.js";
 import mountTestGenRoutes from "./test-gen.js";
+import mountEvalInProdRoutes from "./eval-in-prod.js";
 import { mountSessionInsightsRoutes } from "./session-insights.js";
 import { mountReasoningMemoryRoutes } from "./reasoning-memory.js";
 import { mountPluginRoutes } from "./plugins.js";
@@ -171,6 +172,7 @@ const mountFunctions = [
   mountPrReviewRoutes,
   mountRepoRagRoutes,
   mountTestGenRoutes,
+  mountEvalInProdRoutes,
   mountSessionInsightsRoutes,
   mountReasoningMemoryRoutes,
   mountPluginRoutes,

@@ -18,9 +18,10 @@ Suffix paths:
 
 | Method | Path | Notes |
 |--------|------|--------|
-| `POST` | `/pr-review/review` | Body: `workspaceId?`, `diff` (required string), `rules?` (optional array of rule ids—filters output) |
+| `POST` | `/pr-review/review` | Body: `workspaceId?`, `diff` (required string), `rules?` (optional array of rule ids—filters output), `requireApproval?` (force draft status) |
 | `GET` | `/pr-review/reviews` | Query: `workspaceId?` (omitted → `"default"`) |
 | `GET` | `/pr-review/reviews/:id` | Query: `workspaceId?` |
+| `POST` | `/pr-review/reviews/:id/approve` | Body: `workspaceId?`, `approvedBy?` — approve a draft review |
 | `GET` | `/pr-review/rules` | Returns `BUILTIN_RULES` metadata |
 
 ## Built-in rules
@@ -37,7 +38,11 @@ Severity and descriptions for built-ins are also exposed as `BUILTIN_RULES` in `
 
 ## Environment and storage
 
-There are **no PR-review-specific env vars**. Persistence uses `lib/json-path-store.js`:
+| Variable | Effect |
+|----------|--------|
+| `PR_REVIEW_HITL=1` | New reviews are stored as **`draft`** until approved via `POST /pr-review/reviews/:id/approve`. Without it, reviews default to **`approved`**. Per-request `requireApproval: true` on `POST /pr-review/review` also forces draft. |
+
+Persistence uses `lib/json-path-store.js`:
 
 - **`STORAGE_PATH`** sets the root (see `lib/env-data-root.js`); otherwise `./data` locally or a temp dir on Vercel.
 - Optional **Postgres KV** / **SQLite KV** (when enabled) store the same logical JSON path instead of a plain file.
@@ -65,13 +70,18 @@ There are **no PR-review-specific env vars**. Persistence uses `lib/json-path-st
 
 - **400** on `POST /pr-review/review` if `diff` is missing or blank.
 - **404** on fetch by id if no matching `reviewId` in that workspace store.
+- **409** on `POST /pr-review/reviews/:id/approve` if the review is already approved.
 - **500** on unexpected errors (message passed through as `INTERNAL_ERROR` body).
 - **Heuristic gaps**: complex diffs may mis-track line numbers; rules only inspect **added** lines; `missing-test` uses path heuristics only.
 - **Filtered rules**: if `rules` is a non-empty array, only those rule ids are kept; unknown ids can zero out comments.
 
 ## Human-in-the-loop (HITL)
 
-**Not implemented for PR review.** `lib/agent-hitl-store.js` exists for **execute_step** resume tokens and Agent Run stream events; nothing in `pr-review-agent` imports or calls it. There is **no approval gate** in these routes.
+When **`PR_REVIEW_HITL=1`** or the client sends **`requireApproval: true`**, `POST /pr-review/review` persists reviews with **`status: "draft"`**. Otherwise status is **`"approved"`** immediately.
+
+Operators approve drafts with **`POST /pr-review/reviews/:id/approve`** (body: optional `workspaceId`, `approvedBy`). The review is updated to **`approved`** with `approvedAt` and `approvedBy`. A second approve returns **409** (`ALREADY_APPROVED`).
+
+List summaries and single-review fetches include **`status`**. This gate is local to PR review storage—not wired to `lib/agent-hitl-store.js`.
 
 ## Disabling or reducing exposure
 

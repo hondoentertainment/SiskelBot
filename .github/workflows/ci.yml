@@ -260,6 +260,7 @@ jobs:
         run: npm run test:e2e
         env:
           CI: "true"
+          ADMIN_API_KEY: e2e-admin-key
           REPLAY_TOKEN_SECRET: ${{ secrets.REPLAY_TOKEN_SECRET }}
           SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
       - name: Upload Playwright report

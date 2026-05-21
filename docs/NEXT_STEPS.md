@@ -43,16 +43,15 @@ Resist new surface area until consolidation work is boring and green.
 Substance from the code-gen / Phase-63 vertical, compressed. Verify in-repo before treating as done.
 
 - **Golden path (E2E)** — Single scripted flow: workspace → ingest → **repo-rag** → **PR review** → **test-gen** → merge; Playwright + cost/trace budget in **`tests/e2e/`** / **`test:e2e:api`**. **Landed:** `tests/e2e/phase63-golden-path.spec.js`.
-- **`pr-review-agent` HITL** — Comment/post actions default **draft / approval** via **`lib/agent-hitl-store.js`** (or equivalent). **Open** (not wired for PR review).
-- **Cost attribution** — **repo-rag** / **pr-review** / **test-gen** runs metered via **`lib/phase63-metering.js`** → `usage.json` + `eval-history` (`suite: phase63`). Wire pricing rules with `modelId` = feature name.
-- **Failure-mode docs** — [docs/PR_REVIEW_AGENT.md](./PR_REVIEW_AGENT.md), [docs/REPO_RAG.md](./REPO_RAG.md), [docs/TEST_GEN.md](./TEST_GEN.md) (operator: inputs, limits, failures, HITL, disable paths). **Landed** May 2026; revise when APIs change.
-- **Eval-in-prod for Phase 63 subjects** — **`lib/eval-in-prod.js`** tracks **pr-review-agent** and **test-gen** (and peers) for regression bisection. **Needs verification** (registration + alerts).
+- **`pr-review-agent` HITL** — Draft when **`PR_REVIEW_HITL=1`** or **`requireApproval: true`**; approve via **`POST /pr-review/reviews/:id/approve`**. **Landed.**
+- **Cost attribution** — **`lib/phase63-metering.js`** + **`lib/phase63-pricing.js`** (default `$0.01/call` rules). **Landed**; customize via pricing-engine API.
+- **Eval-in-prod for Phase 63 subjects** — **`mountEvalInProdRoutes`** mounted; quality samples via **`recordPhase63QualitySample`** when `qualitySignal` metadata is present. **Landed** (alerting still ops-owned).
 
 ### P2 — Operational hardening
 
 - **Chaos drill** — Scheduled staging run: backend fault, circuit breaker, status page SLO (~60s). **Open.**
 - **Safety SLA backtest** — Seed **`lib/safety-sla.js`** dashboards from historical traces. **Open.**
-- **Load-shed tuning** — Exercise **`lib/load-shedding.js`** via **`npm run test:load`**; document thresholds in **`docs/RUNBOOK.md`**. **Open.**
+- **Load-shed tuning** — Defaults documented in **`docs/RUNBOOK.md`**; exercise via **`npm run test:load`**. **Partial** (threshold tuning in staging still open).
 - **Leader-election partition test** — Fault-injection (e.g. Redis) + documented split-brain behavior. **Open.**
 
 ### P3 — New fronts (only after P0 + P1)
