@@ -8,6 +8,7 @@ import {
   computeMetrics,
   getSlaStatus,
   listClassifiers,
+  seedFromEvalHistory,
 } from "../lib/safety-sla.js";
 
 export function mountSafetySlaRoutes(app, deps) {
@@ -80,6 +81,31 @@ export function mountSafetySlaRoutes(app, deps) {
       res.json({ classifiers });
     } catch (err) {
       return apiError(res, 500, "INTERNAL_ERROR", err.message);
+    }
+  });
+
+  apiRoute("post", "/safety-sla/seed-from-eval", adminAuth, logRequest, async (req, res) => {
+    try {
+      const {
+        workspaceId,
+        classifierId,
+        sinceTs,
+        limit,
+        passThreshold,
+        actualThreshold,
+      } = req.body || {};
+      if (!workspaceId) return apiError(res, 400, "INVALID_INPUT", "workspaceId is required");
+      const out = await seedFromEvalHistory({
+        workspaceId,
+        classifierId,
+        sinceTs,
+        limit,
+        passThreshold,
+        actualThreshold,
+      });
+      res.status(201).json(out);
+    } catch (err) {
+      return apiError(res, 400, "INVALID_INPUT", err.message);
     }
   });
 }

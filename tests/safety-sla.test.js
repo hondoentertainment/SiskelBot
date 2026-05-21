@@ -17,6 +17,7 @@ const {
   computeMetrics,
   getSlaStatus,
   listClassifiers,
+  seedFromEvalHistory,
   _reset,
 } = await import("../lib/safety-sla.js");
 
@@ -116,4 +117,30 @@ test("getSlaStatus returns null for unknown classifier", async () => {
   await _reset();
   const status = await getSlaStatus("missing");
   assert.equal(status, null);
+});
+
+test("seedFromEvalHistory imports safety eval samples", async () => {
+  await _reset();
+  const { recordSample } = await import("../lib/eval-history-store.js");
+  const ws = "seed-ws";
+  const base = Date.UTC(2024, 5, 1);
+  await recordSample(ws, { ts: base, kind: "safety", suite: "mini", metrics: { passRate: 0.95 } });
+  await recordSample(ws, { ts: base + 1000, kind: "safety", suite: "mini", metrics: { passRate: 0.4 } });
+  await recordSample(ws, { ts: base + 2000, kind: "custom", suite: "other", metrics: { passRate: 1 } });
+
+  const out = await seedFromEvalHistory({ workspaceId: ws, classifierId: "eval-seed" });
+  assert.equal(out.imported, 2);
+  assert.equal(out.skipped, 0);
+  assert.equal(out.classifierId, "eval-seed");
+
+  const metrics = await computeMetrics({ classifierId: "eval-seed" });
+  assert.equal(metrics.total, 2);
+  assert.equal(metrics.tp, 1);
+  assert.equal(metrics.fp, 0);
+  assert.equal(metrics.fn, 0);
+  assert.equal(metrics.tn, 1);
+});
+
+test("seedFromEvalHistory requires workspaceId", async () => {
+  await assert.rejects(() => seedFromEvalHistory({}), /workspaceId/);
 });

@@ -24,9 +24,7 @@ branding.js
 browser-agent.js
 budget-allocation.js
 canary.js
-chaos-engineering.js
 citation-graph.js
-compliance.js
 constitutional-ai.js
 continuous-learning.js
 copyright-similarity.js
@@ -133,7 +131,6 @@ response-drafter.js
 revenue-share.js
 risky-ops-quota.js
 runbooks.js
-safety-sla.js
 schema-evolution.js
 schema-registry.js
 scim.js

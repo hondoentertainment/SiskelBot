@@ -164,7 +164,7 @@ jobs:
       - name: Start server
         run: |
           set -e
-          BACKEND=ollama PORT="${PORT}" npm start &
+          BACKEND=ollama PORT="${PORT}" API_KEY=ci-smoke-key ADMIN_API_KEY=e2e-admin-key npm start &
       - name: Wait for /health/live
         run: |
           set -e
@@ -182,6 +182,8 @@ jobs:
         run: npm run smoke-test:ci
         env:
           BASE_URL: http://127.0.0.1:${{ env.PORT }}
+          API_KEY: ci-smoke-key
+          ADMIN_API_KEY: e2e-admin-key
 
   # Optional: set STAGING_URL repo variable (Settings → Variables) to enable
   smoke-staging:

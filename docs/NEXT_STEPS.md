@@ -36,7 +36,7 @@ Resist new surface area until consolidation work is boring and green.
 
 3. **Coverage floor uplift (aspirational).** Raise global floors only when **`npm run test:coverage`** supports it. The **critical-files gate** (`scripts/check-critical-coverage.mjs`) and any **temporary per-file floors** under **`agent-tools`** are tighter levers—goal is to **restore default thresholds through real tests**, then unwind special cases.
 
-4. **Dead-route / dead-module sweep.** Grep for **orphan `lib/`**, **unmounted or unused `routes/`**, and client references; wire, feature-flag, or delete—no permanent scaffolds.
+4. **Dead-route / dead-module sweep.** Grep for **orphan `lib/`**, **unmounted or unused `routes/`**, and client references; wire, feature-flag, or delete—no permanent scaffolds. **Tooling:** **`npm run dead-route-scan`** + **`npm run dead-lib-scan`**.
 
 ### P1 — Design-partner burn-in
 
@@ -49,16 +49,16 @@ Substance from the code-gen / Phase-63 vertical, compressed. Verify in-repo befo
 
 ### P2 — Operational hardening
 
-- **Chaos drill** — Scheduled staging run: backend fault, circuit breaker, status page SLO (~60s). **Open.**
-- **Safety SLA backtest** — Seed **`lib/safety-sla.js`** dashboards from historical traces. **Open.**
+- **Chaos drill** — **`mountChaosEngineeringRoutes`** mounted (admin `/api/v1/chaos/*`); chaos tests in **`tests/chaos/`** + **`npm run test:chaos`**. Staging SLO drill: **`scripts/staging-drill.mjs`** + **`.github/workflows/staging-drill.yml`** (requires **`vars.STAGING_URL`**). **Landed** (run against staging when URL is configured).
+- **Safety SLA backtest** — **`seedFromEvalHistory`** in **`lib/safety-sla.js`**, **`POST /safety-sla/seed-from-eval`**, CLI **`npm run seed:safety-sla`**. **Landed.**
 - **Load-shed tuning** — Defaults documented in **`docs/RUNBOOK.md`**; exercise via **`npm run test:load`**. **Partial** (threshold tuning in staging still open).
-- **Leader-election partition test** — Fault-injection (e.g. Redis) + documented split-brain behavior. **Open.**
+- **Leader-election partition test** — **`tests/chaos/leader-partition.test.js`** (TTL takeover / no split-brain). **Landed.**
 
 ### P3 — New fronts (only after P0 + P1)
 
 Pick **one** when consolidation and partner path are green:
 
-- **Compliance automation** — thicken **`lib/compliance.js`**; audit evidence export.
+- **Compliance automation** — **`mountComplianceRoutes`** mounted (admin SOC2/HIPAA/GDPR + evidence endpoints). Thicken evidence export workflows as needed. **Partial** (routes landed; automation depth still open).
 - **Privacy engineering** — DP telemetry, PII preflight, erasure workflow.
 - **Model lifecycle** — **`lib/model-registry.js`**: champion/challenger, auto-rollback on quality regression.
 

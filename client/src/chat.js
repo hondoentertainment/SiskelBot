@@ -4051,7 +4051,7 @@
       if (notificationsWsManager) return;
       if (window.SiskelWSReconnect) {
         const wsWorkspace = typeof getSelectedWorkspace === 'function' ? getSelectedWorkspace() : 'default';
-        notificationsWsManager = SiskelWSReconnect.createReconnectingWebSocket({
+        notificationsWsManager = window.SiskelWSReconnect.createReconnectingWebSocket({
           getTokenUrl: '/api/v1/ws-token',
           workspace: wsWorkspace,
           getTokenHeaders: typeof getApiHeaders === 'function' ? getApiHeaders : undefined,
@@ -4073,7 +4073,7 @@
         notificationsWsManager.connect();
         const wsIndicatorEl = document.getElementById('ws-connection-indicator');
         if (wsIndicatorEl) {
-          SiskelWSReconnect.renderConnectionIndicator(wsIndicatorEl, notificationsWsManager);
+          window.SiskelWSReconnect.renderConnectionIndicator(wsIndicatorEl, notificationsWsManager);
         }
       } else {
         startNotificationsPoll();

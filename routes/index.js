@@ -78,6 +78,9 @@ import mountPrReviewRoutes from "./pr-review-agent.js";
 import mountRepoRagRoutes from "./repo-rag.js";
 import mountTestGenRoutes from "./test-gen.js";
 import mountEvalInProdRoutes from "./eval-in-prod.js";
+import mountChaosEngineeringRoutes from "./chaos-engineering.js";
+import mountSafetySlaRoutes from "./safety-sla.js";
+import mountComplianceRoutes from "./compliance.js";
 import { mountSessionInsightsRoutes } from "./session-insights.js";
 import { mountReasoningMemoryRoutes } from "./reasoning-memory.js";
 import { mountPluginRoutes } from "./plugins.js";
@@ -173,6 +176,9 @@ const mountFunctions = [
   mountRepoRagRoutes,
   mountTestGenRoutes,
   mountEvalInProdRoutes,
+  mountChaosEngineeringRoutes,
+  mountSafetySlaRoutes,
+  mountComplianceRoutes,
   mountSessionInsightsRoutes,
   mountReasoningMemoryRoutes,
   mountPluginRoutes,

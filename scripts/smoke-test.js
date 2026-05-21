@@ -12,6 +12,10 @@ const BASE_URL = args[0] || process.env.BASE_URL || "http://localhost:3000";
 const API_KEY = process.env.API_KEY || process.env.SMOKE_TEST_API_KEY;
 const ADMIN_KEY = process.env.ADMIN_API_KEY || process.env.SMOKE_TEST_ADMIN_API_KEY;
 
+function isLocalSmokeTarget(baseUrl) {
+  return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i.test(baseUrl.replace(/\/$/, ""));
+}
+
 async function fetchJson(url, options = {}) {
   const res = await fetch(url, { ...options, redirect: "follow" });
   const text = await res.text();
@@ -55,14 +59,14 @@ async function main() {
       ok: Boolean(r.ok && r.body?.backend),
       status: r.status,
     });
-    if (LIVE_ONLY && r.body && r.body.requiresApiKey === false) {
+    if (LIVE_ONLY && !isLocalSmokeTarget(url) && r.body && r.body.requiresApiKey === false) {
       results.push({
         name: "GET /config requiresApiKey",
         ok: false,
         status: r.status,
         error: "Production deployment has requiresApiKey=false — set API_KEY",
       });
-    } else if (LIVE_ONLY && r.body?.requiresApiKey) {
+    } else if (LIVE_ONLY && (isLocalSmokeTarget(url) || r.body?.requiresApiKey)) {
       results.push({ name: "GET /config requiresApiKey", ok: true, status: r.status });
     }
   } catch (e) {
