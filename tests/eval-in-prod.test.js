@@ -17,6 +17,7 @@ const {
   setShadowConfig,
   getShadowConfig,
   computeDiff,
+  evaluateQualityAlerts,
   _reset,
 } = await import("../lib/eval-in-prod.js");
 
@@ -109,4 +110,26 @@ test("EVAL_IN_PROD_MAX_SAMPLES trims old entries", async () => {
   delete process.env.EVAL_IN_PROD_MAX_SAMPLES;
   const q = await querySamples({ workspaceId: "trim" });
   assert.equal(q.total, 3);
+});
+
+test("evaluateQualityAlerts fires on low jaccard window", async () => {
+  await _reset();
+  await recordShadowSample({ workspaceId: "alert-ws", prodResponse: "alpha beta gamma", candidateResponse: "totally different words", candidateModel: "m" });
+  await recordShadowSample({ workspaceId: "alert-ws", prodResponse: "alpha beta gamma", candidateResponse: "another unrelated text", candidateModel: "m" });
+  await recordShadowSample({ workspaceId: "alert-ws", prodResponse: "alpha beta gamma", candidateResponse: "yet more unrelated", candidateModel: "m" });
+  await recordShadowSample({ workspaceId: "alert-ws", prodResponse: "alpha beta gamma", candidateResponse: "fourth mismatch", candidateModel: "m" });
+  await recordShadowSample({ workspaceId: "alert-ws", prodResponse: "alpha beta gamma", candidateResponse: "fifth mismatch", candidateModel: "m" });
+  const out = await evaluateQualityAlerts({
+    workspaceId: "alert-ws",
+    sinceMs: Date.now() - 60_000,
+    minSamples: 5,
+    minAvgJaccard: 0.9,
+    minIdenticalRatio: 0,
+  });
+  assert.equal(out.firing, true);
+  assert.ok(out.alerts.some((a) => a.type === "low_jaccard"));
+});
+
+test("evaluateQualityAlerts requires workspaceId", async () => {
+  await assert.rejects(() => evaluateQualityAlerts({}), /workspaceId/);
 });

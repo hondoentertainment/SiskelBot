@@ -8,6 +8,19 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const ALLOWLIST_PATH = join(ROOT, "lib", ".dead-lib-allowlist");
+
+function loadAllowlist() {
+  try {
+    return readFileSync(ALLOWLIST_PATH, "utf8")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith("#"))
+      .map((l) => (l.startsWith("lib/") ? l : `lib/${l}`));
+  } catch {
+    return [];
+  }
+}
 
 const SKIP_DIRS = new Set([
   "node_modules",
@@ -67,3 +80,12 @@ for (const libPath of libJs) {
 console.log(`[dead-lib-scan] suspects (${suspects.length}) — verify before deleting:`);
 for (const s of suspects.sort()) console.log(`  - ${s}`);
 console.log("[dead-lib-scan] dynamic imports and aliases cause false positives.");
+
+const allowed = new Set(loadAllowlist());
+const unlisted = suspects.filter((s) => !allowed.has(s));
+if (unlisted.length) {
+  console.error(`[dead-lib-scan] ${unlisted.length} unlisted suspect(s) — add to lib/.dead-lib-allowlist or wire the module:`);
+  for (const s of unlisted) console.error(`  ! ${s}`);
+  process.exit(1);
+}
+console.log("[dead-lib-scan] ok (all suspects allowlisted)");

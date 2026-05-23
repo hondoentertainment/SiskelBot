@@ -121,6 +121,8 @@ When in-flight work exceeds configured capacity, lower-priority requests are rej
 
 Policy persists under `data/load-shedding/config.json` (or KV). Shed events ring-buffer in `data/load-shedding/events.json` (cap via `LOAD_SHEDDING_MAX_EVENTS`, default 1000).
 
+**Staging profile:** set `LOAD_SHEDDING_PROFILE=staging` for lower soft/hard capacity (80/150). Admin API: `GET/POST /api/v1/load-shedding/config` (mounted).
+
 ### Tuning in staging
 
 1. Run `npm run test:load` against a staging URL after a baseline deploy.

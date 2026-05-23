@@ -13,6 +13,8 @@ import {
   getShadowStats,
   getShadowConfig,
   setShadowConfig,
+  evaluateQualityAlerts,
+  dispatchQualityAlerts,
 } from "../lib/eval-in-prod.js";
 
 export function mountEvalInProdRoutes(app, deps) {
@@ -73,6 +75,27 @@ export function mountEvalInProdRoutes(app, deps) {
       res.json(cfg);
     } catch (err) {
       return apiError(res, 500, "INTERNAL_ERROR", err.message);
+    }
+  });
+
+  apiRoute("get", "/eval-in-prod/alerts", adminAuth, logRequest, async (req, res) => {
+    try {
+      const workspaceId = req.query?.workspaceId;
+      if (!workspaceId) {
+        return apiError(res, 400, "INVALID_INPUT", "workspaceId is required");
+      }
+      const dispatch = req.query?.dispatch === "1" || req.query?.dispatch === "true";
+      const opts = {
+        workspaceId,
+        sinceMs: req.query?.since ? Number(req.query.since) : undefined,
+        minAvgJaccard: req.query?.minJaccard ? Number(req.query.minJaccard) : undefined,
+        minIdenticalRatio: req.query?.minIdentical ? Number(req.query.minIdentical) : undefined,
+        minSamples: req.query?.minSamples ? Number(req.query.minSamples) : undefined,
+      };
+      const out = dispatch ? await dispatchQualityAlerts(opts) : await evaluateQualityAlerts(opts);
+      res.json(out);
+    } catch (err) {
+      return apiError(res, 400, "INVALID_INPUT", err.message);
     }
   });
 }

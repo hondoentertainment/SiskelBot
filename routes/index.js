@@ -81,6 +81,7 @@ import mountEvalInProdRoutes from "./eval-in-prod.js";
 import mountChaosEngineeringRoutes from "./chaos-engineering.js";
 import mountSafetySlaRoutes from "./safety-sla.js";
 import mountComplianceRoutes from "./compliance.js";
+import mountLoadSheddingRoutes from "./load-shedding.js";
 import { mountSessionInsightsRoutes } from "./session-insights.js";
 import { mountReasoningMemoryRoutes } from "./reasoning-memory.js";
 import { mountPluginRoutes } from "./plugins.js";
@@ -179,6 +180,7 @@ const mountFunctions = [
   mountChaosEngineeringRoutes,
   mountSafetySlaRoutes,
   mountComplianceRoutes,
+  mountLoadSheddingRoutes,
   mountSessionInsightsRoutes,
   mountReasoningMemoryRoutes,
   mountPluginRoutes,

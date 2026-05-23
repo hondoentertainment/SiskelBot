@@ -336,3 +336,42 @@ test("runTool respects AGENT_TOOLS_ALLOWLIST at runtime", async () => {
     else process.env.AGENT_TOOLS_ALLOWLIST = prev;
   }
 });
+
+test("parseAgentToolsAllowlistSet parses comma-separated names", () => {
+  const prev = process.env.AGENT_TOOLS_ALLOWLIST;
+  process.env.AGENT_TOOLS_ALLOWLIST = "list_context, search_context";
+  try {
+    const set = mod.parseAgentToolsAllowlistSet();
+    assert.ok(set);
+    assert.equal(set.size, 2);
+    assert.ok(set.has("list_context"));
+  } finally {
+    if (prev === undefined) delete process.env.AGENT_TOOLS_ALLOWLIST;
+    else process.env.AGENT_TOOLS_ALLOWLIST = prev;
+  }
+});
+
+test("getToolsSchema applies allowlist and returns array", () => {
+  const prev = process.env.AGENT_TOOLS_ALLOWLIST;
+  process.env.AGENT_TOOLS_ALLOWLIST = "list_context,search_context";
+  try {
+    const sch = mod.getToolsSchema({ workspace: "tools-cov-ws" });
+    assert.equal(sch.length, 2);
+    assert.ok(sch.every((t) => t.type === "function"));
+  } finally {
+    if (prev === undefined) delete process.env.AGENT_TOOLS_ALLOWLIST;
+    else process.env.AGENT_TOOLS_ALLOWLIST = prev;
+  }
+});
+
+test("filterToolsByCooldown returns tools when cooldown disabled", () => {
+  const sch = mod.getToolsSchema();
+  const out = mod.filterToolsByCooldown(sch, "tools-cov-ws");
+  assert.equal(out.length, sch.length);
+});
+
+test("runTool: spawn_subagent requires prompt", async () => {
+  const r = await mod.runTool("spawn_subagent", {}, { workspace: "tools-cov-ws" });
+  const p = parse(r);
+  assert.equal(p.ok, false);
+});

@@ -1,0 +1,6 @@
+# Known lib modules with dynamic/alias imports — not orphans (dead-lib-scan).
+connection-pool-tuner.js
+docker-runtime.js
+llama-cpp-backend.js
+openapi-overrides.js
+plugin-worker.js

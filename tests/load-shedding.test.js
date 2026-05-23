@@ -216,3 +216,17 @@ test("getShedStats summarizes admissions and sheds", () => {
   assert.ok(stats.shedRate > 0);
   a.release();
 });
+
+test("resolveInitialSheddingConfig returns staging profile", async () => {
+  const { resolveInitialSheddingConfig, STAGING_CONFIG } = await import("../lib/load-shedding.js");
+  const prev = process.env.LOAD_SHEDDING_PROFILE;
+  process.env.LOAD_SHEDDING_PROFILE = "staging";
+  try {
+    const cfg = resolveInitialSheddingConfig();
+    assert.equal(cfg.softCapacity, STAGING_CONFIG.softCapacity);
+    assert.equal(cfg.hardCapacity, STAGING_CONFIG.hardCapacity);
+  } finally {
+    if (prev === undefined) delete process.env.LOAD_SHEDDING_PROFILE;
+    else process.env.LOAD_SHEDDING_PROFILE = prev;
+  }
+});
