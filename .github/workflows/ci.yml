@@ -82,7 +82,7 @@ jobs:
 
       - name: Upload SARIF artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: trivy-fs
           path: trivy-fs.sarif
@@ -130,7 +130,7 @@ jobs:
 
       - name: Upload coverage report
         if: always() && steps.tests.outcome != 'skipped'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage/
@@ -273,7 +273,7 @@ jobs:
           REPLAY_TOKEN_SECRET: e2e-replay-secret
       - name: Upload Playwright report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: playwright-report/
@@ -319,14 +319,14 @@ jobs:
             --baseline=tests/load-baseline.json
       - name: Upload load test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: load-results
           path: load-results.json
           retention-days: 30
       - name: Upload legacy load-test-results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: load-test-results
           path: load-test-results.json
@@ -393,7 +393,7 @@ jobs:
           EVAL_BASE_URL: http://127.0.0.1:${{ env.PORT }}
       - name: Upload eval results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eval-results
           path: eval-results.json

@@ -25,7 +25,7 @@ jobs:
         run: node scripts/ci-regression-gate.js --output-json report.json --output-md comment.md
       - name: Upload report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: agent-regression-report
           path: |
