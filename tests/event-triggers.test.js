@@ -207,6 +207,68 @@ test("fireTrigger applies filter and skips non-matching events", async () => {
   assert.equal(result2.executed, 1);
 });
 
+// --- Conditional / temporal filter tests ---
+
+test("evaluateFilter supports operator conditions and dotted paths", async () => {
+  const { _internal } = await import("../lib/event-triggers.js");
+  const { evaluateFilter } = _internal;
+
+  // numeric comparisons
+  assert.equal(evaluateFilter({ count: { op: "gt", value: 5 } }, { count: 10 }), true);
+  assert.equal(evaluateFilter({ count: { op: "gt", value: 5 } }, { count: 2 }), false);
+  assert.equal(evaluateFilter({ count: { op: "lte", value: 5 } }, { count: 5 }), true);
+
+  // contains / in / ne
+  assert.equal(evaluateFilter({ title: { op: "contains", value: "urgent" } }, { title: "urgent fix" }), true);
+  assert.equal(evaluateFilter({ env: { op: "in", value: ["prod", "stage"] } }, { env: "prod" }), true);
+  assert.equal(evaluateFilter({ env: { op: "in", value: ["prod"] } }, { env: "dev" }), false);
+  assert.equal(evaluateFilter({ state: { op: "ne", value: "closed" } }, { state: "open" }), true);
+
+  // exists
+  assert.equal(evaluateFilter({ author: { op: "exists" } }, { author: "x" }), true);
+  assert.equal(evaluateFilter({ author: { op: "exists", value: false } }, {}), true);
+
+  // dotted path
+  assert.equal(evaluateFilter({ "pr.labels": { op: "contains", value: "bug" } }, { pr: { labels: "bug,ci" } }), true);
+
+  // backward compatible equality still works
+  assert.equal(evaluateFilter({ source: "github" }, { source: "github" }), true);
+  assert.equal(evaluateFilter({ source: "github" }, { source: "gitlab" }), false);
+});
+
+test("evaluateFilter supports temporal older_than / newer_than", async () => {
+  const { _internal } = await import("../lib/event-triggers.js");
+  const { evaluateFilter } = _internal;
+  const twoHoursAgo = new Date(Date.now() - 2 * 3600_000).toISOString();
+  const justNow = new Date().toISOString();
+
+  assert.equal(evaluateFilter({ updatedAt: { op: "older_than", value: 3600 } }, { updatedAt: twoHoursAgo }), true);
+  assert.equal(evaluateFilter({ updatedAt: { op: "older_than", value: 3600 } }, { updatedAt: justNow }), false);
+  assert.equal(evaluateFilter({ updatedAt: { op: "newer_than", value: 3600 } }, { updatedAt: justNow }), true);
+  assert.equal(evaluateFilter({ updatedAt: { op: "older_than", value: 3600 } }, { updatedAt: "not-a-date" }), false);
+});
+
+test("fireTrigger honors an operator condition end-to-end", async () => {
+  await registerTrigger({
+    workspaceId: "cond-ws",
+    event: "webhook.received",
+    workflowId: "wf-cond",
+    filter: { stars: { op: "gte", value: 100 } },
+  });
+
+  const low = await fireTrigger("webhook.received", { stars: 10 }, {
+    workspaceId: "cond-ws",
+    executeWorkflow: async () => ({}),
+  });
+  assert.equal(low.executed, 0);
+
+  const high = await fireTrigger("webhook.received", { stars: 250 }, {
+    workspaceId: "cond-ws",
+    executeWorkflow: async () => ({}),
+  });
+  assert.equal(high.executed, 1);
+});
+
 // --- Transform tests ---
 
 test("fireTrigger applies transform to data", async () => {
