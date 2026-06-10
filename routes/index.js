@@ -90,6 +90,7 @@ import { mountAnnotationRoutes } from "./annotations.js";
 import { mountHierarchyRoutes } from "./hierarchy.js";
 import { mountExplainabilityRoutes } from "./explainability.js";
 import { mountScheduledAgentRoutes } from "./scheduled-agents.js";
+import { mountInitiativeRoutes } from "./initiative.js";
 import mountPushNotificationRoutes from "./push-notifications.js";
 import { mountCostEstimateRoutes } from "./cost-estimate.js";
 import { mountEdgeCacheRoutes } from "./edge-cache.js";
@@ -185,6 +186,7 @@ const mountFunctions = [
   mountReasoningMemoryRoutes,
   mountPluginRoutes,
   mountScheduledAgentRoutes,
+  mountInitiativeRoutes,
   mountPushNotificationRoutes,
 
   // SUPPORTING — edge CDN, mobile API, voice (mounted for regression tests & clients)
