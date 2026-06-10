@@ -21,7 +21,7 @@ jobs:
       - name: Collect compliance evidence
         run: node scripts/collect-compliance-evidence.mjs
       - name: Upload evidence artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: compliance-evidence
           path: data/compliance/
