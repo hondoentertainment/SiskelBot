@@ -149,3 +149,56 @@ test("formatProposalMessage includes title and id", async () => {
   assert.match(msg, /abc123/);
   assert.match(msg, /75%/);
 });
+
+test("handleSlackInteraction resolves the referenced proposal", async () => {
+  const { runInitiativeCycle, getProposal } = await import("../lib/initiative-engine.js");
+  const { handleSlackInteraction } = await import("../lib/slack-bot.js");
+  const ws = "slack-ws";
+  const result = await runInitiativeCycle({ workspaceId: ws, providers: [provider] });
+  const id = result.created[0].id;
+
+  // response_url is empty so no network call is attempted; resolution still runs.
+  const res = await handleSlackInteraction({
+    type: "block_actions",
+    user: { username: "alice" },
+    response_url: "",
+    actions: [{ action_id: "initiative_approve", value: JSON.stringify({ w: ws, p: id }) }],
+  });
+  assert.equal(res.status, 200);
+
+  // Resolution happens on the next tick (setImmediate so Slack gets a fast 200).
+  await new Promise((r) => setImmediate(r));
+  await new Promise((r) => setTimeout(r, 30));
+
+  const updated = await getProposal(ws, id);
+  assert.equal(updated.status, "approved");
+  assert.equal(updated.resolvedBy, "alice");
+});
+
+test("handleSlackInteraction ignores non-initiative actions", async () => {
+  const { handleSlackInteraction } = await import("../lib/slack-bot.js");
+  const a = await handleSlackInteraction({ type: "block_actions", actions: [{ action_id: "other" }] });
+  assert.deepEqual(a, { status: 200, body: { ok: true } });
+  const b = await handleSlackInteraction({ type: "view_submission" });
+  assert.deepEqual(b, { status: 200, body: { ok: true } });
+});
+
+test("formatProposalBlocks renders Approve/Dismiss buttons carrying workspace+id", async () => {
+  const { formatProposalBlocks } = await import("../lib/initiative-engine.js");
+  const blocks = formatProposalBlocks({
+    workspaceId: "ws-1",
+    id: "prop-1",
+    title: "Fix it",
+    rationale: "why",
+    suggestedAction: "do",
+    category: "fix",
+    confidence: 0.6,
+  });
+  const actions = blocks.find((b) => b.type === "actions");
+  assert.ok(actions, "has an actions block");
+  const ids = actions.elements.map((e) => e.action_id);
+  assert.deepEqual(ids, ["initiative_approve", "initiative_dismiss"]);
+  const value = JSON.parse(actions.elements[0].value);
+  assert.equal(value.w, "ws-1");
+  assert.equal(value.p, "prop-1");
+});

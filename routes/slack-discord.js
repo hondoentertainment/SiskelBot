@@ -1,13 +1,16 @@
 /**
  * Slack and Discord integration routes.
  *
- * Slack: POST /api/integrations/slack/events
+ * Slack events: POST /api/integrations/slack/events
+ * Slack interactivity (buttons): POST /api/integrations/slack/interactions
  * Discord: POST /api/integrations/discord/interactions
  * Status: GET /api/integrations/bots/status
  */
+import express from "express";
 import {
   verifySlackSignature,
   handleSlackEvent,
+  handleSlackInteraction,
   isSlackConfigured,
 } from "../lib/slack-bot.js";
 import {
@@ -55,6 +58,46 @@ export function mountSlackDiscordRoutes(app, deps) {
     } catch (err) {
       console.error("[slack] Event handler error:", err.message);
       return apiError(res, 500, "INTERNAL_ERROR", "Slack event processing failed");
+    }
+  });
+
+  // ─── Slack interactive components (button clicks) ──────────────────────────
+  // Slack posts these as application/x-www-form-urlencoded with a `payload`
+  // field, which the global express.json() does not parse — so we attach a
+  // scoped urlencoded parser that also captures the raw body for signing.
+  const slackFormParser = express.urlencoded({
+    extended: false,
+    verify: (req, _res, buf) => {
+      req.rawBody = buf.toString("utf8");
+    },
+  });
+
+  apiRoute("post", "/integrations/slack/interactions", slackDiscordRateLimiter, slackFormParser, async (req, res) => {
+    const rawBody = req.rawBody || "";
+    const timestamp = req.headers["x-slack-request-timestamp"];
+    const signature = req.headers["x-slack-signature"];
+
+    if (SLACK_SIGNING_SECRET) {
+      const result = verifySlackSignature(SLACK_SIGNING_SECRET, timestamp, rawBody, signature);
+      if (!result.valid) {
+        return apiError(res, 401, "INVALID_SIGNATURE", result.reason, "Check SLACK_SIGNING_SECRET configuration.");
+      }
+    }
+
+    let payload;
+    try {
+      const payloadStr = req.body?.payload || new URLSearchParams(rawBody).get("payload");
+      payload = JSON.parse(payloadStr || "{}");
+    } catch {
+      return apiError(res, 400, "INVALID_INPUT", "Malformed interaction payload");
+    }
+
+    try {
+      const { status, body } = await handleSlackInteraction(payload);
+      return res.status(status).json(body);
+    } catch (err) {
+      console.error("[slack] Interaction handler error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", "Slack interaction processing failed");
     }
   });
 
