@@ -301,3 +301,37 @@ test("extractPotentialMemories returns empty for empty input", () => {
   assert.deepEqual(extractPotentialMemories([]), []);
   assert.deepEqual(extractPotentialMemories(null), []);
 });
+
+// --- Semantic recall ranking (Tier 2 #8) ---
+
+test("rankRecallCandidates blends semantic scores and surfaces non-keyword matches", async () => {
+  const { rankRecallCandidates } = await import("../lib/agent-memory.js");
+  const filtered = [
+    { id: "a", content: "The deploy pipeline is flaky", category: "observation", importance: 3, createdAt: "2026-01-01" },
+    { id: "b", content: "Unrelated grocery list", category: "fact", importance: 3, createdAt: "2026-01-02" },
+  ];
+  // Query words don't overlap "deploy pipeline", but semantic score for a is high.
+  const semanticScores = [0.9, 0.05];
+  const ranked = rankRecallCandidates(filtered, ["ci", "release"], semanticScores);
+  assert.equal(ranked[0].id, "a", "semantically similar memory ranks first");
+  assert.ok(!ranked.some((r) => r.id === "b"), "low-relevance memory filtered out");
+});
+
+test("rankRecallCandidates falls back to keyword-only when no semantic scores", async () => {
+  const { rankRecallCandidates } = await import("../lib/agent-memory.js");
+  const filtered = [
+    { id: "a", content: "deploy pipeline notes", importance: 3, createdAt: "2026-01-01" },
+    { id: "b", content: "grocery list", importance: 3, createdAt: "2026-01-02" },
+  ];
+  const ranked = rankRecallCandidates(filtered, ["deploy"], null);
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0].id, "a");
+});
+
+test("recall reports keyword mode when semantic is disabled", async () => {
+  const { remember, recall } = await import("../lib/agent-memory.js");
+  await remember("sem-user", "sem-ws", { content: "release cadence is weekly", category: "fact" });
+  const res = await recall("sem-user", "sem-ws", "release", { semantic: false });
+  assert.equal(res.mode, "keyword");
+  assert.ok(res.memories.length >= 1);
+});
