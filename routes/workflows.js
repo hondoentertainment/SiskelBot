@@ -3,6 +3,7 @@
  * Provides CRUD for workflows and execution/run history endpoints.
  */
 import { Router } from "express";
+import { requireFeature } from "../lib/entitlements.js";
 import {
   createWorkflow,
   updateWorkflow,
@@ -128,6 +129,9 @@ export function mountWorkflowRoutes(app, deps) {
     requireScope: deps.requireScope,
     logRequest: deps.logRequest,
   });
-  app.use("/api/v1/workflows", router);
-  app.use("/api/workflows", deprecationWorkflow, router);
+  // Workflows are a Pro feature. The gate is a no-op unless
+  // ENFORCE_PLAN_LIMITS=1 and fails open on any error.
+  const featureGate = requireFeature("workflows", { apiError: deps.apiError });
+  app.use("/api/v1/workflows", featureGate, router);
+  app.use("/api/workflows", deprecationWorkflow, featureGate, router);
 }

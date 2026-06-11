@@ -20,6 +20,9 @@ export default function mountTeamRoutes(app, deps) {
       if (!code) return apiError(res, 400, "INVALID_INPUT", "code required", "Send { code: string }.");
       const result = await joinByInviteCode(code, req.userId);
       if (!result.ok) {
+        if (result.code === "PLAN_LIMIT") {
+          return apiError(res, 402, "PLAN_UPGRADE_REQUIRED", result.error, "Upgrade the workspace plan to add more members.");
+        }
         const status = result.error?.includes("Invalid") || result.error?.includes("expired") ? 400 : 409;
         return res.status(status).json({ error: result.error, code: "JOIN_FAILED" });
       }
