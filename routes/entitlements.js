@@ -6,6 +6,7 @@
 import { getEntitlements } from "../lib/entitlements.js";
 import { getWorkspaceMembers } from "../lib/teams.js";
 import { getWorkspaceTokensUsed } from "../lib/quotas.js";
+import { getTrial } from "../lib/trials.js";
 
 export function mountEntitlementsRoutes(app, deps) {
   const { apiRoute, apiError, storageRateLimiter } = deps;
@@ -27,6 +28,11 @@ export function mountEntitlementsRoutes(app, deps) {
         tokensUsed = (await getWorkspaceTokensUsed(workspace)) || 0;
       } catch { /* best-effort */ }
 
+      let trial = null;
+      try {
+        trial = await getTrial(workspace);
+      } catch { /* best-effort */ }
+
       const finite = (n) => (Number.isFinite(n) ? n : null);
       const remaining = (limit, used) => (Number.isFinite(limit) ? Math.max(0, limit - used) : null);
 
@@ -35,6 +41,7 @@ export function mountEntitlementsRoutes(app, deps) {
         workspace,
         plan: { id: ent.planId, name: ent.planName, priceMonthly: ent.priceMonthly },
         enforced: ent.enforced,
+        trial: trial && (trial.active || trial.expired) ? trial : null,
         features: ent.features,
         limits: {
           maxMembers: finite(ent.maxMembers),
