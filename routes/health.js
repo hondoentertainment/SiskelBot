@@ -1,5 +1,6 @@
 import express from "express";
 import { runStartupChecks, getCachedResults } from "../lib/startup-checks.js";
+import { getDeployToolRetryExtraMax } from "../lib/agent-tool-retry.js";
 
 export default function mountHealthRoutes(app, deps) {
   const {
@@ -214,6 +215,8 @@ export function mountHealthRoutes(app, deps) {
       agentHooksConfigured: Boolean((process.env.AGENT_HOOKS_MODULE || "").trim()),
       agentBudgetToolCalls: MAX_AGENT_TOOL_CALLS_ENV || null,
       agentBudgetWallMs: AGENT_MAX_WALL_MS_ENV || null,
+      agentToolRetryExtraMax: getDeployToolRetryExtraMax(),
+      agentSessionPlanDagLint: (process.env.AGENT_SESSION_PLAN_DAG_LINT || "").trim() || null,
       agentToolsAllowlist: getAgentToolsAllowlistNames(),
       agentMaxIterationsCeiling: Math.max(1, Number(process.env.MAX_AGENT_ITERATIONS) || 5),
       agentMaxIterationsClientTunable: process.env.AGENT_MAX_ITERATIONS_IGNORE_CLIENT !== "1",
