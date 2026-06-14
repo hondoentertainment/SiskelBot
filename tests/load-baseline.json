@@ -1,0 +1,10 @@
+{
+  "url": "http://127.0.0.1:3000",
+  "duration": 15,
+  "totalRequests": 445,
+  "errors": 0,
+  "errorRate": 0,
+  "latency": { "p50": 5, "p95": 25, "p99": 200 },
+  "thresholds": { "maxErrorRate": 0.01, "maxP99Ms": 3000 },
+  "passed": true
+}

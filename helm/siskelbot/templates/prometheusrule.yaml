@@ -1,0 +1,230 @@
+{{- if and .Values.metrics.enabled .Values.metrics.alerting.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "siskelbot.fullname" . }}
+  namespace: {{ .Values.metrics.alerting.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "siskelbot.labels" . | nindent 4 }}
+    {{- with .Values.metrics.alerting.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: siskelbot.slo
+      interval: 30s
+      rules:
+        - record: job:siskelbot_http_requests:rate5m
+          expr: |
+            sum by (job) (
+              rate(http_requests_total{job="{{ include "siskelbot.fullname" . }}"}[5m])
+            )
+        - record: job:siskelbot_http_errors:rate5m
+          expr: |
+            sum by (job) (
+              rate(http_requests_total{job="{{ include "siskelbot.fullname" . }}", status=~"5.."}[5m])
+            )
+        - record: job:siskelbot_http_error_ratio:rate5m
+          expr: |
+            job:siskelbot_http_errors:rate5m
+            /
+            job:siskelbot_http_requests:rate5m
+        - record: job:siskelbot_http_error_ratio:rate30m
+          expr: |
+            sum by (job) (rate(http_requests_total{job="{{ include "siskelbot.fullname" . }}", status=~"5.."}[30m]))
+            /
+            sum by (job) (rate(http_requests_total{job="{{ include "siskelbot.fullname" . }}"}[30m]))
+        - record: job:siskelbot_http_error_ratio:rate1h
+          expr: |
+            sum by (job) (rate(http_requests_total{job="{{ include "siskelbot.fullname" . }}", status=~"5.."}[1h]))
+            /
+            sum by (job) (rate(http_requests_total{job="{{ include "siskelbot.fullname" . }}"}[1h]))
+        - record: job:siskelbot_http_error_ratio:rate6h
+          expr: |
+            sum by (job) (rate(http_requests_total{job="{{ include "siskelbot.fullname" . }}", status=~"5.."}[6h]))
+            /
+            sum by (job) (rate(http_requests_total{job="{{ include "siskelbot.fullname" . }}"}[6h]))
+        - record: job:siskelbot_http_request_duration:p99_5m
+          expr: |
+            histogram_quantile(0.99,
+              sum by (job, le) (
+                rate(http_request_duration_seconds_bucket{job="{{ include "siskelbot.fullname" . }}"}[5m])
+              )
+            )
+        - record: job:siskelbot_http_request_duration:p95_5m
+          expr: |
+            histogram_quantile(0.95,
+              sum by (job, le) (
+                rate(http_request_duration_seconds_bucket{job="{{ include "siskelbot.fullname" . }}"}[5m])
+              )
+            )
+        - alert: SiskelBotErrorBudgetBurnFast
+          expr: |
+            job:siskelbot_http_error_ratio:rate5m > (14.4 * 0.001)
+            and
+            job:siskelbot_http_error_ratio:rate1h > (14.4 * 0.001)
+          for: 2m
+          labels:
+            severity: critical
+            slo: availability
+          annotations:
+            summary: "Burning error budget fast (2% of monthly budget in 1h)"
+            description: "Current 5m error rate {{ "{{" }} $value | humanizePercentage {{ "}}" }} exceeds 14.4x SLO threshold. At this rate, the monthly error budget is exhausted in 2 days."
+        - alert: SiskelBotErrorBudgetBurnSlow
+          expr: |
+            job:siskelbot_http_error_ratio:rate30m > (6 * 0.001)
+            and
+            job:siskelbot_http_error_ratio:rate6h > (6 * 0.001)
+          for: 15m
+          labels:
+            severity: warning
+            slo: availability
+          annotations:
+            summary: "Burning error budget slowly (5% of monthly budget in 6h)"
+            description: "30m error rate {{ "{{" }} $value | humanizePercentage {{ "}}" }} exceeds 6x SLO threshold. Monthly budget exhausted in ~5 days at this rate."
+        - alert: SiskelBotLatencySLOBreach
+          expr: |
+            job:siskelbot_http_request_duration:p99_5m > 15
+          for: 10m
+          labels:
+            severity: warning
+            slo: latency
+          annotations:
+            summary: "p99 latency SLO breach (>15s for 10m)"
+            description: "p99 latency is {{ "{{" }} $value | humanizeDuration {{ "}}" }}, exceeds 15s SLO target."
+    - name: siskelbot.rules
+      interval: 30s
+      rules:
+        - alert: SiskelBotHighErrorRate
+          expr: |
+            rate(http_requests_total{job="{{ include "siskelbot.fullname" . }}", status=~"5.."}[5m])
+            /
+            rate(http_requests_total{job="{{ include "siskelbot.fullname" . }}"}[5m])
+            > 0.05
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High HTTP error rate"
+            description: "Error rate is {{ "{{ $value | humanizePercentage }}" }} over the last 5 minutes."
+        - alert: SiskelBotHighLatency
+          expr: |
+            histogram_quantile(0.95,
+              rate(http_request_duration_seconds_bucket{job="{{ include "siskelbot.fullname" . }}"}[5m])
+            ) > 10
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High p95 latency on chat completions"
+            description: "p95 latency is {{ "{{ $value | humanizeDuration }}" }} (threshold: 10s)."
+        - alert: SiskelBotCircuitBreakerOpen
+          expr: |
+            siskelbot_circuit_breaker_state{job="{{ include "siskelbot.fullname" . }}"} == 1
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Circuit breaker is open"
+            description: "Backend circuit breaker has been open for 2+ minutes. Check backend health."
+        - alert: SiskelBotAgentLoopTimeouts
+          expr: |
+            rate(siskelbot_agent_loop_timeouts_total{job="{{ include "siskelbot.fullname" . }}"}[10m]) > 0.1
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Elevated agent loop timeout rate"
+            description: "Agent loop is timing out at {{ "{{ $value | humanize }}" }} per second."
+        - alert: SiskelBotWebhookDLQGrowing
+          expr: |
+            siskelbot_webhook_dlq_size{job="{{ include "siskelbot.fullname" . }}"} > 10
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Webhook DLQ is growing"
+            description: "{{ "{{ $value }}" }} events in the dead-letter queue for 15+ minutes."
+        - alert: SiskelBotPodMemoryHigh
+          expr: |
+            container_memory_working_set_bytes{pod=~"{{ include "siskelbot.fullname" . }}-.*", container="{{ .Chart.Name }}"}
+            /
+            container_spec_memory_limit_bytes{pod=~"{{ include "siskelbot.fullname" . }}-.*", container="{{ .Chart.Name }}"}
+            > 0.85
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod memory usage is high"
+            description: "Pod {{ "{{ $labels.pod }}" }} memory is at {{ "{{ $value | humanizePercentage }}" }} of limit."
+        - alert: SiskelBotNoPodAvailable
+          expr: |
+            kube_deployment_status_replicas_available{deployment="{{ include "siskelbot.fullname" . }}"} == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "No pods available"
+            description: "Deployment has 0 available replicas."
+        - alert: SiskelBotEmbeddingCacheThrashing
+          expr: |
+            rate(siskelbot_embedding_cache_evictions_total{reason="lru"}[5m]) > 10
+            and
+            sum(rate(siskelbot_embedding_cache_hits_total[5m]))
+            /
+            (sum(rate(siskelbot_embedding_cache_hits_total[5m])) + sum(rate(siskelbot_embedding_cache_misses_total[5m])))
+            < 0.5
+          for: 15m
+          labels:
+            severity: warning
+            type: performance
+          annotations:
+            summary: "Embedding cache thrashing"
+            description: "LRU evictions {{ "{{" }} $value {{ "}}" }}/sec with hit rate < 50%. Consider increasing EMBEDDING_CACHE_MAX_SIZE."
+        # Cost-budget alert: $50/hour is a starting default. Operators should
+        # tune Values.metrics.alerting.costBudgetUsdPerHour if their workload
+        # warrants a different threshold (not parameterized yet).
+        - alert: SiskelBotWorkspaceCostBudget
+          expr: |
+            increase(siskelbot_llm_cost_usd_total{job="{{ include "siskelbot.fullname" . }}"}[1h]) > 50
+          for: 5m
+          labels:
+            severity: warning
+            type: cost
+          annotations:
+            summary: "Workspace exceeded $50/hour cost"
+            description: "Workspace {{ "{{" }} $labels.workspace {{ "}}" }} burned ${{ "{{" }} $value | printf \"%.2f\" {{ "}}" }} in the past hour."
+        - alert: SiskelBotProbeDown
+          expr: |
+            probe_success{job="{{ include "siskelbot.fullname" . }}-synthetic"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            type: availability
+          annotations:
+            summary: "Synthetic probe failing"
+            description: "Probe target {{ "{{" }} $labels.instance {{ "}}" }} has been failing for 2+ minutes from external prober."
+        - alert: SiskelBotProbeSlowResponse
+          expr: |
+            probe_duration_seconds{job="{{ include "siskelbot.fullname" . }}-synthetic"} > 5
+          for: 5m
+          labels:
+            severity: warning
+            type: availability
+          annotations:
+            summary: "Synthetic probe slow"
+            description: "Probe target {{ "{{" }} $labels.instance {{ "}}" }} responded in {{ "{{" }} $value | humanizeDuration {{ "}}" }} (threshold 5s)."
+        - alert: SiskelBotTLSCertExpiringSoon
+          expr: |
+            probe_ssl_earliest_cert_expiry{job="{{ include "siskelbot.fullname" . }}-synthetic"} - time() < 86400 * 14
+          for: 30m
+          labels:
+            severity: warning
+            type: availability
+          annotations:
+            summary: "TLS certificate expiring soon"
+            description: "Cert for {{ "{{" }} $labels.instance {{ "}}" }} expires in {{ "{{" }} $value | humanizeDuration {{ "}}" }}."
+        {{- with .Values.metrics.alerting.additionalRules }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+{{- end }}

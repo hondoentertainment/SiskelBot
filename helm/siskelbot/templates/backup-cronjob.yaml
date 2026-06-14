@@ -1,0 +1,114 @@
+{{- if .Values.backup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "siskelbot.fullname" . }}-backup
+  labels:
+    {{- include "siskelbot.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: {{ .Values.backup.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.backup.failedJobsHistoryLimit }}
+  startingDeadlineSeconds: {{ .Values.backup.startingDeadlineSeconds }}
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .Values.backup.backoffLimit }}
+      activeDeadlineSeconds: {{ .Values.backup.activeDeadlineSeconds }}
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            {{- include "siskelbot.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: OnFailure
+          {{- with .Values.podSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+            - name: backup
+              image: {{ .Values.backup.image.repository }}:{{ .Values.backup.image.tag }}
+              imagePullPolicy: {{ .Values.backup.image.pullPolicy }}
+              {{- with .Values.securityContext }}
+              securityContext:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              command:
+                - /bin/sh
+                - -ec
+                - |
+                  set -euo pipefail
+                  TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
+                  BACKUP_FILE="/tmp/siskelbot-${TIMESTAMP}.sql.gz"
+                  echo "[backup] Starting pg_dump at ${TIMESTAMP}"
+                  pg_dump "${DATABASE_URL}" \
+                    --no-owner --no-privileges --clean --if-exists \
+                    | gzip -9 > "${BACKUP_FILE}"
+                  SIZE=$(stat -c%s "${BACKUP_FILE}")
+                  echo "[backup] Dump complete: ${SIZE} bytes"
+                  echo "[backup] Uploading to s3://${S3_BUCKET}/${S3_PREFIX}/siskelbot-${TIMESTAMP}.sql.gz"
+                  aws s3 cp "${BACKUP_FILE}" \
+                    "s3://${S3_BUCKET}/${S3_PREFIX}/siskelbot-${TIMESTAMP}.sql.gz" \
+                    --storage-class STANDARD_IA
+                  echo "[backup] Upload complete"
+                  echo "[backup] Pruning backups older than ${RETENTION_DAYS} days"
+                  CUTOFF=$(date -u -d "${RETENTION_DAYS} days ago" +%Y-%m-%d)
+                  aws s3 ls "s3://${S3_BUCKET}/${S3_PREFIX}/" \
+                    | awk -v cutoff="${CUTOFF}" '$1 < cutoff {print $4}' \
+                    | while read -r KEY; do
+                        if [ -n "${KEY}" ]; then
+                          echo "[backup] Deleting s3://${S3_BUCKET}/${S3_PREFIX}/${KEY}"
+                          aws s3 rm "s3://${S3_BUCKET}/${S3_PREFIX}/${KEY}"
+                        fi
+                      done
+                  echo "[backup] Done"
+              env:
+                - name: RETENTION_DAYS
+                  value: {{ .Values.backup.retentionDays | quote }}
+                - name: S3_BUCKET
+                  value: {{ .Values.backup.s3.bucket | quote }}
+                - name: S3_PREFIX
+                  value: {{ .Values.backup.s3.prefix | quote }}
+                {{- with .Values.backup.s3.region }}
+                - name: AWS_DEFAULT_REGION
+                  value: {{ . | quote }}
+                {{- end }}
+                {{- with .Values.backup.s3.endpoint }}
+                - name: AWS_ENDPOINT_URL
+                  value: {{ . | quote }}
+                {{- end }}
+              envFrom:
+                {{- if .Values.backup.databaseUrlSecret.name }}
+                - secretRef:
+                    name: {{ .Values.backup.databaseUrlSecret.name }}
+                {{- end }}
+                {{- if .Values.backup.s3.credentialsSecret.name }}
+                - secretRef:
+                    name: {{ .Values.backup.s3.credentialsSecret.name }}
+                {{- end }}
+              {{- with .Values.backup.resources }}
+              resources:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: {{ .Values.backup.tmpSize }}
+          {{- with .Values.backup.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.backup.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

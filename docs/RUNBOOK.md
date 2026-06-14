@@ -54,6 +54,87 @@ No secrets needed for push; the workflow uses `GITHUB_TOKEN` (automatically prov
 
 ---
 
+## Load Test Baselines
+
+The `load-test` job in `ci.yml` is a regression gate: it fails the build when latency or error rate has drifted significantly from the committed baseline at `tests/load-baseline.json`. This document explains when and how to refresh that baseline.
+
+### When to refresh
+
+Refresh the baseline only when a change is real, intentional, and persistent:
+
+- **After a deliberate perf improvement.** A landed change reduces p99 by a meaningful margin and you want future runs to hold the new bar.
+- **After a Node major version bump.** New runtime, new performance characteristics; the previous numbers are no longer representative.
+- **After a change in CI runner class.** GitHub-hosted runners get periodic hardware changes; if the baseline starts producing chronic noise on a stable codebase, regenerate it.
+- **After a structural change to the load test itself.** New endpoints, weights, or warm-up behaviour can shift numbers without indicating a perf regression.
+
+Do **not** refresh the baseline to silence a real regression. If a PR makes the system slower, that needs an explicit perf decision — not a baseline bump.
+
+### How to refresh
+
+1. Go to **Actions** → **Load Test Baseline Refresh** → **Run workflow** (the workflow is `.github/workflows/load-baseline.yml`, dispatch-only).
+2. Optionally tweak `duration`, `concurrency`, `rps`. Defaults match the CI gate.
+3. The workflow:
+   - Spins up the server.
+   - Runs `scripts/load-test.mjs --update-baseline=tests/load-baseline.json`.
+   - Opens a PR titled `chore: refresh load test baseline` via `peter-evans/create-pull-request@v6`.
+4. Review the PR diff. The new numbers should look plausible; large jumps deserve scrutiny.
+5. Merge.
+
+### How to interpret a failure
+
+When the `load-test` job fails, the step summary lists the threshold breach. Walk this checklist before treating the failure as a real regression:
+
+1. **Re-run the job.** Network jitter, runner contention, and noisy neighbours produce occasional false positives. A single flake should not block a merge.
+2. **Check the runner.** A pattern of failures on the same runner ID suggests hardware variability, not a code regression.
+3. **Compare against recent main.** If main is also failing, the regression predates the current PR.
+4. **Inspect the failure category.**
+   - `errorRate exceeds ...` — the server returned 4xx/5xx. Look at the server logs in the job for the cause.
+   - `p99 exceeds ...` — absolute latency cap blown. Likely a real perf hit or a stalled request.
+   - `p99 regressed: Xms vs baseline Yms (+Z%, threshold +30%)` — relative drift. Often the most actionable signal: a code change made the system measurably slower without crossing the absolute cap.
+
+If after this you conclude the change really did move performance (in either direction) and the new behaviour is intentional, refresh the baseline (see above).
+
+### Why 30% / 100%?
+
+The relative-regression thresholds are intentionally generous:
+
+- **p99 regression: +30%.** Tail latency on small CI samples is noisy. A 30% gate catches real regressions (e.g. a new sync I/O call in a hot path) while tolerating the run-to-run variance you get from a 15-second test on a shared runner. Tightening this to e.g. +10% would produce frequent false positives and erode trust in the gate.
+- **errorRate regression: +100% (i.e. doubling).** When the baseline error rate is already low (often zero), small absolute changes are large in relative terms. Doubling is a clear signal. The absolute `--max-error-rate=1%` gate independently catches outright failures, so this relative gate is a backstop for the case where errors creep up without breaching the absolute cap.
+
+Both thresholds are tunable in `scripts/load-test.mjs` (`BASELINE_P99_REGRESSION_PCT`, `BASELINE_ERROR_RATE_REGRESSION_PCT`). Tighten them once the test is provably stable across many runs.
+
+---
+
+## Load shedding (`lib/load-shedding.js`)
+
+When in-flight work exceeds configured capacity, lower-priority requests are rejected first (P3 batch → P2 free → P1 paid; P0 health never shed).
+
+### Defaults
+
+| Setting | Default |
+|---------|---------|
+| `softCapacity` | 200 in-flight |
+| `hardCapacity` | 500 in-flight |
+| P1 limit | 400 |
+| P2 limit | 200 |
+| P3 limit | 50 |
+
+Policy persists under `data/load-shedding/config.json` (or KV). Shed events ring-buffer in `data/load-shedding/events.json` (cap via `LOAD_SHEDDING_MAX_EVENTS`, default 1000).
+
+**Staging profile:** set `LOAD_SHEDDING_PROFILE=staging` for lower soft/hard capacity (80/150). Admin API: `GET/POST /api/v1/load-shedding/config` (mounted).
+
+### Tuning in staging
+
+1. Run `npm run test:load` against a staging URL after a baseline deploy.
+2. Watch shed rate in logs/metrics; if P2 chat is shed under normal load, raise `softCapacity` or P2 limit via admin/runtime configure API (see `configureShedding` in `lib/load-shedding.js`).
+3. Document chosen values in this section when changed for production.
+
+### When requests are shed
+
+Clients may receive **503** with structured error; retry with backoff. Agent SSE may emit `agent_shed` when the hook is registered.
+
+---
+
 ## Phase 38: CLI Client
 
 Command-line client for SiskelBot. Connects to local or deployed instances via REST API.
@@ -255,7 +336,7 @@ When unhandled errors occur (`uncaughtException`, `unhandledRejection`) in produ
 
 ## Docker & Container Support
 
-Docker and docker-compose for self-hosted deployment. See [docs/DOCKER.md](DOCKER.md) for build, run, compose, and health-check details.
+Docker and docker-compose for self-hosted deployment. See [docs/DOCKER](/docs/DOCKER) for build, run, compose, and health-check details.
 
 - **Build:** `docker build -t siskelbot .`
 - **Run:** `docker compose up -d` (includes optional Ollama)
@@ -345,9 +426,9 @@ Existing workspaces without `type` default to `personal`.
 
 | File | Purpose |
 |------|---------|
-| `data/workspace-members.json` | workspaceId → { ownerId, members: [{ userId, role }] } |
-| `data/team-invites.json` | Invite codes (code, workspaceId, createdBy, usedCount, expiresAt?, maxUses?) |
-| `data/workspace-activity.json` | byWorkspace[workspaceId]: [{ timestamp, action, userId, ... }] |
+| `data/workspace-members.json` | `workspaceId → { ownerId, members: [{ userId, role }] }` |
+| `data/team-invites.json` | `Invite codes (code, workspaceId, createdBy, usedCount, expiresAt?, maxUses?)` |
+| `data/workspace-activity.json` | `byWorkspace[workspaceId]: [{ timestamp, action, userId, ... }]` |
 
 ### Roles
 
@@ -1507,3 +1588,154 @@ Merge order for LLM requests: client messages → **Phase 60** `AGENT_DEFAULT_SY
 | **CI eval** | `npm run eval:ci` runs `data/eval-sets/ci-offline.json` (trace + staging_trace, including swarm/stopReason shapes). Wired in `.github/workflows/ci.yml`. Optional live: `EVAL_LIVE=1 npm run eval:live`. See `docs/AGENT_SLI.md` for agent SLIs. |
 
 See `docs/AGENT_NEXT_STEPS.md` for a short backlog of further agent improvements.
+
+## Secret Rotation
+
+Zero-downtime rotation procedures for SiskelBot's three critical secret types. Follow these steps sequentially; do not skip verification.
+
+`SESSION_SECRET_PREVIOUS` and `API_KEY_PREVIOUS` are documented in `.env.example`.
+
+---
+
+### SESSION_SECRET rotation
+
+SiskelBot accepts both `SESSION_SECRET` and `SESSION_SECRET_PREVIOUS` simultaneously, so existing sessions remain valid while new sessions are issued under the new secret.
+
+1. Set `SESSION_SECRET_PREVIOUS` to the current value of `SESSION_SECRET`:
+   ```
+   SESSION_SECRET_PREVIOUS=<current SESSION_SECRET value>
+   ```
+2. Generate a new secret:
+   ```bash
+   openssl rand -hex 32
+   ```
+3. Set `SESSION_SECRET` to the new value.
+4. Deploy with both env vars set. Existing sessions validate against `SESSION_SECRET_PREVIOUS`; new sessions use `SESSION_SECRET`.
+5. On Kubernetes, update the secret and trigger a rolling restart:
+   ```bash
+   kubectl create secret generic siskelbot-secrets \
+     --from-literal=SESSION_SECRET=<new> \
+     --from-literal=SESSION_SECRET_PREVIOUS=<old> \
+     --dry-run=client -o yaml | kubectl apply -f -
+   kubectl rollout restart deployment/siskelbot
+   kubectl rollout status deployment/siskelbot
+   ```
+6. After all sessions have expired (wait at least `SESSION_TTL_MS`, default 24h) or after forcing all users to re-authenticate, remove `SESSION_SECRET_PREVIOUS` and redeploy.
+
+---
+
+### API_KEY / ADMIN_API_KEY rotation
+
+SiskelBot accepts `API_KEY_PREVIOUS` alongside `API_KEY` so existing callers are not immediately locked out.
+
+1. Set `API_KEY_PREVIOUS` to the current value of `API_KEY`:
+   ```
+   API_KEY_PREVIOUS=<current API_KEY value>
+   ```
+2. Generate a new key:
+   ```bash
+   openssl rand -hex 32
+   ```
+3. Set `API_KEY` to the new value.
+4. Deploy with both `API_KEY` and `API_KEY_PREVIOUS` set. Both keys are accepted simultaneously.
+5. On Kubernetes:
+   ```bash
+   kubectl create secret generic siskelbot-secrets \
+     --from-literal=API_KEY=<new> \
+     --from-literal=API_KEY_PREVIOUS=<old> \
+     --dry-run=client -o yaml | kubectl apply -f -
+   kubectl rollout restart deployment/siskelbot
+   kubectl rollout status deployment/siskelbot
+   ```
+6. Notify API consumers of the new key via an out-of-band channel (email, Slack, internal docs).
+7. Allow at least 48 hours for consumers to migrate. Then remove `API_KEY_PREVIOUS` and redeploy.
+
+**ADMIN_API_KEY:** Follow the same pattern using `ADMIN_API_KEY_PREVIOUS` if implemented. If not, use a blue-green approach: deploy a second instance with the new `ADMIN_API_KEY`, redirect admin traffic, then decommission the old instance.
+
+---
+
+### DATABASE_URL / database password rotation
+
+No built-in dual-credential support. Use a rolling restart to minimize connection errors.
+
+**Pre-requisite:** The app database user (`siskelbot`) must be a dedicated PostgreSQL role so its password can be changed without affecting other users.
+
+1. Change the password in PostgreSQL:
+   ```sql
+   ALTER USER siskelbot PASSWORD 'newpass';
+   ```
+2. Update the Kubernetes secret with the new `DATABASE_URL`:
+   ```bash
+   kubectl create secret generic siskelbot-secrets \
+     --from-literal=DATABASE_URL=postgres://siskelbot:newpass@host/db \
+     --dry-run=client -o yaml | kubectl apply -f -
+   ```
+3. Trigger a rolling restart. New pods pick up the new URL; old pods continue using existing connections until terminated:
+   ```bash
+   kubectl rollout restart deployment/siskelbot
+   ```
+4. Verify the rollout completes without errors:
+   ```bash
+   kubectl rollout status deployment/siskelbot
+   ```
+5. Confirm connectivity:
+   ```bash
+   kubectl exec -it deployment/siskelbot -- node -e \
+     "import('./lib/storage.js').then(m => console.log('ok'))"
+   ```
+
+---
+
+### External secrets (external-secrets-operator)
+
+If using AWS Secrets Manager, GCP Secret Manager, or HashiCorp Vault via the external-secrets-operator:
+
+1. Update the secret value in the upstream store (Secrets Manager / Secret Manager / Vault).
+2. The `ExternalSecret` object refreshes automatically per its `refreshInterval` (default 1h).
+3. Force an immediate refresh without waiting:
+   ```bash
+   kubectl annotate externalsecret siskelbot-secrets \
+     force-sync=$(date +%s) --overwrite
+   ```
+4. Verify the secret was picked up:
+   ```bash
+   kubectl describe externalsecret siskelbot-secrets
+   ```
+5. Trigger a rolling restart if the secret drives environment variables (required for env-var-based secrets; not required for volume-mounted secrets with live reload):
+   ```bash
+   kubectl rollout restart deployment/siskelbot
+   kubectl rollout status deployment/siskelbot
+   ```
+
+---
+
+### Emergency rotation checklist
+
+Use this table when rotation is urgent (suspected compromise). Act fast — accept the rollback risk where noted.
+
+| Secret | Variable | Rollback risk | Steps |
+|--------|----------|---------------|-------|
+| Session secret | `SESSION_SECRET` | All active sessions invalidated immediately | Rotate + restart; set `SESSION_SECRET_PREVIOUS` if time allows |
+| API key | `API_KEY` | Callers locked out until notified | Rotate + set `API_KEY_PREVIOUS` bridge + notify consumers |
+| Admin API key | `ADMIN_API_KEY` | Admin access interrupted until new key distributed | Rotate + restart; distribute new key to admins immediately |
+| Database password | `DATABASE_URL` | Brief connection errors during rolling restart | Rotate DB password + update secret + rolling restart |
+
+**Suspected compromise — immediate steps:**
+
+```bash
+# 1. Generate new secrets
+NEW_SESSION_SECRET=$(openssl rand -hex 32)
+NEW_API_KEY=$(openssl rand -hex 32)
+
+# 2. Update Kubernetes secrets (omit PREVIOUS to force immediate invalidation)
+kubectl create secret generic siskelbot-secrets \
+  --from-literal=SESSION_SECRET=$NEW_SESSION_SECRET \
+  --from-literal=API_KEY=$NEW_API_KEY \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# 3. Rolling restart
+kubectl rollout restart deployment/siskelbot
+kubectl rollout status deployment/siskelbot
+```
+
+After restart, distribute new keys to legitimate consumers and rotate any downstream secrets that may have been exposed.

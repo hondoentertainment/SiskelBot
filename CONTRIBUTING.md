@@ -1,113 +1,116 @@
 # Contributing to SiskelBot
 
-Thank you for your interest in contributing to SiskelBot. This guide covers how to get started, make changes, and submit them for review.
+Thanks for contributing. This is a practical guide to getting set up, running the project locally, and submitting changes.
 
-## Getting started
-
-1. **Clone the repository:**
-   ```bash
-   git clone <repo-url>
-   cd SiskelBot
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   npm ci
-   ```
-
-3. **Set up environment:**
-   ```bash
-   cp .env.example .env
-   ```
-   Edit `.env` to configure your backend (`BACKEND=ollama` is the default). See the README for all environment variables.
-
-4. **Start the development server:**
-   ```bash
-   npm run dev
-   ```
-   The app runs at `http://localhost:3000`.
-
-## Development workflow
-
-1. Create a feature branch from `main`:
-   ```bash
-   git checkout -b my-feature
-   ```
-2. Make your changes.
-3. Run tests and lint:
-   ```bash
-   npm test
-   npm run lint
-   ```
-4. Commit your changes (see commit message guidelines below).
-5. Push and open a pull request.
-
-## Code style
-
-- **ES modules** (`import`/`export`) throughout. No CommonJS `require`.
-- **No TypeScript.** Plain JavaScript only.
-- **Express patterns.** Routes use standard `(req, res, next)` middleware signatures.
-- **Minimal comments.** Prefer clear naming and structure over inline commentary.
-- **No build step** for the frontend. Vanilla JS in `client/` served as static files.
-
-## Testing requirements
-
-All tests must pass before a pull request can be merged.
+## 1. Getting started
 
 ```bash
-# Run lint + tests (same as CI)
-npm run lint && npm test
-
-# Run a single test file
-node --test tests/foo.test.js
-
-# Run with spec reporter
-node --test tests/**/*.test.js --test-reporter=spec
+git clone https://github.com/hondoentertainment/SiskelBot.git
+cd SiskelBot
+npm ci
+npm test
 ```
 
-Tests use the Node.js built-in test runner (`node --test`) with supertest for HTTP assertions. Test files live in `tests/`.
+**Windows / cloud-sync:** Avoid working copies under **OneDrive**, iCloud Drive, or other folder-sync tools. They can lock files during `npm ci` (`EBUSY`) and leave **`node_modules` incomplete** (missing packages, `ERR_MODULE_NOT_FOUND`). Prefer a normal path (for example `C:\dev\SiskelBot`) or the **devcontainer** below.
 
-## How to add a new API route
+SiskelBot requires **Node.js >= 18** (see `engines.node` in `package.json`). Node 22 LTS is recommended and is what the devcontainer uses.
 
-1. Create the route handler. If it belongs to an existing domain, add it to the relevant section in `server.js`. For larger feature areas, create a module in `lib/` and wire it into `server.js`.
-2. Use the `dualRegister` pattern to mount routes at both `/api/` (legacy) and `/api/v1/` (current).
-3. Use the `apiError` helper for error responses.
-4. Add tests in `tests/` covering the new endpoint (happy path, error cases, auth).
+## 2. Recommended: devcontainer
 
-## How to add a new lib module
+The fastest way to get a working environment is to open the repo in VS Code and choose **"Reopen in Container"**. The devcontainer (`.devcontainer/`) ships with Node, Postgres client, Redis tools, `helm`, `kubectl`, `jq`, and the recommended VS Code extensions pre-installed. `npm ci` runs automatically on first create.
 
-1. Create the module in `lib/` (e.g., `lib/my-feature.js`).
-2. Use ES module exports (`export function ...` or `export default`).
-3. Import it where needed (typically `server.js` or other `lib/` modules).
-4. Add corresponding tests in `tests/` (e.g., `tests/my-feature.test.js`).
+If you don't use VS Code, the same image works with any devcontainer-compatible tool (e.g. `devcontainer` CLI, JetBrains Gateway).
 
-## Commit message style
+## 3. Local dev workflow
 
-- Use **imperative mood** ("Add feature", not "Added feature" or "Adds feature").
-- Keep the first line concise (under 72 characters).
-- Reference phase numbers where relevant (e.g., "Phase 21: Add per-user quota enforcement").
-- Examples:
-  - `Add webhook retry logic with exponential backoff`
-  - `Fix circuit breaker cooldown reset on success`
-  - `Phase 33: Add WebSocket presence tracking`
+```bash
+npm run dev          # auto-reload server (node --watch)
+npm run lint         # before committing
+npm test             # full test suite
+```
 
-## Pull request guidelines
+The dev server listens on port **3000**.
 
-- **Keep PRs focused.** One feature or fix per PR. Avoid mixing unrelated changes.
-- **Include test coverage.** New features and bug fixes should have corresponding tests.
-- **Describe what changed and why** in the PR description. Include context on the approach taken.
-- **Run the full test suite** before submitting: `npm run lint && npm test`.
-- PRs that break existing tests will not be merged.
+To run against a local Ollama backend:
 
-## Bug reports
+```bash
+BACKEND=ollama OLLAMA_URL=http://localhost:11434 npm run dev
+```
 
-When filing a bug report, include:
+See `.env.example` for the full list of environment variables. Copy it to `.env` and edit as needed.
 
-- **Reproduction steps:** Minimal steps to reproduce the issue.
-- **Environment details:** Node.js version, OS, backend type (Ollama/vLLM/OpenAI), storage backend.
-- **Relevant logs:** Server output, browser console errors, or network responses.
-- **Expected vs. actual behavior.**
+### 3.1 Optional: protect `main` in GitHub
 
-## Operational documentation
+For teams, enable **branch protection** on `main`: require PRs, and add **required status checks** for `lint`, `test`, and `Trivy filesystem scan` (names must match the jobs in `.github/workflows/ci.yml`). This is configured in the repo’s **Settings → Branches**, not in git.
 
-For operational runbooks, troubleshooting guides, and deployment procedures, see [docs/RUNBOOK.md](docs/RUNBOOK.md).
+## 4. Project structure
+
+A quick tour of the top-level layout:
+
+- `server.js` + `routes/` — Express app and HTTP/WebSocket routes
+- `lib/` — business logic (agents, storage, knowledge graph, workflows, etc.)
+- `client/` — vanilla JS SPA, served as static files (no build step required for development)
+- `tests/` — Node built-in test runner + supertest
+- `docs/` — operator and contributor deep-dive docs
+- `bin/siskelbot.js` — `siskelbot` CLI entry point
+- `scripts/` — build, lint, test, migrate, OpenAPI, eval, and load-test helpers
+
+For an architecture deep-dive, see `CLAUDE.md` and the docs under `docs/` (e.g. `ARCHITECTURE.md`, `DEPLOYMENT.md`, `AGENT_MODE.md`).
+
+## 5. Code conventions
+
+Pulled from `CLAUDE.md`:
+
+- **ES modules only** (`import`/`export`). No CommonJS `require`. Files are `.js` with `"type": "module"` in `package.json`. Electron-side CommonJS lives in `electron/*.cjs`.
+- **No TypeScript.** `jsconfig.json` and `tsconfig.json` exist for editor hints only — do not add `.ts` files.
+- **No new build tooling for client code.** If you touch `client/`, keep it plain JS that runs in the browser directly.
+- **Imperative commit messages** ("Add X", "Fix Y"). Phase numbers are sometimes used (e.g. `Phase 33: Add WebSocket presence tracking`) — match what's already on the branch.
+- **Minimal comments.** The repo prefers self-documenting code.
+
+## 6. Tests
+
+- `npm test` — runs the full suite via `scripts/run-tests.mjs` (Node built-in runner + supertest)
+- `npm run test:coverage` — c8 coverage with the critical-path gate
+- `npm run test:ci` — what CI runs (coverage + critical-path gate, CI mode)
+- `npm run test:e2e` — Playwright (requires `npx playwright install` first)
+- `npm run test:chaos` — chaos suite (slower; intentional failure injection)
+- `npm run test:load` — load test via `scripts/load-test.mjs`
+- `npm run eval:golden` — offline golden JSON gate (`data/eval-sets/golden.json`, no server; runs in CI lint job)
+- `npm run eval:ci` — eval set regression gate
+
+Single test file:
+
+```bash
+node --test tests/foo.test.js
+```
+
+When adding a test, match patterns in `tests/health-deep.test.js` or `tests/server.test.js`.
+
+### Deployment (GitHub + Vercel)
+
+- **GitHub:** Push branches and open PRs against `main`. CI runs on every PR (lint, tests, smoke, golden evals, etc.).
+- **Vercel previews:** In the [Vercel dashboard](https://vercel.com), link this GitHub repo so each PR receives a **Preview** deployment automatically.
+- **Production:** Merge to `main` triggers Production when Git integration is enabled; you can also deploy from a trusted machine with `npx vercel deploy --prod --yes` from the repo root (requires `vercel link` once).
+- **Smoke checks:** After deploy, `npm run smoke-test -- https://your-deployment.vercel.app` (or set `BASE_URL`). CI runs offline golden evals via `npm run eval:golden`; the **Production smoke** workflow exercises live `/health/live` and `/config` on a schedule.
+- **Workspace root:** Open the repository folder that contains `package.json` and `.git` (not an empty parent directory).
+
+## 7. Submitting a PR
+
+1. Branch from `main`: `git checkout -b your-branch-name`
+2. Make your changes, then run:
+   ```bash
+   npm run lint && npm test
+   ```
+3. Commit with an imperative-mood message.
+4. Push your branch and open a PR against `main`.
+5. CI runs lint, test, smoke, e2e, load, evals, CodeQL, and Trivy. Fix any failures before requesting review.
+
+The PR template is at `.github/PULL_REQUEST_TEMPLATE.md`.
+
+## 8. Reporting bugs
+
+Use the issue templates under `.github/ISSUE_TEMPLATE/` (`bug_report.yml`, `feature_request.yml`, `plugin_submission.yml`). Include reproduction steps, environment details (Node version, OS, backend, storage), and relevant logs.
+
+## 9. Security
+
+**Do not open public issues for security vulnerabilities.** See `SECURITY.md` for the disclosure policy. If `SECURITY.md` is missing, email `security@hondoentertainment.com`.

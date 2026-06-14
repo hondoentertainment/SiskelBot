@@ -1,0 +1,7 @@
+# Format: <CVE-ID>
+# This file lists CVEs that have been reviewed and are accepted.
+# Each entry MUST have a comment explaining why.
+# Review entries quarterly.
+#
+# Example:
+# CVE-2024-12345  # Reviewed YYYY-MM-DD: only affects Windows; we don't ship Windows binaries

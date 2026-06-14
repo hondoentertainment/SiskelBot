@@ -1,0 +1,22 @@
+# P2 staging drill: sustained /health/live SLO (~60s). Skips when STAGING_URL is unset.
+name: Staging drill
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly Wednesday 14:00 UTC (after typical staging deploy window)
+    - cron: "0 14 * * 3"
+
+jobs:
+  drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: vars.STAGING_URL != ''
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run staging liveness SLO drill
+        env:
+          STAGING_URL: ${{ vars.STAGING_URL }}
+          STAGING_DRILL_DURATION_MS: "60000"
+          STAGING_DRILL_INTERVAL_MS: "5000"
+        run: node scripts/staging-drill.mjs

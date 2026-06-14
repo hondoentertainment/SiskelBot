@@ -1,0 +1,30 @@
+{
+  "name": "SiskelBot",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-azuretools.vscode-docker",
+        "github.vscode-github-actions",
+        "redhat.vscode-yaml"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "eslint.validate": ["javascript"],
+        "[javascript]": {
+          "editor.defaultFormatter": "dbaeumer.vscode-eslint"
+        }
+      }
+    }
+  },
+  "forwardPorts": [3000, 11434],
+  "postCreateCommand": "npm ci",
+  "remoteUser": "node"
+}

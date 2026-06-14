@@ -1,6 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
+  "build": {
+    "env": {
+      "NPM_CONFIG_PRODUCTION": "true"
+    }
+  },
+  "installCommand": "npm ci --omit=dev",
   "builds": [
     {
       "src": "server.js",
@@ -10,7 +16,7 @@
   "crons": [
     {
       "path": "/api/cron",
-      "schedule": "* * * * *"
+      "schedule": "*/5 * * * *"
     }
   ],
   "routes": [

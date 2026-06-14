@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>Siskel Bot — Team-ready AI on your models</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; scroll-behavior: smooth; }
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #020617; color: #e2e8f0; line-height: 1.55; }
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 0 1.5rem 4rem; }
+    header { padding: 1.25rem 0 2.5rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; border-bottom: 1px solid #1e293b; }
+    header a { color: #94a3b8; text-decoration: none; font-size: 0.9rem; }
+    header a:hover { color: #f1f5f9; }
+    .brand { font-weight: 700; font-size: 1.05rem; letter-spacing: -0.02em; color: #f8fafc; }
+    .hero { padding: 3.5rem 0 2rem; text-align: center; }
+    .hero h1 { margin: 0; font-size: clamp(2rem, 4vw, 2.75rem); line-height: 1.15; letter-spacing: -0.03em; }
+    .hero p { margin: 1rem auto 0; max-width: 38rem; font-size: 1.1rem; color: #94a3b8; }
+    .cta { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; margin-top: 2rem; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; padding: 0.75rem 1.35rem; border-radius: 10px; font-weight: 600; font-size: 1rem; border: 0; cursor: pointer; text-decoration: none; }
+    .btn-primary { background: #3b82f6; color: #fff; }
+    .btn-primary:hover { filter: brightness(1.08); }
+    .btn-ghost { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
+    .btn-ghost:hover { background: #334155; }
+    .pill { display: inline-block; padding: 0.2rem 0.55rem; border-radius: 999px; font-size: 0.75rem; background: #172554; color: #93c5fd; margin-bottom: 0.75rem; }
+    .grid { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); margin-top: 3.5rem; }
+    .card { background: #0f172a; border: 1px solid #1e293b; border-radius: 12px; padding: 1.5rem; }
+    .card h3 { margin: 0 0 0.5rem; font-size: 1.05rem; }
+    .card p { margin: 0; font-size: 0.9rem; color: #94a3b8; }
+    footer { margin-top: 4rem; padding-top: 2rem; border-top: 1px solid #1e293b; display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; font-size: 0.85rem; color: #64748b; }
+    footer a { color: #94a3b8; text-decoration: none; }
+    footer a:hover { color: #e2e8f0; }
+    #oauth-landing { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <span class="brand">Siskel Bot</span>
+      <nav style="display:flex;flex-wrap:wrap;gap:1rem;align-items:center;">
+        <a href="/pricing.html">Pricing</a>
+        <a href="/trust.html">Trust</a>
+        <a href="/partners.html">Partners</a>
+        <a href="/signup.html">Sign up</a>
+        <a href="/index.html">Open app</a>
+      </nav>
+    </header>
+    <section class="hero">
+      <span class="pill">Self-hosted or cloud · OpenAI-compatible API</span>
+      <h1>Ship agentic AI on <em>your</em> stack</h1>
+      <p>Streaming chat, tool loops, swarms, workspaces, knowledge, and Stripe-ready billing — one proxy from browser to Ollama, vLLM, or OpenAI.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="/index.html">Launch app</a>
+        <a class="btn btn-ghost" href="/pricing.html">Compare plans</a>
+      </div>
+      <div class="cta" id="oauth-landing" aria-live="polite"></div>
+      <p style="margin-top:1.5rem;font-size:0.82rem;color:#64748b;">Root URL can point here on hosted deploys — set <code style="background:#1e293b;padding:0.1rem 0.35rem;border-radius:4px;">UI_MARKETING_ROOT=1</code>. Append <code>?app=1</code> to skip straight to the chat UI.</p>
+    </section>
+    <div class="grid">
+      <div class="card"><h3>OpenAI-compatible surface</h3><p><code>/v1/chat/completions</code> with SSE streams — drop into existing SDKs and IDE extensions.</p></div>
+      <div class="card"><h3>Governance built in</h3><p>Workspaces, quotas, optional plan enforcement, audit-friendly usage ledgers, and trust documentation for buyers.</p></div>
+      <div class="card"><h3>Grow revenue</h3><p>Stripe checkout and customer portal routes; tenant plan rows stay in sync after webhooks.</p></div>
+    </div>
+    <footer>
+      <span>© Siskel Bot</span>
+      <span style="display:flex;flex-wrap:wrap;gap:1rem;">
+        <a href="/privacy.html">Privacy</a>
+        <a href="/dpa.html">DPA</a>
+        <a href="/subprocessors.html">Subprocessors</a>
+      </span>
+    </footer>
+  </div>
+  <script>
+    (async function () {
+      const el = document.getElementById('oauth-landing');
+      if (!el) return;
+      try {
+        const res = await fetch('/config');
+        if (!res.ok) return;
+        const cfg = await res.json();
+        const urls = cfg.signupUrls || {};
+        if (urls.github) {
+          const a = document.createElement('a');
+          a.href = urls.github;
+          a.className = 'btn btn-ghost';
+          a.textContent = 'Continue with GitHub';
+          el.appendChild(a);
+        }
+        if (urls.google) {
+          const a = document.createElement('a');
+          a.href = urls.google;
+          a.className = 'btn btn-ghost';
+          a.textContent = 'Continue with Google';
+          el.appendChild(a);
+        }
+      } catch (_) {}
+    })();
+  </script>
+</body>
+</html>

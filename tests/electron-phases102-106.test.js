@@ -1,4 +1,4 @@
-import { describe, it, beforeEach } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -248,8 +248,8 @@ describe("Phase 106: Local model manager", () => {
     assert.ok(src.includes('ELECTRON_DESKTOP'), "should check ELECTRON_DESKTOP env");
   });
 
-  it("server.js registers model routes in desktop mode", () => {
-    const src = readFileSync(join(import.meta.dirname, "..", "server.js"), "utf8");
+  it("server-configured-app registers model routes in desktop mode", () => {
+    const src = readFileSync(join(import.meta.dirname, "..", "lib", "server-configured-app.js"), "utf8");
     assert.ok(src.includes("model-manager.cjs"), "should import model-manager");
     assert.ok(src.includes("registerModelRoutes"), "should call registerModelRoutes");
   });

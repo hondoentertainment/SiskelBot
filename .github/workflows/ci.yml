@@ -24,24 +24,78 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
       - name: Install dependencies
         run: npm ci
+      - name: Finite boot check
+        run: npm run bootstrap:check
+      - name: Offline golden eval gate
+        run: npm run eval:golden
       - name: Syntax check (node --check)
         run: npm run lint
+      - name: Dead module / route scan
+        run: npm run dead-lib-scan && npm run dead-route-scan
+
+  trivy-fs:
+    name: Trivy filesystem scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run Trivy filesystem scan (SARIF)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: '.'
+          format: sarif
+          output: trivy-fs.sarif
+          severity: CRITICAL,HIGH
+          exit-code: '0'
+          ignore-unfixed: true
+          skip-dirs: 'node_modules,client/dist,coverage,.claude'
+
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+      - name: Trivy filesystem scan (block on CRITICAL)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: '.'
+          format: table
+          severity: CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
+          skip-dirs: 'node_modules,client/dist,coverage,.claude'
+
+      - name: Upload SARIF artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: trivy-fs
+          path: trivy-fs.sarif
+          retention-days: 30
 
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
@@ -55,24 +109,12 @@ jobs:
         id: tests
         run: npm run test:ci
 
+      - name: Tenant isolation regression test
+        run: node --test --test-timeout=30000 tests/tenant-isolation.test.js
+
       - name: Check coverage thresholds
         if: always() && steps.tests.outcome == 'success'
         run: npx c8 check-coverage
-      - name: Offline eval (trace + staging_trace)
-        id: eval_ci
-        run: npm run eval:ci
-
-      - name: Eval CI troubleshooting (on failure)
-        if: failure() && steps.eval_ci.outcome == 'failure'
-        run: |
-          {
-            echo "## Offline eval failed"
-            echo "Golden trace or staging_trace mismatch. Run locally:"
-            echo '```bash'
-            echo "npm run eval:ci"
-            echo '```'
-            echo "Each line shows \`caseId\` and \`reason\` (expected vs actual tool order)."
-          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Coverage summary
         if: always() && steps.tests.outcome != 'skipped'
@@ -88,7 +130,7 @@ jobs:
 
       - name: Upload coverage report
         if: always() && steps.tests.outcome != 'skipped'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage/
@@ -112,8 +154,8 @@ jobs:
     needs: [test]
     timeout-minutes: 3
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
@@ -124,7 +166,7 @@ jobs:
       - name: Start server
         run: |
           set -e
-          BACKEND=ollama PORT="${PORT}" npm start &
+          BACKEND=ollama PORT="${PORT}" API_KEY=ci-smoke-key ADMIN_API_KEY=e2e-admin-key npm start &
       - name: Wait for /health/live
         run: |
           set -e
@@ -142,14 +184,61 @@ jobs:
         run: npm run smoke-test:ci
         env:
           BASE_URL: http://127.0.0.1:${{ env.PORT }}
+          API_KEY: ci-smoke-key
+          ADMIN_API_KEY: e2e-admin-key
+      - name: Phase 63 partner check
+        run: npm run partner-check -- http://127.0.0.1:${{ env.PORT }}
+        env:
+          ADMIN_API_KEY: e2e-admin-key
+
+  # Optional: set STAGING_URL repo variable (Settings → Variables) to enable
+  smoke-staging:
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: vars.STAGING_URL != ''
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci
+      - name: Wait for staging to be healthy
+        run: |
+          url="${{ vars.STAGING_URL }}/health/live"
+          echo "Waiting for staging: $url"
+          for i in $(seq 1 12); do
+            if curl -sf "$url" > /dev/null 2>&1; then
+              echo "Staging is healthy"
+              break
+            fi
+            echo "Attempt $i/12 failed, waiting 5s..."
+            sleep 5
+          done
+      - name: Smoke test (staging)
+        run: npm run smoke-test:ci
+        env:
+          BASE_URL: ${{ vars.STAGING_URL }}
+          STAGING: "true"
+      - name: Staging smoke troubleshooting
+        if: failure()
+        run: |
+          {
+            echo "## Staging Smoke Failed"
+            echo "Staging URL: ${{ vars.STAGING_URL }}"
+            echo "Check that STAGING_URL is reachable and the deployment is healthy."
+            echo "Re-run locally: \`BASE_URL=<staging-url> npm run smoke-test:ci\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   e2e:
     runs-on: ubuntu-latest
     needs: [test]
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
@@ -174,13 +263,17 @@ jobs:
           done
           echo "::error::Server did not respond on $url within 45s"
           exit 1
+      # Replay token tests skip when neither secret is set; set REPLAY_TOKEN_SECRET or SESSION_SECRET in Actions secrets to run them on CI.
       - name: Run E2E tests
         run: npm run test:e2e
         env:
           CI: "true"
+          ADMIN_API_KEY: e2e-admin-key
+          SESSION_SECRET: e2e-session-secret
+          REPLAY_TOKEN_SECRET: e2e-replay-secret
       - name: Upload Playwright report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: playwright-report/
@@ -190,10 +283,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [smoke]
     timeout-minutes: 5
-    continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
@@ -217,23 +309,62 @@ jobs:
           echo "::error::Server did not respond on $url within 45s"
           exit 1
       - name: Run load test
-        run: npm run test:load -- --url=http://127.0.0.1:${{ env.PORT }} --duration=15 --concurrency=5 --rps=30
+        id: load
+        run: |
+          npm run test:load -- \
+            --url=http://127.0.0.1:${{ env.PORT }} \
+            --duration=15 --concurrency=5 --rps=30 \
+            --max-error-rate=1 --max-p99=3000 \
+            --json-output=load-results.json \
+            --baseline=tests/load-baseline.json
       - name: Upload load test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
+        with:
+          name: load-results
+          path: load-results.json
+          retention-days: 30
+      - name: Upload legacy load-test-results
+        if: always()
+        uses: actions/upload-artifact@v7
         with:
           name: load-test-results
           path: load-test-results.json
           retention-days: 14
+      - name: Load test failure summary
+        if: failure() && steps.load.outcome == 'failure'
+        run: |
+          {
+            echo "## Load Test Failed"
+            echo ""
+            if [ -f load-results.json ]; then
+              echo "### Threshold breaches"
+              echo '```json'
+              node --input-type=module -e "import {readFileSync} from 'node:fs';const r=JSON.parse(readFileSync('./load-results.json','utf8'));console.log(JSON.stringify({passed:r.passed,failures:r.failures,latency:r.latency,errorRate:r.errorRate,thresholds:r.thresholds},null,2));"
+              echo '```'
+            else
+              echo "No load-results.json was produced. See job logs for the failure."
+            fi
+            echo ""
+            echo "Reproduce locally:"
+            echo '```bash'
+            echo "BACKEND=ollama PORT=3000 npm start &"
+            echo "npm run test:load -- --url=http://127.0.0.1:3000 --duration=15 --concurrency=5 --rps=30 \\"
+            echo "  --max-error-rate=1 --max-p99=3000 --json-output=load-results.json \\"
+            echo "  --baseline=tests/load-baseline.json"
+            echo '```'
+            echo ""
+            echo "If this is a flake (network jitter, runner contention), re-run the job."
+            echo "If the regression is real and intentional (e.g. a deliberate perf change), refresh the baseline by triggering the \`Load Test Baseline Refresh\` workflow manually."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   eval:
     runs-on: ubuntu-latest
     needs: [smoke]
     timeout-minutes: 5
-    continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
@@ -262,7 +393,7 @@ jobs:
           EVAL_BASE_URL: http://127.0.0.1:${{ env.PORT }}
       - name: Upload eval results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eval-results
           path: eval-results.json

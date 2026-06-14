@@ -4,7 +4,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ResilientWebSocket, State } from "../client/js/ws-reconnect.js";
+import { ResilientWebSocket, State, createReconnectingWebSocket } from "../client/js/ws-reconnect.js";
 import { recordEvent, getEventsSince, _resetForTesting } from "../lib/realtime-replay.js";
 
 // --- Backoff delay calculation ---
@@ -181,4 +181,13 @@ test("realtime-replay: circular buffer overwrites old entries", () => {
   assert.equal(events.length, 10);
   assert.equal(events[0].payload.idx, 0);
   assert.equal(events[9].payload.idx, 9);
+});
+
+test("ws-reconnect: createReconnectingWebSocket accepts getTokenHeaders", () => {
+  const mgr = createReconnectingWebSocket({
+    getTokenHeaders: () => ({ "X-Custom": "1" }),
+  });
+  assert.equal(typeof mgr.connect, "function");
+  assert.equal(typeof mgr.disconnect, "function");
+  mgr.disconnect();
 });

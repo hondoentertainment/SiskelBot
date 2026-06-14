@@ -95,7 +95,7 @@ test("LeaderElection - getLeader returns lock info", async () => {
   const { LeaderElection } = await import("../lib/leader-election.js");
   const le = new LeaderElection({ lockDir: tempDir, instanceId: "info-test", ttlMs: 5000 });
 
-  const before = await le.getLeader();
+  await le.getLeader();
   // Could be null or stale from previous tests - just check type
   await le.acquire();
 

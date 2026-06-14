@@ -19,6 +19,9 @@ async function collectTestFiles(dir) {
   for (const ent of entries) {
     const p = join(dir, ent.name);
     if (ent.isDirectory()) {
+      // Chaos tests inject failures and are slow-tagged: they run via the
+      // dedicated `npm run test:chaos` script, not the default test pass.
+      if (ent.name === "chaos") continue;
       out.push(...(await collectTestFiles(p)));
     } else if (ent.name.endsWith(".test.js")) {
       out.push(p);

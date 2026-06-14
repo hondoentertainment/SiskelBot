@@ -13,7 +13,7 @@
  *   node scripts/migrate-storage.mjs --from=postgres --to=sqlite [--dry-run] [--verbose]
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "fs";
 import { join, dirname, relative } from "path";
 import { createRequire } from "module";
 import { fileURLToPath } from "url";

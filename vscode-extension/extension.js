@@ -130,7 +130,7 @@ class ChatViewProvider {
 
 // --- Standalone Chat Panel ---
 
-function openChatPanel(context) {
+function openChatPanel(_context) {
   const panel = vscode.window.createWebviewPanel(
     "siskelbot.chatPanel",
     "SiskelBot Chat",

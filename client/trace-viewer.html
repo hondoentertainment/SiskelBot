@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>SiskelBot - Trace Viewer</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { color-scheme: dark; }
+    body { font-family: system-ui, -apple-system, sans-serif; min-height: 100vh; background: #0f172a; color: #e2e8f0; }
+    a { color: #60a5fa; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+
+    header { background: #1e293b; border-bottom: 1px solid #334155; padding: 0.75rem 1.5rem; }
+    header h1 { font-size: 1rem; font-weight: 700; }
+    header .subtitle { font-size: 0.75rem; color: #64748b; margin-top: 0.125rem; }
+
+    .topbar { padding: 0.75rem 1.5rem; background: #1e293b; border-bottom: 1px solid #334155; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; position: sticky; top: 0; z-index: 50; }
+
+    .input { padding: 0.375rem 0.5rem; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; font-size: 0.8125rem; }
+    .input:focus { border-color: #60a5fa; }
+
+    .btn { padding: 0.375rem 0.75rem; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8125rem; font-weight: 500; }
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-ghost { background: #334155; color: #e2e8f0; }
+    .btn-ghost:hover { background: #475569; }
+    .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
+
+    .layout { display: grid; grid-template-columns: 320px 1fr; min-height: calc(100vh - 110px); }
+    .sidebar { background: #0b1220; border-right: 1px solid #334155; padding: 0.5rem; overflow-y: auto; max-height: calc(100vh - 110px); }
+    .sidebar h3 { font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.5rem; margin-bottom: 0.25rem; }
+
+    .trace-row { padding: 0.5rem 0.625rem; border-radius: 6px; cursor: pointer; margin-bottom: 0.25rem; border: 1px solid transparent; font-size: 0.8125rem; }
+    .trace-row:hover { background: #1e293b; }
+    .trace-row.active { background: #1e3a5f; border-color: #3b82f6; }
+    .trace-row .run-id { color: #e2e8f0; font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.75rem; }
+    .trace-row .meta { font-size: 0.6875rem; color: #64748b; margin-top: 0.25rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .trace-row .meta .stop { font-weight: 600; }
+    .stop-success { color: #34d399; }
+    .stop-failure { color: #f87171; }
+    .stop-replan { color: #fbbf24; }
+    .stop-neutral { color: #94a3b8; }
+
+    .main { padding: 1.25rem; max-width: 1200px; }
+    .section { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+    .section h3 { font-size: 0.875rem; font-weight: 600; color: #94a3b8; margin-bottom: 0.75rem; }
+
+    .summary { font-size: 0.875rem; color: #cbd5e1; margin-bottom: 0.5rem; }
+    .summary .muted { color: #64748b; }
+
+    .banner { padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.8125rem; }
+    .banner-error { background: #7f1d1d; color: #fecaca; border: 1px solid #f87171; }
+    .banner-info { background: #1e3a5f; color: #bfdbfe; border: 1px solid #3b82f6; }
+
+    .empty { color: #64748b; font-size: 0.8125rem; padding: 1rem; text-align: center; }
+
+    details.iter-card { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 0.75rem 0.875rem; margin-bottom: 0.625rem; }
+    details.iter-card[open] { background: #111827; border-color: #475569; }
+    details.iter-card > summary { cursor: pointer; font-size: 0.875rem; color: #e2e8f0; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+    details.iter-card > summary .iter-title { font-weight: 600; }
+    details.iter-card > summary .iter-meta { font-size: 0.75rem; color: #94a3b8; }
+    details.iter-card .iter-body { margin-top: 0.625rem; padding-top: 0.625rem; border-top: 1px solid #334155; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; margin-top: 0.375rem; }
+    th, td { padding: 0.375rem 0.5rem; text-align: left; border-bottom: 1px solid #334155; vertical-align: top; }
+    th { color: #64748b; font-weight: 500; font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    tr:last-child td { border-bottom: none; }
+
+    pre { background: #0b1220; border: 1px solid #334155; border-radius: 6px; padding: 0.5rem 0.625rem; font-size: 0.7rem; color: #cbd5e1; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+    details.nested { background: #0b1220; border: 1px solid #334155; border-radius: 6px; padding: 0.375rem 0.5rem; margin-top: 0.25rem; }
+    details.nested summary { cursor: pointer; font-size: 0.75rem; color: #94a3b8; }
+
+    .badge { display: inline-block; font-size: 0.6875rem; padding: 0.125rem 0.375rem; border-radius: 4px; margin: 0.125rem 0.25rem 0.125rem 0; font-weight: 500; }
+    .badge-ok { background: #064e3b; color: #a7f3d0; }
+    .badge-fail { background: #7f1d1d; color: #fecaca; }
+    .badge-warn { background: #78350f; color: #fde68a; }
+    .badge-info { background: #1e3a5f; color: #bfdbfe; }
+    .badge-neutral { background: #334155; color: #cbd5e1; }
+
+    .auto-refresh { display: flex; align-items: center; gap: 0.375rem; font-size: 0.8125rem; color: #94a3b8; }
+    .last-fetch { font-size: 0.75rem; color: #64748b; }
+    .spacer { flex: 1; }
+    label { font-size: 0.8125rem; color: #94a3b8; }
+
+    .action-row { margin-top: 0.625rem; display: flex; gap: 0.375rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SiskelBot - Trace Viewer</h1>
+    <div class="subtitle">Inspect per-run agent trajectories: tool calls, signals, cost, timing. <a href="/admin">Back to admin</a></div>
+  </header>
+
+  <div class="topbar">
+    <label>Admin key
+      <input type="password" class="input" id="admin-key" placeholder="ADMIN_API_KEY" autocomplete="off" style="width:200px">
+    </label>
+    <label>Workspace
+      <input type="text" class="input" id="workspace" value="default" style="width:140px">
+    </label>
+    <div class="spacer"></div>
+    <div class="auto-refresh">
+      <input type="checkbox" id="auto-refresh">
+      <label for="auto-refresh">Auto-refresh (10s)</label>
+    </div>
+    <span class="last-fetch" id="last-fetch"></span>
+    <button class="btn btn-ghost btn-sm" id="refresh-btn">Refresh</button>
+  </div>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <h3>Recent traces</h3>
+      <div id="trace-list"><div class="empty">Enter admin key and click Refresh.</div></div>
+    </aside>
+    <main class="main">
+      <div id="banner"></div>
+      <div id="detail"><div class="empty">Select a trace from the left to inspect.</div></div>
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      const KEY_STORAGE = 'siskelbot_trace_viewer_key';
+      const WS_STORAGE = 'siskelbot_trace_viewer_ws';
+
+      const state = {
+        traces: [],
+        selectedRunId: null,
+        detail: null,
+        autoRefresh: false,
+        timer: null,
+      };
+
+      function escapeHtml(input) {
+        const s = input == null ? '' : String(input);
+        return s
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function setBanner(msg, kind) {
+        const el = document.getElementById('banner');
+        if (!msg) { el.innerHTML = ''; return; }
+        const cls = kind === 'info' ? 'banner-info' : 'banner-error';
+        el.innerHTML = '<div class="banner ' + cls + '">' + escapeHtml(msg) + '</div>';
+      }
+
+      function adminKey() { return document.getElementById('admin-key').value.trim(); }
+      function workspace() { return document.getElementById('workspace').value.trim() || 'default'; }
+
+      function persistInputs() {
+        const k = adminKey();
+        if (k) sessionStorage.setItem(KEY_STORAGE, k);
+        const w = workspace();
+        if (w) sessionStorage.setItem(WS_STORAGE, w);
+      }
+
+      async function apiFetch(path, opts) {
+        const headers = { 'Content-Type': 'application/json' };
+        const key = adminKey();
+        if (key) headers['Authorization'] = 'Bearer ' + key;
+        const res = await fetch(path, Object.assign({ credentials: 'include', headers }, opts || {}));
+        const text = await res.text();
+        let body = null;
+        try { body = text ? JSON.parse(text) : null; } catch (_) { /* non-JSON */ }
+        if (!res.ok) {
+          const err = new Error((body && (body.error || body.message)) || text || res.statusText);
+          err.status = res.status;
+          err.body = body;
+          throw err;
+        }
+        return body;
+      }
+
+      function friendlyError(err) {
+        if (err && err.status === 401) return 'Invalid admin key';
+        if (err && err.status === 403) return 'Forbidden: admin scope required';
+        if (err && err.status === 404) return 'Not found: ' + (err.message || 'no such trace');
+        return (err && err.message) || 'Network error';
+      }
+
+      function touchLastFetch() {
+        document.getElementById('last-fetch').textContent = 'Last fetched at ' + new Date().toLocaleTimeString();
+      }
+
+      function stopClass(reason) {
+        if (!reason) return 'stop-neutral';
+        const r = String(reason).toLowerCase();
+        if (r === 'model_finished' || r === 'completed') return 'stop-success';
+        if (r.includes('replan')) return 'stop-replan';
+        if (r.includes('error') || r.includes('max_iterations') || r.includes('timeout') || r.includes('budget')) return 'stop-failure';
+        return 'stop-neutral';
+      }
+
+      function truncId(id) {
+        if (!id) return '—';
+        const s = String(id);
+        return s.length > 18 ? s.slice(0, 8) + '…' + s.slice(-6) : s;
+      }
+
+      function fmtTime(iso) {
+        if (!iso) return '—';
+        const d = new Date(iso);
+        if (!Number.isFinite(d.getTime())) return '—';
+        return d.toLocaleString();
+      }
+
+      function fmtDuration(ms) {
+        if (!Number.isFinite(ms)) return '—';
+        if (ms < 1000) return ms + ' ms';
+        if (ms < 60000) return (ms / 1000).toFixed(2) + ' s';
+        return (ms / 60000).toFixed(2) + ' min';
+      }
+
+      // ─── Load list ───────────────────────────────────────
+      async function loadTraces() {
+        const ws = workspace();
+        const listEl = document.getElementById('trace-list');
+        listEl.innerHTML = '<div class="empty">Loading…</div>';
+        try {
+          const params = new URLSearchParams({ workspace: ws, limit: '50' });
+          const data = await apiFetch('/api/admin/traces?' + params.toString());
+          state.traces = Array.isArray(data.traces) ? data.traces : [];
+          touchLastFetch();
+          renderList();
+          // If selected runId is gone, clear detail.
+          if (state.selectedRunId && !state.traces.some((t) => t.runId === state.selectedRunId)) {
+            state.selectedRunId = null;
+            state.detail = null;
+            renderDetail();
+          }
+        } catch (err) {
+          setBanner(friendlyError(err), 'error');
+          listEl.innerHTML = '<div class="empty">Unable to load traces.</div>';
+        }
+      }
+
+      function renderList() {
+        const listEl = document.getElementById('trace-list');
+        if (!state.traces.length) {
+          listEl.innerHTML = '<div class="empty">No traces recorded for this workspace.</div>';
+          return;
+        }
+        const html = [];
+        for (const t of state.traces) {
+          const cls = 'trace-row' + (state.selectedRunId === t.runId ? ' active' : '');
+          const stopCls = stopClass(t.stopReason);
+          html.push(
+            '<div class="' + cls + '" data-run-id="' + escapeHtml(t.runId) + '">' +
+              '<div class="run-id">' + escapeHtml(truncId(t.runId)) + '</div>' +
+              '<div class="meta">' +
+                '<span>' + escapeHtml(fmtTime(t.startedAt)) + '</span>' +
+                '<span class="stop ' + stopCls + '">' + escapeHtml(t.stopReason || '—') + '</span>' +
+                '<span>it=' + escapeHtml(t.iterationCount) + '</span>' +
+                '<span>tc=' + escapeHtml(t.toolCallCount) + '</span>' +
+              '</div>' +
+            '</div>'
+          );
+        }
+        listEl.innerHTML = html.join('');
+        listEl.querySelectorAll('.trace-row').forEach(function (row) {
+          row.addEventListener('click', function () {
+            const id = row.getAttribute('data-run-id');
+            selectTrace(id);
+          });
+        });
+      }
+
+      async function selectTrace(runId) {
+        state.selectedRunId = runId;
+        renderList();
+        const detailEl = document.getElementById('detail');
+        detailEl.innerHTML = '<div class="empty">Loading trace…</div>';
+        try {
+          const data = await apiFetch('/api/admin/traces/' + encodeURIComponent(runId));
+          state.detail = data;
+          renderDetail();
+        } catch (err) {
+          setBanner(friendlyError(err), 'error');
+          detailEl.innerHTML = '<div class="empty">Unable to load trace.</div>';
+        }
+      }
+
+      function renderDetail() {
+        const el = document.getElementById('detail');
+        const d = state.detail;
+        if (!d) {
+          el.innerHTML = '<div class="empty">Select a trace from the left to inspect.</div>';
+          return;
+        }
+        const iters = Array.isArray(d.iterations) ? d.iterations : [];
+        const html = [];
+        html.push('<div class="section">');
+        html.push('<h3>Run summary</h3>');
+        html.push('<div class="summary">');
+        html.push('<strong>Run:</strong> <code>' + escapeHtml(d.runId) + '</code><br>');
+        html.push('<strong>Session:</strong> ' + escapeHtml(d.sessionId || '—') + '<br>');
+        html.push('<strong>Workspace:</strong> ' + escapeHtml(d.workspace || '—') + '<br>');
+        html.push('<strong>Recorded:</strong> ' + escapeHtml(fmtTime(d.recordedAt)) + '<br>');
+        html.push('<strong>Steps:</strong> ' + escapeHtml(d.stepCount || 0) + ' / <strong>Iterations:</strong> ' + escapeHtml(iters.length));
+        html.push('</div>');
+        html.push('</div>');
+
+        if (!iters.length) {
+          html.push('<div class="section"><div class="empty">No iterations recorded for this run.</div></div>');
+        } else {
+          for (const it of iters) {
+            html.push(renderIterationCard(it));
+          }
+        }
+        el.innerHTML = html.join('');
+        wireDetailActions();
+      }
+
+      function renderIterationCard(it) {
+        const parts = [];
+        const badges = [];
+        (it.signals || []).forEach(function (s) {
+          let cls = 'badge-info';
+          const k = (s.kind || '').toLowerCase();
+          if (k.includes('error')) cls = 'badge-fail';
+          else if (k === 'stagnation' || k === 'stagnation_signal') cls = 'badge-warn';
+          else if (k === 'replan' || k === 'replan_nudge') cls = 'badge-warn';
+          else if (k === 'stop') cls = 'badge-neutral';
+          badges.push('<span class="badge ' + cls + '">' + escapeHtml(s.kind) + (s.reason ? ':' + escapeHtml(s.reason) : '') + '</span>');
+        });
+
+        const costHtml = Number.isFinite(it.costDelta) && it.costDelta > 0
+          ? '<span class="badge badge-info">Δ$' + escapeHtml(Number(it.costDelta).toFixed(6)) + '</span>'
+          : '';
+
+        parts.push('<details class="iter-card" open data-iter="' + escapeHtml(it.iteration) + '">');
+        parts.push('<summary>');
+        parts.push('<span class="iter-title">Iteration ' + escapeHtml(it.iteration) + '</span>');
+        parts.push('<span class="iter-meta">' + escapeHtml(fmtTime(it.timestamp)) + ' · ' + escapeHtml(fmtDuration(it.durationMs)) + ' ' + badges.join(' ') + ' ' + costHtml + '</span>');
+        parts.push('</summary>');
+        parts.push('<div class="iter-body">');
+
+        // Tool calls table
+        const toolCalls = Array.isArray(it.toolCalls) ? it.toolCalls : [];
+        if (toolCalls.length) {
+          parts.push('<table><thead><tr><th>Name</th><th>Args</th><th>Result</th><th>Latency</th></tr></thead><tbody>');
+          for (const tc of toolCalls) {
+            const okIcon = tc.ok === true
+              ? '<span class="badge badge-ok">ok</span>'
+              : tc.ok === false ? '<span class="badge badge-fail">fail</span>' : '';
+            const argsStr = tc.args == null ? '—' : (typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args, null, 2));
+            const resultStr = tc.result == null ? '—' : (typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2));
+            parts.push('<tr>');
+            parts.push('<td>' + okIcon + ' ' + escapeHtml(tc.name || '—') + '</td>');
+            parts.push('<td><details class="nested"><summary>view</summary><pre>' + escapeHtml(argsStr) + '</pre></details></td>');
+            parts.push('<td><details class="nested"><summary>view</summary><pre>' + escapeHtml(resultStr) + '</pre></details></td>');
+            parts.push('<td>' + escapeHtml(tc.latencyMs != null ? tc.latencyMs + ' ms' : '—') + '</td>');
+            parts.push('</tr>');
+          }
+          parts.push('</tbody></table>');
+        } else {
+          parts.push('<div class="empty">No tool calls in this iteration.</div>');
+        }
+
+        // Messages
+        const msgs = Array.isArray(it.messages) ? it.messages : [];
+        if (msgs.length) {
+          parts.push('<div style="margin-top:0.625rem"><strong style="font-size:0.75rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em">Messages</strong></div>');
+          for (const m of msgs) {
+            parts.push('<details class="nested"><summary>' + escapeHtml(m.role || 'message') + '</summary><pre>' + escapeHtml(m.content || '') + '</pre></details>');
+          }
+        }
+
+        // Signal details
+        const sigs = Array.isArray(it.signals) ? it.signals : [];
+        if (sigs.length) {
+          parts.push('<div style="margin-top:0.625rem"><strong style="font-size:0.75rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em">Signals</strong></div>');
+          for (const s of sigs) {
+            const body = s.details ? JSON.stringify(s.details, null, 2) : (s.message || s.reason || '');
+            parts.push('<details class="nested"><summary>' + escapeHtml(s.kind) + (s.reason ? ' — ' + escapeHtml(s.reason) : '') + '</summary><pre>' + escapeHtml(body) + '</pre></details>');
+          }
+        }
+
+        parts.push('<div class="action-row">');
+        parts.push('<button class="btn btn-ghost btn-sm" data-action="jump" data-iter="' + escapeHtml(it.iteration) + '">Jump to iteration</button>');
+        parts.push('<button class="btn btn-ghost btn-sm" data-action="copy" data-iter="' + escapeHtml(it.iteration) + '">Copy as JSON</button>');
+        parts.push('</div>');
+
+        parts.push('</div>');
+        parts.push('</details>');
+        return parts.join('');
+      }
+
+      function wireDetailActions() {
+        document.querySelectorAll('button[data-action]').forEach(function (btn) {
+          btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            const action = btn.getAttribute('data-action');
+            const it = Number(btn.getAttribute('data-iter'));
+            if (action === 'jump') {
+              const el = document.querySelector('details.iter-card[data-iter="' + it + '"]');
+              if (el) {
+                el.open = true;
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+            } else if (action === 'copy') {
+              const iters = (state.detail && state.detail.iterations) || [];
+              const match = iters.find(function (x) { return Number(x.iteration) === it; });
+              if (match) {
+                const txt = JSON.stringify(match, null, 2);
+                navigator.clipboard.writeText(txt).then(
+                  function () { setBanner('Iteration ' + it + ' copied to clipboard', 'info'); },
+                  function () { setBanner('Copy failed: ' + txt.length + ' chars', 'error'); }
+                );
+              }
+            }
+          });
+        });
+      }
+
+      // ─── Wire controls ───────────────────────────────────
+      document.getElementById('refresh-btn').addEventListener('click', function () {
+        if (state.selectedRunId) selectTrace(state.selectedRunId);
+        loadTraces();
+      });
+      document.getElementById('auto-refresh').addEventListener('change', function (e) {
+        state.autoRefresh = e.target.checked;
+        if (state.timer) { clearInterval(state.timer); state.timer = null; }
+        if (state.autoRefresh) {
+          state.timer = setInterval(function () {
+            loadTraces();
+            if (state.selectedRunId) selectTrace(state.selectedRunId);
+          }, 10000);
+        }
+      });
+      ['admin-key', 'workspace'].forEach(function (id) {
+        document.getElementById(id).addEventListener('change', function () {
+          persistInputs();
+          loadTraces();
+        });
+      });
+
+      function init() {
+        const savedKey = sessionStorage.getItem(KEY_STORAGE);
+        if (savedKey) document.getElementById('admin-key').value = savedKey;
+        const savedWs = sessionStorage.getItem(WS_STORAGE);
+        if (savedWs) document.getElementById('workspace').value = savedWs;
+        if (savedKey) loadTraces();
+      }
+
+      init();
+    })();
+  </script>
+</body>
+</html>

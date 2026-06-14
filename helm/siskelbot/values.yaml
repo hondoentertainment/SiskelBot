@@ -1,0 +1,355 @@
+# Default values for siskelbot.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/hondoentertainment/siskelbot
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+service:
+  type: ClusterIP
+  port: 3000
+  targetPort: 3000
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: siskelbot.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+    # - secretName: siskelbot-tls
+    #   hosts:
+    #     - siskelbot.example.com
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+  # Custom metrics (requires Prometheus Adapter)
+  customMetrics: []
+    # - type: Pods
+    #   pods:
+    #     metric:
+    #       name: http_requests_per_second
+    #     target:
+    #       type: AverageValue
+    #       averageValue: "100"
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+  # maxUnavailable: 1
+
+# Environment variables passed directly to the container
+env:
+  - name: NODE_ENV
+    value: production
+  - name: PORT
+    value: "3000"
+  - name: BACKEND
+    value: openai
+  - name: ENABLE_METRICS
+    value: "1"
+  - name: STORAGE_PATH
+    value: /data
+
+# Environment variables from Secrets or ConfigMaps
+envFrom:
+  secretRefs: []
+    # - name: siskelbot-secrets
+  configMapRefs: []
+    # - name: siskelbot-config
+
+# Secret values to create a managed Secret (base64 will be applied by Helm)
+secrets: {}
+  # OPENAI_API_KEY: ""
+  # API_KEY: ""
+  # ADMIN_API_KEY: ""
+  # SESSION_SECRET: ""
+  # DATABASE_URL: ""
+
+# ConfigMap values
+config: {}
+  # LOG_LEVEL: info
+  # OLLAMA_URL: http://ollama:11434
+
+persistence:
+  enabled: false
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+  mountPath: /data
+  annotations: {}
+
+postgresql:
+  enabled: false
+  host: ""
+  port: 5432
+  database: siskelbot
+  username: siskelbot
+  # Password should be provided via existingSecret
+  existingSecret: ""
+  existingSecretPasswordKey: password
+
+redis:
+  enabled: false
+  host: ""
+  port: 6379
+  existingSecret: ""
+  existingSecretPasswordKey: password
+
+# Connection pooling for Postgres
+pgbouncer:
+  enabled: false
+  replicas: 2
+  image:
+    repository: bitnami/pgbouncer
+    tag: "1.23.1"
+    pullPolicy: IfNotPresent
+  # transaction (best for typical web traffic) | session | statement
+  poolMode: transaction
+  # Total client connections accepted across all pgbouncer instances
+  maxClientConn: 1000
+  # Connections per database/user pair to backend
+  defaultPoolSize: 25
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+metrics:
+  enabled: true
+  port: 3000
+  path: /metrics
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+    namespace: ""
+  alerting:
+    enabled: false
+    labels: {}
+    namespace: ""
+    # Additional custom rules appended to the default rule group
+    additionalRules: []
+  dashboard:
+    enabled: false
+    namespace: ""
+    # Label that the Grafana sidecar watches for (kube-prometheus-stack default)
+    label:
+      grafana_dashboard: "1"
+  synthetic:
+    enabled: false
+    namespace: ""
+    labels: {}
+    # blackbox-exporter service URL (must be reachable by Prometheus)
+    blackboxExporterUrl: "http://blackbox-exporter.monitoring.svc.cluster.local:9115"
+    proberPath: "/probe"
+    # Module from blackbox-exporter config — e.g. http_2xx, http_post_2xx
+    module: "http_2xx"
+    interval: 30s
+    scrapeTimeout: 15s
+    # Public URLs to probe (commonly external load balancer / ingress)
+    targets: []
+      # - https://siskelbot.example.com/health/deep
+      # - https://siskelbot.example.com/health/live
+    staticLabels: {}
+
+networkPolicy:
+  enabled: false
+  ingressRules: []
+    # - from:
+    #     - namespaceSelector:
+    #         matchLabels:
+    #           name: ingress-nginx
+  egressRules: []
+    # - to:
+    #     - namespaceSelector: {}
+    #   ports:
+    #     - protocol: TCP
+    #       port: 443
+
+livenessProbe:
+  httpGet:
+    path: /health/live
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+readinessProbe:
+  httpGet:
+    path: /health/ready
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+startupProbe:
+  httpGet:
+    path: /health/live
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 5
+  failureThreshold: 30
+  successThreshold: 1
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Extra volumes and mounts for advanced use cases
+extraVolumes: []
+extraVolumeMounts: []
+
+# Topology spread constraints for HA
+topologySpreadConstraints: []
+
+# Priority class name
+priorityClassName: ""
+
+# Termination grace period
+terminationGracePeriodSeconds: 30
+
+# Postgres backup CronJob (runs pg_dump and uploads to S3)
+# NOTE: The default image (ghcr.io/hondoentertainment/pgbackup:16-aws) is
+# hypothetical. Operators should either build a custom image containing
+# pg_dump (matching their Postgres major version) and the AWS CLI, or swap
+# in a public alternative such as prodrigestivill/postgres-backup-local
+# (which uses a different env contract and would require template changes).
+# The main app image is NOT suitable — it lacks pg_dump and the AWS CLI.
+backup:
+  enabled: false
+  # Cron schedule (default: daily at 02:00 UTC)
+  schedule: "0 2 * * *"
+  # Retention in days; older backups are deleted
+  retentionDays: 7
+  # Job control
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 600
+  backoffLimit: 2
+  activeDeadlineSeconds: 3600
+  # Container image (must include pg_dump + aws CLI)
+  image:
+    repository: ghcr.io/hondoentertainment/pgbackup
+    tag: "16-aws"
+    pullPolicy: IfNotPresent
+  # Secret containing DATABASE_URL env var
+  databaseUrlSecret:
+    name: ""    # e.g. siskelbot-secrets
+  # S3 destination
+  s3:
+    bucket: ""
+    prefix: "siskelbot/backups"
+    region: ""
+    # Optional S3-compatible endpoint (e.g. for MinIO)
+    endpoint: ""
+    # Secret containing AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
+    credentialsSecret:
+      name: ""    # leave empty to use IRSA / workload identity
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  # Size of /tmp emptyDir (must fit the largest dump uncompressed)
+  tmpSize: 10Gi
+  nodeSelector: {}
+  tolerations: []
+
+# Argo Rollouts canary deployment (replaces standard Deployment when enabled)
+canary:
+  enabled: false
+  # Traffic routing — leave empty for replica-based traffic split, or configure for service mesh / ingress integration
+  trafficRouting: {}
+    # nginx:
+    #   stableIngress: siskelbot-stable
+  # Promotion steps: percentages of traffic + pause windows
+  steps:
+    - setWeight: 10
+    - pause: { duration: 5m }
+    - setWeight: 25
+    - pause: { duration: 10m }
+    - setWeight: 50
+    - pause: { duration: 10m }
+    - setWeight: 75
+    - pause: { duration: 5m }
+  analysis:
+    startingStep: 1
+    interval: 1m
+    failureLimit: 3
+    maxErrorRate: 0.01
+    maxP99Seconds: 15
+    prometheusAddress: "http://prometheus.monitoring.svc.cluster.local:9090"
+
+# Update strategy for the Deployment
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0

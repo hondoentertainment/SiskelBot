@@ -1,0 +1,97 @@
+# Detect breaking API changes by diffing the generated OpenAPI spec
+name: OpenAPI diff
+
+on:
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "lib/openapi-spec.js"
+      - "lib/openapi-overrides.js"
+      - "lib/openapi-generated.js"
+      - "routes/**"
+      - "scripts/generate-openapi.mjs"
+      - "scripts/openapi-diff.mjs"
+      - "docs/openapi.yaml"
+
+concurrency:
+  group: openapi-diff-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Generate base spec
+        run: |
+          # Stash PR-head sources, swap in base versions, regenerate, then restore.
+          git checkout origin/${{ github.base_ref }} -- \
+            lib/openapi-spec.js \
+            lib/openapi-overrides.js \
+            routes/ \
+            scripts/generate-openapi.mjs 2>/dev/null || true
+          npm run openapi:generate -- --output=/tmp/openapi-base.yaml \
+            || cp docs/openapi.yaml /tmp/openapi-base.yaml \
+            || echo "{}" > /tmp/openapi-base.yaml
+          git checkout HEAD -- \
+            lib/openapi-spec.js \
+            lib/openapi-overrides.js \
+            routes/ \
+            scripts/generate-openapi.mjs 2>/dev/null || true
+
+      - name: Generate head spec
+        run: |
+          npm run openapi:generate -- --output=/tmp/openapi-head.yaml \
+            || cp docs/openapi.yaml /tmp/openapi-head.yaml
+
+      - name: Diff
+        id: diff
+        run: |
+          set +e
+          node scripts/openapi-diff.mjs /tmp/openapi-base.yaml /tmp/openapi-head.yaml --output=/tmp/changelog.md
+          DIFF_EXIT=$?
+          cat /tmp/changelog.md >> "$GITHUB_STEP_SUMMARY"
+          echo "diff_exit=$DIFF_EXIT" >> "$GITHUB_OUTPUT"
+          # Surface breaking changes via summary + comment, but don't fail the job.
+          exit 0
+
+      - name: Upload changelog
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: api-changelog
+          path: /tmp/changelog.md
+          retention-days: 30
+
+      - name: Comment on PR
+        if: always()
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+            let body = '';
+            try {
+              body = fs.readFileSync('/tmp/changelog.md', 'utf8');
+            } catch (err) {
+              body = '_No changelog produced._';
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: '## API Changelog\n\n' + body
+            });

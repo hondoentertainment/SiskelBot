@@ -1,0 +1,95 @@
+---
+# Install SiskelBot: clone, npm ci, env, systemd service.
+
+- name: Ensure install directory exists
+  ansible.builtin.file:
+    path: "{{ siskelbot_install_dir }}"
+    state: directory
+    owner: "{{ siskelbot_user }}"
+    group: "{{ siskelbot_group }}"
+    mode: "0755"
+
+- name: Ensure data directory exists
+  ansible.builtin.file:
+    path: "{{ siskelbot_data_dir }}"
+    state: directory
+    owner: "{{ siskelbot_user }}"
+    group: "{{ siskelbot_group }}"
+    mode: "0750"
+
+- name: Ensure log directory exists
+  ansible.builtin.file:
+    path: "{{ siskelbot_log_dir }}"
+    state: directory
+    owner: "{{ siskelbot_user }}"
+    group: "{{ siskelbot_group }}"
+    mode: "0750"
+
+- name: Clone SiskelBot repository
+  become: true
+  become_user: "{{ siskelbot_user }}"
+  ansible.builtin.git:
+    repo: "{{ siskelbot_repo }}"
+    dest: "{{ siskelbot_install_dir }}"
+    version: "{{ siskelbot_branch }}"
+    force: true
+    accept_hostkey: true
+  register: git_clone_result
+  notify: restart siskelbot
+
+- name: Install Node.js dependencies (npm ci)
+  become: true
+  become_user: "{{ siskelbot_user }}"
+  ansible.builtin.command:
+    cmd: npm ci --omit=dev
+    chdir: "{{ siskelbot_install_dir }}"
+  environment:
+    NODE_ENV: "{{ siskelbot_node_env }}"
+  when: git_clone_result.changed
+  notify: restart siskelbot
+
+- name: Render .env file
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ siskelbot_install_dir }}/.env"
+    owner: "{{ siskelbot_user }}"
+    group: "{{ siskelbot_group }}"
+    mode: "0600"
+  notify: restart siskelbot
+  no_log: true
+
+- name: Install systemd unit file
+  ansible.builtin.template:
+    src: siskelbot.service.j2
+    dest: /etc/systemd/system/siskelbot.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - reload systemd
+    - restart siskelbot
+
+- name: Ensure systemd is reloaded before enabling the service
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start SiskelBot service
+  ansible.builtin.systemd:
+    name: siskelbot
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Wait for SiskelBot to respond on health endpoint
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ siskelbot_port }}/health"
+    status_code: 200
+    return_content: false
+  register: health_check
+  retries: 30
+  delay: 2
+  until: health_check.status == 200
+  ignore_errors: true
+
+- name: Report health check result
+  ansible.builtin.debug:
+    msg: "SiskelBot health check {{ 'succeeded' if health_check.status == 200 else 'failed -- check logs with: journalctl -u siskelbot' }}"

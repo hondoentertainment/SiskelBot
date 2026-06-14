@@ -10,7 +10,7 @@
   const MAX_NAME_LENGTH = 128;
   const MAX_STEP_ACTION_LENGTH = 512;
 
-  const SAFE_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9\s\-_.]{0,126}$/;
+  // const SAFE_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9\s\-_.]{0,126}$/;
 
   /**
    * Sanitize recipe name: trim, limit length, remove unsafe chars.
@@ -153,7 +153,6 @@
   }
 
   function mergeAutomations(defaults, stored) {
-    const defaultIds = new Set((defaults.automations || []).map((a) => a.id));
     const userAutomations = (stored?.automations || []).filter((a) => a?.id && a.id.startsWith("user-"));
     return [...(defaults.automations || []), ...userAutomations];
   }

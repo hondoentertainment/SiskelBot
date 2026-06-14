@@ -1,0 +1,63 @@
+name: Plugin Submission
+description: Submit a plugin to the SiskelBot marketplace
+labels: [plugin]
+body:
+  - type: input
+    id: plugin-name
+    attributes:
+      label: Plugin name
+      placeholder: my-awesome-plugin
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      placeholder: What does this plugin do?
+    validations:
+      required: true
+  - type: input
+    id: repository
+    attributes:
+      label: Repository URL
+      placeholder: https://github.com/user/siskelbot-plugin-example
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Integration
+        - Tool
+        - Theme
+        - Analytics
+        - Storage
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: installation
+    attributes:
+      label: Installation instructions
+      placeholder: Any special installation steps beyond the standard plugin install
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Submission checklist
+      options:
+        - label: Plugin includes a valid `manifest.json`
+          required: true
+        - label: Plugin has been tested with the latest SiskelBot release
+          required: true
+        - label: Plugin does not bundle credentials or secrets
+          required: true
+        - label: Plugin includes a README with usage instructions
+          required: true

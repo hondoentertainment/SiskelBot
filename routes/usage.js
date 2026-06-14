@@ -1,5 +1,10 @@
-import express from "express";
 import rateLimit from "express-rate-limit";
+import {
+  getUsageSummary,
+  generateUsageCsv,
+  checkUsageThresholds,
+  listUsageAlerts,
+} from "../lib/usage-reports.js";
 
 export default function mountUsageRoutes(app, deps) {
   const {
@@ -15,6 +20,8 @@ export default function mountUsageRoutes(app, deps) {
     exportToCsv,
     exportToJson,
     getRecordsForPeriod,
+    adminAuth,
+    storage,
   } = deps;
 
   const usageSummaryRateLimiter = rateLimit({
@@ -101,6 +108,79 @@ export default function mountUsageRoutes(app, deps) {
     } catch (err) {
       console.error("Analytics export error:", err.message);
       return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  const usageV1RateLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
+  const authGuard = isAuthConfigured ? (isAuthConfigured() ? [userAuth] : []) : [];
+
+  // GET /api/v1/usage/summary — workspace usage summary
+  apiRoute("get", "/usage/summary", usageV1RateLimiter, ...authGuard, logRequest, async (req, res) => {
+    try {
+      const workspaceId = req.query?.workspace ? String(req.query.workspace).trim() : "default";
+      const from = req.query?.from ? String(req.query.from) : undefined;
+      const to = req.query?.to ? String(req.query.to) : undefined;
+      const summary = await getUsageSummary(workspaceId, { from, to });
+      res.json(summary);
+    } catch (err) {
+      return apiError(res, 500, "INTERNAL_ERROR", err.message);
+    }
+  });
+
+  // GET /api/v1/usage/export — download usage CSV
+  apiRoute("get", "/usage/export", usageV1RateLimiter, ...authGuard, logRequest, async (req, res) => {
+    try {
+      const workspaceId = req.query?.workspace ? String(req.query.workspace).trim() : "default";
+      const from = req.query?.from ? String(req.query.from) : undefined;
+      const to = req.query?.to ? String(req.query.to) : undefined;
+
+      const now = new Date();
+      const monthLabel = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+      const filename = `usage-${monthLabel}.csv`;
+
+      const csv = await generateUsageCsv(workspaceId, { from, to });
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.send(csv);
+    } catch (err) {
+      return apiError(res, 500, "INTERNAL_ERROR", err.message);
+    }
+  });
+
+  // GET /api/v1/usage/alerts — list recent threshold alerts for workspace
+  apiRoute("get", "/usage/alerts", usageV1RateLimiter, ...authGuard, logRequest, async (req, res) => {
+    try {
+      const workspaceId = req.query?.workspace ? String(req.query.workspace).trim() : "default";
+      const alerts = await listUsageAlerts(workspaceId, storage);
+      res.json({ workspaceId, alerts });
+    } catch (err) {
+      return apiError(res, 500, "INTERNAL_ERROR", err.message);
+    }
+  });
+
+  // POST /api/v1/admin/usage/check-thresholds — trigger threshold check for all workspaces (admin)
+  // No scheduler is wired for this; call this endpoint to run on demand.
+  apiRoute("post", "/admin/usage/check-thresholds", adminAuth, logRequest, async (req, res) => {
+    try {
+      const workspaceIds = req.body?.workspaceIds;
+      const targets = Array.isArray(workspaceIds) && workspaceIds.length > 0
+        ? workspaceIds.map(String)
+        : ["default"];
+
+      const results = [];
+      for (const ws of targets) {
+        const result = await checkUsageThresholds(ws, storage);
+        results.push({ workspaceId: ws, ...result });
+      }
+      res.json({ results });
+    } catch (err) {
+      return apiError(res, 500, "INTERNAL_ERROR", err.message);
     }
   });
 }

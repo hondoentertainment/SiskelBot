@@ -1,7 +1,5 @@
 {
-  "_comment": "Example staging export for eval target staging_trace (tool order + optional agent_activity checks).",
-  "version": 1,
-  "source": "example",
+  "name": "example-staging",
   "goldenTrace": [
     { "name": "list_context", "arguments": {} },
     { "name": "search_context", "arguments": { "query": "docs" } }

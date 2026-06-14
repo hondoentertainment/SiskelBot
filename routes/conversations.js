@@ -9,6 +9,7 @@ export function mountConversationRoutes(app, deps) {
   const {
     apiRoute,
     apiError,
+    userAuth,
     requireScope,
     logRequest,
     storageRateLimiter,
@@ -22,10 +23,10 @@ export function mountConversationRoutes(app, deps) {
     deleteConversationBranch,
   } = deps;
 
-  apiRoute("get", "/conversations", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+  apiRoute("get", "/conversations", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
-      const data = await storage.listItems("conversations", workspace);
+      const data = await storage.listItems("conversations", workspace, req.userId);
       res.json({ _version: 1, items: data });
     } catch (err) {
       console.error("Storage conversations list error:", err.message);
@@ -33,9 +34,9 @@ export function mountConversationRoutes(app, deps) {
     }
   });
 
-  const validateCreateConv = validate({ body: { title: "?string", messages: "array" } });
+  const validateCreateConv = validate({ body: { title: "?string", messages: "?array" } });
 
-  apiRoute("post", "/conversations", storageRateLimiter, requireScope("write"), logRequest, validateCreateConv, async (req, res) => {
+  apiRoute("post", "/conversations", storageRateLimiter, userAuth, requireScope("write"), logRequest, validateCreateConv, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.body?.workspace);
       const { id, title, messages, meta } = req.body || {};
@@ -47,9 +48,9 @@ export function mountConversationRoutes(app, deps) {
         meta: meta && typeof meta === "object" ? meta : {},
         createdAt: new Date().toISOString(),
       };
-      const merged = await storage.mergeItems("conversations", workspace, [item]);
+      const merged = await storage.mergeItems("conversations", workspace, [item], req.userId);
       const out = merged.find((x) => x.id === convId) || item;
-      await logActivity(workspace, "conversation_created", req.userId || "anonymous", { title: item.title, id: out.id });
+      await logActivity(workspace, "conversation_created", req.userId, { title: item.title, id: out.id });
       res.status(201).json(out);
     } catch (err) {
       console.error("Storage conversations add error:", err.message);
@@ -57,10 +58,10 @@ export function mountConversationRoutes(app, deps) {
     }
   });
 
-  apiRoute("get", "/conversations/:id", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+  apiRoute("get", "/conversations/:id", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
-      const item = await storage.getItem("conversations", req.params.id, workspace);
+      const item = await storage.getItem("conversations", req.params.id, workspace, req.userId);
       if (!item) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
       res.json(item);
     } catch (err) {
@@ -69,7 +70,7 @@ export function mountConversationRoutes(app, deps) {
     }
   });
 
-  apiRoute("put", "/conversations/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
+  apiRoute("put", "/conversations/:id", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.body?.workspace);
       const { title, messages, meta } = req.body || {};
@@ -78,7 +79,7 @@ export function mountConversationRoutes(app, deps) {
         if (Array.isArray(messages)) existing.messages = messages;
         if (meta && typeof meta === "object") existing.meta = meta;
         return existing;
-      });
+      }, req.userId);
       if (!updated) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
       res.json(updated);
     } catch (err) {
@@ -87,10 +88,10 @@ export function mountConversationRoutes(app, deps) {
     }
   });
 
-  apiRoute("delete", "/conversations/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
+  apiRoute("delete", "/conversations/:id", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
-      const deleted = await storage.deleteItem("conversations", req.params.id, workspace);
+      const deleted = await storage.deleteItem("conversations", req.params.id, workspace, req.userId);
       if (!deleted) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
       res.status(204).send();
     } catch (err) {
@@ -100,10 +101,10 @@ export function mountConversationRoutes(app, deps) {
   });
 
   // --- Conversation branching & forking ---
-  apiRoute("post", "/conversations/:id/branch", storageRateLimiter, logRequest, async (req, res) => {
+  apiRoute("post", "/conversations/:id/branch", storageRateLimiter, userAuth, logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.body?.workspace || req.query?.workspace);
-      const userId = req.userId || "anonymous";
+      const userId = req.userId;
       const { atMessageIndex, label } = req.body || {};
       if (typeof atMessageIndex !== "number" || !Number.isInteger(atMessageIndex) || atMessageIndex < 0) {
         return apiError(res, 400, "INVALID_INPUT", "atMessageIndex must be a non-negative integer.");
@@ -118,10 +119,10 @@ export function mountConversationRoutes(app, deps) {
     }
   });
 
-  apiRoute("get", "/conversations/:id/tree", storageRateLimiter, logRequest, async (req, res) => {
+  apiRoute("get", "/conversations/:id/tree", storageRateLimiter, userAuth, logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
-      const userId = req.userId || "anonymous";
+      const userId = req.userId;
       const tree = await getConversationTree(req.params.id, workspace, userId);
       if (!tree) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
       res.json(tree);
@@ -131,10 +132,10 @@ export function mountConversationRoutes(app, deps) {
     }
   });
 
-  apiRoute("get", "/conversations/:id/branches", storageRateLimiter, logRequest, async (req, res) => {
+  apiRoute("get", "/conversations/:id/branches", storageRateLimiter, userAuth, logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
-      const userId = req.userId || "anonymous";
+      const userId = req.userId;
       const branches = await listConversationBranches(req.params.id, workspace, userId);
       res.json({ branches });
     } catch (err) {
@@ -143,10 +144,10 @@ export function mountConversationRoutes(app, deps) {
     }
   });
 
-  apiRoute("get", "/conversations/branches/:branchId", storageRateLimiter, logRequest, async (req, res) => {
+  apiRoute("get", "/conversations/branches/:branchId", storageRateLimiter, userAuth, logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
-      const userId = req.userId || "anonymous";
+      const userId = req.userId;
       const branch = await getConversationBranch(req.params.branchId, workspace, userId);
       if (!branch) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
       res.json(branch);
@@ -156,10 +157,10 @@ export function mountConversationRoutes(app, deps) {
     }
   });
 
-  apiRoute("delete", "/conversations/branches/:branchId", storageRateLimiter, logRequest, async (req, res) => {
+  apiRoute("delete", "/conversations/branches/:branchId", storageRateLimiter, userAuth, logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
-      const userId = req.userId || "anonymous";
+      const userId = req.userId;
       const deleted = await deleteConversationBranch(req.params.branchId, workspace, userId);
       if (!deleted) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
       res.status(204).send();
@@ -170,10 +171,10 @@ export function mountConversationRoutes(app, deps) {
   });
 
   // --- Conversation search ---
-  apiRoute("get", "/conversations/search", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+  apiRoute("get", "/conversations/search", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
-      const userId = req.userId || "anonymous";
+      const userId = req.userId;
       const q = req.query.q || "";
       const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
       const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
@@ -187,10 +188,10 @@ export function mountConversationRoutes(app, deps) {
   });
 
   // --- Conversation export ---
-  apiRoute("get", "/conversations/:id/export", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+  apiRoute("get", "/conversations/:id/export", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
-      const userId = req.userId || "anonymous";
+      const userId = req.userId;
       const format = req.query.format || "json";
       if (!["markdown", "json", "html"].includes(format)) {
         return apiError(res, 400, "INVALID_FORMAT", "format must be markdown, json, or html");
@@ -207,10 +208,10 @@ export function mountConversationRoutes(app, deps) {
   });
 
   // --- Conversation sharing ---
-  apiRoute("post", "/conversations/:id/share", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
+  apiRoute("post", "/conversations/:id/share", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.body?.workspace || req.query?.workspace);
-      const userId = req.userId || "anonymous";
+      const userId = req.userId;
       const { expiresIn, password } = req.body || {};
       const item = await storage.getItem("conversations", req.params.id, workspace, userId);
       if (!item) return apiError(res, 404, "NOT_FOUND", "Conversation not found");
@@ -222,10 +223,10 @@ export function mountConversationRoutes(app, deps) {
     }
   });
 
-  apiRoute("get", "/conversations/:id/shares", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+  apiRoute("get", "/conversations/:id/shares", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
-      const userId = req.userId || "anonymous";
+      const userId = req.userId;
       const shares = await listShareLinks(userId, workspace);
       const filtered = shares.filter((s) => s.conversationId === req.params.id);
       res.json({ shares: filtered });
@@ -235,9 +236,9 @@ export function mountConversationRoutes(app, deps) {
     }
   });
 
-  apiRoute("delete", "/conversations/:id/share/:shareId", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
+  apiRoute("delete", "/conversations/:id/share/:shareId", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
     try {
-      const userId = req.userId || "anonymous";
+      const userId = req.userId;
       const revoked = await revokeShareLink(req.params.shareId, userId);
       if (!revoked) return apiError(res, 404, "NOT_FOUND", "Share link not found or already revoked");
       res.status(204).send();

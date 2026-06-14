@@ -33,7 +33,7 @@
     const INSTALL_DISMISSED_KEY = 'siskelbot-install-dismissed';
     const NOTIFICATIONS_STORAGE_KEY = 'siskelbot-notifications';
     const MAX_CONVERSATIONS = 50;
-    const MAX_NOTIFICATIONS = 100;
+    // const MAX_NOTIFICATIONS = 100;
     const ONBOARDING_DONE_KEY = 'siskelbot-onboarding-v3-done';
     const MAX_CHAT_DOM_MESSAGES = 120;
     const scheduleDom = (typeof SiskelRafBatcher !== 'undefined' && SiskelRafBatcher.create)
@@ -93,7 +93,7 @@
     let config = { backend: 'vllm', modelPresets: [], modelPlaceholder: 'meta-llama/Llama-3-8B-Instruct' };
     let activeAbortController = null;
     let lastSubmittedPrompt = '';
-    let lastErrorMessage = '';
+    // let lastErrorMessage = '';
 
     let conversationMeta = { pinned: false, tags: [] };
     let attachedImages = [];
@@ -168,7 +168,7 @@
     }
 
     function showNotice(message, variant = 'warning', opts = false) {
-      lastErrorMessage = message;
+      // lastErrorMessage = message;
       noticeText.textContent = message;
       noticeBanner.className = `notice-banner visible ${variant}`;
       const canRetry = typeof opts === 'boolean' ? opts : (opts && opts.canRetry);
@@ -585,7 +585,7 @@
 
     // Phase 29: Team workspaces - create, join, invite, members, activity
     (function initPhase29Workspace() {
-      const workspaceDetails = document.getElementById('workspace-details');
+      document.getElementById('workspace-details');
       const wsCreateBtn = document.getElementById('workspace-create-btn');
       const wsJoinBtn = document.getElementById('workspace-join-btn');
       const wsInviteBtn = document.getElementById('workspace-invite-btn');
@@ -1262,12 +1262,20 @@
     const refreshReposBtn = document.getElementById('refresh-repos-btn');
     const refreshDeploymentsBtn = document.getElementById('refresh-deployments-btn');
     const integrationsList = document.getElementById('integrations-list');
+    const integrationsHint = document.getElementById('integrations-hint');
+
+    function setIntegrationsHint(message) {
+      if (integrationsHint) integrationsHint.textContent = message;
+    }
 
     async function loadIntegrationsStatus() {
       if (!githubStatusEl || !vercelStatusEl) return;
       try {
         const res = await fetch('/api/integrations/status');
-        if (!res.ok) return;
+        if (!res.ok) {
+          setIntegrationsHint('Could not load integration status. Check the server logs and integration environment variables.');
+          return;
+        }
         const data = await res.json();
         githubStatusEl.textContent = 'GitHub: ' + (data.github ? 'connected' : 'missing');
         githubStatusEl.className = data.github ? 'connected' : 'missing';
@@ -1275,7 +1283,17 @@
         vercelStatusEl.className = data.vercel ? 'connected' : 'missing';
         if (refreshReposBtn) refreshReposBtn.disabled = !data.github;
         if (refreshDeploymentsBtn) refreshDeploymentsBtn.disabled = !data.vercel;
-      } catch (_) {}
+        if (data.github && data.vercel) {
+          setIntegrationsHint('GitHub and Vercel are connected. Use recipes with deploy steps to turn changes into deployments.');
+        } else {
+          const missing = [];
+          if (!data.github) missing.push('GITHUB_TOKEN');
+          if (!data.vercel) missing.push('VERCEL_TOKEN');
+          setIntegrationsHint('Missing server-side ' + missing.join(' and ') + '. Set tokens to unlock repos, deployments, and deploy recipes.');
+        }
+      } catch (err) {
+        setIntegrationsHint('Could not load integration status: ' + (err.message || 'request failed'));
+      }
     }
 
     async function refreshRepos() {
@@ -1291,7 +1309,7 @@
         }
         const repos = Array.isArray(data) ? data : [];
         if (repos.length === 0) {
-          integrationsList.innerHTML = '<li class="integrations-list empty">No repos</li>';
+          integrationsList.innerHTML = '<li class="integrations-list empty">No repos found. Confirm GITHUB_TOKEN has access to the repositories you expect.</li>';
           return;
         }
         integrationsList.innerHTML = repos.slice(0, 50).map(r => {
@@ -1318,7 +1336,7 @@
         }
         const deployments = data.deployments || (Array.isArray(data) ? data : []);
         if (deployments.length === 0) {
-          integrationsList.innerHTML = '<li class="integrations-list empty">No deployments</li>';
+          integrationsList.innerHTML = '<li class="integrations-list empty">No deployments found. Confirm VERCEL_TOKEN can access the target Vercel team and project.</li>';
           return;
         }
         integrationsList.innerHTML = deployments.slice(0, 50).map(d => {
@@ -1703,7 +1721,7 @@
     function renderAttachedImages() {
       if (!attachedImagesEl || !attachedImagesWrap) return;
       attachedImagesWrap.style.display = attachedImages.length ? 'block' : 'none';
-      attachedImagesEl.innerHTML = attachedImages.map((dataUrl, i) => `
+      attachedImagesEl.innerHTML = attachedImages.map((dataUrl, _i) => `
         <div class="attached-image-preview"><img src="${dataUrl}" alt="Attached"/><button type="button" class="remove-img" aria-label="Remove image">×</button></div>
       `).join('');
       attachedImagesEl.querySelectorAll('.remove-img').forEach((btn, i) => {
@@ -1726,7 +1744,6 @@
             showNotice(`Image ${file.name} exceeds 5MB`, 'warning', false);
             continue;
           }
-          const mime = file.type || (file.name?.endsWith('.png') ? 'image/png' : file.name?.endsWith('.webp') ? 'image/webp' : 'image/jpeg');
           const reader = new FileReader();
           reader.onload = () => {
             const dataUrl = reader.result;
@@ -1748,8 +1765,8 @@
     // --- Phase 6: Recipes panel ---
     const recipesList = document.getElementById('recipes-list');
     const recipeCreateBtn = document.getElementById('recipe-create-btn');
-    const recipesSyncBtn = document.getElementById('recipes-sync-btn');
-    const recipesLoadBtn = document.getElementById('recipes-load-btn');
+    // const recipesSyncBtn = document.getElementById('recipes-sync-btn');
+    // const recipesLoadBtn = document.getElementById('recipes-load-btn');
     const recipeCreateModal = document.getElementById('recipe-create-modal');
     const recipeCreateNameInput = document.getElementById('recipe-create-name-input');
     const recipeCreateDescInput = document.getElementById('recipe-create-desc-input');
@@ -1820,7 +1837,7 @@
     }
 
     async function openScheduleModal(recipe) {
-      const returnTo = document.activeElement;
+      // const returnTo = document.activeElement;
       _scheduleModalRecipeId = recipe.id;
       const nameEl = document.getElementById('recipe-schedule-name');
       if (nameEl) nameEl.textContent = recipe.name || 'Recipe';
@@ -1967,7 +1984,7 @@
       recipeAddStepBtn.addEventListener('click', () => {
         const action = recipeAddStepSelect?.value?.trim();
         if (!action) return;
-        const step = JSON.stringify({ action, payload: {} });
+        // const step = JSON.stringify({ action, payload: {} });
         const cur = recipeCreateStepsInput.value.trim();
         let steps = [];
         try {
@@ -2581,7 +2598,7 @@
             conversationsSyncBtn.dataset.wired = '1';
             conversationsSyncBtn.onclick = async () => {
               try {
-                const list = loadConversations();
+                loadConversations();
                 saveCurrentToConversations();
                 const list2 = loadConversations();
                 const res2 = await fetch('/api/conversations', {
@@ -2630,7 +2647,7 @@
     }
 
     if (clearBtn) {
-      const origClear = clearBtn.onclick;
+      // const origClear = clearBtn.onclick;
       clearBtn.onclick = () => {
         saveCurrentToConversations();
         clearHistory();
@@ -2780,7 +2797,7 @@
 
     // --- Voice: Text-to-Speech ---
     const synth = window.speechSynthesis;
-    let currentUtterance = null;
+    // let currentUtterance = null;
 
     function speakText(text, onEnd) {
       if (!synth || !text || !text.trim()) return;
@@ -2793,7 +2810,7 @@
         if (onEnd) onEnd();
       };
       u.onerror = () => document.querySelectorAll('.btn-speaker.speaking').forEach(b => b.classList.remove('speaking'));
-      currentUtterance = u;
+      // currentUtterance = u;
       synth.speak(u);
     }
 
@@ -2986,14 +3003,14 @@
         };
         recognition.onresult = (e) => {
           let final = '';
-          let interim = '';
+          // let interim = '';
           for (let i = e.resultIndex; i < e.results.length; i++) {
             const result = e.results[i];
             const transcript = result[0].transcript;
             if (result.isFinal) {
               final += transcript;
             } else {
-              interim += transcript;
+              // interim += transcript;
             }
           }
           if (final) {
@@ -3145,12 +3162,12 @@
     const approvalConfirm = document.getElementById('approval-confirm');
     const approvalCancel = document.getElementById('approval-cancel');
 
-    function isTaskOriented(text) {
-      if (!text || typeof text !== 'string') return false;
-      const lower = text.toLowerCase();
-      const keywords = ['deploy', 'execute', 'run', 'build', 'install', 'setup', 'create', 'delete', 'restart', 'push', 'publish'];
-      return keywords.some(k => lower.includes(k));
-    }
+    // function isTaskOriented(text) {
+    //   if (!text || typeof text !== 'string') return false;
+    //   const lower = text.toLowerCase();
+    //   const keywords = ['deploy', 'execute', 'run', 'build', 'install', 'setup', 'create', 'delete', 'restart', 'push', 'publish'];
+    //   return keywords.some(k => lower.includes(k));
+    // }
 
     function updatePlanTaskButtonState() {
       if (!planTaskBtn) return;
@@ -3180,7 +3197,7 @@
       } catch (_) { return false; }
     }
 
-    function renderTaskPlanCard(plan, raw) {
+    function renderTaskPlanCard(plan, _raw) {
       const card = document.createElement('div');
       card.className = 'task-plan-card';
       const stepsHtml = (plan.steps || []).map((s, i) => {
@@ -3858,7 +3875,7 @@
     installAppBtn?.addEventListener('click', async () => {
       if (!deferredInstallPrompt) return;
       deferredInstallPrompt.prompt();
-      const { outcome } = await deferredInstallPrompt.userChoice;
+      await deferredInstallPrompt.userChoice;
       deferredInstallPrompt = null;
       if (installBanner) installBanner.style.display = 'none';
     });
@@ -4010,10 +4027,8 @@
     }
 
     let notificationsPollTimer = null;
-    let notificationsWs = null;
-    let notificationsWsReconnectDelay = 1000;
-    const NOTIFICATIONS_WS_MAX_BACKOFF = 30000;
     let notificationsWsConnected = false;
+    let notificationsWsManager = null;
 
     function startNotificationsPoll() {
       if (notificationsPollTimer) return;
@@ -4031,46 +4046,45 @@
       }
     }
 
+    /** Notifications stream: use SiskelWSReconnect.createReconnectingWebSocket (client/js/ws-reconnect.js) — backoff, jitter, queue flush, visibility/offline pauses, heartbeats — not a raw WebSocket. */
     function connectNotificationsWs() {
-      if (notificationsWs && notificationsWs.readyState === 1) return;
-      const ws = typeof getSelectedWorkspace === 'function' ? getSelectedWorkspace() : 'default';
-      const headers = getApiHeaders ? getApiHeaders() : { credentials: 'include' };
-      fetch(`/api/ws-token?workspace=${encodeURIComponent(ws)}`, { headers, credentials: 'include' })
-        .then((r) => r.ok ? r.json() : Promise.reject(new Error('ws-token failed')))
-        .then((data) => {
-          const token = data?.token;
-          if (!token) return;
-          const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-          const url = `${proto}//${location.host}/ws?token=${encodeURIComponent(token)}&workspace=${encodeURIComponent(ws)}`;
-          const sock = new WebSocket(url);
-          sock.onopen = () => {
+      if (notificationsWsManager) return;
+      if (window.SiskelWSReconnect) {
+        const wsWorkspace = typeof getSelectedWorkspace === 'function' ? getSelectedWorkspace() : 'default';
+        notificationsWsManager = window.SiskelWSReconnect.createReconnectingWebSocket({
+          getTokenUrl: '/api/v1/ws-token',
+          workspace: wsWorkspace,
+          getTokenHeaders: typeof getApiHeaders === 'function' ? getApiHeaders : undefined,
+          onConnect: function () {
             notificationsWsConnected = true;
-            notificationsWsReconnectDelay = 1000;
             stopNotificationsPoll();
-          };
-          sock.onmessage = (e) => {
-            try {
-              const msg = JSON.parse(e.data);
-              if (msg?.type === 'notification') refreshNotifications();
-            } catch (_) {}
-          };
-          sock.onclose = () => {
-            notificationsWs = null;
+          },
+          onDisconnect: function () {
             notificationsWsConnected = false;
             startNotificationsPoll();
-            const delay = notificationsWsReconnectDelay;
-            notificationsWsReconnectDelay = Math.min(NOTIFICATIONS_WS_MAX_BACKOFF, notificationsWsReconnectDelay * 2);
-            setTimeout(connectNotificationsWs, delay);
-          };
-          sock.onerror = () => { sock.close(); };
-          notificationsWs = sock;
-        })
-        .catch(() => {
-          startNotificationsPoll();
-          const delay = notificationsWsReconnectDelay;
-          notificationsWsReconnectDelay = Math.min(NOTIFICATIONS_WS_MAX_BACKOFF, notificationsWsReconnectDelay * 2);
-          setTimeout(connectNotificationsWs, delay);
+          },
+          onMessage: function (e) {
+            try {
+              const msg = JSON.parse(e.data);
+              if (msg && msg.type === 'notification') refreshNotifications();
+            } catch (_) {}
+          },
         });
+        notificationsWsManager.connect();
+        const wsIndicatorEl = document.getElementById('ws-connection-indicator');
+        if (wsIndicatorEl) {
+          window.SiskelWSReconnect.renderConnectionIndicator(wsIndicatorEl, notificationsWsManager);
+        }
+      } else {
+        startNotificationsPoll();
+      }
+    }
+    function disconnectNotificationsWs() {
+      if (notificationsWsManager) {
+        notificationsWsManager.disconnect();
+        notificationsWsManager = null;
+        notificationsWsConnected = false;
+      }
     }
 
     if (document.visibilityState === 'visible') {
@@ -4082,13 +4096,13 @@
         connectNotificationsWs();
         if (!notificationsWsConnected) startNotificationsPoll();
       } else {
-        if (notificationsWs) { notificationsWs.close(); notificationsWs = null; }
+        disconnectNotificationsWs();
         stopNotificationsPoll();
       }
     });
     if (typeof getSelectedWorkspace === 'function' && workspaceSelect) {
       workspaceSelect.addEventListener('change', () => {
-        if (notificationsWs) { notificationsWs.close(); notificationsWs = null; }
+        disconnectNotificationsWs();
         connectNotificationsWs();
       });
     }

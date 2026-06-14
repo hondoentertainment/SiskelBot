@@ -1,0 +1,33 @@
+# Lightweight production checks (no secrets). Uses GET /health/live and GET /config.
+# Override URL with repository variable PRODUCTION_BASE_URL or env in workflow_dispatch.
+name: Production smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Deployment base URL (no trailing slash)"
+        required: false
+        default: "https://siskelbot.vercel.app"
+  schedule:
+    # Weekly Monday 15:00 UTC
+    - cron: "0 15 * * 1"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci
+      - name: Run smoke (--live-only skips readiness/chat probes)
+        env:
+          BASE_URL: ${{ github.event.inputs.base_url || vars.PRODUCTION_BASE_URL || 'https://siskelbot.vercel.app' }}
+          SMOKE_TEST_API_KEY: ${{ secrets.SMOKE_TEST_API_KEY }}
+          ADMIN_API_KEY: ${{ secrets.SMOKE_TEST_ADMIN_API_KEY }}
+        run: npm run smoke-test:ci

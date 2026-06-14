@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>Sign up — Siskel Bot</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body { margin: 0; min-height: 100vh; font-family: system-ui, -apple-system, sans-serif; background: #020617; color: #e2e8f0; display: flex; align-items: center; justify-content: center; padding: 1.5rem; line-height: 1.55; }
+    .card { background: #0f172a; border: 1px solid #1e293b; border-radius: 14px; padding: 2rem; max-width: 440px; width: 100%; }
+    h1 { margin: 0 0 0.35rem; font-size: 1.5rem; }
+    p { margin: 0 0 1rem; color: #94a3b8; font-size: 0.95rem; }
+    .actions { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 1.25rem; }
+    a.btn { display: block; text-align: center; padding: 0.75rem 1rem; border-radius: 10px; font-weight: 600; text-decoration: none; }
+    .primary { background: #3b82f6; color: #fff; }
+    .ghost { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
+    a.btn:hover { filter: brightness(1.06); }
+    .back { margin-top: 1.25rem; font-size: 0.85rem; }
+    .back a { color: #64748b; }
+    code { font-size: 0.8rem; background: #020617; padding: 0.12rem 0.35rem; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Create your workspace</h1>
+    <p>Sign in with OAuth when your host enables it, or open the app with a deployment / user API key (see Settings after launch).</p>
+    <div class="actions" id="oauth-actions"></div>
+    <a class="btn ghost" href="/index.html">Open app with API key</a>
+    <p style="margin-top:1rem;font-size:0.85rem;color:#64748b;">Need higher limits? <a href="/pricing.html" style="color:#60a5fa;">View pricing</a>.</p>
+    <p class="back"><a href="/landing.html">← Marketing home</a></p>
+  </div>
+  <script>
+    (async function () {
+      const el = document.getElementById('oauth-actions');
+      if (!el) return;
+      try {
+        const res = await fetch('/config');
+        const cfg = await res.json();
+        const urls = cfg.signupUrls || {};
+        if (!urls.github && !urls.google) {
+          el.innerHTML = '<p style="margin:0;color:#94a3b8;font-size:0.9rem;">OAuth is not configured on this server. Use <strong>Open app with API key</strong> or contact your admin to enable GitHub / Google in environment variables.</p>';
+          return;
+        }
+        el.replaceChildren();
+        for (const entry of [
+          urls.github ? { href: urls.github, label: 'Continue with GitHub' } : null,
+          urls.google ? { href: urls.google, label: 'Continue with Google' } : null,
+        ].filter(Boolean)) {
+          const a = document.createElement('a');
+          a.className = 'btn primary';
+          a.href = entry.href;
+          a.textContent = entry.label;
+          el.appendChild(a);
+        }
+      } catch (e) {
+        el.textContent = 'Could not load server config.';
+      }
+    })();
+  </script>
+</body>
+</html>

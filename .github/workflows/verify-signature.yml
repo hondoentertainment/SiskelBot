@@ -1,0 +1,27 @@
+# Manually verify a released image's signature.
+# Usage: Run this workflow with the image tag (e.g. v1.0.0).
+name: Verify image signature
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to verify (e.g. v1.0.0)'
+        required: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Verify signature
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cosign verify \
+            --certificate-identity-regexp 'https://github.com/${{ github.repository }}/.*' \
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+            ghcr.io/${{ github.repository }}:${{ inputs.tag }}

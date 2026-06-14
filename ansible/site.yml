@@ -1,0 +1,45 @@
+---
+# SiskelBot full-stack provisioning playbook.
+#
+# Runs all roles in the correct order to produce a working VPS install:
+#   1. common      -- base packages, users, firewall, SSH hardening
+#   2. nodejs      -- Node.js 20 runtime
+#   3. postgresql  -- optional PostgreSQL 16 (enable_postgres)
+#   4. redis       -- optional Redis server (enable_redis)
+#   5. siskelbot   -- clone, install, env file, systemd service
+#   6. nginx       -- reverse proxy + optional Let's Encrypt SSL
+#
+# Run with:
+#   ansible-playbook site.yml
+#
+# Override variables on the command line, e.g.:
+#   ansible-playbook site.yml -e siskelbot_version=1.2.3
+
+- name: Provision SiskelBot on target hosts
+  hosts: all
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Verify supported OS (Ubuntu 22.04 / Debian 12)
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['os_family'] == 'Debian'
+        fail_msg: "This playbook targets Ubuntu 22.04 or Debian 12. Detected: {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}"
+        success_msg: "OS supported: {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}"
+
+  roles:
+    - role: common
+      tags: [common, base]
+    - role: nodejs
+      tags: [nodejs, runtime]
+    - role: postgresql
+      when: enable_postgres | default(true) | bool
+      tags: [postgresql, database]
+    - role: redis
+      when: enable_redis | default(true) | bool
+      tags: [redis, cache]
+    - role: siskelbot
+      tags: [siskelbot, app]
+    - role: nginx
+      tags: [nginx, proxy]

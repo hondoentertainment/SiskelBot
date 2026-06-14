@@ -1,27 +1,47 @@
 import { randomUUID } from "crypto";
 import { validate } from "../lib/validate.js";
+import { detectPromptInjection, sanitizeInput } from "../lib/prompt-guard.js";
+import { checkOutputSafety } from "../lib/output-guard.js";
+import { inputModerationMiddleware, checkOutput } from "../lib/safety-gate.js";
+import { estimateRequestCost, checkCostLimit, recordCost } from "../lib/cost-controls.js";
+import {
+  getActiveAdapter,
+  buildModelNameWithAdapter,
+  recordAdapterUsage,
+} from "../lib/lora-adapters.js";
+import { defaultChannelRegistry } from "../lib/realtime-channels.js";
+import {
+  checkQuota as checkTenantQuota,
+  recordRequest as recordTenantRequest,
+  recordTokens as recordTenantTokens,
+} from "../lib/tenant-quotas.js";
+import { createBillingManager } from "../lib/billing.js";
+
+const ENABLE_PROMPT_GUARD = process.env.ENABLE_PROMPT_GUARD === "1";
+const ENABLE_OUTPUT_GUARD = process.env.ENABLE_OUTPUT_GUARD === "1";
+const ENABLE_COST_LIMITS = process.env.ENABLE_COST_LIMITS === "1";
+const PLAN_QUOTA_ENABLED = process.env.QUOTA_ENABLED === "1";
+const moderationMiddleware = inputModerationMiddleware();
+const _billingManager = createBillingManager();
+
+/** Mirror usage-tracker totals into billing-usage.json for invoices and QUOTA_ENABLED plan checks. */
+function recordBillingUsage(workspace, inputTokens, outputTokens, model) {
+  const inT = Number(inputTokens) || 0;
+  const outT = Number(outputTokens) || 0;
+  return _billingManager.recordUsage(workspace, { inputTokens: inT, outputTokens: outT }, model).catch(() => {});
+}
 
 export default function mountChatRoutes(app, deps) {
   const {
     chatAuth,
-export function mountChatRoutes(app, deps) {
-  const {
-    apiError,
-    chatAuth,
-    apiKeyAuth,
     requireScope,
     perKeyChatRateLimiter,
     chatRateLimiter,
     logRequest,
+    apiError,
     backendFetch,
     buildProxyConfig,
     setQuotaHeaders,
-    recordChatRequest,
-    recordTokensUsed,
-    isQuotaConfigured,
-    checkQuota,
-    estimate,
-    recordUsage,
     BACKEND,
     MODEL_PRESETS,
     AB_ROUTING_ENABLED,
@@ -31,6 +51,14 @@ export function mountChatRoutes(app, deps) {
     STREAM_AGENT_FINAL,
     AGENT_STREAM_CHUNK_SIZE,
     USAGE_ALERT_TOKENS,
+    // lib imports
+    recordChatRequest,
+    recordTokensUsed,
+    isQuotaConfigured,
+    checkQuota,
+    estimate,
+    selectBackend,
+    logRouting,
     intersectClientToolsWithAllowlist,
     getToolsSchema,
     resolveAgentMaxIterations,
@@ -42,30 +70,61 @@ export function mountChatRoutes(app, deps) {
     pipeLlmChatStreamToSse,
     recordUsage,
     getTotalTokensInWindow,
-    resumeAgentLoopFromHitlToken,
-    takeHitlState,
-    pipeLlmChatStreamToSse,
     emitEvent,
     reportError,
     autoRecordEnabled,
     recordTrace,
-    sanitizeWorkspace,
-    resolveStorageUserId,
-    storage,
-    TASK_PLAN_SYSTEM_PROMPT,
-    extractTaskJsonFromResponse,
-    validateTaskPlan,
-    taskPlanRateLimiter,
+    recordModelResponse,
+    checkAndLogPromotion,
   } = deps;
 
   const validateChat = validate({ body: { messages: "array", model: "?string", stream: "?boolean" } });
 
   // POST /v1/chat/completions
-  app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRateLimiter, chatRateLimiter, logRequest, validateChat, async (req, res) => {
+  app.post("/v1/chat/completions", chatAuth, requireScope("write"), perKeyChatRateLimiter, chatRateLimiter, logRequest, validateChat, moderationMiddleware, async (req, res) => {
     recordChatRequest();
+    const _startTime = Date.now();
     try {
       const workspace = req.body?.agentOptions?.workspace || "default";
       const userId = req.userId || null;
+
+      // Per-tenant rate/token quota check (lib/tenant-quotas.js)
+      try {
+        const tenantQuota = await checkTenantQuota(workspace, { storage: deps.storage });
+        if (!tenantQuota.allowed) {
+          res.set("Retry-After", String(tenantQuota.retryAfter));
+          return apiError(
+            res,
+            429,
+            "QUOTA_EXCEEDED",
+            tenantQuota.reason || "tenant quota exceeded",
+            JSON.stringify({ currentUsage: tenantQuota.currentUsage, limits: tenantQuota.limits })
+          );
+        }
+        recordTenantRequest(workspace);
+      } catch (e) {
+        // Fail-open: log but do not block requests on quota infra errors
+        console.warn("[tenant-quotas] check failed:", e?.message || e);
+      }
+
+      // Plan-level token quota check (free 100K/mo, pro 1M/mo, enterprise unlimited).
+      // Gated by QUOTA_ENABLED=1 so existing deployments without billing data are unaffected.
+      if (PLAN_QUOTA_ENABLED) {
+        try {
+          const planLimits = await _billingManager.checkPlanLimits(workspace);
+          if (!planLimits.allowed) {
+            return apiError(
+              res,
+              429,
+              "QUOTA_EXCEEDED",
+              `Token quota exceeded for plan ${planLimits.planName}. Used: ${planLimits.used}, Limit: ${planLimits.limit}`,
+              JSON.stringify({ plan: planLimits.plan, used: planLimits.used, limit: planLimits.limit })
+            );
+          }
+        } catch (e) {
+          console.warn("[billing] plan quota check failed:", e?.message || e);
+        }
+      }
 
       // Per-workspace token quota check
       if (isQuotaConfigured()) {
@@ -83,6 +142,45 @@ export function mountChatRoutes(app, deps) {
         }
       }
 
+      // Phase 26: Prompt guard — injection detection and sanitization
+      if (ENABLE_PROMPT_GUARD && Array.isArray(req.body?.messages)) {
+        for (const msg of req.body.messages) {
+          if (typeof msg?.content === "string") {
+            const injection = detectPromptInjection(msg.content);
+            if (!injection.safe && injection.risk === "high") {
+              return res.status(400).json({
+                error: "Prompt injection detected",
+                code: "PROMPT_INJECTION",
+                risk: injection.risk,
+                patterns: injection.patterns,
+              });
+            }
+            const sanitized = sanitizeInput(msg.content, { maxLength: 100_000 });
+            if (sanitized.modified) {
+              msg.content = sanitized.text;
+            }
+          }
+        }
+      }
+
+      // Phase 26: Cost controls — pre-request limit check
+      if (ENABLE_COST_LIMITS) {
+        const costModel = req.body?.model || MODEL_PRESETS[BACKEND]?.[0] || "unknown";
+        const estInputTokens = estimate.inputFromMessages(req.body?.messages || []);
+        const costEstimate = estimateRequestCost(costModel, estInputTokens, 512);
+        if (costEstimate.cost > 0) {
+          const costCheck = await checkCostLimit(workspace, costEstimate.cost);
+          if (!costCheck.allowed) {
+            return res.status(429).json({
+              error: "Workspace cost limit exceeded",
+              code: "COST_LIMIT_EXCEEDED",
+              limit: costCheck.limit,
+              remaining: costCheck.remaining,
+            });
+          }
+        }
+      }
+
       // A/B routing: select backend per-request when MODEL_ROUTING is configured
       const requestId = randomUUID();
       let activeBackend = BACKEND;
@@ -93,7 +191,26 @@ export function mountChatRoutes(app, deps) {
 
       const config = buildProxyConfig(activeBackend);
       const url = `${config.baseUrl}${config.path}`;
-      const model = req.body?.model || MODEL_PRESETS[activeBackend]?.[0] || "unknown";
+      let model = req.body?.model || MODEL_PRESETS[activeBackend]?.[0] || "unknown";
+
+      // Phase 38.5: LoRA adapter — if the workspace has an active adapter,
+      // rewrite the outgoing model name (OpenAI) or attach adapter_name (vLLM).
+      let activeAdapter = null;
+      try {
+        activeAdapter = await getActiveAdapter(workspace);
+      } catch (_) {}
+      if (activeAdapter) {
+        const resolved = buildModelNameWithAdapter(model, activeAdapter);
+        if (resolved?.model) {
+          model = resolved.model;
+          req.body.model = resolved.model;
+        }
+        if (resolved?.extras && typeof resolved.extras === "object") {
+          req.body = { ...req.body, ...resolved.extras };
+        }
+        res.setHeader("X-Active-Adapter", activeAdapter.id);
+      }
+
       const agentMode = req.body?.agentMode === true;
       const swarmMode = req.body?.swarmMode === true;
       const hasTools = Array.isArray(req.body?.tools) && req.body.tools.length > 0;
@@ -185,9 +302,7 @@ export function mountChatRoutes(app, deps) {
             iteration,
             runId: meta.runId,
             stopReason: meta.stopReason,
-            stopDetail: meta.stopDetail,
             citationWarning: meta.citationWarning,
-            constraints: meta.constraints,
             trajectory: trajectorySummary,
           });
           res.write(`data: ${activityEvent}\n\n`);
@@ -198,7 +313,18 @@ export function mountChatRoutes(app, deps) {
 
         if (swarmResult?.synthesisDeferred) {
           const d = swarmResult.synthesisDeferred;
-          const { fullText, error } = await pipeLlmChatStreamToSse(res, backendFetch, d.url, d.config, d.synthBody);
+          const convoIdForSynth =
+            (typeof req.body?.conversationId === "string" && req.body.conversationId) ||
+            (typeof req.body?.agentOptions?.conversationId === "string" && req.body.agentOptions.conversationId) ||
+            null;
+          const { fullText, error } = await pipeLlmChatStreamToSse(
+            res,
+            backendFetch,
+            d.url,
+            d.config,
+            d.synthBody,
+            convoIdForSynth ? { conversationId: convoIdForSynth } : undefined
+          );
           content = fullText || "";
           if (error && !content.trim()) {
             content = `Synthesis error: ${error}\n\n${swarmResult.fallbackAggregate || ""}`;
@@ -229,7 +355,45 @@ export function mountChatRoutes(app, deps) {
 
         outputTokens = estimate.outputFromChars(content?.length || 0);
         recordTokensUsed(inputTokens, outputTokens);
+        try { recordTenantTokens(workspace, (inputTokens || 0) + (outputTokens || 0)); } catch (_) {}
         await recordUsage({ timestamp: new Date().toISOString(), model, inputTokens, outputTokens, backend: BACKEND, workspace, userId }).catch(() => {});
+        await recordBillingUsage(workspace, inputTokens, outputTokens, model);
+
+        // Phase 26: Output guard — check response safety
+        if (ENABLE_OUTPUT_GUARD && typeof content === "string") {
+          const safety = checkOutputSafety(content);
+          if (!safety.safe) {
+            console.warn("[output-guard] Issues detected:", safety.issues.map((i) => i.type).join(", "));
+          }
+        }
+
+        // Wave 17B: Safety gate — moderation check on agent output
+        if (typeof content === "string") {
+          const modResult = await checkOutput(content, { workspaceId: workspace, userId }).catch(() => ({ allowed: true }));
+          if (!modResult.allowed) {
+            console.warn("[safety-gate] Output blocked:", modResult.category);
+          }
+        }
+
+        // Phase 26: Cost controls — record actual cost
+        if (ENABLE_COST_LIMITS) {
+          const actualCost = estimateRequestCost(model, inputTokens, outputTokens);
+          if (actualCost.cost > 0) {
+            await recordCost(workspace, actualCost.cost, { model, timestamp: new Date().toISOString() }).catch(() => {});
+          }
+        }
+
+        // Record model quality metrics
+        recordModelResponse(model, { latencyMs: Date.now() - _startTime, tokens: outputTokens, error: false });
+        checkAndLogPromotion(model);
+
+        // Phase 38.5: adapter usage metrics
+        if (activeAdapter) {
+          recordAdapterUsage(activeAdapter.id, {
+            latencyMs: Date.now() - _startTime,
+            error: false,
+          }).catch(() => {});
+        }
 
         if (autoRecordEnabled()) {
           try {
@@ -251,6 +415,8 @@ export function mountChatRoutes(app, deps) {
           }
         }
 
+        const feedbackMeta = JSON.stringify({ type: "metadata", feedbackUrl: "/api/v1/feedback" });
+        res.write(`data: ${feedbackMeta}\n\n`);
         res.write("data: [DONE]\n\n");
         res.end();
         const ws = req.body?.agentOptions?.workspace || "default";
@@ -303,6 +469,13 @@ export function mountChatRoutes(app, deps) {
       let outputContent = "";
       let usageFromApi = null;
 
+      // Additive: unified realtime channel publication for this conversation.
+      const conversationIdForChannel =
+        (typeof req.body?.conversationId === "string" && req.body.conversationId) ||
+        (typeof req.body?.agentOptions?.conversationId === "string" && req.body.agentOptions.conversationId) ||
+        null;
+      let channelDeltaIndex = 0;
+
       for await (const chunk of response.body) {
         const text = chunk.toString("utf8");
         buffer += text;
@@ -319,6 +492,17 @@ export function mountChatRoutes(app, deps) {
             if (typeof delta === "string") {
               outputChars += delta.length;
               outputContent += delta;
+              if (conversationIdForChannel) {
+                try {
+                  defaultChannelRegistry.publish(`chat:${conversationIdForChannel}`, {
+                    role: "assistant",
+                    delta,
+                    index: channelDeltaIndex++,
+                  });
+                } catch (_) {
+                  // publication must never break the SSE response
+                }
+              }
             }
             const usage = parsed.usage || parsed.choices?.[0]?.usage;
             if (usage && (usage.prompt_tokens != null || usage.completion_tokens != null)) {
@@ -339,6 +523,7 @@ export function mountChatRoutes(app, deps) {
       const outputTokens = usageFromApi?.completion_tokens ?? estimate.outputFromChars(outputChars);
       const finalInputTokens = usageFromApi?.prompt_tokens ?? inputTokens;
       recordTokensUsed(finalInputTokens, outputTokens);
+      try { recordTenantTokens(workspace, (finalInputTokens || 0) + (outputTokens || 0)); } catch (_) {}
       await recordUsage({
         timestamp: new Date().toISOString(),
         model,
@@ -348,6 +533,44 @@ export function mountChatRoutes(app, deps) {
         workspace,
         userId,
       }).catch((e) => console.warn("[usage-tracker] Record failed:", e.message));
+
+      await recordBillingUsage(workspace, finalInputTokens, outputTokens, model);
+
+      // Phase 26: Output guard — check streaming response safety
+      if (ENABLE_OUTPUT_GUARD && outputContent) {
+        const safety = checkOutputSafety(outputContent);
+        if (!safety.safe) {
+          console.warn("[output-guard] Issues in streaming response:", safety.issues.map((i) => i.type).join(", "));
+        }
+      }
+
+      // Wave 17B: Safety gate — moderation check on streamed output
+      if (outputContent) {
+        const modResult = await checkOutput(outputContent, { workspaceId: workspace, userId }).catch(() => ({ allowed: true }));
+        if (!modResult.allowed) {
+          console.warn("[safety-gate] Streamed output blocked:", modResult.category);
+        }
+      }
+
+      // Phase 26: Cost controls — record actual cost for streaming path
+      if (ENABLE_COST_LIMITS) {
+        const actualCost = estimateRequestCost(model, finalInputTokens, outputTokens);
+        if (actualCost.cost > 0) {
+          await recordCost(workspace, actualCost.cost, { model, timestamp: new Date().toISOString() }).catch(() => {});
+        }
+      }
+
+      // Record model quality metrics for streaming proxy path
+      recordModelResponse(model, { latencyMs: Date.now() - _startTime, tokens: outputTokens, error: false });
+      checkAndLogPromotion(model);
+
+      // Phase 38.5: adapter usage metrics (streaming path)
+      if (activeAdapter) {
+        recordAdapterUsage(activeAdapter.id, {
+          latencyMs: Date.now() - _startTime,
+          error: false,
+        }).catch(() => {});
+      }
 
       if (USAGE_ALERT_TOKENS) {
         const totalInWindow = await getTotalTokensInWindow();
@@ -359,6 +582,10 @@ export function mountChatRoutes(app, deps) {
 
       res.end();
     } catch (err) {
+      // Record error in model quality
+      const errModel = req.body?.model || "unknown";
+      recordModelResponse(errModel, { latencyMs: Date.now() - _startTime, tokens: 0, error: true });
+
       if (err.code === "CIRCUIT_OPEN") {
         return res.status(503).json({
           error: "Backend temporarily unavailable",
@@ -377,149 +604,6 @@ export function mountChatRoutes(app, deps) {
               : "Check backend configuration";
 
       return apiError(res, 502, "BACKEND_UNREACHABLE", err.message, hint);
-    }
-  });
-
-  app.post("/v1/agent/resume-execute-step", chatAuth, requireScope("write"), perKeyChatRateLimiter, chatRateLimiter, logRequest, async (req, res) => {
-    recordChatRequest();
-    try {
-      const resumeToken = String(req.body?.resumeToken || "").trim();
-      const approved = req.body?.approved === true;
-      if (!resumeToken) {
-        return res.status(400).json({ error: "resumeToken required", code: "INVALID_BODY" });
-      }
-      if (!approved) {
-        takeHitlState(resumeToken);
-        return res.json({ ok: true, cancelled: true });
-      }
-
-      const workspace = req.body?.agentOptions?.workspace || "default";
-      const userId = req.userId || null;
-      if (isQuotaConfigured()) {
-        const inputTokens = estimate.inputFromMessages(req.body?.messages || []);
-        const { allowed, quota } = await checkQuota(workspace, userId, inputTokens + 512);
-        if (!allowed && quota) {
-          res.setHeader("X-Quota-Limit", String(quota.limit));
-          res.setHeader("X-Quota-Remaining", "0");
-          res.setHeader("X-Quota-Reset", String(quota.resetAt));
-          return res.status(429).json({
-            error: "Workspace token quota exceeded",
-            code: "QUOTA_EXCEEDED",
-          });
-        }
-      }
-
-      const config = buildProxyConfig(BACKEND);
-      const model = req.body?.model || MODEL_PRESETS[BACKEND]?.[0] || "unknown";
-      const presetRunId = randomUUID();
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.setHeader("X-Agent-Run-Id", presetRunId);
-      await setQuotaHeaders(res, workspace, userId);
-      if (typeof res.flushHeaders === "function") res.flushHeaders();
-
-      const agentLoopResult = await resumeAgentLoopFromHitlToken(
-        req,
-        res,
-        config,
-        model,
-        {
-          presetRunId,
-          onProgress: (evt) => {
-            try {
-              res.write(`data: ${JSON.stringify(evt)}\n\n`);
-            } catch (_) {}
-          },
-        },
-        backendFetch,
-        resumeToken
-      );
-
-      const content = agentLoopResult.content;
-      const iteration = agentLoopResult.iteration;
-      const toolCalls = agentLoopResult.toolCalls;
-      req._agentLoopMeta = agentLoopResult;
-
-      res.setHeader("X-Agent-Iteration", String(iteration));
-      if (req._agentLoopMeta?.runId) {
-        res.setHeader("X-Agent-Run-Id", req._agentLoopMeta.runId);
-      }
-
-      if (toolCalls?.length || req._agentLoopMeta) {
-        const meta = req._agentLoopMeta || {};
-        const traj = meta.trajectory;
-        const trajectorySummary =
-          traj && Array.isArray(traj.steps)
-            ? {
-                runId: traj.runId,
-                stepCount: traj.stepCount,
-                stopReason: meta.stopReason,
-                steps: traj.steps.slice(0, 40),
-              }
-            : undefined;
-        const activityEvent = JSON.stringify({
-          type: "agent_activity",
-          toolCalls: toolCalls || [],
-          swarmSteps: [],
-          iteration,
-          runId: meta.runId,
-          stopReason: meta.stopReason,
-          stopDetail: meta.stopDetail,
-          citationWarning: meta.citationWarning,
-          constraints: meta.constraints,
-          trajectory: trajectorySummary,
-        });
-        res.write(`data: ${activityEvent}\n\n`);
-      }
-
-      const inputTokens = estimate.inputFromMessages(req.body?.messages || []);
-      let outputTokens = estimate.outputFromChars(content?.length || 0);
-
-      if (content && typeof content === "string") {
-        for (let i = 0; i < content.length; i += AGENT_STREAM_CHUNK_SIZE) {
-          const part = content.slice(i, i + AGENT_STREAM_CHUNK_SIZE);
-          const isLast = i + AGENT_STREAM_CHUNK_SIZE >= content.length;
-          const chunk = JSON.stringify({
-            choices: [{ delta: { content: part }, index: 0, ...(isLast ? { finish_reason: "stop" } : {}) }],
-          });
-          res.write(`data: ${chunk}\n\n`);
-        }
-      } else {
-        const chunk = JSON.stringify({
-          choices: [{ delta: { content }, index: 0, finish_reason: "stop" }],
-        });
-        res.write(`data: ${chunk}\n\n`);
-      }
-
-      outputTokens = estimate.outputFromChars(content?.length || 0);
-      recordTokensUsed(inputTokens, outputTokens);
-      await recordUsage({
-        timestamp: new Date().toISOString(),
-        model,
-        inputTokens,
-        outputTokens,
-        backend: BACKEND,
-        workspace,
-        userId,
-      }).catch(() => {});
-
-      res.write("data: [DONE]\n\n");
-      res.end();
-      await emitEvent("message_sent", { content: content?.slice(0, 500), model, iteration }, { workspaceId: workspace, userId });
-    } catch (err) {
-      reportError(err);
-      if (!res.headersSent) {
-        res.status(500).json({
-          error: "Resume execute-step failed",
-          code: "HITL_RESUME_ERROR",
-          hint: err?.message || "Internal error",
-        });
-      } else {
-        try {
-          res.end();
-        } catch (_) {}
-      }
     }
   });
 
@@ -574,6 +658,7 @@ export function mountChatRoutes(app, deps) {
       const inputTokens = estimate.inputFromMessages(req.body?.messages || []);
       const outputTokens = estimate.outputFromChars(content?.length || 0);
       recordTokensUsed(inputTokens, outputTokens);
+      try { recordTenantTokens(workspace, (inputTokens || 0) + (outputTokens || 0)); } catch (_) {}
       await recordUsage({
         timestamp: new Date().toISOString(),
         model,
@@ -583,6 +668,7 @@ export function mountChatRoutes(app, deps) {
         workspace,
         userId,
       }).catch(() => {});
+      await recordBillingUsage(workspace, inputTokens, outputTokens, model);
 
       const chunk = JSON.stringify({
         choices: [{ delta: { content }, index: 0, finish_reason: "stop" }],
@@ -610,17 +696,15 @@ export function mountChatRoutes(app, deps) {
             req.body.specialists.filter((s) => typeof s === "string" && s.trim()).map((s) => s.trim())
           )
         : getSwarmSelectableSpecialistNames();
-      const workspace = storage.sanitizeWorkspace(req.body?.workspace || "default");
+      const workspace = req.body?.workspace || "default";
       const allowExecution = req.body?.allowExecution === true;
 
       if (!specialists.length) {
         return res.status(400).json({ error: "No valid specialists specified", code: "INVALID_SPECIALISTS" });
       }
 
-      const storageUserId = await resolveStorageUserId(req.userId || "anonymous", workspace);
       const { aggregation, metrics } = await runSwarmLegacy(specialists, query, {
         workspace,
-        workspaceUserId: storageUserId,
         allowExecution,
         projectDir: process.env.PROJECT_DIR || process.cwd(),
         vercelToken: process.env.VERCEL_TOKEN,

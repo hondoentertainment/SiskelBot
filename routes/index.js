@@ -9,77 +9,189 @@
  *   import { mountAllRoutes } from "./routes/index.js";
  *   mountAllRoutes(app, deps);
  *
- * Route modules:
- *   auth.js          - /config, /auth/*
- *   chat.js          - /v1/chat/completions, /v1/agent/swarm, /v1/swarm
- *   tasks.js         - /v1/tasks/plan
- *   health.js        - /health/*, /metrics
- *   integrations.js  - /api/github/*, /api/vercel/*, /api/integrations/*
- *   usage.js         - /api/usage*, /api/analytics*
- *   knowledge.js     - /api/context*, /api/embeddings*, /api/knowledge*
- *   workspaces.js    - /api/workspaces*, templates, agent settings
- *   recipes.js       - /api/recipes*, /api/schedules*
- *   teams.js         - /api/teams/*
- *   admin.js         - /api/admin/*, /api/routing/*, /api/regions/*
- *   docs.js          - /api/docs*, /docs
- *   backup.js        - /api/backup*
- *   conversations.js - /api/conversations*
- *   plugins.js       - /api/plugins*, /api/marketplace*, /api/workspaces/:id/plugins
- *   webhooks.js      - /api/webhooks*, /api/ws-token, /api/ws-replay, /api/notifications*, /api/workspaces/:id/presence
- *   eval.js          - /api/eval*, /api/traces*, /api/agent/trajectory*
- *   execute.js       - /api/execute-step, /api/automations/validate
- *   multimodal.js    - /api/vision/describe, /api/documents/extract, /api/ocr
- *   federation.js    - /api/federation/*
- *   mcp.js           - /mcp, /mcp/sse
- *   slack-discord.js - /api/integrations/slack/*, /api/integrations/discord/*, /api/integrations/bots/*
+ * Surface area is deliberately scoped to CORE + SUPPORTING per docs/ROUTE_AUDIT.md.
+ * Most DEFER/DELETE-tier modules stay off this router (see routes/.wire-check-ignore).
+ * Edge cache, mobile, and voice stacks remain mounted — CI and mobile/voice clients depend on them.
  */
 
+// CORE
 import mountAuthRoutes from "./auth.js";
 import mountChatRoutes from "./chat.js";
-import mountTasksRoutes from "./tasks.js";
 import mountHealthRoutes from "./health.js";
-import mountIntegrationsRoutes from "./integrations.js";
-import mountUsageRoutes from "./usage.js";
 import mountKnowledgeRoutes from "./knowledge.js";
+import { mountDatasetRoutes } from "./datasets.js";
+import { mountSearchRoutes } from "./search.js";
+import { mountWorkflowRoutes } from "./workflows.js";
 import mountWorkspacesRoutes from "./workspaces.js";
-import mountRecipesRoutes from "./recipes.js";
-import mountTeamsRoutes from "./teams.js";
-import mountAdminRoutes from "./admin.js";
-import mountDocsRoutes from "./docs.js";
-import { mountBackupRoutes } from "./backup.js";
 import { mountConversationRoutes } from "./conversations.js";
-import { mountPluginRoutes } from "./plugins.js";
-import { mountWebhookRoutes } from "./webhooks.js";
-import { mountEvalRoutes } from "./eval.js";
-import { mountExecuteRoutes } from "./execute.js";
-import mountMultimodalRoutes from "./multimodal.js";
-import { mountFederationRoutes } from "./federation.js";
+import { mountBillingRoutes } from "./billing.js";
+import { mountPricingRoutes as mountPricingEngineRoutes } from "./pricing-engine.js";
+import { mountMemoryRoutes } from "./memory.js";
+import { mountAgentRunStreamRoutes } from "./agent-run-stream.js";
+import { mountAgentHitlRoutes } from "./agent-hitl.js";
+import { mountAgentArtifactRoutes } from "./agent-artifacts.js";
+import { mountContextRoutes } from "./context.js";
 import { mountMcpRoutes } from "./mcp.js";
+
+// SUPPORTING
+import mountTasksRoutes from "./tasks.js";
+import mountIntegrationsRoutes from "./integrations.js";
 import { mountSlackDiscordRoutes } from "./slack-discord.js";
+import mountRecipesRoutes from "./recipes.js";
+import { mountExecuteRoutes } from "./execute.js";
+import { mountWebhookRoutes } from "./webhooks.js";
+import mountTeamsRoutes from "./teams.js";
+import { mountRbacRoutes } from "./rbac.js";
+import mountAdminRoutes from "./admin.js";
+import mountAgentStatsAdminRoutes from "./admin-agent-stats.js";
+import mountAdminQuotaRoutes from "./admin-quotas.js";
+import mountAdminFeatureFlagRoutes from "./admin-feature-flags.js";
+import mountAdminPromptPatchesRoutes from "./admin-prompt-patches.js";
+import mountAdminEvalHistoryRoutes from "./admin-eval-history.js";
+import mountAdminTracesRoutes from "./admin-traces.js";
+import mountAdminTraceStreamRoutes from "./admin-trace-stream.js";
+import mountTraceShareRoutes from "./trace-share.js";
+import { mountEvalRoutes } from "./eval.js";
+import { mountCollaborationRoutes } from "./collaboration.js";
+import { mountPresenceRoutes } from "./presence.js";
+import mountUsageRoutes from "./usage.js";
+import { mountAnalyticsRoutes } from "./analytics.js";
+import { mountBackupRoutes } from "./backup.js";
+import mountMultimodalRoutes from "./multimodal.js";
+import { mountFeedbackRoutes } from "./feedback.js";
+import { mountAgentFeedbackRoutes } from "./agent-feedback.js";
+import { mountSecurityRoutes } from "./security.js";
+import { mountSecurityScorecardRoutes } from "./security-scorecard.js";
+import { mountModelQualityRoutes } from "./model-quality.js";
+import { mountReplayRoutes } from "./replay.js";
+import { mountTrajectoryBranchRoutes } from "./trajectory-branch.js";
+import { mountAgentResumeRoutes } from "./agent-resume.js";
+import { mountSignalsRoutes } from "./signals.js";
+import { mountObservabilitySnapshotRoutes } from "./observability-snapshot.js";
+import mountDocsRoutes from "./docs.js";
+import { mountSecretsRoutes } from "./secrets.js";
+import { mountPlaybookRoutes } from "./playbooks.js";
+import { mountWikiRoutes } from "./wiki.js";
+import { mountCodebaseSearchRoutes } from "./codebase-search.js";
+import { mountGithubWorkflowRoutes } from "./github-workflow.js";
+import mountPrReviewRoutes from "./pr-review-agent.js";
+import mountRepoRagRoutes from "./repo-rag.js";
+import mountTestGenRoutes from "./test-gen.js";
+import mountEvalInProdRoutes from "./eval-in-prod.js";
+import mountChaosEngineeringRoutes from "./chaos-engineering.js";
+import mountSafetySlaRoutes from "./safety-sla.js";
+import mountComplianceRoutes from "./compliance.js";
+import mountLoadSheddingRoutes from "./load-shedding.js";
+import { mountSessionInsightsRoutes } from "./session-insights.js";
+import { mountReasoningMemoryRoutes } from "./reasoning-memory.js";
+import { mountPluginRoutes } from "./plugins.js";
+import mountTraceExplorerRoutes from "./traces.js";
+import { mountAnnotationRoutes } from "./annotations.js";
+import { mountHierarchyRoutes } from "./hierarchy.js";
+import { mountExplainabilityRoutes } from "./explainability.js";
+import { mountScheduledAgentRoutes } from "./scheduled-agents.js";
+import mountPushNotificationRoutes from "./push-notifications.js";
+import { mountCostEstimateRoutes } from "./cost-estimate.js";
+import { mountEdgeCacheRoutes } from "./edge-cache.js";
+import { mountMobileRoutes } from "./mobile.js";
+import { mountVoiceRoutes } from "./voice.js";
+import mountVoiceCloningRoutes from "./voice-cloning.js";
+
+import { mountV2Routes } from "./v2/index.js";
 
 const mountFunctions = [
+  // CORE
   mountAuthRoutes,
   mountChatRoutes,
-  mountTasksRoutes,
   mountHealthRoutes,
-  mountIntegrationsRoutes,
-  mountUsageRoutes,
   mountKnowledgeRoutes,
+  mountDatasetRoutes,
+  mountSearchRoutes,
+  mountWorkflowRoutes,
   mountWorkspacesRoutes,
-  mountRecipesRoutes,
-  mountTeamsRoutes,
-  mountAdminRoutes,
-  mountDocsRoutes,
-  mountBackupRoutes,
   mountConversationRoutes,
-  mountPluginRoutes,
-  mountWebhookRoutes,
-  mountEvalRoutes,
-  mountExecuteRoutes,
-  mountMultimodalRoutes,
-  mountFederationRoutes,
+  mountBillingRoutes,
+  mountPricingEngineRoutes,
+  mountMemoryRoutes,
+  mountAgentRunStreamRoutes,
+  mountAgentHitlRoutes,
+  mountAgentArtifactRoutes,
+  mountContextRoutes,
   mountMcpRoutes,
+
+  // SUPPORTING — automation, integrations, multi-tenant
+  mountTasksRoutes,
+  mountIntegrationsRoutes,
   mountSlackDiscordRoutes,
+  mountRecipesRoutes,
+  mountExecuteRoutes,
+  mountWebhookRoutes,
+  mountTeamsRoutes,
+  mountRbacRoutes,
+
+  // SUPPORTING — admin & ops
+  mountAdminRoutes,
+  mountAgentStatsAdminRoutes,
+  mountAdminQuotaRoutes,
+  mountAdminFeatureFlagRoutes,
+  mountAdminPromptPatchesRoutes,
+  mountAdminEvalHistoryRoutes,
+  mountAdminTracesRoutes,
+  mountAdminTraceStreamRoutes,
+  mountTraceShareRoutes,
+  mountEvalRoutes,
+  mountTraceExplorerRoutes,
+  mountAnnotationRoutes,
+  mountExplainabilityRoutes,
+
+  // SUPPORTING — collaboration & multi-user
+  mountCollaborationRoutes,
+  mountPresenceRoutes,
+  mountHierarchyRoutes,
+
+  // SUPPORTING — observability for users
+  mountUsageRoutes,
+  mountAnalyticsRoutes,
+  mountBackupRoutes,
+  mountMultimodalRoutes,
+  mountFeedbackRoutes,
+  mountAgentFeedbackRoutes,
+  mountSecurityRoutes,
+  mountSecurityScorecardRoutes,
+  mountModelQualityRoutes,
+  mountReplayRoutes,
+  mountTrajectoryBranchRoutes,
+  mountAgentResumeRoutes,
+  mountSignalsRoutes,
+  mountObservabilitySnapshotRoutes,
+  mountDocsRoutes,
+  mountCostEstimateRoutes,
+
+  // SUPPORTING — code vertical & developer tools
+  mountSecretsRoutes,
+  mountPlaybookRoutes,
+  mountWikiRoutes,
+  mountCodebaseSearchRoutes,
+  mountGithubWorkflowRoutes,
+  mountPrReviewRoutes,
+  mountRepoRagRoutes,
+  mountTestGenRoutes,
+  mountEvalInProdRoutes,
+  mountChaosEngineeringRoutes,
+  mountSafetySlaRoutes,
+  mountComplianceRoutes,
+  mountLoadSheddingRoutes,
+  mountSessionInsightsRoutes,
+  mountReasoningMemoryRoutes,
+  mountPluginRoutes,
+  mountScheduledAgentRoutes,
+  mountPushNotificationRoutes,
+
+  // SUPPORTING — edge CDN, mobile API, voice (mounted for regression tests & clients)
+  mountEdgeCacheRoutes,
+  mountMobileRoutes,
+  mountVoiceRoutes,
+  mountVoiceCloningRoutes,
 ];
 
 /**
@@ -91,4 +203,6 @@ export function mountAllRoutes(app, deps) {
   for (const mount of mountFunctions) {
     mount(app, deps);
   }
+  // Mount v2 API routes
+  mountV2Routes(app, deps);
 }

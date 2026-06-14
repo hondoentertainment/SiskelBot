@@ -1,5 +1,17 @@
-import express from "express";
 import { validate } from "../lib/validate.js";
+import { getWorkspaceChunkingConfig, setWorkspaceChunkingConfig, VALID_STRATEGIES } from "../lib/knowledge-chunking-config.js";
+import { autoDetectAndParse } from "../lib/knowledge-parsers.js";
+import { getWorkspaceKnowledgeGraph } from "../lib/knowledge-graph-store.js";
+import { hybridSearch } from "../lib/hybrid-search.js";
+import { globalEmbeddingCache } from "../lib/embedding-cache.js";
+import {
+  saveDocumentVersion,
+  getDocumentHistory,
+  getDocumentVersion,
+  rollbackDocument,
+  diffVersions,
+} from "../lib/document-versioning.js";
+import { checkStorageQuota } from "../lib/tenant-quotas.js";
 
 export default function mountKnowledgeRoutes(app, deps) {
   const {
@@ -7,6 +19,7 @@ export default function mountKnowledgeRoutes(app, deps) {
     apiError,
     logRequest,
     chatAuth,
+    adminAuth,
     requireScope,
     embeddingsRateLimiter,
     knowledgeIndexRateLimiter,
@@ -15,39 +28,22 @@ export default function mountKnowledgeRoutes(app, deps) {
     sanitizeWorkspace,
     storage,
     // knowledge-store
-import multer from "multer";
-
-export function mountKnowledgeRoutes(app, deps) {
-  const {
-    apiRoute,
-    apiError,
-    chatAuth,
-    requireScope,
-    logRequest,
-    embeddingsRateLimiter,
-    knowledgeIndexRateLimiter,
-    readRateLimiter,
-    storageRateLimiter,
-    multimodalRateLimiter,
-    sanitizeWorkspace,
-    embeddingsAvailable,
-    embed,
-    embedBatch,
     indexDocument,
     knowledgeSearch,
     knowledgeSemanticSearch,
     knowledgeList,
     reindexKnowledgeEmbeddingsInWorkspace,
+    // embeddings
+    embed,
+    embedBatch,
+    embeddingsAvailable,
+    // knowledge-url-fetch
     fetchTextFromAllowedUrl,
     // teams
     logActivity,
   } = deps;
 
   const KNOWLEDGE_MAX_DOC_BYTES = Number(process.env.KNOWLEDGE_MAX_DOC_BYTES) || 1024 * 1024;
-
-    OPENAI_API_KEY,
-    KNOWLEDGE_MAX_DOC_BYTES,
-  } = deps;
 
   // POST /api/embeddings
   apiRoute("post", "/embeddings", embeddingsRateLimiter, chatAuth, requireScope("embed"), logRequest, async (req, res) => {
@@ -76,6 +72,17 @@ export function mountKnowledgeRoutes(app, deps) {
     }
   });
 
+  // Phase 35.2: GET /api/v1/embeddings/cache/stats — admin endpoint for embedding cache stats.
+  apiRoute("get", "/embeddings/cache/stats", adminAuth, requireScope("admin"), logRequest, async (req, res) => {
+    try {
+      const stats = globalEmbeddingCache.stats();
+      return res.json({ ok: true, stats });
+    } catch (err) {
+      console.error("Embedding cache stats error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
   apiRoute("post", "/knowledge/index",
     knowledgeIndexRateLimiter,
     requireScope("write"),
@@ -97,6 +104,11 @@ export function mountKnowledgeRoutes(app, deps) {
           return apiError(res, 413, "DOC_TOO_LARGE", `Document exceeds max size (${KNOWLEDGE_MAX_DOC_BYTES} bytes)`, `Reduce document size. Max ${Math.round(KNOWLEDGE_MAX_DOC_BYTES / 1024)}KB per document.`);
         }
 
+        const storageCheck = await checkStorageQuota(workspace, textBytes, storage);
+        if (!storageCheck.allowed) {
+          return apiError(res, 507, "STORAGE_QUOTA_EXCEEDED", `Storage quota exceeded for plan '${storageCheck.plan}' (${storageCheck.current} / ${storageCheck.limit} bytes used)`, "Upgrade your plan or remove unused documents to free space.");
+        }
+
         let embedding;
         if (computeEmbedding && embeddingsAvailable()) {
           embedding = await embed(text.trim());
@@ -114,15 +126,27 @@ export function mountKnowledgeRoutes(app, deps) {
   );
 
   apiRoute("get", "/knowledge/search", requireScope("read"), logRequest, async (req, res) => {
-  // GET /api/knowledge/search
-  apiRoute("get", "/knowledge/search", readRateLimiter, requireScope("read"), logRequest, async (req, res) => {
     try {
       const q = (req.query?.q ?? "").toString();
       const workspace = sanitizeWorkspace(req.query?.workspace);
+      const mode = req.query?.mode || null;
       const semantic = req.query?.semantic === "1" || req.query?.semantic === "true";
+
+      // Phase 27: Support mode=hybrid|keyword|semantic via hybridSearch
+      if (mode === "hybrid" || mode === "keyword" || mode === "semantic") {
+        const limit = Math.min(Math.max(parseInt(req.query?.limit, 10) || 10, 1), 50);
+        const result = await hybridSearch(q, workspace, { mode, limit });
+        if (result.error) {
+          const status = result.code === "EMBEDDINGS_UNAVAILABLE" ? 503 : 400;
+          return res.status(status).json({ error: result.error, code: result.code });
+        }
+        return res.json(result);
+      }
+
+      // Legacy: semantic=1 flag
       const result = semantic
         ? await knowledgeSemanticSearch({ query: q, workspace })
-        : knowledgeSearch({ query: q, workspace });
+        : await knowledgeSearch({ query: q, workspace });
       if (result.error) {
         const status = result.code === "EMBEDDINGS_UNAVAILABLE" ? 503 : 400;
         return res.status(status).json({ error: result.error, code: result.code, hint: result.hint });
@@ -135,8 +159,6 @@ export function mountKnowledgeRoutes(app, deps) {
   });
 
   apiRoute("get", "/knowledge/status", requireScope("read"), logRequest, (req, res) => {
-  // GET /api/knowledge/status
-  apiRoute("get", "/knowledge/status", readRateLimiter, requireScope("read"), logRequest, (req, res) => {
     const workspace = String(req.query.workspace || "default").trim();
     const result = knowledgeList({ workspace });
     if (result.error) {
@@ -149,8 +171,6 @@ export function mountKnowledgeRoutes(app, deps) {
   });
 
   apiRoute("get", "/knowledge/list", requireScope("read"), logRequest, (req, res) => {
-  // GET /api/knowledge/list
-  apiRoute("get", "/knowledge/list", readRateLimiter, requireScope("read"), logRequest, (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
       const result = knowledgeList({ workspace });
@@ -177,6 +197,47 @@ export function mountKnowledgeRoutes(app, deps) {
       res.json(result);
     } catch (err) {
       console.error("Knowledge reindex error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RAG_PIPELINE_V2.md.");
+    }
+  });
+
+  // GET /api/v1/knowledge/chunking-config — get workspace chunking config
+  apiRoute("get", "/knowledge/chunking-config", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const config = await getWorkspaceChunkingConfig(workspace);
+      res.json({ workspace, config });
+    } catch (err) {
+      console.error("Chunking config get error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RAG_PIPELINE_V2.md.");
+    }
+  });
+
+  // PUT /api/v1/knowledge/chunking-config — update workspace chunking config
+  apiRoute("put", "/knowledge/chunking-config", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.body?.workspace);
+      const { chunkSize, chunkOverlap, maxChunks, strategy, metadataExtraction, preserveStructure } = req.body || {};
+
+      if (strategy && !VALID_STRATEGIES.includes(strategy)) {
+        return apiError(res, 400, "INVALID_INPUT", `Invalid strategy: ${strategy}`, `Valid strategies: ${VALID_STRATEGIES.join(", ")}`);
+      }
+
+      const updates = {};
+      if (chunkSize !== undefined) updates.chunkSize = chunkSize;
+      if (chunkOverlap !== undefined) updates.chunkOverlap = chunkOverlap;
+      if (maxChunks !== undefined) updates.maxChunks = maxChunks;
+      if (strategy !== undefined) updates.strategy = strategy;
+      if (metadataExtraction !== undefined) updates.metadataExtraction = metadataExtraction;
+      if (preserveStructure !== undefined) updates.preserveStructure = preserveStructure;
+
+      const config = await setWorkspaceChunkingConfig(workspace, updates);
+      res.json({ workspace, config });
+    } catch (err) {
+      if (err.code === "INVALID_INPUT") {
+        return apiError(res, 400, "INVALID_INPUT", err.message, "Workspace must be alphanumeric, 1-50 chars.");
+      }
+      console.error("Chunking config set error:", err.message);
       return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RAG_PIPELINE_V2.md.");
     }
   });
@@ -222,17 +283,41 @@ export function mountKnowledgeRoutes(app, deps) {
     }
   });
 
-  // Context CRUD lives in routes/context.js (mountContextRoutes).
+  // Context CRUD
+  apiRoute("get", "/context", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const data = await storage.listItems("context", workspace, req.userId);
+      res.json({ _version: 1, items: data });
+    } catch (err) {
+      console.error("Storage context list error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
 
   const validateCreateContext = validate({ body: { title: "string", content: "string" } });
 
-  apiRoute("post", "/context", storageRateLimiter, requireScope("write"), logRequest, validateCreateContext, async (req, res) => {
+  apiRoute("post", "/context", storageRateLimiter, userAuth, requireScope("write"), logRequest, validateCreateContext, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.body?.workspace);
-      const { title, content } = req.body || {};
+      let { title, content } = req.body || {};
       if (typeof title !== "string" || !title.trim()) {
         return apiError(res, 400, "INVALID_INPUT", "title required", "Send { title: string, content?: string }.");
       }
+
+      // Phase 17: Auto-detect content type and parse if applicable
+      const contentType = req.body?.contentType;
+      if (typeof content === "string" && content.trim()) {
+        const parsed = autoDetectAndParse(content, contentType);
+        if (parsed.detectedType !== "text/plain") {
+          content = parsed.text;
+          // Use parsed title as fallback if original title is generic
+          if (parsed.title && (!title.trim() || title.trim() === "Untitled")) {
+            title = parsed.title;
+          }
+        }
+      }
+
       const { randomUUID } = await import("crypto");
       const id = (req.body?.id && String(req.body.id).trim()) || randomUUID();
       const doc = {
@@ -241,9 +326,9 @@ export function mountKnowledgeRoutes(app, deps) {
         content: typeof content === "string" ? content : "",
         createdAt: new Date().toISOString(),
       };
-      const merged = await storage.mergeItems("context", workspace, [doc]);
+      const merged = await storage.mergeItems("context", workspace, [doc], req.userId);
       const item = merged.find((x) => x.id === id) || doc;
-      await logActivity(workspace, "context_added", req.userId || "anonymous", { title: doc.title, id: doc.id });
+      await logActivity(workspace, "context_added", req.userId, { title: doc.title, id: doc.id });
       res.status(201).json(item);
     } catch (err) {
       console.error("Storage context add error:", err.message);
@@ -251,10 +336,10 @@ export function mountKnowledgeRoutes(app, deps) {
     }
   });
 
-  apiRoute("get", "/context/:id", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+  apiRoute("get", "/context/:id", storageRateLimiter, userAuth, requireScope("read"), logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
-      const item = await storage.getItem("context", req.params.id, workspace);
+      const item = await storage.getItem("context", req.params.id, workspace, req.userId);
       if (!item) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
       res.json(item);
     } catch (err) {
@@ -263,7 +348,7 @@ export function mountKnowledgeRoutes(app, deps) {
     }
   });
 
-  apiRoute("put", "/context/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
+  apiRoute("put", "/context/:id", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.body?.workspace);
       const { title, content } = req.body || {};
@@ -271,7 +356,7 @@ export function mountKnowledgeRoutes(app, deps) {
         if (typeof title === "string" && title.trim()) existing.title = title.trim().slice(0, 500);
         if (content !== undefined) existing.content = typeof content === "string" ? content : "";
         return existing;
-      });
+      }, req.userId);
       if (!updated) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
       res.json(updated);
     } catch (err) {
@@ -280,10 +365,10 @@ export function mountKnowledgeRoutes(app, deps) {
     }
   });
 
-  apiRoute("delete", "/context/:id", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
+  apiRoute("delete", "/context/:id", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
-      const deleted = await storage.deleteItem("context", req.params.id, workspace);
+      const deleted = await storage.deleteItem("context", req.params.id, workspace, req.userId);
       if (!deleted) return res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
       res.status(204).send();
     } catch (err) {
@@ -292,241 +377,177 @@ export function mountKnowledgeRoutes(app, deps) {
     }
   });
 
-  apiRoute("post", "/context/sync", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
+  apiRoute("post", "/context/sync", storageRateLimiter, userAuth, requireScope("write"), logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.body?.workspace);
       const items = Array.isArray(req.body?.items) ? req.body.items : [];
       const valid = items.filter((x) => x && x.id && typeof x.title === "string");
-      const merged = await storage.mergeItems("context", workspace, valid);
+      const merged = await storage.mergeItems("context", workspace, valid, req.userId);
       res.json({ _version: 1, items: merged });
     } catch (err) {
       console.error("Storage context sync error:", err.message);
       return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
     }
   });
-  // --- Multimodal: Vision, Documents, OCR ---
-  const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
-  const DOC_MAX_BYTES = 2 * 1024 * 1024;
-  const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
-  const ALLOWED_DOC_TYPES = [
-    "application/pdf",
-    "text/plain",
-    "text/markdown",
-    "text/csv",
-    "text/html",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  ];
 
-  const imageUpload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: IMAGE_MAX_BYTES },
-    fileFilter: (req, file, cb) => {
-      if (ALLOWED_IMAGE_TYPES.includes(file.mimetype)) cb(null, true);
-      else cb(new Error(`Invalid image type. Allowed: ${ALLOWED_IMAGE_TYPES.join(", ")}`), false);
-    },
+  // --- Knowledge Graph endpoints ---
+
+  // GET /api/v1/knowledge/graph/entities?type=&q= — search entities
+  apiRoute("get", "/knowledge/graph/entities", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const graph = await getWorkspaceKnowledgeGraph(workspace);
+      const query = {};
+      if (req.query?.q) query.name = String(req.query.q);
+      if (req.query?.type) query.type = String(req.query.type);
+      const entities = graph.findEntities(query);
+      res.json({ entities, count: entities.length });
+    } catch (err) {
+      console.error("Knowledge graph entities search error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
   });
 
-  const docUpload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: DOC_MAX_BYTES },
-    fileFilter: (req, file, cb) => {
-      if (ALLOWED_DOC_TYPES.includes(file.mimetype)) cb(null, true);
-      else cb(new Error(`Invalid document type. Allowed: PDF, plain text, Markdown, CSV, HTML, DOCX, XLSX`), false);
-    },
+  // GET /api/v1/knowledge/graph/entities/:id — get entity with relations
+  apiRoute("get", "/knowledge/graph/entities/:id", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const graph = await getWorkspaceKnowledgeGraph(workspace);
+      const entity = graph.getEntity(req.params.id);
+      if (!entity) return res.status(404).json({ error: "Entity not found", code: "NOT_FOUND" });
+      const relations = graph.getRelations(req.params.id);
+      res.json({ entity, relations });
+    } catch (err) {
+      console.error("Knowledge graph entity get error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
   });
 
-  function sanitizeText(str, maxLen = 50_000) {
-    if (typeof str !== "string") return "";
-    return str.slice(0, maxLen).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
-  }
-
-  // POST /api/vision/describe
-  apiRoute("post", "/vision/describe",
-    multimodalRateLimiter,
-    (req, res, next) => {
-      const ct = req.headers["content-type"] || "";
-      if (ct.includes("application/json")) {
-        const { image } = req.body || {};
-        if (!image) return apiError(res, 400, "INVALID_BODY", "image required (base64 or multipart)", "Send image as base64 in JSON body or multipart/form-data.");
-        const match = /^data:([^;]+);base64,(.+)$/.exec(image);
-        const base64 = match ? match[2] : image;
-        try {
-          req.visionBuffer = Buffer.from(base64, "base64");
-          if (req.visionBuffer.length > IMAGE_MAX_BYTES)
-            return apiError(res, 400, "FILE_TOO_LARGE", `Image exceeds ${IMAGE_MAX_BYTES / 1024 / 1024}MB limit`, "Reduce image size.");
-          next();
-        } catch (e) {
-          return apiError(res, 400, "INVALID_BASE64", "Invalid base64 image", "Provide valid base64-encoded image data.");
-        }
-        return;
-      }
-      imageUpload.single("image")(req, res, (err) => {
-        if (err) {
-          if (err instanceof multer.MulterError) {
-            if (err.code === "LIMIT_FILE_SIZE")
-              return apiError(res, 400, "FILE_TOO_LARGE", `Image exceeds ${IMAGE_MAX_BYTES / 1024 / 1024}MB limit`, "Reduce image size.");
-            if (err.code === "LIMIT_UNEXPECTED_FILE")
-              return apiError(res, 400, "INVALID_BODY", "Use field name 'image' for multipart upload", null);
-          }
-          return apiError(res, 400, "INVALID_FILE", err.message || "Invalid image upload", null);
-        }
-        if (!req.file?.buffer)
-          return apiError(res, 400, "INVALID_BODY", "image required (base64 or multipart)", null);
-        req.visionBuffer = req.file.buffer;
-        next();
-      });
-    },
-    logRequest,
-    async (req, res) => {
-      try {
-        if (!OPENAI_API_KEY) {
-          return res.status(200).json({ description: "Vision requires OpenAI backend.", hint: "Set OPENAI_API_KEY to use image description." });
-        }
-        const buffer = req.visionBuffer;
-        const base64 = buffer.toString("base64");
-        const mime = buffer[0] === 0x89 ? "image/png" : buffer[1] === 0xff && buffer[2] === 0xd8 ? "image/jpeg" : "image/webp";
-        const dataUrl = `data:${mime};base64,${base64}`;
-
-        const r = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${OPENAI_API_KEY}`,
-          },
-          body: JSON.stringify({
-            model: "gpt-4o-mini",
-            messages: [
-              {
-                role: "user",
-                content: [
-                  { type: "text", text: "Describe this image in detail. Be concise." },
-                  { type: "image_url", image_url: { url: dataUrl } },
-                ],
-              },
-            ],
-            max_tokens: 500,
-          }),
-        });
-
-        if (!r.ok) {
-          const err = await r.text();
-          return res.status(r.status).json({
-            error: "Vision API error",
-            code: "BACKEND_ERROR",
-            hint: (err || `HTTP ${r.status}`).slice(0, 500),
-          });
-        }
-        const data = await r.json();
-        const description = data.choices?.[0]?.message?.content || "No description.";
-        return res.json({ description: sanitizeText(description) });
-      } catch (err) {
-        return apiError(res, 502, "BACKEND_UNREACHABLE", err.message, "Check OPENAI_API_KEY and network.");
-      }
+  // GET /api/v1/knowledge/graph/entities/:id/neighbors?depth=2 — get neighbors
+  apiRoute("get", "/knowledge/graph/entities/:id/neighbors", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const depth = Math.max(1, Math.min(Number(req.query?.depth) || 1, 5));
+      const graph = await getWorkspaceKnowledgeGraph(workspace);
+      const entity = graph.getEntity(req.params.id);
+      if (!entity) return res.status(404).json({ error: "Entity not found", code: "NOT_FOUND" });
+      const result = graph.getNeighbors(req.params.id, depth);
+      res.json(result);
+    } catch (err) {
+      console.error("Knowledge graph neighbors error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
     }
-  );
-
-  // POST /api/documents/extract
-  apiRoute("post", "/documents/extract",
-    multimodalRateLimiter,
-    (req, res, next) => {
-      docUpload.single("file")(req, res, (err) => {
-        if (err) {
-          if (err instanceof multer.MulterError) {
-            if (err.code === "LIMIT_FILE_SIZE")
-              return apiError(res, 400, "FILE_TOO_LARGE", `Document exceeds ${DOC_MAX_BYTES / 1024 / 1024}MB limit`, "Reduce file size.");
-            if (err.code === "LIMIT_UNEXPECTED_FILE")
-              return apiError(res, 400, "INVALID_BODY", "Use field name 'file' for multipart upload", null);
-          }
-          return apiError(res, 400, "INVALID_FILE", err.message || "Invalid file upload", null);
-        }
-        next();
-      });
-    },
-    logRequest,
-    async (req, res) => {
-      try {
-        if (!req.file?.buffer)
-          return apiError(res, 400, "INVALID_BODY", "file required (multipart/form-data)", "Upload a PDF or plain text file with field name 'file'.");
-        const mime = req.file.mimetype || "";
-        const buffer = req.file.buffer;
-
-        if (mime === "application/pdf") {
-          try {
-            const { PDFParse } = await import("pdf-parse");
-            const parser = new PDFParse({ data: buffer });
-            const result = await parser.getText();
-            await parser.destroy?.();
-            const text = (result?.text ?? result?.pages?.map((p) => p?.text).filter(Boolean).join("\n\n") ?? "").trim();
-            return res.json({ text: sanitizeText(text), type: "pdf" });
-          } catch (e) {
-            return apiError(res, 500, "EXTRACT_FAILED", "PDF extraction failed", (e?.message || "See docs/RUNBOOK.md.").slice(0, 300));
-          }
-        }
-
-        const { SUPPORTED_DOCUMENT_MIMES, parseDocument: parsDoc } = await import("../lib/knowledge-parsers.js");
-        if (SUPPORTED_DOCUMENT_MIMES.includes(mime)) {
-          try {
-            const { text: parsedText, metadata } = await parsDoc(buffer, mime, req.file.originalname);
-            return res.json({ text: sanitizeText(parsedText), type: mime.split("/").pop(), metadata });
-          } catch (e) {
-            return apiError(res, 500, "EXTRACT_FAILED", `Document extraction failed: ${e.message}`, "Check the file format.");
-          }
-        }
-
-        const text = buffer.toString("utf8");
-        return res.json({ text: sanitizeText(text), type: "text" });
-      } catch (err) {
-        return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-      }
-    }
-  );
-
-  // POST /api/ocr
-  const OCR_MAX_BYTES = 20 * 1024 * 1024;
-  const ALLOWED_OCR_TYPES = ["image/png", "image/jpeg", "image/tiff", "image/bmp", "application/pdf"];
-
-  const ocrUpload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: OCR_MAX_BYTES },
-    fileFilter: (_req, file, cb) => {
-      if (ALLOWED_OCR_TYPES.includes(file.mimetype)) cb(null, true);
-      else cb(new Error("Unsupported file type. Accepted: PNG, JPG, TIFF, BMP, PDF."));
-    },
   });
 
-  apiRoute("post", "/ocr",
-    multimodalRateLimiter,
-    (req, res, next) => {
-      ocrUpload.single("file")(req, res, (err) => {
-        if (err) {
-          if (err instanceof multer.MulterError) {
-            if (err.code === "LIMIT_FILE_SIZE")
-              return apiError(res, 400, "FILE_TOO_LARGE", `File exceeds ${OCR_MAX_BYTES / 1024 / 1024}MB limit`, "Reduce file size.");
-            if (err.code === "LIMIT_UNEXPECTED_FILE")
-              return apiError(res, 400, "INVALID_BODY", "Use field name 'file' for multipart upload", null);
-          }
-          if (err.message && err.message.includes("Unsupported file type"))
-            return apiError(res, 415, "UNSUPPORTED_FORMAT", err.message, "Accepted formats: PNG, JPG, TIFF, BMP, PDF.");
-          return apiError(res, 400, "INVALID_FILE", err.message || "Invalid file upload", null);
-        }
-        next();
-      });
-    },
-    logRequest,
-    async (req, res) => {
-      try {
-        if (!req.file?.buffer)
-          return apiError(res, 400, "INVALID_BODY", "file required (multipart/form-data)", "Upload an image or PDF with field name 'file'.");
-        const { extractText } = await import("../lib/ocr.js");
-        const mime = req.file.mimetype || "";
-        const { text, confidence } = await extractText(req.file.buffer, mime);
-        return res.json({ text: sanitizeText(text), pages: 1, confidence });
-      } catch (err) {
-        if (err.code === "UNSUPPORTED_FORMAT")
-          return apiError(res, 415, "UNSUPPORTED_FORMAT", err.message, "Accepted formats: PNG, JPG, TIFF, BMP, PDF.");
-        return apiError(res, 500, "OCR_FAILED", err.message || "OCR processing failed", "See docs/RUNBOOK.md.");
-      }
+  // GET /api/v1/knowledge/graph/stats — graph statistics
+  apiRoute("get", "/knowledge/graph/stats", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const graph = await getWorkspaceKnowledgeGraph(workspace);
+      const stats = graph.getStats();
+      res.json(stats);
+    } catch (err) {
+      console.error("Knowledge graph stats error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
     }
-  );
+  });
+
+  // GET /api/v1/knowledge/graph/path?from=&to= — find path between entities
+  apiRoute("get", "/knowledge/graph/path", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const fromId = req.query?.from;
+      const toId = req.query?.to;
+      if (!fromId || !toId) {
+        return apiError(res, 400, "INVALID_INPUT", "from and to query params are required", "Use ?from=entityId&to=entityId.");
+      }
+      const graph = await getWorkspaceKnowledgeGraph(workspace);
+      const result = graph.findPath(String(fromId), String(toId));
+      if (!result.found) {
+        return res.json({ found: false, path: [], relations: [] });
+      }
+      // Resolve entity objects for the path
+      const pathEntities = result.path.map((id) => graph.getEntity(id)).filter(Boolean);
+      res.json({ found: true, path: pathEntities, relations: result.relations });
+    } catch (err) {
+      console.error("Knowledge graph path error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  // --- Phase 27: Document versioning endpoints ---
+
+  // GET /api/v1/documents/:id/versions — version history
+  apiRoute("get", "/documents/:id/versions", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const docId = req.params.id;
+      const limit = Math.min(Math.max(parseInt(req.query?.limit, 10) || 50, 1), 100);
+      const history = await getDocumentHistory(docId, limit, { workspace });
+      if (history.error) {
+        return apiError(res, 400, history.code || "INVALID_INPUT", history.error);
+      }
+      res.json({ docId, versions: history });
+    } catch (err) {
+      console.error("Document versions list error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  // GET /api/v1/documents/:id/versions/:versionId — specific version
+  apiRoute("get", "/documents/:id/versions/:versionId", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const result = await getDocumentVersion(req.params.id, req.params.versionId, { workspace });
+      if (result.error) {
+        const status = result.code === "NOT_FOUND" ? 404 : 400;
+        return apiError(res, status, result.code, result.error);
+      }
+      res.json(result);
+    } catch (err) {
+      console.error("Document version get error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  // POST /api/v1/documents/:id/rollback — rollback to version
+  apiRoute("post", "/documents/:id/rollback", storageRateLimiter, requireScope("write"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.body?.workspace);
+      const versionId = req.body?.versionId;
+      if (!versionId) {
+        return apiError(res, 400, "INVALID_INPUT", "versionId is required in request body");
+      }
+      const result = await rollbackDocument(req.params.id, versionId, { workspace });
+      if (result.error) {
+        const status = result.code === "NOT_FOUND" ? 404 : 400;
+        return apiError(res, status, result.code, result.error);
+      }
+      res.json(result);
+    } catch (err) {
+      console.error("Document rollback error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
+
+  // GET /api/v1/documents/:id/diff?v1=...&v2=... — diff between versions
+  apiRoute("get", "/documents/:id/diff", storageRateLimiter, requireScope("read"), logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const v1 = req.query?.v1;
+      const v2 = req.query?.v2;
+      if (!v1 || !v2) {
+        return apiError(res, 400, "INVALID_INPUT", "v1 and v2 query params are required", "Use ?v1=versionId&v2=versionId.");
+      }
+      const result = await diffVersions(req.params.id, v1, v2, { workspace });
+      if (result.error) {
+        const status = result.code === "NOT_FOUND" ? 404 : 400;
+        return apiError(res, status, result.code, result.error);
+      }
+      res.json(result);
+    } catch (err) {
+      console.error("Document diff error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+    }
+  });
 }

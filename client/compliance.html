@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>Siskel Bot - Compliance Reports</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 2px solid #60a5fa;
+      outline-offset: 2px;
+    }
+    header {
+      padding: 0.75rem 1rem;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    header h1 { margin: 0; font-size: 1.125rem; font-weight: 600; }
+    header a { color: #60a5fa; text-decoration: none; }
+    header a:hover { text-decoration: underline; }
+
+    main {
+      padding: 1rem;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .section {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .section h2 {
+      margin: 0 0 0.75rem 0;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 0.25rem;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid #334155;
+      flex-wrap: wrap;
+    }
+    .tab {
+      padding: 0.6rem 1rem;
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 0.9rem;
+      border-bottom: 2px solid transparent;
+    }
+    .tab:hover { color: #e2e8f0; }
+    .tab.active {
+      color: #60a5fa;
+      border-bottom-color: #60a5fa;
+    }
+
+    .controls {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .controls label { font-size: 0.8rem; color: #94a3b8; }
+    .controls input, .controls select, .controls button {
+      padding: 0.4rem 0.6rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.85rem;
+    }
+    .controls button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    .controls button:hover { background: #2563eb; }
+    .controls button.ghost {
+      background: transparent;
+      border: 1px solid #334155;
+      color: #e2e8f0;
+    }
+    .controls button.ghost:hover { background: #243244; }
+    .controls button.danger {
+      background: #dc2626;
+    }
+    .controls button.danger:hover { background: #b91c1c; }
+
+    .coverage-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .stat {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 0.75rem;
+    }
+    .stat .label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      color: #64748b;
+      letter-spacing: 0.05em;
+    }
+    .stat .value {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: #e2e8f0;
+      margin-top: 0.25rem;
+    }
+    .stat .value.green { color: #22c55e; }
+    .stat .value.yellow { color: #eab308; }
+    .stat .value.red { color: #ef4444; }
+
+    .control-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .control-item {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 0.75rem;
+    }
+    .control-item .control-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.25rem;
+    }
+    .control-item .control-id {
+      font-family: ui-monospace, Menlo, monospace;
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
+    .control-item .control-name {
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+    .control-item .control-desc {
+      font-size: 0.8rem;
+      color: #94a3b8;
+      margin-top: 0.25rem;
+    }
+    .control-item .control-evidence {
+      font-size: 0.75rem;
+      color: #64748b;
+      margin-top: 0.25rem;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .status-badge.ok { background: #14532d; color: #4ade80; }
+    .status-badge.weak { background: #713f12; color: #facc15; }
+    .status-badge.no_evidence { background: #7f1d1d; color: #f87171; }
+
+    .muted { color: #64748b; font-size: 0.85rem; }
+    .error-box {
+      background: #7f1d1d;
+      color: #fecaca;
+      padding: 0.6rem;
+      border-radius: 6px;
+      margin-bottom: 0.75rem;
+      font-size: 0.85rem;
+    }
+
+    pre {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 0.75rem;
+      overflow-x: auto;
+      font-size: 0.8rem;
+      color: #cbd5e1;
+      max-height: 360px;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 900px) {
+      .two-col { grid-template-columns: 1fr; }
+    }
+
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Siskel Bot &mdash; Compliance Reports</h1>
+    <a href="/">Home</a>
+    <a href="/admin.html">Admin</a>
+    <a href="/explain.html">Decisions</a>
+    <div style="margin-left: auto;">
+      <label class="muted" for="admin-key">Admin key:</label>
+      <input id="admin-key" type="password" placeholder="ADMIN_API_KEY" style="padding: 0.4rem 0.6rem; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0;">
+    </div>
+  </header>
+
+  <main>
+    <div id="error-container"></div>
+
+    <section class="section">
+      <h2>Reporting Period</h2>
+      <div class="controls">
+        <label for="start-date">Start</label>
+        <input id="start-date" type="date">
+        <label for="end-date">End</label>
+        <input id="end-date" type="date">
+        <button id="refresh-btn">Generate</button>
+        <button id="export-json" class="ghost">Export JSON</button>
+        <button id="export-csv" class="ghost">Export CSV</button>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Framework</h2>
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-framework="soc2">SOC 2</button>
+        <button class="tab" data-framework="hipaa">HIPAA</button>
+        <button class="tab" data-framework="gdpr">GDPR</button>
+        <button class="tab" data-framework="dashboard">Overview</button>
+      </div>
+
+      <div id="framework-content">
+        <p class="muted">Loading report...</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Data Subject Tools</h2>
+      <div class="two-col">
+        <div>
+          <h3 style="font-size: 0.85rem; color: #94a3b8; margin: 0 0 0.5rem 0;">Data Subject Request (GDPR Article 15)</h3>
+          <div class="controls">
+            <input id="dsr-user" type="text" placeholder="userId" style="flex: 1;">
+            <button id="dsr-btn">Fetch Data</button>
+            <button id="dsr-export-json" class="ghost">Export JSON</button>
+            <button id="dsr-export-csv" class="ghost">Export CSV</button>
+          </div>
+          <pre id="dsr-output" class="hidden"></pre>
+        </div>
+
+        <div>
+          <h3 style="font-size: 0.85rem; color: #94a3b8; margin: 0 0 0.5rem 0;">Right to Erasure (GDPR Article 17)</h3>
+          <div class="controls">
+            <input id="erasure-user" type="text" placeholder="userId" style="flex: 1;">
+            <button id="erasure-dryrun" class="ghost">Dry Run</button>
+            <button id="erasure-confirm" class="danger">Delete (confirm)</button>
+          </div>
+          <pre id="erasure-output" class="hidden"></pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const state = {
+      framework: "soc2",
+      reports: {},
+    };
+
+    function getAdminKey() {
+      return document.getElementById("admin-key").value.trim();
+    }
+
+    function authHeaders() {
+      const key = getAdminKey();
+      return key ? { "x-admin-api-key": key } : {};
+    }
+
+    function showError(msg) {
+      const container = document.getElementById("error-container");
+      container.innerHTML = `<div class="error-box">${escapeHtml(msg)}</div>`;
+      setTimeout(() => { container.innerHTML = ""; }, 6000);
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[c]));
+    }
+
+    function periodQuery() {
+      const start = document.getElementById("start-date").value;
+      const end = document.getElementById("end-date").value;
+      const q = [];
+      if (start) q.push(`startDate=${start}T00:00:00Z`);
+      if (end) q.push(`endDate=${end}T23:59:59Z`);
+      return q.length ? `?${q.join("&")}` : "";
+    }
+
+    async function fetchReport(framework) {
+      const endpoint = framework === "dashboard"
+        ? `/api/v1/compliance/dashboard${periodQuery()}`
+        : `/api/v1/compliance/${framework}${periodQuery()}`;
+      const res = await fetch(endpoint, { headers: authHeaders() });
+      if (!res.ok) {
+        const text = await res.text().catch(() => res.statusText);
+        throw new Error(`${res.status}: ${text.slice(0, 200)}`);
+      }
+      return res.json();
+    }
+
+    function coverageClass(pct) {
+      if (pct >= 75) return "green";
+      if (pct >= 40) return "yellow";
+      return "red";
+    }
+
+    function renderFrameworkReport(report) {
+      const coverage = report.coverage || 0;
+      const mappedEvents = report.mappedEvents || 0;
+      const totalEvents = report.totalEvents || 0;
+
+      const controlsHtml = (report.controls || []).map((c) => `
+        <div class="control-item">
+          <div class="control-header">
+            <div>
+              <span class="control-id">${escapeHtml(c.id)}</span>
+              <span class="control-name"> &mdash; ${escapeHtml(c.name)}</span>
+            </div>
+            <span class="status-badge ${c.status}">${escapeHtml(c.status.replace("_", " "))}</span>
+          </div>
+          <div class="control-desc">${escapeHtml(c.description)}</div>
+          <div class="control-evidence">Evidence: ${c.evidenceCount} event${c.evidenceCount === 1 ? "" : "s"}</div>
+        </div>
+      `).join("");
+
+      return `
+        <div class="coverage-summary">
+          <div class="stat">
+            <div class="label">Framework</div>
+            <div class="value">${escapeHtml(report.framework)}</div>
+          </div>
+          <div class="stat">
+            <div class="label">Coverage</div>
+            <div class="value ${coverageClass(coverage)}">${coverage}%</div>
+          </div>
+          <div class="stat">
+            <div class="label">Events Scanned</div>
+            <div class="value">${totalEvents}</div>
+          </div>
+          <div class="stat">
+            <div class="label">Mapped Events</div>
+            <div class="value">${mappedEvents}</div>
+          </div>
+        </div>
+        <div class="control-list">${controlsHtml}</div>
+      `;
+    }
+
+    function renderDashboard(dashboard) {
+      const frameworks = ["soc2", "hipaa", "gdpr"];
+      const cards = frameworks.map((f) => {
+        const d = dashboard[f] || {};
+        const pct = d.coverage || 0;
+        return `
+          <div class="stat">
+            <div class="label">${escapeHtml(d.framework || f.toUpperCase())}</div>
+            <div class="value ${coverageClass(pct)}">${pct}%</div>
+            <div class="muted" style="margin-top: 0.4rem;">
+              ${d.ok || 0} ok / ${d.weak || 0} weak / ${d.missing || 0} missing
+            </div>
+          </div>
+        `;
+      }).join("");
+      return `<div class="coverage-summary">${cards}</div>`;
+    }
+
+    async function loadFramework(framework) {
+      state.framework = framework;
+      document.querySelectorAll(".tab").forEach((t) => {
+        t.classList.toggle("active", t.dataset.framework === framework);
+      });
+      const content = document.getElementById("framework-content");
+      content.innerHTML = `<p class="muted">Loading ${framework.toUpperCase()} report...</p>`;
+      try {
+        const report = await fetchReport(framework);
+        state.reports[framework] = report;
+        if (framework === "dashboard") {
+          content.innerHTML = renderDashboard(report);
+        } else {
+          content.innerHTML = renderFrameworkReport(report);
+        }
+      } catch (err) {
+        content.innerHTML = `<p class="muted">Failed to load report.</p>`;
+        showError(err.message);
+      }
+    }
+
+    function download(filename, contentType, data) {
+      const blob = new Blob([data], { type: contentType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function exportReportAsJson() {
+      const report = state.reports[state.framework];
+      if (!report) return showError("No report loaded.");
+      download(
+        `compliance-${state.framework}-${Date.now()}.json`,
+        "application/json",
+        JSON.stringify(report, null, 2)
+      );
+    }
+
+    function exportReportAsCsv() {
+      const report = state.reports[state.framework];
+      if (!report) return showError("No report loaded.");
+      if (state.framework === "dashboard") {
+        const rows = [["framework", "coverage", "ok", "weak", "missing"]];
+        for (const f of ["soc2", "hipaa", "gdpr"]) {
+          const d = report[f] || {};
+          rows.push([d.framework || f, d.coverage || 0, d.ok || 0, d.weak || 0, d.missing || 0]);
+        }
+        download(
+          `compliance-dashboard-${Date.now()}.csv`,
+          "text/csv",
+          rows.map((r) => r.join(",")).join("\n")
+        );
+        return;
+      }
+      const rows = [["id", "name", "status", "evidenceCount"]];
+      for (const c of report.controls || []) {
+        rows.push([c.id, `"${(c.name || "").replace(/"/g, '""')}"`, c.status, c.evidenceCount]);
+      }
+      download(
+        `compliance-${state.framework}-${Date.now()}.csv`,
+        "text/csv",
+        rows.map((r) => r.join(",")).join("\n")
+      );
+    }
+
+    // Data subject request
+    async function runDsr() {
+      const userId = document.getElementById("dsr-user").value.trim();
+      if (!userId) return showError("userId is required");
+      const out = document.getElementById("dsr-output");
+      out.classList.remove("hidden");
+      out.textContent = "Loading...";
+      try {
+        const res = await fetch(
+          `/api/v1/compliance/data-subject-request?userId=${encodeURIComponent(userId)}`,
+          { method: "POST", headers: authHeaders() }
+        );
+        if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+        const data = await res.json();
+        out.textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        out.textContent = `Error: ${err.message}`;
+      }
+    }
+
+    async function exportDsr(format) {
+      const userId = document.getElementById("dsr-user").value.trim();
+      if (!userId) return showError("userId is required");
+      try {
+        const res = await fetch(
+          `/api/v1/compliance/export/${encodeURIComponent(userId)}?format=${format}`,
+          { headers: authHeaders() }
+        );
+        if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+        const contentType = res.headers.get("Content-Type") || "application/octet-stream";
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `user-data-${userId}.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    async function runErasure(confirm) {
+      const userId = document.getElementById("erasure-user").value.trim();
+      if (!userId) return showError("userId is required");
+      if (confirm && !window.confirm(`Delete ALL data for user ${userId}? This is irreversible.`)) return;
+      const out = document.getElementById("erasure-output");
+      out.classList.remove("hidden");
+      out.textContent = "Loading...";
+      const qs = `?userId=${encodeURIComponent(userId)}${confirm ? "&confirm=true" : ""}`;
+      try {
+        const res = await fetch(`/api/v1/compliance/right-to-erasure${qs}`, {
+          method: "POST",
+          headers: authHeaders(),
+        });
+        if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+        const data = await res.json();
+        out.textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        out.textContent = `Error: ${err.message}`;
+      }
+    }
+
+    // Initialize
+    (function init() {
+      const today = new Date();
+      const ninetyDaysAgo = new Date(today.getTime() - 90 * 24 * 60 * 60 * 1000);
+      document.getElementById("end-date").value = today.toISOString().slice(0, 10);
+      document.getElementById("start-date").value = ninetyDaysAgo.toISOString().slice(0, 10);
+
+      document.querySelectorAll(".tab").forEach((tab) => {
+        tab.addEventListener("click", () => loadFramework(tab.dataset.framework));
+      });
+      document.getElementById("refresh-btn").addEventListener("click", () => loadFramework(state.framework));
+      document.getElementById("export-json").addEventListener("click", exportReportAsJson);
+      document.getElementById("export-csv").addEventListener("click", exportReportAsCsv);
+
+      document.getElementById("dsr-btn").addEventListener("click", runDsr);
+      document.getElementById("dsr-export-json").addEventListener("click", () => exportDsr("json"));
+      document.getElementById("dsr-export-csv").addEventListener("click", () => exportDsr("csv"));
+
+      document.getElementById("erasure-dryrun").addEventListener("click", () => runErasure(false));
+      document.getElementById("erasure-confirm").addEventListener("click", () => runErasure(true));
+
+      loadFramework("soc2");
+    })();
+  </script>
+</body>
+</html>

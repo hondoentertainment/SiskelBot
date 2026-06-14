@@ -1,0 +1,322 @@
+{{- if and .Values.metrics.enabled .Values.metrics.dashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "siskelbot.fullname" . }}-dashboard
+  {{- with .Values.metrics.dashboard.namespace }}
+  namespace: {{ . }}
+  {{- end }}
+  labels:
+    {{- include "siskelbot.labels" . | nindent 4 }}
+    {{- with .Values.metrics.dashboard.label }}
+    {{- $key := index (keys .) 0 }}
+    {{ $key }}: {{ index . $key | quote }}
+    {{- end }}
+data:
+  siskelbot.json: |-
+    {
+      "annotations": {"list": []},
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "id": null,
+      "links": [],
+      "liveNow": false,
+      "panels": [
+        {
+          "title": "Request rate",
+          "type": "timeseries",
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum(rate(http_requests_total{job=\"siskelbot\"}[5m]))",
+              "legendFormat": "req/s",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "Error rate",
+          "type": "timeseries",
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0},
+          "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum(rate(http_requests_total{job=\"siskelbot\",status=~\"5..\"}[5m])) / sum(rate(http_requests_total{job=\"siskelbot\"}[5m]))",
+              "legendFormat": "error %",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "p95 / p99 latency",
+          "type": "timeseries",
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "job:siskelbot_http_request_duration:p95_5m",
+              "legendFormat": "p95",
+              "refId": "A"
+            },
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "job:siskelbot_http_request_duration:p99_5m",
+              "legendFormat": "p99",
+              "refId": "B"
+            }
+          ]
+        },
+        {
+          "title": "Active pods",
+          "type": "stat",
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "gridPos": {"h": 8, "w": 6, "x": 12, "y": 8},
+          "fieldConfig": {"defaults": {"unit": "none", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "kube_deployment_status_replicas_available{deployment=\"siskelbot\"}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "Circuit breaker state",
+          "type": "stat",
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "gridPos": {"h": 8, "w": 6, "x": 0, "y": 16},
+          "fieldConfig": {"defaults": {"unit": "none", "mappings": [{"type": "value", "options": {"0": {"text": "closed", "color": "green"}, "1": {"text": "open", "color": "red"}}}], "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "siskelbot_circuit_breaker_state{job=\"siskelbot\"}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "Webhook DLQ size",
+          "type": "stat",
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "gridPos": {"h": 8, "w": 6, "x": 6, "y": 16},
+          "fieldConfig": {"defaults": {"unit": "none", "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 10}]}}, "overrides": []},
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "siskelbot_webhook_dlq_size{job=\"siskelbot\"}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "Agent loop timeouts",
+          "type": "timeseries",
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "rate(siskelbot_agent_loop_timeouts_total{job=\"siskelbot\"}[5m])",
+              "legendFormat": "timeouts/s",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "Tokens/sec by direction",
+          "type": "timeseries",
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (direction) (rate(siskelbot_llm_tokens_total[5m]))",
+              "legendFormat": "{{direction}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "Cost burn ($/hr)",
+          "type": "timeseries",
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "gridPos": {"h": 8, "w": 6, "x": 12, "y": 24},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD"}, "overrides": []},
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum(rate(siskelbot_llm_cost_usd_total[5m])) * 3600",
+              "legendFormat": "$/hr",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "Top 10 workspaces by cost (24h)",
+          "type": "table",
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "gridPos": {"h": 8, "w": 6, "x": 18, "y": 24},
+          "fieldConfig": {"defaults": {"unit": "currencyUSD"}, "overrides": []},
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "topk(10, sum by (workspace) (increase(siskelbot_llm_cost_usd_total[24h])))",
+              "format": "table",
+              "instant": true,
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "Tokens by model (1h)",
+          "type": "piechart",
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32},
+          "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (model) (increase(siskelbot_llm_tokens_total[1h]))",
+              "legendFormat": "{{model}}",
+              "instant": true,
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "CPU usage",
+          "type": "timeseries",
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "gridPos": {"h": 8, "w": 6, "x": 12, "y": 32},
+          "fieldConfig": {"defaults": {"unit": "none"}, "overrides": []},
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{pod=~\"siskelbot-.*\",container=\"siskelbot\"}[5m]))",
+              "legendFormat": "{{pod}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "Memory usage",
+          "type": "timeseries",
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "gridPos": {"h": 8, "w": 6, "x": 18, "y": 32},
+          "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (pod) (container_memory_working_set_bytes{pod=~\"siskelbot-.*\",container=\"siskelbot\"})",
+              "legendFormat": "{{pod}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "Embedding cache hit rate",
+          "type": "timeseries",
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32},
+          "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum(rate(siskelbot_embedding_cache_hits_total[5m])) / (sum(rate(siskelbot_embedding_cache_hits_total[5m])) + sum(rate(siskelbot_embedding_cache_misses_total[5m])))",
+              "legendFormat": "hit rate",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "Synthetic uptime (24h)",
+          "type": "stat",
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "gridPos": {"h": 8, "w": 6, "x": 0, "y": 40},
+          "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 0.99}, {"color": "super-light-green", "value": 0.999}]}}, "overrides": []},
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "avg_over_time(probe_success{job=~\".*-synthetic\"}[24h])",
+              "legendFormat": "{{instance}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "Probe duration",
+          "type": "timeseries",
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "gridPos": {"h": 8, "w": 18, "x": 6, "y": 40},
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "probe_duration_seconds{job=~\".*-synthetic\"}",
+              "legendFormat": "{{instance}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "title": "RAG quality — Precision@3 and MRR (p50)",
+          "type": "timeseries",
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 48},
+          "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "histogram_quantile(0.5, sum(rate(siskelbot_rag_precision_at_k_bucket{k=\"3\"}[5m])) by (le))",
+              "legendFormat": "Precision@3 p50",
+              "refId": "A"
+            },
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "histogram_quantile(0.5, sum(rate(siskelbot_rag_mrr_bucket[5m])) by (le))",
+              "legendFormat": "MRR p50",
+              "refId": "B"
+            }
+          ]
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 38,
+      "style": "dark",
+      "tags": ["siskelbot"],
+      "templating": {
+        "list": [
+          {
+            "name": "DS_PROMETHEUS",
+            "type": "datasource",
+            "query": "prometheus",
+            "current": {},
+            "hide": 0,
+            "includeAll": false,
+            "multi": false,
+            "options": [],
+            "refresh": 1,
+            "regex": "",
+            "skipUrlSync": false
+          }
+        ]
+      },
+      "time": {"from": "now-1h", "to": "now"},
+      "timepicker": {},
+      "timezone": "",
+      "title": "SiskelBot",
+      "uid": "siskelbot",
+      "version": 1,
+      "weekStart": ""
+    }
+{{- end }}

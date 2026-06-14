@@ -10,6 +10,11 @@ const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const LIVE_ONLY = process.argv.includes("--live-only");
 const BASE_URL = args[0] || process.env.BASE_URL || "http://localhost:3000";
 const API_KEY = process.env.API_KEY || process.env.SMOKE_TEST_API_KEY;
+const ADMIN_KEY = process.env.ADMIN_API_KEY || process.env.SMOKE_TEST_ADMIN_API_KEY;
+
+function isLocalSmokeTarget(baseUrl) {
+  return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i.test(baseUrl.replace(/\/$/, ""));
+}
 
 async function fetchJson(url, options = {}) {
   const res = await fetch(url, { ...options, redirect: "follow" });
@@ -49,7 +54,21 @@ async function main() {
   // 3. Config (unauthenticated)
   try {
     const r = await fetchJson(`${url}/config`);
-    results.push({ name: "GET /config", ok: r.ok && r.body?.backend, status: r.status });
+    results.push({
+      name: "GET /config",
+      ok: Boolean(r.ok && r.body?.backend),
+      status: r.status,
+    });
+    if (LIVE_ONLY && !isLocalSmokeTarget(url) && r.body && r.body.requiresApiKey === false) {
+      results.push({
+        name: "GET /config requiresApiKey",
+        ok: false,
+        status: r.status,
+        error: "Production deployment has requiresApiKey=false — set API_KEY",
+      });
+    } else if (LIVE_ONLY && (isLocalSmokeTarget(url) || r.body?.requiresApiKey)) {
+      results.push({ name: "GET /config requiresApiKey", ok: true, status: r.status });
+    }
   } catch (e) {
     results.push({ name: "GET /config", ok: false, error: e.message });
   }
@@ -85,6 +104,28 @@ async function main() {
     }
   } else if (!LIVE_ONLY) {
     results.push({ name: "POST /v1/chat/completions", ok: true, skip: "No API_KEY" });
+  }
+
+  // 6. Admin Phase 63 surface (optional — requires ADMIN_API_KEY)
+  if (ADMIN_KEY) {
+    try {
+      const r = await fetchJson(`${url}/api/v1/pr-review/rules`, {
+        headers: { "x-admin-api-key": ADMIN_KEY },
+      });
+      results.push({
+        name: "GET /api/v1/pr-review/rules (admin)",
+        ok: r.ok && Array.isArray(r.body?.rules),
+        status: r.status,
+      });
+    } catch (e) {
+      results.push({ name: "GET /api/v1/pr-review/rules (admin)", ok: false, error: e.message });
+    }
+  } else if (LIVE_ONLY) {
+    results.push({
+      name: "GET /api/v1/pr-review/rules (admin)",
+      ok: true,
+      skip: "No ADMIN_API_KEY",
+    });
   }
 
   // Summary

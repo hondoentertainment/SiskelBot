@@ -3,7 +3,7 @@ import globals from "globals";
 
 export default [
   {
-    ignores: ["node_modules/**", "release/**", "data/**", "coverage/**", ".claude/**"],
+    ignores: ["node_modules/**", "release/**", "data/**", "coverage/**", ".claude/**", "mobile/**", ".vercel/**"],
   },
   js.configs.recommended,
   {
@@ -50,6 +50,7 @@ export default [
       sourceType: "module",
       globals: {
         ...globals.browser,
+        module: "readonly",
         SiskelI18n: "readonly",
         SiskelRafBatcher: "readonly",
         marked: "readonly",
@@ -103,6 +104,52 @@ export default [
           caughtErrors: "none",
         },
       ],
+      "no-empty": ["warn", { allowEmptyCatch: true }],
+    },
+  },
+  {
+    files: ["edge/**/*.js"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: {
+        ...globals.browser,
+        ...globals.serviceWorker,
+        addEventListener: "readonly",
+      },
+    },
+    rules: {
+      "no-unused-vars": ["warn", { argsIgnorePattern: "^_", caughtErrors: "none" }],
+      "no-empty": ["warn", { allowEmptyCatch: true }],
+    },
+  },
+  {
+    files: ["mobile-sdk/**/*.js"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: {
+        ...globals.node,
+        URLSearchParams: "readonly",
+        TextDecoder: "readonly",
+        TextEncoder: "readonly",
+        fetch: "readonly",
+      },
+    },
+    rules: {
+      "no-unused-vars": ["warn", { argsIgnorePattern: "^_", caughtErrors: "none" }],
+      "no-empty": ["warn", { allowEmptyCatch: true }],
+    },
+  },
+  {
+    files: ["tests/e2e/**/*.spec.js"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: { ...globals.node, ...globals.browser },
+    },
+    rules: {
+      "no-unused-vars": ["warn", { argsIgnorePattern: "^_", caughtErrors: "none" }],
       "no-empty": ["warn", { allowEmptyCatch: true }],
     },
   },

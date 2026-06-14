@@ -1,6 +1,5 @@
-import express from "express";
 import rateLimit from "express-rate-limit";
-import { isEmailConfigured, sendEmail, sendDigest, getDigestRecipients, isDigestEnabled } from "../lib/email-notifications.js";
+import { isEmailConfigured, sendEmail, sendDigest, getDigestRecipients } from "../lib/email-notifications.js";
 import { isJiraConfigured, createJiraIssue, searchJiraIssues } from "../lib/jira-integration.js";
 import { isLinearConfigured, createLinearIssue, searchLinearIssues } from "../lib/linear-integration.js";
 
@@ -9,7 +8,6 @@ export default function mountIntegrationRoutes(app, deps) {
     apiRoute,
     apiError,
     integrationRateLimiter,
-    logRequest,
     isMonitoringEnabled,
     GITHUB_TOKEN,
     VERCEL_TOKEN,
@@ -44,62 +42,8 @@ export default function mountIntegrationRoutes(app, deps) {
       repo.length <= 100
     );
   }
-import rateLimit from "express-rate-limit";
 
-export function mountIntegrationRoutes(app, deps) {
-  const {
-    apiRoute,
-    apiError,
-    userAuth,
-    logRequest,
-    integrationRateLimiter,
-    isAuthConfigured,
-    isQuotaConfigured,
-    getWorkspaceQuota,
-    getSummary,
-    getRecordsForPeriod,
-    getDashboard,
-    exportToCsv,
-    exportToJson,
-    runMonitoringChecks,
-    monitoringState: getMonitoringState,
-    isMonitoringEnabled,
-    runHealthChecks,
-    GITHUB_TOKEN,
-    VERCEL_TOKEN,
-    validateOwnerRepo,
-    requireGitHubToken,
-    requireVercelToken,
-    GITHUB_API_BASE,
-    VERCEL_API_BASE,
-  } = deps;
-
-  const usageSummaryRateLimiter = rateLimit({
-    windowMs: 60_000,
-    max: 30,
-    standardHeaders: true,
-    legacyHeaders: false,
-  });
-
-  const analyticsRateLimiter = rateLimit({
-    windowMs: 60_000,
-    max: 30,
-    standardHeaders: true,
-    legacyHeaders: false,
-  });
-  const analyticsHandlers = [analyticsRateLimiter, logRequest];
-  if (isAuthConfigured()) analyticsHandlers.push(userAuth);
-
-  const monitoringRateLimiter = rateLimit({
-    windowMs: 60_000,
-    max: 20,
-    standardHeaders: true,
-    legacyHeaders: false,
-    handler: (req, res) => {
-      apiError(res, 429, "RATE_LIMITED", "Too many monitoring requests", "Wait before refreshing again.");
-    },
-  });
-
+  // GET /api/integrations/status
   apiRoute("get", "/integrations/status", (req, res) => {
     res.json({
       github: Boolean(GITHUB_TOKEN),
@@ -119,7 +63,7 @@ export function mountIntegrationRoutes(app, deps) {
     summary: "idle",
     alerts: [],
   };
-  let monitoringIntervalId = null;
+  // let monitoringIntervalId = null;
 
   async function runMonitoringChecks() {
     const alerts = [];
@@ -216,74 +160,6 @@ export function mountIntegrationRoutes(app, deps) {
     handler: (req, res) => {
       apiError(res, 429, "RATE_LIMITED", "Too many monitoring requests", "Wait before refreshing again.");
     },
-  apiRoute("get", "/usage/summary", usageSummaryRateLimiter, logRequest, async (req, res) => {
-    try {
-      const days = Math.min(90, Math.max(1, Number(req.query?.days) || 7));
-      const workspace = req.query?.workspace ? String(req.query.workspace).trim() : "default";
-      const summary = await getSummary(days);
-      const userId = req.userId || null;
-
-      if (isQuotaConfigured()) {
-        const quota = await getWorkspaceQuota(workspace, userId);
-        if (quota) {
-          res.setHeader("X-Quota-Limit", String(quota.limit));
-          res.setHeader("X-Quota-Remaining", String(quota.remaining));
-          res.setHeader("X-Quota-Reset", String(quota.resetAt));
-          summary.quota = { limit: quota.limit, used: quota.used, remaining: quota.remaining, resetAt: quota.resetAt };
-        }
-      }
-      res.json(summary);
-    } catch (err) {
-      console.error("Usage summary error:", err.message);
-      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-    }
-  });
-
-  apiRoute("get", "/analytics/dashboard", ...analyticsHandlers, async (req, res) => {
-    try {
-      const days = Math.min(90, Math.max(1, Number(req.query?.days) || 7));
-      const workspace = req.query?.workspace ? String(req.query.workspace).trim() : undefined;
-      const opts = { workspace };
-      if (req.userId) opts.userId = req.userId;
-      const dashboard = await getDashboard(days, opts);
-      if (isQuotaConfigured() && (workspace || "default")) {
-        const quota = await getWorkspaceQuota(workspace || "default", req.userId || null);
-        if (quota) {
-          res.setHeader("X-Quota-Limit", String(quota.limit));
-          res.setHeader("X-Quota-Remaining", String(quota.remaining));
-          res.setHeader("X-Quota-Reset", String(quota.resetAt));
-          dashboard.quota = { limit: quota.limit, used: quota.used, remaining: quota.remaining, resetAt: quota.resetAt };
-        }
-      }
-      res.json(dashboard);
-    } catch (err) {
-      console.error("Analytics dashboard error:", err.message);
-      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-    }
-  });
-
-  apiRoute("get", "/analytics/export", ...analyticsHandlers, async (req, res) => {
-    try {
-      const days = Math.min(90, Math.max(1, Number(req.query?.days) || 30));
-      const format = (req.query?.format || "json").toLowerCase();
-      const workspace = req.query?.workspace ? String(req.query.workspace).trim() : undefined;
-      const opts = { workspace };
-      if (req.userId) opts.userId = req.userId;
-      const records = await getRecordsForPeriod(days, opts);
-      const dashboard = await getDashboard(days, opts);
-
-      if (format === "csv") {
-        res.setHeader("Content-Type", "text/csv");
-        res.setHeader("Content-Disposition", `attachment; filename="analytics-${days}d.csv"`);
-        return res.send(exportToCsv(records));
-      }
-      res.setHeader("Content-Type", "application/json");
-      res.setHeader("Content-Disposition", `attachment; filename="analytics-${days}d.json"`);
-      res.send(exportToJson({ days, records, summary: dashboard }));
-    } catch (err) {
-      console.error("Analytics export error:", err.message);
-      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
-    }
   });
 
   apiRoute("get", "/monitoring/status", monitoringRateLimiter, async (req, res) => {
@@ -301,9 +177,6 @@ export function mountIntegrationRoutes(app, deps) {
     }
     if (monitoringState.lastCheck) {
       return res.json(monitoringState);
-    const state = getMonitoringState();
-    if (state.lastCheck) {
-      return res.json(state);
     }
     try {
       const data = await runMonitoringChecks();
@@ -315,7 +188,7 @@ export function mountIntegrationRoutes(app, deps) {
 
   if (isMonitoringEnabled()) {
     runMonitoringChecks().catch((e) => console.warn("[monitoring] Initial check failed:", e.message));
-    monitoringIntervalId = setInterval(() => {
+    /* monitoringIntervalId = */ setInterval(() => {
       runMonitoringChecks().catch((e) => console.warn("[monitoring] Scheduled check failed:", e.message));
     }, MONITORING_INTERVAL_MS);
   }
@@ -346,8 +219,13 @@ export function mountIntegrationRoutes(app, deps) {
     }
   });
 
-  const ghBase = GITHUB_API_BASE.replace(/\/$/, "");
-  const vercelBase = VERCEL_API_BASE.replace(/\/$/, "");
+  // GitHub proxy
+  function requireGitHubToken(req, res, next) {
+    if (!GITHUB_TOKEN) {
+      return apiError(res, 503, "INTEGRATION_UNAVAILABLE", "GitHub integration unavailable", "Set GITHUB_TOKEN in server environment variables.");
+    }
+    next();
+  }
 
   apiRoute("get", "/github/repos",
     integrationRateLimiter,
@@ -360,33 +238,24 @@ export function mountIntegrationRoutes(app, deps) {
             Authorization: `Bearer ${GITHUB_TOKEN}`,
           },
           signal: AbortSignal.timeout(10000),
-  apiRoute("get", "/github/repos", integrationRateLimiter, requireGitHubToken, async (req, res) => {
-    try {
-      const r = await fetch(`${ghBase}/user/repos?per_page=50`, {
-        headers: {
-          Accept: "application/vnd.github.v3+json",
-          Authorization: `Bearer ${GITHUB_TOKEN}`,
-        },
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!r.ok) {
-        const text = await r.text();
-        return res.status(r.status).json({
-          error: "GitHub API error",
-          code: "BACKEND_ERROR",
-          hint: (text || `HTTP ${r.status}`).slice(0, 500),
         });
+        if (!r.ok) {
+          const text = await r.text();
+          return res.status(r.status).json({
+            error: "GitHub API error",
+            code: "BACKEND_ERROR",
+            hint: (text || `HTTP ${r.status}`).slice(0, 500),
+          });
+        }
+        const data = await r.json();
+        res.json(data);
+      } catch (err) {
+        return apiError(res, 502, "BACKEND_UNREACHABLE", err.message, "Check GITHUB_TOKEN and network connectivity to api.github.com.");
       }
-      const data = await r.json();
-      res.json(data);
-    } catch (err) {
-      return apiError(res, 502, "BACKEND_UNREACHABLE", err.message, "Check GITHUB_TOKEN and network connectivity to api.github.com.");
     }
-  });
+  );
 
-  apiRoute(
-    "get",
-    "/github/repo/:owner/:repo",
+  apiRoute("get", "/github/repo/:owner/:repo",
     integrationRateLimiter,
     requireGitHubToken,
     (req, res, next) => {
@@ -399,7 +268,7 @@ export function mountIntegrationRoutes(app, deps) {
     async (req, res) => {
       const { owner, repo } = req.params;
       try {
-        const r = await fetch(`${ghBase}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, {
+        const r = await fetch(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, {
           headers: {
             Accept: "application/vnd.github.v3+json",
             Authorization: `Bearer ${GITHUB_TOKEN}`,
@@ -422,9 +291,7 @@ export function mountIntegrationRoutes(app, deps) {
     }
   );
 
-  apiRoute(
-    "get",
-    "/github/issues/:owner/:repo",
+  apiRoute("get", "/github/issues/:owner/:repo",
     integrationRateLimiter,
     requireGitHubToken,
     (req, res, next) => {
@@ -439,13 +306,16 @@ export function mountIntegrationRoutes(app, deps) {
       const qs = new URLSearchParams(req.query).toString();
       const suffix = qs ? `?${qs}` : "";
       try {
-        const r = await fetch(`${ghBase}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues${suffix}`, {
-          headers: {
-            Accept: "application/vnd.github.v3+json",
-            Authorization: `Bearer ${GITHUB_TOKEN}`,
-          },
-          signal: AbortSignal.timeout(10000),
-        });
+        const r = await fetch(
+          `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues${suffix}`,
+          {
+            headers: {
+              Accept: "application/vnd.github.v3+json",
+              Authorization: `Bearer ${GITHUB_TOKEN}`,
+            },
+            signal: AbortSignal.timeout(10000),
+          }
+        );
         if (!r.ok) {
           const text = await r.text();
           return res.status(r.status).json({
@@ -482,53 +352,49 @@ export function mountIntegrationRoutes(app, deps) {
             Authorization: `Bearer ${VERCEL_TOKEN}`,
           },
           signal: AbortSignal.timeout(10000),
-  apiRoute("get", "/vercel/deployments", integrationRateLimiter, requireVercelToken, async (req, res) => {
-    try {
-      const qs = new URLSearchParams(req.query).toString();
-      const url = `${vercelBase}/v6/deployments${qs ? `?${qs}` : ""}`;
-      const r = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${VERCEL_TOKEN}`,
-        },
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!r.ok) {
-        const text = await r.text();
-        return res.status(r.status).json({
-          error: "Vercel API error",
-          code: "BACKEND_ERROR",
-          hint: (text || `HTTP ${r.status}`).slice(0, 500),
         });
+        if (!r.ok) {
+          const text = await r.text();
+          return res.status(r.status).json({
+            error: "Vercel API error",
+            code: "BACKEND_ERROR",
+            hint: (text || `HTTP ${r.status}`).slice(0, 500),
+          });
+        }
+        const data = await r.json();
+        res.json(data);
+      } catch (err) {
+        return apiError(res, 502, "BACKEND_UNREACHABLE", err.message, "Check VERCEL_TOKEN and network connectivity to api.vercel.com.");
       }
-      const data = await r.json();
-      res.json(data);
-    } catch (err) {
-      return apiError(res, 502, "BACKEND_UNREACHABLE", err.message, "Check VERCEL_TOKEN and network connectivity to api.vercel.com.");
     }
-  });
+  );
 
-  apiRoute("get", "/vercel/projects", integrationRateLimiter, requireVercelToken, async (req, res) => {
-    try {
-      const qs = new URLSearchParams(req.query).toString();
-      const url = `${vercelBase}/v10/projects${qs ? `?${qs}` : ""}`;
-      const r = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${VERCEL_TOKEN}`,
-        },
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!r.ok) {
-        const text = await r.text();
-        return res.status(r.status).json({
-          error: "Vercel API error",
-          code: "BACKEND_ERROR",
-          hint: (text || `HTTP ${r.status}`).slice(0, 500),
+  apiRoute("get", "/vercel/projects",
+    integrationRateLimiter,
+    requireVercelToken,
+    async (req, res) => {
+      try {
+        const qs = new URLSearchParams(req.query).toString();
+        const url = `https://api.vercel.com/v10/projects${qs ? `?${qs}` : ""}`;
+        const r = await fetch(url, {
+          headers: {
+            Authorization: `Bearer ${VERCEL_TOKEN}`,
+          },
+          signal: AbortSignal.timeout(10000),
         });
+        if (!r.ok) {
+          const text = await r.text();
+          return res.status(r.status).json({
+            error: "Vercel API error",
+            code: "BACKEND_ERROR",
+            hint: (text || `HTTP ${r.status}`).slice(0, 500),
+          });
+        }
+        const data = await r.json();
+        res.json(data);
+      } catch (err) {
+        return apiError(res, 502, "BACKEND_UNREACHABLE", err.message, "Check VERCEL_TOKEN and network connectivity to api.vercel.com.");
       }
-      const data = await r.json();
-      res.json(data);
-    } catch (err) {
-      return apiError(res, 502, "BACKEND_UNREACHABLE", err.message, "Check VERCEL_TOKEN and network connectivity to api.vercel.com.");
     }
   );
 
@@ -669,5 +535,4 @@ export function mountIntegrationRoutes(app, deps) {
       }
     }
   );
-  });
 }

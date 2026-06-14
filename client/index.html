@@ -1429,6 +1429,7 @@
       </div>
     </details>
     <div class="header-actions">
+      <a href="/pricing.html" class="header-button" style="text-decoration:none;line-height:inherit;">Pricing</a>
       <details id="notifications-toggle">
         <summary class="header-button notifications-bell" aria-label="Notifications">
           <span aria-hidden="true">🔔</span>
@@ -1485,6 +1486,7 @@
             <span id="github-status" class="missing">GitHub: —</span>
             <span id="vercel-status" class="missing">Vercel: —</span>
           </div>
+          <p id="integrations-hint" class="panel-hint">Set server-side GitHub and Vercel tokens to unlock repos, deployments, and deploy recipes.</p>
           <div class="integrations-actions">
             <button id="refresh-repos-btn" type="button" class="header-button" disabled>Refresh repos</button>
             <button id="refresh-deployments-btn" type="button" class="header-button" disabled>Refresh deployments</button>
@@ -1525,6 +1527,15 @@
             <div class="usage-export">
               <button id="usage-export-csv" type="button" class="header-button">Export CSV</button>
               <button id="usage-export-json" type="button" class="header-button">Export JSON</button>
+            </div>
+          </div>
+          <div id="usage-billing-section" class="usage-billing-section" style="margin-top:0.65rem;padding-top:0.65rem;border-top:1px solid #334155;display:none;">
+            <p class="panel-hint" style="margin:0 0 0.35rem;font-size:0.8rem;font-weight:600;color:#cbd5e1;">Billing &amp; quotas</p>
+            <p id="usage-billing-plan-line" class="panel-hint" style="margin:0;font-size:0.78rem;color:#94a3b8;"></p>
+            <p id="usage-billing-usage-line" class="panel-hint" style="margin:0.35rem 0 0;font-size:0.78rem;color:#94a3b8;"></p>
+            <div style="display:flex;flex-wrap:wrap;gap:0.45rem;margin-top:0.45rem;align-items:center;">
+              <button type="button" id="usage-billing-portal-btn" class="header-button" style="display:none;font-size:0.78rem;padding:0.35rem 0.55rem;">Stripe portal</button>
+              <a href="/pricing.html" class="header-button" style="text-decoration:none;font-size:0.78rem;padding:0.35rem 0.55rem;">View plans</a>
             </div>
           </div>
           <div class="usage-actions">
@@ -1769,6 +1780,7 @@
         <li><strong>Chat</strong> — default streaming assistant.</li>
         <li><strong>Agent mode</strong> — tools (search context, recipes, optional execution).</li>
         <li><strong>Swarm</strong> — multiple specialists when the host enables it.</li>
+        <li><strong>Plans</strong> — <a href="/pricing.html" style="color:#60a5fa;">View pricing</a> for quotas, upgrades, and team limits.</li>
       </ul>
       <p class="panel-hint" style="margin:0 0 0.5rem 0;font-size:0.8125rem;">Tip: Open <strong>Settings</strong> for API keys, workspace agent text, and presets.</p>
       <p id="onboarding-health-status" class="panel-hint" style="margin:0;font-size:0.8125rem;min-height:1.25rem;" role="status"></p>
@@ -1987,6 +1999,8 @@
   <script src="/js/stream-metrics.js"></script>
   <script src="/js/ws-reconnect.js"></script>
   <script src="/js/offline-queue.js"></script>
+  <script src="/js/ot-client.js"></script>
+  <script type="module" src="/signal-strip.js"></script>
   <script>
     (function initI18n() {
       if (window.SiskelI18n) {
@@ -2080,7 +2094,13 @@
     const MAX_RETRIES = 2;
     const RETRY_DELAY_MS = 800;
 
-    let config = { backend: 'vllm', modelPresets: [], modelPlaceholder: 'meta-llama/Llama-3-8B-Instruct' };
+    let config = {
+      backend: 'vllm',
+      modelPresets: [],
+      modelPlaceholder: 'meta-llama/Llama-3-8B-Instruct',
+      stripeEnabled: false,
+      signupUrls: {},
+    };
     let activeAbortController = null;
     let lastSubmittedPrompt = '';
     let lastErrorMessage = '';
@@ -2641,6 +2661,9 @@
         workspaceSelect.addEventListener('change', () => {
           setWorkspace(workspaceSelect.value);
           updateTeamPanelVisibility();
+          if (typeof window.refreshBillingMeterInUsagePanel === 'function') {
+            window.refreshBillingMeterInUsagePanel().catch(() => {});
+          }
         });
       }
 
@@ -3259,12 +3282,20 @@
     const refreshReposBtn = document.getElementById('refresh-repos-btn');
     const refreshDeploymentsBtn = document.getElementById('refresh-deployments-btn');
     const integrationsList = document.getElementById('integrations-list');
+    const integrationsHint = document.getElementById('integrations-hint');
+
+    function setIntegrationsHint(message) {
+      if (integrationsHint) integrationsHint.textContent = message;
+    }
 
     async function loadIntegrationsStatus() {
       if (!githubStatusEl || !vercelStatusEl) return;
       try {
         const res = await fetch('/api/integrations/status');
-        if (!res.ok) return;
+        if (!res.ok) {
+          setIntegrationsHint('Could not load integration status. Check the server logs and integration environment variables.');
+          return;
+        }
         const data = await res.json();
         githubStatusEl.textContent = 'GitHub: ' + (data.github ? 'connected' : 'missing');
         githubStatusEl.className = data.github ? 'connected' : 'missing';
@@ -3272,7 +3303,17 @@
         vercelStatusEl.className = data.vercel ? 'connected' : 'missing';
         if (refreshReposBtn) refreshReposBtn.disabled = !data.github;
         if (refreshDeploymentsBtn) refreshDeploymentsBtn.disabled = !data.vercel;
-      } catch (_) {}
+        if (data.github && data.vercel) {
+          setIntegrationsHint('GitHub and Vercel are connected. Use recipes with deploy steps to turn changes into deployments.');
+        } else {
+          const missing = [];
+          if (!data.github) missing.push('GITHUB_TOKEN');
+          if (!data.vercel) missing.push('VERCEL_TOKEN');
+          setIntegrationsHint('Missing server-side ' + missing.join(' and ') + '. Set tokens to unlock repos, deployments, and deploy recipes.');
+        }
+      } catch (err) {
+        setIntegrationsHint('Could not load integration status: ' + (err.message || 'request failed'));
+      }
     }
 
     async function refreshRepos() {
@@ -3288,7 +3329,7 @@
         }
         const repos = Array.isArray(data) ? data : [];
         if (repos.length === 0) {
-          integrationsList.innerHTML = '<li class="integrations-list empty">No repos</li>';
+          integrationsList.innerHTML = '<li class="integrations-list empty">No repos found. Confirm GITHUB_TOKEN has access to the repositories you expect.</li>';
           return;
         }
         integrationsList.innerHTML = repos.slice(0, 50).map(r => {
@@ -3315,7 +3356,7 @@
         }
         const deployments = data.deployments || (Array.isArray(data) ? data : []);
         if (deployments.length === 0) {
-          integrationsList.innerHTML = '<li class="integrations-list empty">No deployments</li>';
+          integrationsList.innerHTML = '<li class="integrations-list empty">No deployments found. Confirm VERCEL_TOKEN can access the target Vercel team and project.</li>';
           return;
         }
         integrationsList.innerHTML = deployments.slice(0, 50).map(d => {
@@ -3351,8 +3392,112 @@
     const usageExportCsv = document.getElementById('usage-export-csv');
     const usageExportJson = document.getElementById('usage-export-json');
 
+    async function refreshBillingMeterInUsagePanel() {
+      const sec = document.getElementById('usage-billing-section');
+      const linePlan = document.getElementById('usage-billing-plan-line');
+      const lineUsage = document.getElementById('usage-billing-usage-line');
+      const portalBtn = document.getElementById('usage-billing-portal-btn');
+      if (!sec || !linePlan || !lineUsage || !portalBtn) return;
+      portalBtn.style.display = 'none';
+      linePlan.textContent = '';
+      lineUsage.textContent = '';
+      const workspace =
+        typeof getSelectedWorkspace === 'function' ? String(getSelectedWorkspace() || 'default') : 'default';
+      const headers = typeof getStorageHeaders === 'function' ? getStorageHeaders() : {};
+      let showSection = true;
+
+      try {
+        const pr = await fetch('/api/v1/billing/plan?workspace=' + encodeURIComponent(workspace), { headers });
+        if (pr.ok) {
+          const j = await pr.json();
+          const p = j.plan || {};
+          let tok = '';
+          if (Number.isFinite(p.tokensPerMonth) && p.tokensPerMonth < 1e15) {
+            tok = p.tokensPerMonth.toLocaleString() + ' tokens/mo';
+          } else if (p.tokensPerMonth === Infinity || p.tokensPerMonth === Number.POSITIVE_INFINITY) {
+            tok = 'Unlimited tokens/mo';
+          }
+          linePlan.textContent = 'Plan: ' + (p.name || p.id || '—') + (tok ? ' · ' + tok : '');
+          showSection = true;
+        }
+      } catch (_) {}
+
+      try {
+        const now = new Date();
+        const period =
+          now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+        const ur = await fetch(
+          '/api/v1/billing/usage?workspace=' + encodeURIComponent(workspace) + '&period=' + encodeURIComponent(period),
+          { headers },
+        );
+        if (ur.ok) {
+          const u = await ur.json();
+          const toks = typeof u.tokens === 'number' ? u.tokens.toLocaleString() : String(u.tokens ?? 0);
+          const cost = typeof u.cost === 'number' ? u.cost.toFixed(2) : '0.00';
+          const reqs = u.requests ?? 0;
+          lineUsage.textContent =
+            'Recorded usage (' + (u.period || period) + '): ' +
+            toks +
+            ' tokens · ~$' +
+            cost +
+            ' · ' +
+            reqs +
+            ' billable requests';
+          showSection = true;
+        }
+      } catch (_) {}
+
+      try {
+        if (config && config.stripeEnabled) {
+          const sr = await fetch(
+            '/api/v1/billing/subscription?workspace=' + encodeURIComponent(workspace),
+            {
+              headers,
+              credentials: 'include',
+            },
+          );
+          if (sr.ok) {
+            const data = await sr.json();
+            if (data.subscription && data.subscription.stripeCustomerId) {
+              portalBtn.style.display = 'inline-block';
+              showSection = true;
+            }
+          }
+        }
+      } catch (_) {}
+
+      portalBtn.onclick = async function () {
+        const ws =
+          typeof getSelectedWorkspace === 'function' ? String(getSelectedWorkspace() || 'default') : 'default';
+        const origin = window.location.origin || '';
+        portalBtn.disabled = true;
+        try {
+          const hdr = typeof getStorageHeaders === 'function' ? getStorageHeaders() : { 'Content-Type': 'application/json' };
+          const r = await fetch('/api/v1/billing/portal', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json', ...hdr },
+            body: JSON.stringify({ workspaceId: ws, returnUrl: origin + '/billing' }),
+          });
+          const j = await r.json().catch(() => ({}));
+          if (j.url) window.location.href = j.url;
+          else portalBtn.title = j.message || j.error || 'Portal unavailable';
+        } catch (e) {
+          portalBtn.title = e.message || 'Portal error';
+        } finally {
+          portalBtn.disabled = false;
+        }
+      };
+
+      sec.style.display = showSection ? 'block' : 'none';
+    }
+    window.refreshBillingMeterInUsagePanel = refreshBillingMeterInUsagePanel;
+
     async function loadUsageStatus() {
-      if (!usageStatusEl) return;
+      if (!usageStatusEl) {
+        refreshBillingMeterInUsagePanel().catch(() => {});
+        return;
+      }
       usageStatusEl.textContent = 'Loading…';
       if (usageAnalyticsEl) usageAnalyticsEl.style.display = 'none';
       const days = usageDaysSelect ? Math.min(90, Math.max(1, parseInt(usageDaysSelect.value, 10) || 7)) : 7;
@@ -3456,6 +3601,8 @@
         if (usageAnalyticsEl) usageAnalyticsEl.style.display = 'block';
       } catch (err) {
         usageStatusEl.textContent = 'Failed to load: ' + (err.message || 'Error');
+      } finally {
+        refreshBillingMeterInUsagePanel().catch(() => {});
       }
     }
 
@@ -6080,6 +6227,7 @@
         notificationsWsManager = SiskelWSReconnect.createReconnectingWebSocket({
           getTokenUrl: '/api/v1/ws-token',
           workspace: wsWorkspace,
+          getTokenHeaders: typeof getApiHeaders === 'function' ? getApiHeaders : undefined,
           onConnect: function () {
             notificationsWsConnected = true;
             stopNotificationsPoll();

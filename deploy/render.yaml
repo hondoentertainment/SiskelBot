@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: siskelbot
+    env: node
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health/live
+    envVars:
+      - key: BACKEND
+        value: ollama
+      - key: NODE_ENV
+        value: production

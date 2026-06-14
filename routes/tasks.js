@@ -1,4 +1,3 @@
-import express from "express";
 import rateLimit from "express-rate-limit";
 
 export default function mountTaskRoutes(app, deps) {

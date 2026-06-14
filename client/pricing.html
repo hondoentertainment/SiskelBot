@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>Pricing — Siskel Bot</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background: #0f172a;
+      color: #e2e8f0;
+      line-height: 1.5;
+    }
+    header {
+      padding: 1.5rem 2rem;
+      border-bottom: 1px solid #1e293b;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    header a { color: #94a3b8; text-decoration: none; }
+    header a:hover { color: #e2e8f0; }
+    main { max-width: 1100px; margin: 0 auto; padding: 3rem 2rem; }
+    h1 { margin: 0 0 0.5rem; font-size: 2.5rem; }
+    .lede { color: #94a3b8; font-size: 1.1rem; margin-bottom: 3rem; max-width: 720px; }
+    .plans {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+    }
+    .plan {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+    }
+    .plan.featured {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    }
+    .plan h2 { margin: 0 0 0.25rem; font-size: 1.5rem; }
+    .price { font-size: 2.5rem; font-weight: 700; margin: 1rem 0 0.25rem; }
+    .price small { font-size: 1rem; font-weight: 400; color: #94a3b8; }
+    .plan-tagline { color: #94a3b8; min-height: 2.8em; margin-bottom: 1rem; }
+    ul.features { list-style: none; padding: 0; margin: 1.5rem 0; flex: 1; }
+    ul.features li {
+      padding: 0.4rem 0;
+      border-bottom: 1px solid #334155;
+      font-size: 0.95rem;
+    }
+    ul.features li:last-child { border-bottom: 0; }
+    ul.features li::before { content: "✓ "; color: #22c55e; font-weight: 700; }
+    button.cta {
+      width: 100%;
+      padding: 0.85rem 1rem;
+      border-radius: 8px;
+      border: 0;
+      background: #3b82f6;
+      color: white;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button.cta:hover { background: #2563eb; }
+    button.cta:disabled { background: #475569; cursor: not-allowed; }
+    button.cta.secondary { background: #475569; }
+    button.cta.secondary:hover { background: #64748b; }
+    .status {
+      margin-top: 1rem;
+      padding: 0.75rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      display: none;
+    }
+    .status.visible { display: block; }
+    .status.error { background: #7f1d1d; color: #fecaca; }
+    .status.info { background: #1e3a8a; color: #bfdbfe; }
+    .footnote { margin-top: 3rem; color: #64748b; font-size: 0.9rem; text-align: center; }
+    .footnote a { color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="/" aria-label="Back to app">← Siskel Bot</a>
+    <span>
+      <a href="/landing.html" style="margin-right:1rem;">Home</a>
+      <a href="/trust.html" style="margin-right:1rem;">Trust</a>
+      <a href="/app.html">Open app</a>
+    </span>
+  </header>
+  <main>
+    <h1>Simple pricing for local AI</h1>
+    <p class="lede">Run swarm agents on your own data with Ollama or vLLM. Your data never leaves your machine.</p>
+
+    <div class="plans" id="plans"></div>
+
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+
+    <p class="footnote">
+      <a href="/trust.html">Security &amp; trust</a>
+      ·
+      Already a customer? <a href="#" id="manage-link">Manage subscription</a>
+      &nbsp;·&nbsp; Questions? <a href="mailto:hello@siskelbot.com">hello@siskelbot.com</a>
+    </p>
+  </main>
+
+  <script>
+    const PLAN_TAGLINES = {
+      free: "Try the product. Local models, basic knowledge base.",
+      pro: "Everything indie hackers and small teams need.",
+      enterprise: "SSO, audit, unlimited workspaces.",
+    };
+    const PLAN_FEATURES = {
+      free: ["100K tokens / month", "Up to 2 workspaces", "Up to 3 members", "Local models (Ollama)", "Knowledge base"],
+      pro: ["1M tokens / month", "Up to 10 workspaces", "Up to 20 members", "Multi-agent swarm", "Knowledge graph", "All integrations"],
+      enterprise: ["Unlimited tokens", "Unlimited workspaces", "Unlimited members", "All Pro features", "SSO + audit log", "Priority support"],
+    };
+
+    function fmtPrice(p) {
+      if (!p || !Number.isFinite(p)) return { amount: "Custom", suffix: "" };
+      if (p === 0) return { amount: "$0", suffix: "/month" };
+      return { amount: `$${p}`, suffix: "/month" };
+    }
+
+    function render(plans) {
+      const container = document.getElementById("plans");
+      container.innerHTML = "";
+      const order = ["free", "pro", "enterprise"];
+      const ordered = order
+        .map((id) => plans.find((p) => p.id === id))
+        .filter(Boolean);
+      for (const plan of ordered) {
+        const featured = plan.id === "pro";
+        const { amount, suffix } = fmtPrice(plan.priceMonthly);
+        const features = PLAN_FEATURES[plan.id] || [];
+        const tagline = PLAN_TAGLINES[plan.id] || "";
+        const buttonLabel =
+          plan.id === "free" ? "Get started" :
+          plan.id === "enterprise" ? "Contact sales" : "Upgrade to Pro";
+        const card = document.createElement("div");
+        card.className = "plan" + (featured ? " featured" : "");
+        card.innerHTML = `
+          <h2>${plan.name}</h2>
+          <p class="plan-tagline">${tagline}</p>
+          <div class="price">${amount}<small>${suffix}</small></div>
+          <ul class="features">${features.map((f) => `<li>${f}</li>`).join("")}</ul>
+          <button class="cta${featured ? "" : " secondary"}" data-plan="${plan.id}">${buttonLabel}</button>
+        `;
+        container.appendChild(card);
+      }
+      container.addEventListener("click", onCta);
+    }
+
+    async function onCta(e) {
+      const btn = e.target.closest("button[data-plan]");
+      if (!btn) return;
+      const planId = btn.dataset.plan;
+      if (planId === "free") {
+        window.location.href = "/app.html";
+        return;
+      }
+      if (planId === "enterprise") {
+        window.location.href = "mailto:sales@siskelbot.com?subject=SiskelBot%20Enterprise";
+        return;
+      }
+      btn.disabled = true;
+      const original = btn.textContent;
+      btn.textContent = "Redirecting...";
+      try {
+        const res = await fetch("/api/v1/billing/checkout", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ planId }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || data?.message || `HTTP ${res.status}`);
+        if (data?.url) {
+          window.location.href = data.url;
+          return;
+        }
+        throw new Error("Checkout did not return a URL");
+      } catch (err) {
+        showStatus(`Checkout failed: ${err.message}`, "error");
+        btn.disabled = false;
+        btn.textContent = original;
+      }
+    }
+
+    function showStatus(msg, kind = "info") {
+      const el = document.getElementById("status");
+      el.textContent = msg;
+      el.className = `status visible ${kind}`;
+    }
+
+    document.getElementById("manage-link").addEventListener("click", async (e) => {
+      e.preventDefault();
+      try {
+        const res = await fetch("/api/v1/billing/portal", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ returnUrl: window.location.href }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || data?.message || `HTTP ${res.status}`);
+        if (data?.url) {
+          window.location.href = data.url;
+          return;
+        }
+        throw new Error("Portal did not return a URL");
+      } catch (err) {
+        showStatus(`Could not open billing portal: ${err.message}`, "error");
+      }
+    });
+
+    (async () => {
+      try {
+        const res = await fetch("/api/v1/billing/plans");
+        const data = await res.json();
+        render(data.plans || []);
+      } catch (err) {
+        showStatus(`Failed to load plans: ${err.message}`, "error");
+      }
+    })();
+  </script>
+</body>
+</html>

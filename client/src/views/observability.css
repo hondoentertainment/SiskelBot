@@ -1,0 +1,201 @@
+/* Observability view — dark theme matching client/index.html palette. */
+
+.obs-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+  min-height: 100%;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+}
+
+.obs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.obs-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #e2e8f0;
+  letter-spacing: 0.01em;
+}
+
+.obs-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: #334155;
+  color: #cbd5e1;
+}
+
+.obs-pill-ok { background: #166534; color: #bbf7d0; }
+.obs-pill-loading { background: #1d4ed8; color: #dbeafe; }
+.obs-pill-bad { background: #9f1239; color: #fecdd3; }
+
+/* ── Grid ──────────────────────────────────────────────────────────────── */
+
+.obs-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  min-height: 0;
+}
+
+@media (max-width: 900px) {
+  .obs-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.obs-card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.obs-card-head {
+  padding: 10px 14px;
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #cbd5e1;
+  border-bottom: 1px solid #334155;
+  background: #0f172a;
+}
+
+.obs-card-body {
+  padding: 8px 12px;
+  overflow-x: auto;
+}
+
+/* ── Tables ────────────────────────────────────────────────────────────── */
+
+.obs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.obs-table th,
+.obs-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid #334155;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+}
+
+.obs-table th {
+  color: #94a3b8;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid #475569;
+}
+
+.obs-table tbody tr:hover {
+  background: #0f172a;
+}
+
+.obs-table tbody tr:hover td {
+  border-color: #60a5fa;
+}
+
+.obs-cell-ok {
+  color: #86efac;
+  font-weight: 600;
+}
+
+.obs-cell-bad {
+  color: #fecdd3;
+  background: #4c1d2a;
+  font-weight: 600;
+}
+
+.obs-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.obs-empty {
+  color: #64748b;
+  font-style: italic;
+  text-align: center;
+  padding: 12px 0;
+}
+
+/* Mobile polish: touch targets, card-list rows for tables, momentum scroll. */
+.obs-card-body { -webkit-overflow-scrolling: touch; }
+
+@media (max-width: 900px) {
+  .obs-view { padding: 12px; gap: 12px; }
+  .obs-header { gap: 10px; }
+  .obs-card-head { padding: 12px 14px; min-height: 44px; display: flex; align-items: center; }
+  .obs-table th,
+  .obs-table td { padding: 10px 8px; min-height: 44px; max-width: 220px; }
+  .obs-pill { min-height: 24px; padding: 5px 12px; display: inline-flex; align-items: center; }
+}
+
+@media (max-width: 600px) {
+  .obs-view { padding: 10px; gap: 10px; }
+  .obs-title { font-size: 16px; }
+  .obs-card-body { padding: 6px 8px; }
+  .obs-table,
+  .obs-table thead,
+  .obs-table tbody,
+  .obs-table tr,
+  .obs-table th,
+  .obs-table td {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .obs-table thead { display: none; }
+  .obs-table tr {
+    margin-bottom: 8px;
+    padding: 10px 12px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    min-height: 44px;
+  }
+  .obs-table td {
+    max-width: 100%;
+    white-space: normal;
+    padding: 4px 0;
+    border-bottom: none;
+    overflow: visible;
+    text-overflow: clip;
+  }
+  .obs-table td::before {
+    content: attr(data-label);
+    display: block;
+    color: #94a3b8;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 2px;
+  }
+  .obs-table tbody tr:hover { background: #0f172a; }
+}

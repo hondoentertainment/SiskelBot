@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>SiskelBot - You're invited</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .card {
+      max-width: 540px;
+      width: 100%;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 2.5rem 2rem;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+      text-align: center;
+    }
+    .logo {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #f8fafc;
+      margin-bottom: 0.5rem;
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 1.5rem;
+    }
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: #f8fafc;
+      margin-bottom: 0.75rem;
+    }
+    .lead {
+      font-size: 1rem;
+      color: #94a3b8;
+      margin-bottom: 1.75rem;
+      line-height: 1.6;
+    }
+    .code-display {
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: 1.25rem;
+      letter-spacing: 0.1em;
+      padding: 0.75rem 1rem;
+      background: #0f172a;
+      border: 1px dashed #475569;
+      border-radius: 8px;
+      color: #f8fafc;
+      margin-bottom: 1.5rem;
+      word-break: break-all;
+    }
+    .benefits {
+      text-align: left;
+      list-style: none;
+      margin: 1.5rem 0;
+      padding: 1rem 1.25rem;
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 8px;
+      border: 1px solid #334155;
+    }
+    .benefits li {
+      padding: 0.4rem 0;
+      color: #cbd5e1;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .benefits li::before {
+      content: "+";
+      display: inline-block;
+      width: 1.25rem;
+      height: 1.25rem;
+      background: #10b981;
+      color: #0f172a;
+      border-radius: 50%;
+      text-align: center;
+      font-weight: 700;
+      font-size: 0.85rem;
+      line-height: 1.25rem;
+      flex-shrink: 0;
+    }
+    .cta {
+      display: inline-block;
+      padding: 0.85rem 2rem;
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+    .cta:hover { background: #2563eb; }
+    .cta.secondary {
+      background: transparent;
+      border: 1px solid #475569;
+      color: #cbd5e1;
+      margin-left: 0.5rem;
+    }
+    .cta.secondary:hover {
+      background: #334155;
+    }
+    .invalid {
+      padding: 0.75rem 1rem;
+      background: rgba(220, 38, 38, 0.1);
+      border: 1px solid rgba(220, 38, 38, 0.3);
+      color: #fca5a5;
+      border-radius: 8px;
+      margin-bottom: 1.5rem;
+      font-size: 0.875rem;
+      display: none;
+    }
+    .footer {
+      margin-top: 2rem;
+      font-size: 0.75rem;
+      color: #64748b;
+    }
+    .footer a {
+      color: #60a5fa;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">SiskelBot</div>
+    <span class="badge">You're invited</span>
+    <h1>Welcome! Claim your bonus.</h1>
+    <p class="lead">
+      Someone shared SiskelBot with you. Sign up using this referral code and you'll both get
+      <strong>$5 in credits</strong> to start exploring.
+    </p>
+
+    <div id="invalidNotice" class="invalid">
+      This referral code is invalid or expired. You can still sign up — but the bonus may not apply.
+    </div>
+
+    <div class="code-display" id="codeDisplay">--------</div>
+
+    <ul class="benefits">
+      <li>$5 free credits to try premium models</li>
+      <li>Workspace plus collaboration tools</li>
+      <li>Knowledge base with semantic search</li>
+      <li>Built-in agent automations</li>
+    </ul>
+
+    <a href="/" class="cta" id="ctaSignup">Continue to SiskelBot</a>
+    <a href="/" class="cta secondary">Already a user? Log in</a>
+
+    <div class="footer">
+      By continuing, you agree to our <a href="/terms">terms</a> and <a href="/privacy">privacy policy</a>.
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      // Capture the referral code from query string ("/r.html?code=XXX") or path ("/r/XXX").
+      var params = new URLSearchParams(window.location.search);
+      var code = params.get("code") || "";
+      if (!code) {
+        var m = window.location.pathname.match(/^\/r\/([A-Z0-9]+)/i);
+        if (m) code = m[1];
+      }
+      var invalid = params.get("invalid") === "1";
+
+      if (code) {
+        // Persist for signup attribution.
+        try {
+          localStorage.setItem("siskelbot_ref", code);
+          localStorage.setItem("siskelbot_ref_at", String(Date.now()));
+        } catch (_) {}
+        // Also stash in a non-httpOnly cookie as a fallback.
+        try {
+          var maxAge = 30 * 24 * 60 * 60; // 30 days
+          document.cookie = "siskelbot_ref=" + encodeURIComponent(code) + "; max-age=" + maxAge + "; path=/; SameSite=Lax";
+        } catch (_) {}
+        document.getElementById("codeDisplay").textContent = code;
+        var cta = document.getElementById("ctaSignup");
+        cta.href = "/?ref=" + encodeURIComponent(code);
+      } else {
+        document.getElementById("codeDisplay").style.display = "none";
+      }
+
+      if (invalid) {
+        document.getElementById("invalidNotice").style.display = "block";
+      }
+    })();
+  </script>
+</body>
+</html>

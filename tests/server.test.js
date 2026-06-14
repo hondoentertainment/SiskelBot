@@ -144,6 +144,21 @@ test("POST /v1/chat/completions requires auth when API_KEY is set", async () => 
   assert.ok(response.body.hint);
 });
 
+test("POST /v1/chat/completions parses body with charset=UTF-8 Content-Type", async () => {
+  const app = await loadApp({ BACKEND: "ollama", API_KEY: "secret-key" });
+  const payload = JSON.stringify({
+    model: "llama3.2",
+    messages: [{ role: "user", content: "hello" }],
+  });
+  const response = await request(app)
+    .post("/v1/chat/completions")
+    .set("Content-Type", "application/json; charset=UTF-8")
+    .send(payload);
+
+  assert.equal(response.status, 401);
+  assert.equal(response.body.code, "AUTH_REQUIRED");
+});
+
 test("API errors return structured format { error, code, hint }", async () => {
   const app = await loadApp({ BACKEND: "ollama", API_KEY: "secret-key" });
   const response = await request(app)
@@ -275,7 +290,7 @@ test("GET /metrics returns 200 when METRICS_PROTECTED=1 and secret provided", as
 // --- Phase 4: Toolchain Integration Hub ---
 
 test("GET /api/integrations/status returns { github, vercel } booleans", async () => {
-  const app = await loadApp({ BACKEND: "ollama" });
+  const app = await loadApp({ BACKEND: "ollama", GITHUB_TOKEN: "", VERCEL_TOKEN: "" });
   const response = await request(app).get("/api/integrations/status");
 
   assert.equal(response.status, 200);
@@ -302,7 +317,7 @@ test("GET /api/integrations/status returns vercel true when VERCEL_TOKEN set", a
 });
 
 test("GET /api/github/repos returns 503 with { error, code, hint } when GITHUB_TOKEN missing", async () => {
-  const app = await loadApp({ BACKEND: "ollama" });
+  const app = await loadApp({ BACKEND: "ollama", GITHUB_TOKEN: "" });
   const response = await request(app).get("/api/github/repos");
 
   assert.equal(response.status, 503);
@@ -313,7 +328,7 @@ test("GET /api/github/repos returns 503 with { error, code, hint } when GITHUB_T
 });
 
 test("GET /api/vercel/deployments returns 503 with { error, code, hint } when VERCEL_TOKEN missing", async () => {
-  const app = await loadApp({ BACKEND: "ollama" });
+  const app = await loadApp({ BACKEND: "ollama", VERCEL_TOKEN: "" });
   const response = await request(app).get("/api/vercel/deployments");
 
   assert.equal(response.status, 503);

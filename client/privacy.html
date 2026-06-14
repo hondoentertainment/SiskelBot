@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy overview — Siskel Bot</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; }
+    header { padding: 1.25rem 2rem; border-bottom: 1px solid #1e293b; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; }
+    header a { color: #94a3b8; text-decoration: none; }
+    main { max-width: 720px; margin: 0 auto; padding: 2rem; }
+    h1 { margin: 0 0 0.5rem; }
+    .lede { color: #94a3b8; margin-bottom: 1.5rem; }
+    h2 { font-size: 1.1rem; margin: 1.75rem 0 0.5rem; }
+    ul { color: #cbd5e1; padding-left: 1.25rem; }
+    .box { background: #1e293b; border-radius: 8px; padding: 1rem; margin-top: 2rem; font-size: 0.9rem; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="/landing.html">← Home</a>
+    <a href="/trust.html">Trust center</a>
+  </header>
+  <main>
+    <h1>Privacy overview</h1>
+    <p class="lede">How Siskel Bot treats end-user and customer data. Replace bracketed fields for your legal entity and jurisdiction before publishing as policy.</p>
+
+    <h2>What we process</h2>
+    <ul>
+      <li><strong>Chat &amp; agent traffic</strong> — prompts, tool calls, and completions pass through the proxy to your configured LLM backend.</li>
+      <li><strong>Product data</strong> — conversations, knowledge documents, workspace metadata, usage metrics, and webhook payloads you configure.</li>
+      <li><strong>Accounts</strong> — OAuth profile identifiers and emails when social login is enabled; API key identifiers when key auth is used.</li>
+      <li><strong>Billing</strong> — minimal subscription metadata via Stripe (customer id, status) stored to enforce plan tiers.</li>
+    </ul>
+
+    <h2>Your responsibilities (self-hosted)</h2>
+    <ul>
+      <li>Determine lawful basis and retention for data you store under <code>STORAGE_PATH</code> or Postgres.</li>
+      <li>Protect inference endpoints and API keys; rotate keys on a schedule.</li>
+      <li>Document subprocessors you enable (see <a href="/subprocessors.html" style="color:#60a5fa;">Subprocessors</a> as a starting checklist).</li>
+    </ul>
+
+    <h2>Hosted deployments</h2>
+    <ul>
+      <li>Publish a definitive privacy policy URL once you have vendor-specific terms.</li>
+      <li>Offer a DPA when selling to businesses — see <a href="/dpa.html" style="color:#60a5fa;">DPA template</a>.</li>
+    </ul>
+
+    <div class="box">This page is a drafting aid, not legal advice. Have counsel review before customer-facing use.</div>
+  </main>
+</body>
+</html>

@@ -240,11 +240,10 @@ test("internalAuth rejects wrong token", async () => {
   process.env.INTERNAL_SECRET = "correct-secret";
 
   let statusCode = 0;
-  let body = {};
   const req = { headers: { authorization: "Bearer wrong" } };
   const res = {
     status(code) { statusCode = code; return this; },
-    json(obj) { body = obj; },
+    json() {},
   };
 
   internalAuth(req, res, () => {});

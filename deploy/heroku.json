@@ -1,0 +1,73 @@
+{
+  "name": "siskelbot",
+  "description": "SiskelBot — realtime streaming assistant proxy for Ollama, vLLM, and OpenAI",
+  "keywords": ["node", "express", "llm", "ai", "ollama", "openai", "streaming"],
+  "repository": "https://github.com/your-org/SiskelBot",
+  "logo": "",
+  "website": "",
+  "success_url": "/",
+  "stack": "heroku-22",
+  "buildpacks": [
+    {
+      "url": "heroku/nodejs"
+    }
+  ],
+  "env": {
+    "BACKEND": {
+      "description": "LLM backend provider",
+      "value": "openai",
+      "required": true
+    },
+    "OPENAI_API_KEY": {
+      "description": "OpenAI API key (required when BACKEND=openai)",
+      "required": false
+    },
+    "API_KEY": {
+      "description": "API key to protect /v1/chat/completions",
+      "generator": "secret"
+    },
+    "ADMIN_API_KEY": {
+      "description": "API key to protect admin endpoints",
+      "generator": "secret"
+    },
+    "SESSION_SECRET": {
+      "description": "Secret for session cookies (required for OAuth)",
+      "generator": "secret"
+    },
+    "NODE_ENV": {
+      "description": "Node environment",
+      "value": "production"
+    },
+    "STORAGE_BACKEND": {
+      "description": "Storage backend: json, sqlite, or postgres",
+      "value": "postgres"
+    },
+    "DATABASE_URL": {
+      "description": "PostgreSQL connection string (auto-set by Heroku Postgres addon)",
+      "required": false
+    },
+    "REDIS_URL": {
+      "description": "Redis connection string (auto-set by Heroku Redis addon)",
+      "required": false
+    }
+  },
+  "addons": [
+    {
+      "plan": "heroku-postgresql:essential-0",
+      "as": "DATABASE"
+    },
+    {
+      "plan": "heroku-redis:mini",
+      "as": "REDIS"
+    }
+  ],
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  },
+  "scripts": {
+    "postdeploy": "npm run build:client"
+  }
+}

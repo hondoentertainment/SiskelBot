@@ -3,19 +3,20 @@ import { test, expect } from "@playwright/test";
 test.describe("Admin dashboard", () => {
   test("loads the admin page with expected title", async ({ page }) => {
     await page.goto("/admin");
-    await expect(page).toHaveTitle(/Siskel Bot Admin/);
+    await expect(page).toHaveTitle(/SiskelBot Admin/);
   });
 
-  test("has a header with Admin title", async ({ page }) => {
+  test("shows login gate with Admin heading when unauthenticated", async ({ page }) => {
     await page.goto("/admin");
-    const heading = page.locator("header h1");
+    await expect(page.locator("#login-screen")).toBeVisible();
+    const heading = page.locator("#login-screen h1");
     await expect(heading).toBeVisible();
     await expect(heading).toHaveText(/admin/i);
   });
 
-  test("has a link back to the main client", async ({ page }) => {
+  test("login screen includes API key field and sign-in", async ({ page }) => {
     await page.goto("/admin");
-    const backLink = page.locator('header a[href="/"]');
-    await expect(backLink).toBeAttached();
+    await expect(page.locator("#admin-key-input")).toBeVisible();
+    await expect(page.locator("#login-btn")).toBeVisible();
   });
 });

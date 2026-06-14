@@ -1,0 +1,110 @@
+# Refresh the load-test baseline (tests/load-baseline.json).
+#
+# Runs ONLY on manual dispatch. Spins up a server, runs the load test with
+# --update-baseline, and opens a PR with the refreshed baseline so a human
+# can review numbers before merging.
+name: Load Test Baseline Refresh
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: "Test duration (seconds)"
+        required: false
+        default: "15"
+      concurrency:
+        description: "Concurrent workers"
+        required: false
+        default: "5"
+      rps:
+        description: "Target requests per second"
+        required: false
+        default: "30"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  NODE_VERSION: "22"
+  PORT: "3000"
+
+jobs:
+  refresh-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start server
+        run: |
+          set -e
+          BACKEND=ollama PORT="${PORT}" npm start &
+
+      - name: Wait for /health/live
+        run: |
+          set -e
+          url="http://127.0.0.1:${PORT}/health/live"
+          for i in $(seq 1 45); do
+            if curl -sf "$url" >/dev/null; then
+              echo "Server ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Server did not respond on $url within 45s"
+          exit 1
+
+      - name: Run load test and update baseline
+        run: |
+          npm run test:load -- \
+            --url=http://127.0.0.1:${{ env.PORT }} \
+            --duration=${{ github.event.inputs.duration }} \
+            --concurrency=${{ github.event.inputs.concurrency }} \
+            --rps=${{ github.event.inputs.rps }} \
+            --max-error-rate=1 --max-p99=3000 \
+            --json-output=load-results.json \
+            --update-baseline=tests/load-baseline.json
+
+      - name: Upload load results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: load-results
+          path: load-results.json
+          retention-days: 30
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v8
+        with:
+          commit-message: "chore: refresh load test baseline"
+          title: "chore: refresh load test baseline"
+          body: |
+            Automated refresh of `tests/load-baseline.json`.
+
+            Triggered manually via the `Load Test Baseline Refresh` workflow.
+
+            ### Run parameters
+            - duration: `${{ github.event.inputs.duration }}` seconds
+            - concurrency: `${{ github.event.inputs.concurrency }}`
+            - rps: `${{ github.event.inputs.rps }}`
+
+            ### Reviewer checklist
+            - [ ] Numbers look reasonable (not regressed vs prior baseline)
+            - [ ] No suspicious latency or error spikes in the workflow log
+            - [ ] Refresh is justified (perf improvement, runner change, etc.)
+
+            See `docs/RUNBOOK.md` -> "Load Test Baselines" for guidance.
+          branch: chore/refresh-load-baseline
+          base: main
+          delete-branch: true
+          add-paths: |
+            tests/load-baseline.json

@@ -10,9 +10,19 @@ This guide covers deploying the SiskelBot streaming assistant to Vercel and conf
    - `BACKEND` = `openai`
    - `OPENAI_API_KEY` = your OpenAI API key
    - `API_KEY` = a secret key to protect `/v1/chat/completions` (clients send `Authorization: Bearer <API_KEY>` or `x-api-key: <API_KEY>`)
+   - `STORAGE_BACKEND` = `postgres`
+   - `DATABASE_URL` = your durable PostgreSQL connection string
+   - `SESSION_SECRET` = a strong random secret if OAuth, SSO, or sessions are enabled
+   - `CRON_SECRET` = a strong random secret if Vercel Cron should run scheduled recipes
 4. Redeploy after adding variables
 
 > **Note:** Ollama and vLLM (localhost) do not work on Vercel. Use the OpenAI backend with an API key for production.
+
+After deploy, run a live smoke test from your workstation:
+
+```bash
+BASE_URL=https://siskelbot.vercel.app npm run smoke-test
+```
 
 See [Vercel environment variables](https://vercel.com/docs/projects/environment-variables) for details.
 
@@ -27,6 +37,8 @@ Context documents, recipes, and conversations can be stored in JSON files on the
 | `STORAGE_PATH` | `./data` | Directory for context, recipes, conversations JSON files |
 
 > **Note:** On Vercel serverless, the filesystem is ephemeral. For production persistence, use a database or external storage. The JSON file backend is suitable for local or single-instance deployments (e.g. Render, Railway).
+
+For Vercel production, prefer `STORAGE_BACKEND=postgres` with `DATABASE_URL`. Without a durable backend, serverless cold starts and instance rotation can lose JSON-backed data or make it inconsistent across requests.
 
 ---
 

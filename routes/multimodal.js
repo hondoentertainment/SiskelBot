@@ -9,7 +9,6 @@ export default function mountMultimodalRoutes(app, deps) {
     apiError,
     logRequest,
     OPENAI_API_KEY,
-    rateLimit,
   } = deps;
 
   const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
