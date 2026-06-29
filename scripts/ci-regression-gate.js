@@ -29,27 +29,24 @@ const DEFAULT_TIMEOUT_MS = 120_000;
 
 export function parseTapSummary(text) {
   if (typeof text !== "string" || text.length === 0) return null;
-  // node:test TAP output ends with counts like:
-  //   # tests 6
-  //   # pass 6
-  //   # fail 0
-  // Scan from the tail so suite-level rollups win over subtest emissions.
+  // node:test summary lines use either TAP "# tests 6" or spec reporter "ℹ tests 6".
   const lines = text.split(/\r?\n/);
   let tests = null;
   let pass = null;
   let fail = null;
+  const prefix = String.raw`(?:#|[\u2139\uFEFF\uFFFD]|ℹ)`;
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i].trim();
     if (tests === null) {
-      const m = line.match(/^#\s*tests\s+(\d+)$/);
+      const m = line.match(new RegExp(`^${prefix}\\s*tests\\s+(\\d+)$`));
       if (m) { tests = parseInt(m[1], 10); continue; }
     }
     if (pass === null) {
-      const m = line.match(/^#\s*pass\s+(\d+)$/);
+      const m = line.match(new RegExp(`^${prefix}\\s*pass\\s+(\\d+)$`));
       if (m) { pass = parseInt(m[1], 10); continue; }
     }
     if (fail === null) {
-      const m = line.match(/^#\s*fail\s+(\d+)$/);
+      const m = line.match(new RegExp(`^${prefix}\\s*fail\\s+(\\d+)$`));
       if (m) { fail = parseInt(m[1], 10); continue; }
     }
     if (tests !== null && pass !== null && fail !== null) break;

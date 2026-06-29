@@ -27,6 +27,9 @@
     "desktop:release": "node scripts/desktop-release-win.mjs x64",
     "desktop:release:arm64": "node scripts/desktop-release-win.mjs arm64",
     "verify:package-lock": "node scripts/verify-package-sync.mjs",
+    "bootstrap:check": "node scripts/finite-boot-check.mjs",
+    "dead-lib-scan": "node scripts/dead-lib-scan.mjs",
+    "dead-route-scan": "node scripts/dead-route-scan.mjs",
     "lint": "node scripts/syntax-check.mjs && eslint .",
     "lint:eslint": "eslint .",
     "test": "node scripts/run-tests.mjs",
@@ -38,6 +41,8 @@
     "test:e2e": "npx playwright test",
     "test:e2e:api": "npx playwright test --project=api",
     "eval:ci": "node scripts/run-eval-ci.mjs",
+    "eval:golden": "node scripts/run-golden-evals.mjs",
+    "partner-check": "node scripts/phase63-partner-check.mjs",
     "test:load": "node scripts/load-test.mjs",
     "openapi:generate": "node scripts/generate-openapi.mjs",
     "eval:live": "node scripts/run-eval-live.mjs"
