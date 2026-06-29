@@ -90,6 +90,11 @@ import { mountAnnotationRoutes } from "./annotations.js";
 import { mountHierarchyRoutes } from "./hierarchy.js";
 import { mountExplainabilityRoutes } from "./explainability.js";
 import { mountScheduledAgentRoutes } from "./scheduled-agents.js";
+import { mountInitiativeRoutes } from "./initiative.js";
+import { mountCostBudgetRoutes } from "./cost-budget.js";
+import { mountMcpRegistryRoutes } from "./mcp-registry.js";
+import { mountEntitlementsRoutes } from "./entitlements.js";
+import { mountTrialRoutes } from "./trials.js";
 import mountPushNotificationRoutes from "./push-notifications.js";
 import { mountCostEstimateRoutes } from "./cost-estimate.js";
 import { mountEdgeCacheRoutes } from "./edge-cache.js";
@@ -185,6 +190,11 @@ const mountFunctions = [
   mountReasoningMemoryRoutes,
   mountPluginRoutes,
   mountScheduledAgentRoutes,
+  mountInitiativeRoutes,
+  mountCostBudgetRoutes,
+  mountMcpRegistryRoutes,
+  mountEntitlementsRoutes,
+  mountTrialRoutes,
   mountPushNotificationRoutes,
 
   // SUPPORTING — edge CDN, mobile API, voice (mounted for regression tests & clients)

@@ -33,6 +33,7 @@ jobs:
             comment.md
       - name: Comment on PR
         if: github.event_name == 'pull_request' && always()
+        continue-on-error: true
         uses: actions/github-script@v9
         with:
           script: |
@@ -41,11 +42,17 @@ jobs:
             const body = fs.readFileSync('comment.md', 'utf-8');
             const { owner, repo } = context.repo;
             const issue_number = context.issue.number;
-            // Find an existing comment from this bot and update instead of spamming
-            const comments = await github.rest.issues.listComments({ owner, repo, issue_number });
-            const existing = comments.data.find(c => c.user.type === 'Bot' && c.body.includes('Agent regression gate'));
-            if (existing) {
-              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
-            } else {
-              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            // Posting the summary comment is best-effort: a transient API/auth
+            // error here must not fail the regression gate (its result is
+            // already captured in the uploaded report artifact).
+            try {
+              const comments = await github.rest.issues.listComments({ owner, repo, issue_number });
+              const existing = comments.data.find(c => c.user.type === 'Bot' && c.body.includes('Agent regression gate'));
+              if (existing) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number, body });
+              }
+            } catch (err) {
+              core.warning(`Could not post regression comment: ${err.message}`);
             }
