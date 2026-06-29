@@ -367,8 +367,8 @@ The program is successful when:
 | **5** | Mutations & commands | **Shipped (MVP):** `lib/workspace-act-tools.js` — write, git read/commit, `workspace_run_command` with allowlist. **Deferred:** structured patch apply, per-step HITL product layer (Phase 15). |
 | **6** | Browser & web | **Partial:** `browser_open_extract_text`, `browser_capture_screenshot`; workspace `agentPolicy.browserAllowedHosts`; browser tools share **`maxExternalFetches`** with `fetch_allowed_url`. **Next:** HITL for new domains, golden evals. |
 | **7** | Sandboxed execution | *Planned* — container/hardened subprocess; plugin bridge. |
-| **8** | Planning & DAGs | **Partial (I8.1):** Tool `update_agent_session_plan` (session runs only); `tool_failed` session events; optional `AGENT_SESSION_REPLAN_NUDGE=1` user nudge after `ok:false`. **Next:** offline planner benchmark (I8.2). |
-| **9** | Recovery & routing | *Planned* — critic/retry; telemetry-driven swarm routing. |
+| **8** | Planning & DAGs | **Partial (I8.1 + I8.2):** Tool `update_agent_session_plan` (session runs only); `tool_failed` session events; optional `AGENT_SESSION_REPLAN_NUDGE=1` user nudge after `ok:false`. **I8.2:** `lib/agent-session-plan-dag.js` — offline lint for graph-shaped `planDag` (`nodes`/`edges`), cycle + reference checks; opt-in `AGENT_SESSION_PLAN_DAG_LINT=strict` in `validateAgentSessionPlanInput` / `POST …/plan`. **Next:** planner golden evals + harness thresholds. |
+| **9** | Recovery & routing | **Partial (I9.1):** Transient retries for allowlisted tools (`AGENT_TOOL_RETRY_MAX`, workspace `agentPolicy.transientToolRetryLimit`); metrics `siskelbot_agent_tool_retries_total`. **Next:** critic pass; telemetry-driven swarm routing (I9.2). |
 | **10** | Governed SQL | *Planned* — read-only proxy, caps, secret refs. |
 | **11** | OpenAPI tools | *Planned* — import + auth injection. |
 | **12** | MCP client | *Planned* — stdio/SSE, namespaced tools. |
@@ -404,8 +404,8 @@ Re-prioritize each quarter; milestones nest under **§4** phases above.
 | Milestone | Outcome |
 |-----------|---------|
 | I8.1 | **Shipped:** `update_agent_session_plan` + session `tool_failed` events + optional replan nudge env. |
-| I8.2 | Offline benchmark + eval harness regression for planner. |
-| I9.1 | Structured retry policy per tool category. |
+| I8.2 | **Partial:** DAG structural lint + strict persist gate (`AGENT_SESSION_PLAN_DAG_LINT`); tests in `tests/agent-session-plan-dag.test.js`. **Next:** golden planner traces + CI threshold. |
+| I9.1 | **Shipped:** Transient tool retries (`lib/agent-tool-retry.js`, `executeAgentToolBatch`, swarm specialists); deploy + workspace merge. |
 | I9.2 | Enrich swarm routing with embeddings + telemetry (extends `swarm-intent-v2`). |
 
 ### Phase 10–11 — Data & APIs
@@ -444,4 +444,4 @@ Re-prioritize each quarter; milestones nest under **§4** phases above.
 
 ---
 
-*Last updated: April 2026*
+*Last updated: April 2026 (I8.2 lint + I9.1 retries documented)*
