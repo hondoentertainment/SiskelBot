@@ -60,11 +60,14 @@ async function main() {
       status: r.status,
     });
     if (LIVE_ONLY && !isLocalSmokeTarget(url) && r.body && r.body.requiresApiKey === false) {
+      const ollamaBackend = r.body.backend === "ollama";
       results.push({
         name: "GET /config requiresApiKey",
-        ok: false,
+        ok: ollamaBackend,
         status: r.status,
-        error: "Production deployment has requiresApiKey=false — set API_KEY",
+        ...(ollamaBackend
+          ? { skip: "Ollama backend does not require API_KEY" }
+          : { error: "Production deployment has requiresApiKey=false — set API_KEY" }),
       });
     } else if (LIVE_ONLY && (isLocalSmokeTarget(url) || r.body?.requiresApiKey)) {
       results.push({ name: "GET /config requiresApiKey", ok: true, status: r.status });
