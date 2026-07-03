@@ -98,6 +98,33 @@ export default function mountHealthRoutes(app, deps) {
 
   deps.runHealthChecks = runHealthChecks;
 
+  async function checkDependency(name, fn, { critical = true, timeoutMs = 3000 } = {}) {
+    const start = Date.now();
+    try {
+      const result = await Promise.race([
+        Promise.resolve().then(fn),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`timeout after ${timeoutMs}ms`)), timeoutMs)
+        ),
+      ]);
+      return {
+        name,
+        critical,
+        status: "up",
+        latencyMs: Date.now() - start,
+        details: result?.details || undefined,
+      };
+    } catch (e) {
+      return {
+        name,
+        critical,
+        status: "down",
+        latencyMs: Date.now() - start,
+        error: String(e?.message || e),
+      };
+    }
+  }
+
   const METRICS_PATH = (process.env.METRICS_PATH || "/metrics").replace(/^\/+/, "/").replace(/\/+$/, "") || "/metrics";
   const METRICS_PROTECTED = process.env.METRICS_PROTECTED === "1";
   const METRICS_SECRET = process.env.METRICS_SECRET?.trim() || null;
@@ -140,6 +167,51 @@ export default function mountHealthRoutes(app, deps) {
 
   app.get("/health/live", (req, res) => {
     res.status(200).json({ ok: true, status: "alive" });
+  });
+
+  app.get("/health/deep", async (req, res) => {
+    const checks = [
+      checkDependency("storage", async () => {
+        await storage.listWorkspaces("anonymous");
+        return { details: { backend: process.env.STORAGE_BACKEND || "json" } };
+      }),
+      checkDependency("backend_active", async () => {
+        const url = getHealthUrl(BACKEND);
+        if (!url) return { details: { backend: BACKEND, skipped: "no_url" } };
+        const headers = BACKEND === "openai" && OPENAI_API_KEY
+          ? { Authorization: `Bearer ${OPENAI_API_KEY}` }
+          : {};
+        const result = await probeBackend(BACKEND, url, headers);
+        if (!result.reachable) {
+          throw new Error(result.error || "unreachable");
+        }
+        return { details: { backend: BACKEND, latencyMs: result.latencyMs } };
+      }),
+    ];
+
+    if (process.env.EMBEDDING_BACKEND) {
+      checks.push(
+        checkDependency(
+          "embeddings",
+          async () => ({ details: { provider: process.env.EMBEDDING_BACKEND } }),
+          { critical: false }
+        )
+      );
+    }
+
+    const results = await Promise.all(checks);
+    const critical = results.filter((r) => r.critical);
+    const optional = results.filter((r) => !r.critical);
+    const criticalDown = critical.some((r) => r.status === "down");
+    const optionalDown = optional.some((r) => r.status === "down");
+    const overallStatus = criticalDown ? "down" : optionalDown ? "degraded" : "up";
+    const httpStatus = criticalDown ? 503 : 200;
+
+    res.status(httpStatus).json({
+      status: overallStatus,
+      checkedAt: new Date().toISOString(),
+      dependencies: results,
+    });
   });
 
   app.get("/health/ready", async (req, res) => {

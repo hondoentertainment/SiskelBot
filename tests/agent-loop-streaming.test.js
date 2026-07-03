@@ -164,9 +164,9 @@ test("agent-loop streaming: token events published on session emitter", async ()
   ].join("");
 
   const backendFetch = async () => withHeaders(sseResponse(sse));
-  const req = makeReq({ sessionId });
+  const req = makeReq();
 
-  const result = await runAgentLoop(req, makeRes(), config, "test-model", null, backendFetch);
+  const result = await runAgentLoop(req, makeRes(), config, "test-model", { sessionId }, backendFetch);
 
   assert.equal(result.content, "ABC");
   assert.equal(tokenEvents.length, 3);

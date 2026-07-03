@@ -45,6 +45,7 @@
     "partner-check": "node scripts/phase63-partner-check.mjs",
     "test:load": "node scripts/load-test.mjs",
     "openapi:generate": "node scripts/generate-openapi.mjs",
+    "postman:generate": "npm run openapi:generate && node scripts/openapi-to-postman.mjs --input=docs/openapi.yaml --output=postman/SiskelBot.postman_collection.json",
     "eval:live": "node scripts/run-eval-live.mjs"
   },
   "engines": {
@@ -79,8 +80,15 @@
     "passport-google-oauth20": "^2.0.0",
     "pdf-parse": "^2.4.5",
     "pg": "^8.22.0",
+    "stripe": "^17.7.0",
     "undici": "^6.27.0",
     "ws": "^8.18.0"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^11.8.1",
+    "nodemailer": "^7.0.11",
+    "playwright": "^1.61.1",
+    "redis": "^4.7.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -93,12 +101,6 @@
     "eslint": "^10.6.0",
     "globals": "^17.7.0",
     "supertest": "^7.2.2"
-  },
-  "optionalDependencies": {
-    "better-sqlite3": "^11.8.1",
-    "nodemailer": "^7.0.11",
-    "playwright": "^1.61.1",
-    "redis": "^4.7.1"
   },
   "build": {
     "appId": "com.hondoentertainment.siskelbot",
