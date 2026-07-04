@@ -95,6 +95,7 @@ import { mountCostBudgetRoutes } from "./cost-budget.js";
 import { mountMcpRegistryRoutes } from "./mcp-registry.js";
 import { mountEntitlementsRoutes } from "./entitlements.js";
 import { mountTrialRoutes } from "./trials.js";
+import { mountAdminRevenueRoutes } from "./admin-revenue.js";
 import mountPushNotificationRoutes from "./push-notifications.js";
 import { mountCostEstimateRoutes } from "./cost-estimate.js";
 import { mountEdgeCacheRoutes } from "./edge-cache.js";
@@ -195,6 +196,7 @@ const mountFunctions = [
   mountMcpRegistryRoutes,
   mountEntitlementsRoutes,
   mountTrialRoutes,
+  mountAdminRevenueRoutes,
   mountPushNotificationRoutes,
 
   // SUPPORTING — edge CDN, mobile API, voice (mounted for regression tests & clients)
