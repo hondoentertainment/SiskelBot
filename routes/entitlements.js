@@ -10,7 +10,7 @@ import { getTrial } from "../lib/trials.js";
 import { resolveQuotas } from "../lib/quota-resolver.js";
 
 export function mountEntitlementsRoutes(app, deps) {
-  const { apiRoute, apiError, storageRateLimiter } = deps;
+  const { apiRoute, apiError, storageRateLimiter, storage } = deps;
   const limiter = storageRateLimiter || ((req, res, next) => next());
 
   apiRoute("get", "/entitlements", limiter, async (req, res) => {
@@ -36,7 +36,7 @@ export function mountEntitlementsRoutes(app, deps) {
 
       let quotas = null;
       try {
-        quotas = await resolveQuotas(workspace, { userId: req.userId });
+        quotas = await resolveQuotas(workspace, { userId: req.userId, storage });
       } catch { /* best-effort */ }
 
       const finite = (n) => (Number.isFinite(n) ? n : null);
