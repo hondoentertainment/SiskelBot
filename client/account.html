@@ -107,7 +107,7 @@
         <div class="actions">
           <button class="cta" id="upgrade-btn" hidden>Upgrade</button>
           <button class="cta secondary" id="trial-btn" hidden>Start free trial</button>
-          <button class="cta secondary" id="portal-btn">Manage subscription</button>
+          <button class="cta secondary" id="portal-btn" hidden>Manage subscription</button>
         </div>
       </div>
 
@@ -221,6 +221,9 @@
       const isFree = (ent.plan?.id || "free") === "free";
       $("upgrade-btn").hidden = !isFree && !ent.trial?.active;
       $("trial-btn").hidden = !isFree || Boolean(ent.trial);
+      // The Stripe portal only works for workspaces with a real subscription;
+      // free and trial-upgraded workspaces have none.
+      $("portal-btn").hidden = isFree || Boolean(ent.trial?.active);
     }
 
     function renderUsage(summary) {
