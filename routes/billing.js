@@ -38,8 +38,9 @@ export function mountBillingRoutes(app, deps) {
   app.get("/billing", (_req, res) => {
     res.redirect(302, "/pricing.html");
   });
-  app.get("/account", (_req, res) => {
-    res.redirect(302, "/account.html");
+  app.get("/account", (req, res) => {
+    const qs = req.originalUrl.includes("?") ? req.originalUrl.slice(req.originalUrl.indexOf("?")) : "";
+    res.redirect(302, `/account.html${qs}`);
   });
 
   const limiter = storageRateLimiter || ((req, res, next) => next());

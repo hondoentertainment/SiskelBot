@@ -285,7 +285,7 @@
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ returnUrl: window.location.href }),
+          body: JSON.stringify({ returnUrl: window.location.href, workspaceId: workspace() }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data?.error?.message || data?.error || `HTTP ${res.status}`);
