@@ -7,6 +7,7 @@ import { getEntitlements } from "../lib/entitlements.js";
 import { getWorkspaceMembers } from "../lib/teams.js";
 import { getWorkspaceTokensUsed } from "../lib/quotas.js";
 import { getTrial } from "../lib/trials.js";
+import { resolveQuotas } from "../lib/quota-resolver.js";
 
 export function mountEntitlementsRoutes(app, deps) {
   const { apiRoute, apiError, storageRateLimiter } = deps;
@@ -33,6 +34,11 @@ export function mountEntitlementsRoutes(app, deps) {
         trial = await getTrial(workspace);
       } catch { /* best-effort */ }
 
+      let quotas = null;
+      try {
+        quotas = await resolveQuotas(workspace, { userId: req.userId });
+      } catch { /* best-effort */ }
+
       const finite = (n) => (Number.isFinite(n) ? n : null);
       const remaining = (limit, used) => (Number.isFinite(limit) ? Math.max(0, limit - used) : null);
 
@@ -54,6 +60,7 @@ export function mountEntitlementsRoutes(app, deps) {
           tokensThisPeriod: tokensUsed,
           tokensRemaining: remaining(ent.tokensPerMonth, tokensUsed),
         },
+        quotas,
       });
     } catch (err) {
       return apiError(res, 500, "INTERNAL_ERROR", err.message);
