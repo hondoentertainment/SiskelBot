@@ -210,9 +210,13 @@
       $("seats-detail").textContent =
         u.membersRemaining == null ? "No seat cap on this plan." : `${fmt(u.membersRemaining)} seats available.`;
 
-      $("features").innerHTML = (ent.features || [])
-        .map((f) => `<li>${f === "*" ? "Everything — all features included" : f}</li>`)
-        .join("");
+      const featList = $("features");
+      featList.textContent = "";
+      for (const f of ent.features || []) {
+        const li = document.createElement("li");
+        li.textContent = f === "*" ? "Everything — all features included" : f;
+        featList.appendChild(li);
+      }
 
       const isFree = (ent.plan?.id || "free") === "free";
       $("upgrade-btn").hidden = !isFree && !ent.trial?.active;
@@ -231,7 +235,17 @@
         const tokens = typeof stats === "object" ? (stats.tokens ?? stats.totalTokens ?? 0) : stats;
         const cost = typeof stats === "object" ? stats.cost : null;
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${model}</td><td class="num">${fmt(tokens)}</td><td class="num">${cost == null ? "—" : usd(cost)}</td>`;
+        const cells = [
+          [model, ""],
+          [fmt(tokens), "num"],
+          [cost == null ? "—" : usd(cost), "num"],
+        ];
+        for (const [text, cls] of cells) {
+          const td = document.createElement("td");
+          td.textContent = text;
+          if (cls) td.className = cls;
+          tr.appendChild(td);
+        }
         tbody.appendChild(tr);
       }
       table.hidden = false;
