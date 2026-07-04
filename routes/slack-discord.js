@@ -18,6 +18,11 @@ import {
   handleDiscordInteraction,
   isDiscordConfigured,
 } from "../lib/discord-bot.js";
+import {
+  verifyTeamsToken,
+  handleTeamsActivity,
+  isTeamsConfigured,
+} from "../lib/msteams-bot.js";
 
 const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET || "";
 const DISCORD_PUBLIC_KEY = process.env.DISCORD_PUBLIC_KEY || "";
@@ -125,6 +130,26 @@ export function mountSlackDiscordRoutes(app, deps) {
     }
   });
 
+  // ─── Microsoft Teams messaging endpoint (Bot Framework) ────────────────────
+
+  apiRoute("post", "/integrations/msteams/messages", slackDiscordRateLimiter, async (req, res) => {
+    // Verify the Bot Framework connector JWT when the bot is configured.
+    if (process.env.TEAMS_APP_ID) {
+      const result = await verifyTeamsToken(req.headers["authorization"]);
+      if (!result.valid) {
+        return apiError(res, 401, "INVALID_SIGNATURE", result.reason, "Check TEAMS_APP_ID / bot registration.");
+      }
+    }
+
+    try {
+      const { status, body } = await handleTeamsActivity(req.body);
+      return res.status(status).json(body);
+    } catch (err) {
+      console.error("[msteams] Activity handler error:", err.message);
+      return apiError(res, 500, "INTERNAL_ERROR", "Teams activity processing failed");
+    }
+  });
+
   // ─── Bot integration status ────────────────────────────────────────────────
 
   apiRoute("get", "/integrations/bots/status", (req, res) => {
@@ -141,6 +166,11 @@ export function mountSlackDiscordRoutes(app, deps) {
         hasWebhook: Boolean(process.env.DISCORD_WEBHOOK_URL),
         hasPublicKey: Boolean(DISCORD_PUBLIC_KEY),
         hasApplicationId: Boolean(process.env.DISCORD_APPLICATION_ID),
+      },
+      msteams: {
+        configured: isTeamsConfigured(),
+        hasAppId: Boolean(process.env.TEAMS_APP_ID),
+        hasPassword: Boolean(process.env.TEAMS_APP_PASSWORD),
       },
     });
   });
