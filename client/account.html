@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <title>Account — Siskel Bot</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background: #0f172a;
+      color: #e2e8f0;
+      line-height: 1.5;
+    }
+    header {
+      padding: 1.5rem 2rem;
+      border-bottom: 1px solid #1e293b;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    header a { color: #94a3b8; text-decoration: none; }
+    header a:hover { color: #e2e8f0; }
+    main { max-width: 900px; margin: 0 auto; padding: 2.5rem 2rem; }
+    h1 { margin: 0 0 0.25rem; font-size: 2rem; }
+    .lede { color: #94a3b8; margin-bottom: 2rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.25rem; }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+    .card h2 { margin: 0 0 1rem; font-size: 1.05rem; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+    .big { font-size: 1.9rem; font-weight: 700; }
+    .big small { font-size: 0.95rem; font-weight: 400; color: #94a3b8; }
+    .muted { color: #94a3b8; font-size: 0.9rem; }
+    .row { display: flex; justify-content: space-between; padding: 0.35rem 0; border-bottom: 1px solid #334155; font-size: 0.95rem; }
+    .row:last-child { border-bottom: 0; }
+    .meter { background: #0f172a; border-radius: 6px; height: 10px; margin: 0.6rem 0 0.3rem; overflow: hidden; }
+    .meter > div { height: 100%; background: #3b82f6; border-radius: 6px; transition: width 0.3s; }
+    .meter > div.warn { background: #f59e0b; }
+    .meter > div.over { background: #ef4444; }
+    .pill { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; vertical-align: middle; }
+    .pill.active { background: #14532d; color: #86efac; }
+    .pill.trial { background: #1e3a8a; color: #bfdbfe; }
+    .pill.warn { background: #78350f; color: #fcd34d; }
+    .pill.none { background: #334155; color: #cbd5e1; }
+    button.cta {
+      padding: 0.7rem 1.1rem;
+      border-radius: 8px;
+      border: 0;
+      background: #3b82f6;
+      color: white;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button.cta:hover { background: #2563eb; }
+    button.cta:disabled { background: #475569; cursor: not-allowed; }
+    button.cta.secondary { background: #475569; }
+    button.cta.secondary:hover { background: #64748b; }
+    .actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem; }
+    .status { margin-top: 1.25rem; padding: 0.75rem; border-radius: 6px; font-size: 0.9rem; display: none; }
+    .status.visible { display: block; }
+    .status.error { background: #7f1d1d; color: #fecaca; }
+    .status.info { background: #1e3a8a; color: #bfdbfe; }
+    .features li { padding: 0.3rem 0; font-size: 0.92rem; list-style: none; }
+    .features { padding: 0; margin: 0; }
+    .features li::before { content: "✓ "; color: #22c55e; font-weight: 700; }
+    .section { margin-top: 1.25rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { text-align: left; padding: 0.45rem 0.5rem; border-bottom: 1px solid #334155; }
+    th { color: #94a3b8; font-weight: 600; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .ws-picker { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; color: #94a3b8; }
+    .ws-picker input {
+      background: #1e293b; color: #e2e8f0; border: 1px solid #334155;
+      border-radius: 6px; padding: 0.35rem 0.6rem; font-size: 0.9rem; width: 11rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="/" aria-label="Back to app">← Siskel Bot</a>
+    <span class="ws-picker">
+      <label for="ws">Workspace</label>
+      <input id="ws" value="default" spellcheck="false">
+      <a href="/pricing.html" style="margin-left:1rem;">Pricing</a>
+      <a href="/app.html" style="margin-left:1rem;">Open app</a>
+    </span>
+  </header>
+  <main>
+    <h1>Account &amp; billing</h1>
+    <p class="lede">Your plan, usage, and subscription for this workspace.</p>
+
+    <div class="grid">
+      <div class="card" id="plan-card">
+        <h2>Plan</h2>
+        <div class="big" id="plan-name">—</div>
+        <div class="muted" id="plan-price"></div>
+        <div class="section" id="plan-badges"></div>
+        <div class="actions">
+          <button class="cta" id="upgrade-btn" hidden>Upgrade</button>
+          <button class="cta secondary" id="trial-btn" hidden>Start free trial</button>
+          <button class="cta secondary" id="portal-btn" hidden>Manage subscription</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Tokens this period</h2>
+        <div class="big" id="tokens-used">—</div>
+        <div class="meter"><div id="tokens-meter" style="width:0%"></div></div>
+        <div class="muted" id="tokens-detail"></div>
+      </div>
+
+      <div class="card">
+        <h2>Seats</h2>
+        <div class="big" id="seats-used">—</div>
+        <div class="meter"><div id="seats-meter" style="width:0%"></div></div>
+        <div class="muted" id="seats-detail"></div>
+      </div>
+    </div>
+
+    <div class="grid section">
+      <div class="card">
+        <h2>Plan features</h2>
+        <ul class="features" id="features"></ul>
+      </div>
+      <div class="card">
+        <h2>Usage &amp; cost (30 days)</h2>
+        <div id="usage-summary" class="muted">Loading…</div>
+        <div class="section">
+          <table id="usage-models" hidden>
+            <thead><tr><th>Model</th><th class="num">Tokens</th><th class="num">Cost</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const fmt = (n) => (n == null ? "—" : Number(n).toLocaleString());
+    const usd = (n) => (n == null ? "—" : "$" + Number(n).toFixed(Number(n) < 10 ? 4 : 2));
+
+    function workspace() {
+      return $("ws").value.trim() || "default";
+    }
+
+    function showStatus(msg, kind = "info") {
+      const el = $("status");
+      el.textContent = msg;
+      el.className = `status visible ${kind}`;
+    }
+
+    async function getJson(url) {
+      const res = await fetch(url, { credentials: "include" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error?.message || data?.error || data?.message || `HTTP ${res.status}`);
+      return data;
+    }
+
+    function setMeter(el, used, limit) {
+      if (!Number.isFinite(limit) || limit == null) {
+        el.style.width = "0%";
+        return;
+      }
+      const pct = Math.min(100, Math.round((used / limit) * 100));
+      el.style.width = pct + "%";
+      el.className = pct >= 100 ? "over" : pct >= 80 ? "warn" : "";
+    }
+
+    function renderEntitlements(ent) {
+      $("plan-name").textContent = ent.plan?.name || ent.plan?.id || "Free";
+      const price = ent.plan?.priceMonthly;
+      $("plan-price").textContent =
+        price === 0 ? "Free forever" : Number.isFinite(price) ? `$${price}/month` : "Custom pricing";
+
+      const badges = [];
+      if (ent.trial?.active) {
+        badges.push(`<span class="pill trial">Trial · ${ent.trial.daysRemaining}d left</span>`);
+      } else if (ent.trial?.expired) {
+        badges.push(`<span class="pill warn">Trial ended</span>`);
+      }
+      badges.push(
+        ent.enforced
+          ? `<span class="pill active">Limits enforced</span>`
+          : `<span class="pill none">Limits advisory</span>`
+      );
+      $("plan-badges").innerHTML = badges.join(" ");
+
+      const u = ent.usage || {};
+      const l = ent.limits || {};
+
+      $("tokens-used").innerHTML = `${fmt(u.tokensThisPeriod)} <small>/ ${l.tokensPerMonth == null ? "unlimited" : fmt(l.tokensPerMonth)}</small>`;
+      setMeter($("tokens-meter"), u.tokensThisPeriod || 0, l.tokensPerMonth);
+      $("tokens-detail").textContent =
+        u.tokensRemaining == null ? "No token cap on this plan." : `${fmt(u.tokensRemaining)} tokens remaining this period.`;
+
+      $("seats-used").innerHTML = `${fmt(u.members)} <small>/ ${l.maxMembers == null ? "unlimited" : fmt(l.maxMembers)}</small>`;
+      setMeter($("seats-meter"), u.members || 0, l.maxMembers);
+      $("seats-detail").textContent =
+        u.membersRemaining == null ? "No seat cap on this plan." : `${fmt(u.membersRemaining)} seats available.`;
+
+      const featList = $("features");
+      featList.textContent = "";
+      for (const f of ent.features || []) {
+        const li = document.createElement("li");
+        li.textContent = f === "*" ? "Everything — all features included" : f;
+        featList.appendChild(li);
+      }
+
+      const isFree = (ent.plan?.id || "free") === "free";
+      $("upgrade-btn").hidden = !isFree && !ent.trial?.active;
+      $("trial-btn").hidden = !isFree || Boolean(ent.trial);
+      // The Stripe portal only works for workspaces with a real subscription;
+      // free and trial-upgraded workspaces have none.
+      $("portal-btn").hidden = isFree || Boolean(ent.trial?.active);
+    }
+
+    function renderUsage(summary) {
+      $("usage-summary").textContent =
+        `${fmt(summary.tokens)} tokens · estimated cost ${usd(summary.cost)}`;
+      const models = Object.entries(summary.breakdown?.byModel || summary.byModel || {});
+      const table = $("usage-models");
+      const tbody = table.querySelector("tbody");
+      tbody.innerHTML = "";
+      if (!models.length) { table.hidden = true; return; }
+      for (const [model, stats] of models) {
+        const tokens = typeof stats === "object" ? (stats.tokens ?? stats.totalTokens ?? 0) : stats;
+        const cost = typeof stats === "object" ? stats.cost : null;
+        const tr = document.createElement("tr");
+        const cells = [
+          [model, ""],
+          [fmt(tokens), "num"],
+          [cost == null ? "—" : usd(cost), "num"],
+        ];
+        for (const [text, cls] of cells) {
+          const td = document.createElement("td");
+          td.textContent = text;
+          if (cls) td.className = cls;
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+      table.hidden = false;
+    }
+
+    async function load() {
+      const ws = workspace();
+      try {
+        const ent = await getJson(`/api/v1/entitlements?workspace=${encodeURIComponent(ws)}`);
+        renderEntitlements(ent);
+      } catch (err) {
+        showStatus(`Could not load account: ${err.message}`, "error");
+        return;
+      }
+      try {
+        const summary = await getJson(`/api/v1/billing/usage?workspace=${encodeURIComponent(ws)}&period=30d`);
+        renderUsage(summary);
+      } catch {
+        $("usage-summary").textContent = "Usage data unavailable.";
+      }
+    }
+
+    $("upgrade-btn").addEventListener("click", () => {
+      window.location.href = "/pricing.html";
+    });
+
+    $("trial-btn").addEventListener("click", async () => {
+      const btn = $("trial-btn");
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/v1/trials/start`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceId: workspace() }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error?.message || data?.error || `HTTP ${res.status}`);
+        showStatus(`Trial started — ${data.trial?.plan || "pro"} until ${new Date(data.trial?.endsAt).toLocaleDateString()}.`, "info");
+        await load();
+      } catch (err) {
+        showStatus(`Could not start trial: ${err.message}`, "error");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    $("portal-btn").addEventListener("click", async () => {
+      try {
+        const res = await fetch("/api/v1/billing/portal", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ returnUrl: window.location.href, workspaceId: workspace() }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error?.message || data?.error || `HTTP ${res.status}`);
+        if (data?.url) { window.location.href = data.url; return; }
+        throw new Error("Portal did not return a URL");
+      } catch (err) {
+        showStatus(`Could not open billing portal: ${err.message}`, "error");
+      }
+    });
+
+    let wsTimer = null;
+    $("ws").addEventListener("input", () => {
+      clearTimeout(wsTimer);
+      wsTimer = setTimeout(load, 400);
+    });
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("workspace")) $("ws").value = params.get("workspace");
+    load();
+  </script>
+</body>
+</html>

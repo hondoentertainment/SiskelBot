@@ -1,0 +1,110 @@
+# Go-Live Checklist — turning the shipped commercial product ON
+
+Everything below already exists in the codebase and is **default-off**. This
+is the operator checklist that turns SiskelBot from "commercially ready code"
+into a live, selling product. Work top to bottom; each item lists the exact
+config and how to verify it.
+
+Status date: 2026-07-04
+
+---
+
+## 1. Stripe billing
+
+Set in the production environment (Vercel → Settings → Environment Variables):
+
+| Variable | Value |
+|---|---|
+| `STRIPE_SECRET_KEY` | Live secret key (`sk_live_...`) |
+| `STRIPE_WEBHOOK_SECRET` | Signing secret for the webhook below |
+| `STRIPE_PRO_PRICE_ID` | Price ID for Pro ($29/mo) |
+| `STRIPE_ENTERPRISE_PRICE_ID` | Price ID for Enterprise |
+| `APP_BASE_URL` | Public origin, e.g. `https://your-domain.com` |
+
+In the Stripe Dashboard:
+
+- [ ] Create Products/Prices for Pro and Enterprise matching `lib/plans.js`
+      (`priceMonthly`: 29 / 299).
+- [ ] Add a webhook endpoint pointing at `POST /api/v1/billing/webhook`
+      subscribed to `checkout.session.completed`,
+      `customer.subscription.updated`, `customer.subscription.deleted`.
+- [ ] Enable the customer Billing Portal (used by `POST /api/v1/billing/portal`).
+
+**Verify:** `/pricing.html` → "Upgrade to Pro" completes checkout in test mode;
+`GET /api/v1/billing/subscription?workspace=X` shows `status: active`;
+`GET /api/v1/entitlements?workspace=X` shows the paid plan.
+
+## 2. Plan enforcement (make free vs. paid real)
+
+| Variable | Effect |
+|---|---|
+| `ENFORCE_PLAN_LIMITS=1` | Seat caps at invite-join; feature gates (e.g. workflows are Pro+) return 402 `PLAN_UPGRADE_REQUIRED` |
+| `QUOTA_ENABLED=1` | Monthly token caps per plan enforced in `/v1/chat/completions` (free 100K/mo, pro 1M/mo) |
+
+Both fail open on internal errors — a bug can never block paying customers.
+
+**Verify:** on a free workspace, add 3 members then a 4th → 402; call a
+workflows endpoint → 402; `GET /api/v1/entitlements` shows `"enforced": true`.
+
+## 3. Trials (conversion funnel)
+
+Optional overrides: `TRIAL_DEFAULT_PLAN` (default `pro`),
+`TRIAL_DEFAULT_DAYS` (default `14`).
+
+Nothing to enable — `/account.html` offers "Start free trial" on free
+workspaces; one trial per workspace; reverts automatically at expiry.
+
+## 4. Proactive coworker (initiative engine)
+
+| Variable | Effect |
+|---|---|
+| `ENABLE_SCHEDULED_RECIPES=1` | Starts the in-process scheduler (leader-gated) |
+| `ENABLE_INITIATIVE_ENGINE=1` | Periodic observe→propose cycles |
+| `INITIATIVE_CRON` | Cadence (default `*/15 * * * *`) |
+| `INITIATIVE_WORKSPACES` | Comma-separated workspaces (default `default`) |
+| `INITIATIVE_NOTIFY_SLACK=1` + `INITIATIVE_SLACK_CHANNEL` | Surface proposals in Slack with Approve/Dismiss buttons |
+
+In the Slack app config:
+
+- [ ] Interactivity & Shortcuts → Request URL:
+      `https://your-domain.com/api/v1/integrations/slack/interactions`
+      (signature-verified with the existing `SLACK_SIGNING_SECRET`).
+
+**Verify:** `POST /api/v1/initiatives/run` returns proposals for a workspace
+with failing scheduled agents; buttons in Slack resolve them.
+
+## 5. Cost controls
+
+| Variable | Effect |
+|---|---|
+| `WORKSPACE_BUDGET_USD` | Default per-workspace spend cap (0 = unlimited) |
+| `COST_BUDGET_PERIOD` | `month` (default) or `day` |
+
+Per-workspace caps: `PUT /api/v1/cost-budget` (admin).
+Scheduled agents refuse to run (`budget_exceeded`) once a workspace is over cap.
+
+## 6. Repository protection (GitHub — one-time)
+
+Red CI checks currently do **not** block merging. Apply
+[docs/BRANCH_PROTECTION.md](./BRANCH_PROTECTION.md) to `main`: require the
+`lint`, `test`, `Trivy`, and `Analyze (javascript-typescript)` checks and at
+least the `regression` gate before merge.
+
+## 7. Production baseline (from docs/NEXT_STEPS.md — unchanged)
+
+- [ ] `API_KEY`, `ADMIN_API_KEY` set
+- [ ] Durable storage (`STORAGE_BACKEND=postgres` + `DATABASE_URL`, or SQLite
+      volume) and `REQUIRE_DURABLE_STORAGE=1`
+- [ ] `npm run setup:production-env` prints the exact commands
+
+---
+
+## Quick smoke after flipping flags
+
+```bash
+BASE=https://your-domain.com
+curl -s $BASE/api/v1/entitlements?workspace=default | jq .enforced   # true
+curl -s $BASE/api/v1/billing/plans | jq '.plans | length'            # 3
+curl -s $BASE/account -o /dev/null -w '%{http_code}\n'               # 302
+npm run smoke-test:ci                                                # green
+```
