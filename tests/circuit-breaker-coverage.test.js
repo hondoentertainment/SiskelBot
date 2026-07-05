@@ -176,13 +176,10 @@ test("tri-state: half_open failure -> open with fresh cooldown", () => {
     const backend = "child-tri-fail";
     for (let i = 0; i < 3; i++) m.recordFailure(backend);
     assert.equal(m.getBreakerState(backend), "open");
-    // Capture the first openUntil (indirectly, via cooldownRemainingMs).
     const snapOpen1 = m.getBreakerSnapshot(backend);
     const cooldown1 = snapOpen1.cooldownRemainingMs;
     assert.ok(cooldown1 > 0, "first cooldown should be positive");
-    // Wait past cooldown.
-    const deadline = Date.now() + 40;
-    while (Date.now() < deadline) { /* spin */ }
+    await new Promise((r) => setTimeout(r, 25));
     assert.equal(m.getBreakerState(backend), "half_open");
     // A failure in half_open re-opens with fresh cooldown.
     const reopened = m.recordFailure(backend);
