@@ -56,6 +56,12 @@ async function probe() {
   } catch (e) {
     checks.push({ name: "health/live", ok: false, error: e.message });
   }
+  try {
+    const deep = await fetch(`${BASE_URL}/health/deep`).then((r) => r.json());
+    checks.push({ name: "health/deep", ok: deep?.ok !== false });
+  } catch (e) {
+    checks.push({ name: "health/deep", ok: false, error: e.message });
+  }
   console.log(JSON.stringify({ baseUrl: BASE_URL, probes: checks }, null, 2));
   if (checks.some((c) => c.ok === false)) process.exitCode = 1;
 }

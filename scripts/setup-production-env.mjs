@@ -12,6 +12,13 @@ const VARS = [
   { key: "STORAGE_BACKEND", value: "postgres", note: "Or sqlite with mounted volume" },
   { key: "DATABASE_URL", note: "When STORAGE_BACKEND=postgres" },
   { key: "REQUIRE_DURABLE_STORAGE", value: "1", note: "Fail boot on ephemeral Vercel disk" },
+  { key: "STRIPE_SECRET_KEY", note: "Live Stripe secret (sk_live_…)" },
+  { key: "STRIPE_WEBHOOK_SECRET", note: "Webhook signing secret" },
+  { key: "STRIPE_PRO_PRICE_ID", note: "Pro plan price ID" },
+  { key: "STRIPE_ENTERPRISE_PRICE_ID", note: "Enterprise plan price ID" },
+  { key: "APP_BASE_URL", note: "Public origin, e.g. https://siskelbot.vercel.app" },
+  { key: "ENFORCE_PLAN_LIMITS", value: "1", note: "402 on plan-gated features" },
+  { key: "QUOTA_ENABLED", value: "1", note: "Monthly token caps per plan" },
   { key: "OTEL_ENABLED", value: "1", note: "Observability" },
   { key: "LOAD_SHEDDING_PROFILE", value: "staging", note: "Use on staging only" },
   { key: "EVAL_IN_PROD_MIN_JACCARD", value: "0.7", note: "Alert threshold" },
@@ -32,4 +39,5 @@ console.log("# SMOKE_TEST_ADMIN_API_KEY — same value as ADMIN_API_KEY");
 console.log("# REPLAY_TOKEN_SECRET — enables replay E2E in CI");
 console.log("");
 console.log("# Verify after deploy:");
+console.log("npm run go-live:verify -- https://siskelbot.vercel.app");
 console.log("npm run check:production-env -- https://siskelbot.vercel.app");

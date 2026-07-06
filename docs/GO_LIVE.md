@@ -5,7 +5,9 @@ is the operator checklist that turns SiskelBot from "commercially ready code"
 into a live, selling product. Work top to bottom; each item lists the exact
 config and how to verify it.
 
-Status date: 2026-07-04
+Status date: 2026-07-06
+
+**Automation:** `npm run setup:production-env` · `npm run go-live:verify -- <BASE_URL>` · `npm run go-live:verify:strict -- <BASE_URL>` (after flags) · `npm run branch-protection:apply`
 
 ---
 
@@ -103,8 +105,8 @@ least the `regression` gate before merge.
 
 ```bash
 BASE=https://your-domain.com
-curl -s $BASE/api/v1/entitlements?workspace=default | jq .enforced   # true
+npm run go-live:verify -- $BASE
+curl -s $BASE/api/v1/entitlements?workspace=default | jq .enforced   # true when enabled
 curl -s $BASE/api/v1/billing/plans | jq '.plans | length'            # 3
-curl -s $BASE/account -o /dev/null -w '%{http_code}\n'               # 302
-npm run smoke-test:ci                                                # green
+npm run smoke-test:ci                                                # green (local or CI)
 ```

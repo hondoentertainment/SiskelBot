@@ -3,6 +3,8 @@
 Apply after CI is green on `main`. Requires repo admin.
 
 ```bash
+npm run branch-protection:apply
+# or manually:
 gh api repos/hondoentertainment/SiskelBot/branches/main/protection \
   --method PUT \
   --input - <<'EOF'

@@ -257,6 +257,7 @@ WCAG 2.2 AAA compliance.
 
 - **Highest impact:** 51 (safety policies), 53 (tool use), 55 (computer use), 58 (cost)
 - **Production hardening:** 59, 60, 65, 66
+- **Next 10 items:** [ROADMAP_71-80.md](./ROADMAP_71-80.md) — commercial go-live & growth (Phase 71)
 - **Vertical adoption drivers:** 62, 63, 64
 - **Platform moat:** 56, 57, 61, 68
 

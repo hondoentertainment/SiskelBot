@@ -389,6 +389,8 @@ The program is successful when:
 
 Re-prioritize each quarter; milestones nest under **§4** phases above.
 
+**Product roadmap (Phase 71 — next 10 items):** [ROADMAP_71-80.md](./ROADMAP_71-80.md) — Stripe live mode, plan enforcement, go-live verify, branch protection, chaos CI, production smoke on deploy, Agent Run cost UX, Stripe metering, wave-2 hooks, deep health synthetics.
+
 ### Phase 6 — Browser (incremental)
 
 | Milestone | Outcome |
