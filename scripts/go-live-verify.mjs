@@ -52,11 +52,11 @@ async function main() {
       const r = await fetch(url("/health/deep"));
       const j = await r.json().catch(() => ({}));
       const deps = j?.dependencies;
-      const depOk =
-        !deps ||
-        typeof deps !== "object" ||
-        Object.values(deps).every((d) => d?.ok !== false);
-      return { ok: r.ok && j?.ok !== false && depOk, detail: j?.status || String(r.status) };
+      const criticalDown =
+        Array.isArray(deps) &&
+        deps.some((d) => d?.critical !== false && d?.status === "down");
+      const ok = r.ok && !criticalDown;
+      return { ok, detail: j?.status || String(r.status) };
     })
   );
 

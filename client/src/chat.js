@@ -330,9 +330,10 @@
 
     function mapChatHttpError(status, errData) {
       errData = errData || {};
-      const code = errData.code;
+      const code = errData.code || errData.error?.code;
       const extra = {
         QUOTA_EXCEEDED: 'Try another workspace or wait until the quota period resets.',
+        PLAN_UPGRADE_REQUIRED: 'This feature requires a higher plan. Upgrade on the pricing page.',
         AUTH_REQUIRED: 'Add a deployment or user API key in Settings, or sign in with OAuth.',
         AUTH_INVALID: 'Check the user API key in Settings.',
         NOT_AUTHENTICATED: 'Sign in or provide a valid API key.',
@@ -3547,7 +3548,9 @@
               errData = await res.json();
             } catch (_) {}
             const mapped = mapChatHttpError(res.status, errData);
-            const isQuotaExceeded = res.status === 429 && errData.code === 'QUOTA_EXCEEDED';
+            const errCode = errData.code || errData.error?.code;
+            const isQuotaExceeded = res.status === 429 && errCode === 'QUOTA_EXCEEDED';
+            const isPlanUpgrade = res.status === 402 && errCode === 'PLAN_UPGRADE_REQUIRED';
             const isRetryable = (res.status >= 500 || (res.status === 429 && !isQuotaExceeded)) && attempt < MAX_RETRIES;
             if (isRetryable) {
               await new Promise(r => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
@@ -3558,6 +3561,9 @@
             }
             if (isQuotaExceeded) {
               showNotice(mapped.detail || mapped.summary, 'error', true);
+            }
+            if (isPlanUpgrade) {
+              showNotice(mapped.detail || mapped.summary, 'warning', { openPricing: true });
             }
             throw new Error(mapped.summary + (mapped.detail ? ' — ' + mapped.detail : ''));
           }

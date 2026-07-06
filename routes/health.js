@@ -186,6 +186,10 @@ export default function mountHealthRoutes(app, deps) {
           throw new Error(result.error || "unreachable");
         }
         return { details: { backend: BACKEND, latencyMs: result.latencyMs } };
+      }, {
+        critical:
+          process.env.HEALTH_DEEP_BACKEND_OPTIONAL !== "1" &&
+          process.env.VERCEL !== "1",
       }),
     ];
 

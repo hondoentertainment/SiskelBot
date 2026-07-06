@@ -128,6 +128,8 @@ export default function mount(root, opts) {
     status: "connecting",
     iterations: 0,
     costUsd: 0,
+    tokensTotal: 0,
+    costModel: "",
     plan: { summary: "", nodes: [] },
     timeline: [],
     artifacts: [],
@@ -181,6 +183,7 @@ export default function mount(root, opts) {
   // Footer controls
   const statusPill = el("span", { class: "ar-pill ar-pill-connecting" }, "connecting");
   const costEl = el("span", { class: "ar-stat" }, fmtUSD(0));
+  const tokensEl = el("span", { class: "ar-stat" }, "0 tok");
   const iterEl = el("span", { class: "ar-stat" }, "0 iter");
   const btnPause = el("button", { class: "ar-btn", type: "button" }, "Pause");
   const btnResume = el("button", { class: "ar-btn", type: "button" }, "Resume");
@@ -194,7 +197,7 @@ export default function mount(root, opts) {
   });
 
   const footer = el("div", { class: "ar-footer" }, [
-    el("div", { class: "ar-footer-stats" }, [statusPill, costEl, iterEl]),
+    el("div", { class: "ar-footer-stats" }, [statusPill, costEl, tokensEl, iterEl]),
     el("div", { class: "ar-footer-actions" }, [btnPause, btnResume, btnCancel]),
   ]);
 
@@ -446,6 +449,10 @@ export default function mount(root, opts) {
     statusPill.textContent = state.status;
     statusPill.className = `ar-pill ar-pill-${cssSafe(state.status)}`;
     costEl.textContent = fmtUSD(state.costUsd);
+    tokensEl.textContent = state.tokensTotal > 0
+      ? `${state.tokensTotal.toLocaleString()} tok`
+      : "0 tok";
+    if (state.costModel) costEl.title = state.costModel;
     iterEl.textContent = `${state.iterations} iter`;
   }
 
@@ -621,8 +628,13 @@ export default function mount(root, opts) {
       renderTree();
     } else if (type === "cost.update") {
       const usd = Number(payload.totalUsd ?? payload.costUsd);
-      if (Number.isFinite(usd)) state.costUsd = usd;
-      // Forward cost.update with childCostUsd to tree state
+      if (Number.isFinite(usd)) state.costUsd = Math.max(state.costUsd, usd);
+      const t = payload.tokens;
+      const tok =
+        Number(t?.total) ||
+        (Math.max(0, Number(t?.prompt) || 0) + Math.max(0, Number(t?.completion) || 0));
+      if (tok > 0) state.tokensTotal = Math.max(state.tokensTotal, tok);
+      if (typeof payload.model === "string" && payload.model) state.costModel = payload.model;
       if (payload.childSessionId && payload.childCostUsd != null) {
         state.treeEvents.push({ type, payload });
         renderTree();
@@ -630,6 +642,9 @@ export default function mount(root, opts) {
       renderFooter();
     } else if (type === "status.change") {
       if (payload.status) state.status = String(payload.status);
+      if (typeof payload.iteration === "number" && payload.iteration > 0) {
+        state.iterations = Math.max(state.iterations, payload.iteration);
+      }
       state.treeEvents.push({ type, payload });
       renderFooter();
     } else if (type === "done") {

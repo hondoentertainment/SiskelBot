@@ -1,0 +1,28 @@
+# Weekly synthetic probe of /health/deep + go-live checks against production.
+name: Deep health synthetic
+
+on:
+  schedule:
+    - cron: "0 16 * * 1"
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Deployment base URL (no trailing slash)"
+        required: false
+        default: "https://siskelbot.vercel.app"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: npm ci
+      - name: Go-live verify (non-strict)
+        env:
+          BASE_URL: ${{ github.event.inputs.base_url || vars.PRODUCTION_BASE_URL || 'https://siskelbot.vercel.app' }}
+        run: npm run go-live:verify -- "$BASE_URL"

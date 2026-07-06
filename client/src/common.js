@@ -117,6 +117,7 @@ export function showNotice(message, variant = 'warning', opts = false) {
   noticeBanner.className = `notice-banner visible ${variant}`;
   const canRetry = typeof opts === 'boolean' ? opts : (opts && opts.canRetry);
   const openSettings = opts && opts.openSettings;
+  const openPricing = opts && opts.openPricing;
   if (retryLastBtn) retryLastBtn.hidden = !canRetry;
   const openSettingsBtn = document.getElementById('notice-open-settings');
   if (openSettingsBtn) {
@@ -126,6 +127,23 @@ export function showNotice(message, variant = 'warning', opts = false) {
       if (settingsToggle) settingsToggle.open = true;
       clearNotice();
     };
+  }
+  let openPricingBtn = document.getElementById('notice-open-pricing');
+  if (openPricing) {
+    if (!openPricingBtn) {
+      openPricingBtn = document.createElement('button');
+      openPricingBtn.id = 'notice-open-pricing';
+      openPricingBtn.type = 'button';
+      openPricingBtn.className = 'notice-action-btn';
+      openPricingBtn.textContent = 'View pricing';
+      noticeBanner?.appendChild(openPricingBtn);
+    }
+    openPricingBtn.hidden = false;
+    openPricingBtn.onclick = () => {
+      window.location.href = '/pricing.html';
+    };
+  } else if (openPricingBtn) {
+    openPricingBtn.hidden = true;
   }
 }
 
@@ -182,9 +200,10 @@ export function getSelectedWorkspace() {
 
 export function mapChatHttpError(status, errData) {
   errData = errData || {};
-  const code = errData.code;
+  const code = errData.code || errData.error?.code;
   const extra = {
     QUOTA_EXCEEDED: 'Try another workspace or wait until the quota period resets.',
+    PLAN_UPGRADE_REQUIRED: 'This feature requires a higher plan. Upgrade on the pricing page.',
     AUTH_REQUIRED: 'Add a deployment or user API key in Settings, or sign in with OAuth.',
     AUTH_INVALID: 'Check the user API key in Settings.',
     NOT_AUTHENTICATED: 'Sign in or provide a valid API key.',
