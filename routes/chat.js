@@ -20,7 +20,7 @@ import { createBillingManager } from "../lib/billing.js";
 const ENABLE_PROMPT_GUARD = process.env.ENABLE_PROMPT_GUARD === "1";
 const ENABLE_OUTPUT_GUARD = process.env.ENABLE_OUTPUT_GUARD === "1";
 const ENABLE_COST_LIMITS = process.env.ENABLE_COST_LIMITS === "1";
-const PLAN_QUOTA_ENABLED = process.env.QUOTA_ENABLED === "1";
+const PLAN_QUOTA_ENABLED = process.env.QUOTA_ENABLED?.trim() === "1";
 const moderationMiddleware = inputModerationMiddleware();
 const _billingManager = createBillingManager();
 

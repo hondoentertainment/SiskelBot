@@ -17,6 +17,7 @@ const VARS = [
   { key: "STRIPE_PRO_PRICE_ID", note: "Pro plan price ID" },
   { key: "STRIPE_ENTERPRISE_PRICE_ID", note: "Enterprise plan price ID" },
   { key: "APP_BASE_URL", note: "Public origin, e.g. https://siskelbot.vercel.app" },
+  { key: "HEALTH_DEEP_BACKEND_OPTIONAL", value: "1", note: "Backend down → degraded not 503 on Vercel" },
   { key: "ENFORCE_PLAN_LIMITS", value: "1", note: "402 on plan-gated features" },
   { key: "QUOTA_ENABLED", value: "1", note: "Monthly token caps per plan" },
   { key: "OTEL_ENABLED", value: "1", note: "Observability" },
@@ -26,6 +27,7 @@ const VARS = [
 ];
 
 console.log("# Vercel production env (run from repo root)\n");
+console.log("# Preferred: npm run apply:production-env  (non-interactive flags + generated secrets)\n");
 for (const v of VARS) {
   console.log(`# ${v.note}`);
   console.log(`npx vercel env add ${v.key} production`);

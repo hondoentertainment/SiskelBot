@@ -5,16 +5,18 @@
  * Usage:
  *   node scripts/go-live-verify.mjs [BASE_URL]
  *   BASE_URL=https://example.com npm run go-live:verify
+ *   node scripts/go-live-verify.mjs --strict [BASE_URL]
  *
  * Exits 1 when any required probe fails.
  */
-const BASE = (process.argv[2] || process.env.BASE_URL || "").replace(/\/$/, "");
+const argv = process.argv.slice(2).filter((a) => a !== "--strict");
+const BASE = (argv[0] || process.env.BASE_URL || "").replace(/\/$/, "");
 const STRICT = process.argv.includes("--strict") || process.env.GO_LIVE_STRICT === "1";
 
 /** Probes that must pass for any deployment. */
 const CRITICAL = new Set(["health/live", "config", "billing/plans", "account.html", "pricing.html"]);
 /** Probes that pass only after GO_LIVE flags (Stripe, enforcement, durable storage). */
-const COMMERCIAL = new Set(["health/deep", "entitlements"]);
+const COMMERCIAL = new Set(["health/deep", "entitlements", "auth", "quota", "stripe", "storage"]);
 
 /** @param {string} path */
 function url(path) {
@@ -33,11 +35,12 @@ async function probe(name, fn) {
 
 async function main() {
   if (!BASE) {
-    console.error("Usage: node scripts/go-live-verify.mjs <BASE_URL>");
+    console.error("Usage: node scripts/go-live-verify.mjs [--strict] <BASE_URL>");
     process.exit(2);
   }
 
   const results = [];
+  let configJson = {};
 
   results.push(
     await probe("health/live", async () => {
@@ -63,8 +66,46 @@ async function main() {
   results.push(
     await probe("config", async () => {
       const r = await fetch(url("/config"));
-      const j = await r.json().catch(() => ({}));
-      return { ok: r.ok && typeof j === "object", detail: `requiresApiKey=${j?.requiresApiKey}` };
+      configJson = await r.json().catch(() => ({}));
+      return {
+        ok: r.ok && typeof configJson === "object",
+        detail: `requiresApiKey=${configJson?.requiresApiKey} quota=${configJson?.quotaEnabled} stripe=${configJson?.stripeEnabled} storage=${configJson?.storageBackend}`,
+      };
+    })
+  );
+
+  results.push(
+    await probe("auth", async () => {
+      const ok = STRICT ? configJson?.requiresApiKey === true : true;
+      return { ok, detail: `requiresApiKey=${configJson?.requiresApiKey}` };
+    })
+  );
+
+  results.push(
+    await probe("quota", async () => {
+      const ok = STRICT
+        ? configJson?.quotaEnabled === true && configJson?.enforcePlanLimits === true
+        : true;
+      return {
+        ok,
+        detail: `quotaEnabled=${configJson?.quotaEnabled} enforcePlanLimits=${configJson?.enforcePlanLimits}`,
+      };
+    })
+  );
+
+  results.push(
+    await probe("stripe", async () => {
+      const ok = STRICT ? configJson?.stripeEnabled === true : true;
+      return { ok, detail: `stripeEnabled=${configJson?.stripeEnabled}` };
+    })
+  );
+
+  results.push(
+    await probe("storage", async () => {
+      const backend = configJson?.storageBackend;
+      const durable = backend === "postgres" || backend === "sqlite";
+      const ok = STRICT ? durable : true;
+      return { ok, detail: `storageBackend=${backend || "?"}` };
     })
   );
 

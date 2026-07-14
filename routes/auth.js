@@ -53,7 +53,8 @@ export default function mountAuthRoutes(app, deps) {
           : process.env.STORAGE_BACKEND === "sqlite"
             ? "sqlite"
             : "json",
-      quotaEnabled: process.env.QUOTA_ENABLED === "1",
+      quotaEnabled: process.env.QUOTA_ENABLED?.trim() === "1",
+      enforcePlanLimits: process.env.ENFORCE_PLAN_LIMITS?.trim() === "1",
       quotaDefaultLimit: process.env.QUOTA_DEFAULT_LIMIT ? Number(process.env.QUOTA_DEFAULT_LIMIT) : null,
       realtimeEnabled: true,
       stripeEnabled: Boolean(process.env.STRIPE_SECRET_KEY),

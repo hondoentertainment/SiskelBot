@@ -7,7 +7,7 @@ config and how to verify it.
 
 Status date: 2026-07-06
 
-**Automation:** `npm run setup:production-env` · `npm run go-live:verify -- <BASE_URL>` · `npm run go-live:verify:strict -- <BASE_URL>` (after flags) · `npm run branch-protection:apply`
+**Automation:** `npm run setup:production-env` · `npm run apply:production-env` · `npm run go-live:verify -- <BASE_URL>` · `npm run go-live:verify:strict -- <BASE_URL>` (after flags) · `npm run branch-protection:apply`
 
 ---
 
@@ -94,10 +94,13 @@ least the `regression` gate before merge.
 
 ## 7. Production baseline (from docs/NEXT_STEPS.md — unchanged)
 
-- [ ] `API_KEY`, `ADMIN_API_KEY` set
+- [x] `API_KEY`, `ADMIN_API_KEY`, `SESSION_SECRET` — applied via `npm run apply:production-env` (2026-07-13)
 - [ ] Durable storage (`STORAGE_BACKEND=postgres` + `DATABASE_URL`, or SQLite
-      volume) and `REQUIRE_DURABLE_STORAGE=1`
-- [ ] `npm run setup:production-env` prints the exact commands
+      volume) and `REQUIRE_DURABLE_STORAGE=1` — complete Neon Web UI, then re-run apply with `DATABASE_URL`
+- [x] `ENFORCE_PLAN_LIMITS=1`, `QUOTA_ENABLED=1`, `APP_BASE_URL`, `HEALTH_DEEP_BACKEND_OPTIONAL=1`
+- [ ] Stripe live keys (`STRIPE_*`) — still required for checkout
+
+`npm run setup:production-env` prints the exact commands; prefer `npm run apply:production-env` for non-interactive apply.
 
 ---
 

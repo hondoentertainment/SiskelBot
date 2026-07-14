@@ -2,12 +2,12 @@
 
 Ten prioritized product items following [ROADMAP_51-70.md](./ROADMAP_51-70.md). Focus: revenue activation, production ops, and agent UX polish.
 
-**Status date:** 2026-07-06
+**Status date:** 2026-07-13
 
 | # | Item | Description | Status |
 |---|------|-------------|--------|
-| 71.1 | **Stripe live mode** | Production keys, webhook at `POST /api/v1/billing/webhook`, Billing Portal, Pro/Enterprise price IDs ([GO_LIVE.md](./GO_LIVE.md) §1) | Planned (Vercel/Stripe dashboard) |
-| 71.2 | **Plan enforcement** | Enable `ENFORCE_PLAN_LIMITS=1` and `QUOTA_ENABLED=1` on Vercel production; verify 402 gates | Planned (Vercel env) |
+| 71.1 | **Stripe live mode** | Production keys, webhook at `POST /api/v1/billing/webhook`, Billing Portal, Pro/Enterprise price IDs ([GO_LIVE.md](./GO_LIVE.md) §1) | **Blocked** — needs Stripe dashboard keys (`STRIPE_*` via `apply:production-env`) |
+| 71.2 | **Plan enforcement** | Enable `ENFORCE_PLAN_LIMITS=1` and `QUOTA_ENABLED=1` on Vercel production; verify 402 gates | **Applied** (Vercel prod env; redeploy + verify) |
 | 71.3 | **Go-live verify automation** | `npm run go-live:verify` probes health, billing, entitlements, account/pricing pages | **Shipped** |
 | 71.4 | **Branch protection** | Require lint, test, Trivy, smoke, e2e, agent-regression on `main` | **Shipped** |
 | 71.5 | **Chaos CI reliability** | Weekly `npm run test:chaos` job green (13 resilience tests under `tests/chaos/`) | **Shipped** |
@@ -22,13 +22,18 @@ Ten prioritized product items following [ROADMAP_51-70.md](./ROADMAP_51-70.md). 
 ## Enablers on `main`
 
 - CI green; billing dashboard + account page (#69); `docs/GO_LIVE.md`
-- `setup:production-env`, `check:production-env`, `go-live:verify`, `go-live:verify:strict`, `test:chaos`
+- `setup:production-env`, `apply:production-env`, `check:production-env`, `go-live:verify`, `go-live:verify:strict`, `test:chaos`
 - Client 402 `PLAN_UPGRADE_REQUIRED` → pricing CTA in chat
+- Production baseline: `API_KEY` / `ADMIN_API_KEY` / `SESSION_SECRET` / plan flags applied via `apply:production-env`
 
-## Suggested operator order
+## Remaining operator steps
 
 ```text
-71.1 → 71.2 → go-live:verify:strict → confirm production revenue path
+1. Neon: vercel integration add neon → complete Web UI → DATABASE_URL on project
+2. DATABASE_URL=... npm run apply:production-env   # sets STORAGE_BACKEND + REQUIRE_DURABLE_STORAGE
+3. Stripe live keys + webhook + price IDs → export STRIPE_* && npm run apply:production-env
+4. npx vercel --prod --yes
+5. npm run go-live:verify:strict -- https://siskelbot.vercel.app
 ```
 
 See also [AGENT_WORLD_CLASS_ROADMAP.md](./AGENT_WORLD_CLASS_ROADMAP.md) for agent-capability phases 6–20.
