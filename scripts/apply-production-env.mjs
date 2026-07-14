@@ -55,12 +55,22 @@ async function main() {
   }
 
   const databaseUrl = process.env.DATABASE_URL?.trim();
+  const redisUrl =
+    process.env.REDIS_URL?.trim() ||
+    process.env.UPSTASH_REDIS_URL?.trim() ||
+    process.env.KV_URL?.trim();
   if (databaseUrl) {
     if (!vercelEnvAdd("STORAGE_BACKEND", "postgres")) ok = false;
     if (!vercelEnvAdd("DATABASE_URL", databaseUrl, { sensitive: true })) ok = false;
     if (!vercelEnvAdd("REQUIRE_DURABLE_STORAGE", "1")) ok = false;
+  } else if (redisUrl) {
+    if (!vercelEnvAdd("STORAGE_BACKEND", "redis")) ok = false;
+    if (!vercelEnvAdd("REDIS_URL", redisUrl, { sensitive: true })) ok = false;
+    if (!vercelEnvAdd("REQUIRE_DURABLE_STORAGE", "1")) ok = false;
   } else {
-    console.log("Skip STORAGE_BACKEND/DATABASE_URL/REQUIRE_DURABLE_STORAGE (set DATABASE_URL and re-run)");
+    console.log(
+      "Skip durable storage (set DATABASE_URL for postgres or REDIS_URL for redis, then re-run)"
+    );
   }
 
   const stripeSecret = process.env.STRIPE_SECRET_KEY?.trim();

@@ -103,7 +103,7 @@ async function main() {
   results.push(
     await probe("storage", async () => {
       const backend = configJson?.storageBackend;
-      const durable = backend === "postgres" || backend === "sqlite";
+      const durable = backend === "postgres" || backend === "sqlite" || backend === "redis";
       const ok = STRICT ? durable : true;
       return { ok, detail: `storageBackend=${backend || "?"}` };
     })

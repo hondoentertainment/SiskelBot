@@ -52,7 +52,9 @@ export default function mountAuthRoutes(app, deps) {
           ? "postgres"
           : process.env.STORAGE_BACKEND === "sqlite"
             ? "sqlite"
-            : "json",
+            : process.env.STORAGE_BACKEND === "redis"
+              ? "redis"
+              : "json",
       quotaEnabled: process.env.QUOTA_ENABLED?.trim() === "1",
       enforcePlanLimits: process.env.ENFORCE_PLAN_LIMITS?.trim() === "1",
       quotaDefaultLimit: process.env.QUOTA_DEFAULT_LIMIT ? Number(process.env.QUOTA_DEFAULT_LIMIT) : null,

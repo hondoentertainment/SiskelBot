@@ -48,6 +48,7 @@
     "test:chaos": "node --test tests/chaos/*.test.js",
     "setup:production-env": "node scripts/setup-production-env.mjs",
     "apply:production-env": "node scripts/apply-production-env.mjs",
+    "setup:stripe-products": "node scripts/setup-stripe-products.mjs",
     "check:production-env": "node scripts/check-production-env.mjs",
     "go-live:verify": "node scripts/go-live-verify.mjs",
     "go-live:verify:strict": "node scripts/go-live-verify.mjs --strict",

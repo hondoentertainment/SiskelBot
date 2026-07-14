@@ -95,12 +95,13 @@ least the `regression` gate before merge.
 ## 7. Production baseline (from docs/NEXT_STEPS.md — unchanged)
 
 - [x] `API_KEY`, `ADMIN_API_KEY`, `SESSION_SECRET` — applied via `npm run apply:production-env` (2026-07-13)
-- [ ] Durable storage (`STORAGE_BACKEND=postgres` + `DATABASE_URL`, or SQLite
-      volume) and `REQUIRE_DURABLE_STORAGE=1` — complete Neon Web UI, then re-run apply with `DATABASE_URL`
+- [x] Durable storage (`STORAGE_BACKEND=postgres` + `DATABASE_URL` from Neon store
+      `neon-citrine-castle`) and `REQUIRE_DURABLE_STORAGE=1`
 - [x] `ENFORCE_PLAN_LIMITS=1`, `QUOTA_ENABLED=1`, `APP_BASE_URL`, `HEALTH_DEEP_BACKEND_OPTIONAL=1`
 - [ ] Stripe live keys (`STRIPE_*`) — still required for checkout
 
 `npm run setup:production-env` prints the exact commands; prefer `npm run apply:production-env` for non-interactive apply.
+`npm run setup:stripe-products -- --apply` creates Pro/Enterprise prices when `STRIPE_SECRET_KEY` is set.
 
 ---
 

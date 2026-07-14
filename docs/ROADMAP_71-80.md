@@ -6,8 +6,8 @@ Ten prioritized product items following [ROADMAP_51-70.md](./ROADMAP_51-70.md). 
 
 | # | Item | Description | Status |
 |---|------|-------------|--------|
-| 71.1 | **Stripe live mode** | Production keys, webhook at `POST /api/v1/billing/webhook`, Billing Portal, Pro/Enterprise price IDs ([GO_LIVE.md](./GO_LIVE.md) §1) | **Blocked** — needs Stripe dashboard keys (`STRIPE_*` via `apply:production-env`) |
-| 71.2 | **Plan enforcement** | Enable `ENFORCE_PLAN_LIMITS=1` and `QUOTA_ENABLED=1` on Vercel production; verify 402 gates | **Applied** (Vercel prod env; redeploy + verify) |
+| 71.1 | **Stripe live mode** | Production keys, webhook at `POST /api/v1/billing/webhook`, Billing Portal, Pro/Enterprise price IDs ([GO_LIVE.md](./GO_LIVE.md) §1) | **Blocked** — needs Stripe dashboard keys (`npm run setup:stripe-products -- --apply`) |
+| 71.2 | **Plan enforcement** | Enable `ENFORCE_PLAN_LIMITS=1` and `QUOTA_ENABLED=1` on Vercel production; verify 402 gates | **Shipped** (live `enforced=true`) |
 | 71.3 | **Go-live verify automation** | `npm run go-live:verify` probes health, billing, entitlements, account/pricing pages | **Shipped** |
 | 71.4 | **Branch protection** | Require lint, test, Trivy, smoke, e2e, agent-regression on `main` | **Shipped** |
 | 71.5 | **Chaos CI reliability** | Weekly `npm run test:chaos` job green (13 resilience tests under `tests/chaos/`) | **Shipped** |
@@ -29,11 +29,13 @@ Ten prioritized product items following [ROADMAP_51-70.md](./ROADMAP_51-70.md). 
 ## Remaining operator steps
 
 ```text
-1. Neon: vercel integration add neon → complete Web UI → DATABASE_URL on project
-2. DATABASE_URL=... npm run apply:production-env   # sets STORAGE_BACKEND + REQUIRE_DURABLE_STORAGE
-3. Stripe live keys + webhook + price IDs → export STRIPE_* && npm run apply:production-env
-4. npx vercel --prod --yes
-5. npm run go-live:verify:strict -- https://siskelbot.vercel.app
+1. Stripe live keys + webhook + price IDs:
+   STRIPE_SECRET_KEY=sk_live_... npm run setup:stripe-products -- --apply
+   export STRIPE_* && npm run apply:production-env
+2. npx vercel --prod --yes
+3. npm run go-live:verify:strict -- https://siskelbot.vercel.app
 ```
 
-See also [AGENT_WORLD_CLASS_ROADMAP.md](./AGENT_WORLD_CLASS_ROADMAP.md) for agent-capability phases 6–20.
+Durable storage: Neon store `neon-citrine-castle` connected; `STORAGE_BACKEND=postgres` + `DATABASE_URL` + `REQUIRE_DURABLE_STORAGE=1` on production.
+Redis KV alternative: `STORAGE_BACKEND=redis` + `REDIS_URL` (see `lib/storage-redis-kv.js`).
+
