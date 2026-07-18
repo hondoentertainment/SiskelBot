@@ -58,6 +58,8 @@ export function mountAgentResumeRoutes(app, deps) {
         resumedFromIteration: checkpoint.iteration ?? 0,
         sessionId,
         checkpoint,
+        planSummary: session.planSummary || null,
+        planDag: session.planDag || checkpoint.upfrontPlanDag || null,
       });
     },
   );

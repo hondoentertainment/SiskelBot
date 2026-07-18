@@ -52,6 +52,8 @@
     "check:production-env": "node scripts/check-production-env.mjs",
     "go-live:verify": "node scripts/go-live-verify.mjs",
     "go-live:verify:strict": "node scripts/go-live-verify.mjs --strict",
+    "seed:preferences": "node scripts/seed-preference-dataset.mjs",
+    "export:model-card": "node scripts/export-model-card.mjs",
     "branch-protection:apply": "node scripts/apply-branch-protection.mjs",
     "openapi:generate": "node scripts/generate-openapi.mjs",
     "postman:generate": "npm run openapi:generate && node scripts/openapi-to-postman.mjs --input=docs/openapi.yaml --output=postman/SiskelBot.postman_collection.json",

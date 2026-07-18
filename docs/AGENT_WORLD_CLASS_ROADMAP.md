@@ -54,11 +54,11 @@ Each phase lists **goal**, **deliverables**, **exit criteria**, and **dependenci
 
 **Recommended next steps (highest leverage)** — do these in parallel where possible:
 
-1. **Finish Phase 6 (browser):** screenshots, per-workspace domain allowlists, HITL for new registrable domains, golden evals with mocks — closes the highest-risk surface with product-grade gates.
+1. **Finish Phase 6 (browser):** **Partial→stronger** — screenshots + `browserAllowedHosts` + `AGENT_BROWSER_HITL_NEW_DOMAINS`; golden/CI cases for browser tools in `data/eval-sets/` (mock Playwright still optional).
 2. **Unify budgets:** **Done** for browser tools vs `fetch_allowed_url` via `toolConsumesExternalFetchBudget` (still tune **network** category caps separately if needed).
-3. **Phase 8 — planner persistence then failure-driven re-plan:** **Phase 8a (landed / in progress):** with `AGENT_UPFRONT_PLAN=1`, persist planner/upfront DAG on the session; checkpoints carry `upfrontPlanDag` on supported paths — **partially shipped** (not guaranteed on every resume/serialization edge yet). **Phase 8b (next):** deterministic **re-plan after tool failure** / failed step with capped loops; golden eval proving the plan revises after a controlled failure.
-4. **Phase 16 continuously:** treat **`eval:ci`** and offline eval sets as the enforcement backbone — expand golden traces / judges so every new tool category ships with negative + positive coverage wired into those gates.
-5. **Phase 7 when act tools see production traffic:** **sandboxed** code/plugins (container or hardened subprocess), not host-native execution — before expanding allowlists.
+3. **Phase 8 — planner persistence then failure-driven re-plan:** **8a improved** — session `planSummary` reuse (`AGENT_REUSE_SESSION_PLAN`), `saveCheckpoint` with `upfrontPlanDag`, resume payload includes plan fields. **8b shipped** — capped re-plan after tool failure + CI staging golden `replan-after-failure.json`.
+4. **Phase 16 continuously:** golden suite expanded (browser + replan); keep adding negative cases per tool category into `eval:ci`.
+5. **Phase 7 sandboxed code:** **MVP shipped** — mount `/api/v1/sandbox/*`; `AGENT_CODE_SANDBOX=1` routes `code_execute` through `runCodeInSandbox` (mock runtime / docker when registered).
 
 ---
 

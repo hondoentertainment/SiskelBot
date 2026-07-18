@@ -315,12 +315,12 @@ test("mapAuditEventToControls maps erasure actions to GDPR Art. 17", () => {
 
 test("mapAuditEventToControls returns empty arrays for unknown actions", () => {
   const m = mapAuditEventToControls({ action: "some_unknown_thing" });
-  assert.deepEqual(m, { soc2: [], hipaa: [], gdpr: [] });
+  assert.deepEqual(m, { soc2: [], hipaa: [], gdpr: [], iso27001: [] });
 });
 
 test("mapAuditEventToControls handles missing action", () => {
   const m = mapAuditEventToControls({});
-  assert.deepEqual(m, { soc2: [], hipaa: [], gdpr: [] });
+  assert.deepEqual(m, { soc2: [], hipaa: [], gdpr: [], iso27001: [] });
 });
 
 test("generateSOC2Report returns a structured report", async () => {

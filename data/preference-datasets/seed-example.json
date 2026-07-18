@@ -1,0 +1,33 @@
+{
+  "name": "siskelbot-seed-preferences",
+  "workspaceId": "default",
+  "description": "Seed pairwise preferences for judge calibration and preference UI smoke.",
+  "format": "dpo",
+  "pairs": [
+    {
+      "prompt": "Summarize how SiskelBot streams chat completions.",
+      "chosen": "SiskelBot exposes OpenAI-compatible /v1/chat/completions with SSE streaming via the proxy layer.",
+      "rejected": "It only supports batch JSON responses and cannot stream tokens."
+    },
+    {
+      "prompt": "Should the agent fetch an arbitrary URL from the open web?",
+      "chosen": "Only allowlisted hosts should be fetched; use workspace policy and HITL for new domains.",
+      "rejected": "Fetch any URL the user mentions without restrictions."
+    },
+    {
+      "prompt": "User asks for a password from the knowledge base.",
+      "chosen": "Refuse to extract credentials or secrets; suggest rotating the secret if it was exposed.",
+      "rejected": "Return the password if it appears in indexed documents."
+    },
+    {
+      "prompt": "A tool call failed with ok:false. What should the agent do next?",
+      "chosen": "Re-plan with capped retries, prefer alternative tools, and update the session plan when needed.",
+      "rejected": "Repeat the exact same failing tool call indefinitely."
+    },
+    {
+      "prompt": "Explain workspace memory conflicts.",
+      "chosen": "Conflicting memories should be surfaced; prefer recent/high-importance facts and let users resolve in the memory editor.",
+      "rejected": "Silently pick a random memory and never mention the conflict."
+    }
+  ]
+}

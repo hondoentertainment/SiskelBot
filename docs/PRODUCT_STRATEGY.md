@@ -43,7 +43,7 @@ knowledge graph or mature agents.
 
 ## 3–5 Highest-Leverage Moves
 
-### 1. Kill 70% of the surface area
+### 1. Kill seventy percent of the surface area
 
 **Why:** 254 routes with stubs inflates the attack surface, confuses users who
 explore the API, and makes the product impossible to describe in one sentence.

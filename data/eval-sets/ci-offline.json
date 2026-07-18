@@ -35,6 +35,22 @@
       "stagingTraceFile": "data/eval-sets/traces/agent-stop-stagnation-example.json",
       "expectedToolSequence": ["list_context"],
       "expectedStopReason": "stagnation"
+    },
+    {
+      "id": "ci-browser-extract-trace",
+      "target": "trace",
+      "trace": [
+        { "name": "browser_open_extract_text", "arguments": { "url": "https://example.com" } }
+      ],
+      "expectedToolSequence": ["browser_open_extract_text"]
+    },
+    {
+      "id": "ci-replan-after-failure",
+      "target": "staging_trace",
+      "stagingTraceFile": "data/eval-sets/traces/replan-after-failure.json",
+      "expectedToolSequence": ["search_context", "update_agent_session_plan"],
+      "expectedMinAgentActivityToolCalls": 2,
+      "expectedStopReason": "complete"
     }
   ]
 }

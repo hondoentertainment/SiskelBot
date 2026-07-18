@@ -66,6 +66,7 @@ import { mountModelQualityRoutes } from "./model-quality.js";
 import { mountReplayRoutes } from "./replay.js";
 import { mountTrajectoryBranchRoutes } from "./trajectory-branch.js";
 import { mountAgentResumeRoutes } from "./agent-resume.js";
+import { mountAgentSandboxRoutes } from "./agent-sandbox.js";
 import { mountSignalsRoutes } from "./signals.js";
 import { mountObservabilitySnapshotRoutes } from "./observability-snapshot.js";
 import mountDocsRoutes from "./docs.js";
@@ -195,6 +196,7 @@ const mountFunctions = [
   mountReplayRoutes,
   mountTrajectoryBranchRoutes,
   mountAgentResumeRoutes,
+  mountAgentSandboxRoutes,
   mountSignalsRoutes,
   mountObservabilitySnapshotRoutes,
   mountDocsRoutes,

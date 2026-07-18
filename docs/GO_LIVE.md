@@ -103,9 +103,13 @@ least the `regression` gate before merge.
       `neon-citrine-castle`) and `REQUIRE_DURABLE_STORAGE=1`
 - [x] `ENFORCE_PLAN_LIMITS=1`, `QUOTA_ENABLED=1`, `APP_BASE_URL`, `HEALTH_DEEP_BACKEND_OPTIONAL=1`
 - [ ] Stripe live keys (`STRIPE_*`) — still required for checkout
+- [ ] Dedicated Neon database (prod still shares `neon-citrine-castle`; KV namespaced via `STORAGE_KV_TABLE`)
+- [ ] LLM backend credentials so `/health/deep` is healthy (not only degraded-optional)
 
 `npm run setup:production-env` prints the exact commands; prefer `npm run apply:production-env` for non-interactive apply.
 `npm run setup:stripe-products -- --apply` creates Pro/Enterprise prices when `STRIPE_SECRET_KEY` is set.
+`npm run seed:preferences` seeds pairwise preference cases for `/preferences.html`.
+`npm run export:model-card -- <modelId>` exports admin model-card markdown.
 
 ---
 

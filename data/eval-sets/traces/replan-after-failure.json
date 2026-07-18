@@ -1,0 +1,30 @@
+{
+  "_comment": "Offline golden: tool failure followed by session plan revision (Phase 8b).",
+  "goldenTrace": [
+    { "name": "search_context", "arguments": { "query": "missing-doc" } },
+    {
+      "name": "update_agent_session_plan",
+      "arguments": {
+        "planSummary": "Re-plan after search_context failure: list_context then retry.",
+        "planDag": { "steps": ["list_context", "search_context"] }
+      }
+    }
+  ],
+  "agentActivity": {
+    "type": "agent_activity",
+    "toolCalls": [
+      { "name": "search_context", "args": { "query": "missing-doc" }, "ok": false },
+      {
+        "name": "update_agent_session_plan",
+        "args": {
+          "planSummary": "Re-plan after search_context failure: list_context then retry.",
+          "planDag": { "steps": ["list_context", "search_context"] }
+        },
+        "ok": true
+      }
+    ],
+    "swarmSteps": [],
+    "stopReason": "complete",
+    "replanCount": 1
+  }
+}

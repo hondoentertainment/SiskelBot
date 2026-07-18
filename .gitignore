@@ -43,6 +43,10 @@ data/eval-sets/*
 !data/eval-sets/traces/example-staging.json
 !data/eval-sets/traces/swarm-staging-example.json
 !data/eval-sets/traces/agent-stop-stagnation-example.json
+!data/eval-sets/traces/replan-after-failure.json
+!data/preference-datasets/
+data/preference-datasets/*
+!data/preference-datasets/seed-example.json
 !data/eval-sets-store.json
 !data/workspace-templates/
 data/workspace-templates/*
