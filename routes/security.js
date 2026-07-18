@@ -6,6 +6,7 @@ import {
   getRetentionPolicy,
   setRetentionPolicy,
   enforceRetention,
+  setLegalHold,
 } from "../lib/data-retention.js";
 import {
   getWorkspaceIpPolicy,
@@ -81,6 +82,29 @@ export function mountSecurityRoutes(app, deps) {
       } catch (err) {
         console.error("Retention enforce error:", err.message);
         return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");
+      }
+    }
+  );
+
+  apiRoute(
+    "post",
+    "/workspaces/:id/legal-hold",
+    storageRateLimiter,
+    userAuth,
+    requireScope("write"),
+    logRequest,
+    async (req, res) => {
+      try {
+        const workspaceId = sanitizeWorkspace(req.params.id);
+        const policy = await setLegalHold(workspaceId, {
+          enabled: req.body?.enabled !== false && req.body?.enabled !== "0",
+          reason: req.body?.reason,
+          until: req.body?.until ?? null,
+        });
+        res.json(policy);
+      } catch (err) {
+        console.error("Legal hold error:", err.message);
+        return apiError(res, 400, "INVALID_INPUT", err.message);
       }
     }
   );

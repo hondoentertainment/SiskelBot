@@ -5,26 +5,62 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Memory editor — SiskelBot</title>
   <style>
-    body { font-family: Georgia, serif; margin: 2rem; max-width: 800px; background: #f6f3ee; color: #1c1917; }
+    body { font-family: Georgia, serif; margin: 2rem; max-width: 900px; background: #f6f3ee; color: #1c1917; }
+    h1, h2 { margin: 0 0 0.5rem; }
+    p { color: #44403c; }
     li { margin: 0.6rem 0; }
-    input, textarea { width: 100%; margin: 0.25rem 0; }
+    input, textarea { width: 100%; margin: 0.25rem 0; box-sizing: border-box; }
     button { margin-right: 0.4rem; cursor: pointer; }
+    section { margin: 1.5rem 0; padding: 1rem 0; border-top: 1px solid #d6d3d1; }
+    .conflict { background: #fef3c7; padding: 0.6rem; border-radius: 6px; margin: 0.4rem 0; }
+    .muted { color: #78716c; font-size: 0.9rem; }
+    nav a { margin-right: 0.75rem; color: #1d4ed8; }
   </style>
 </head>
 <body>
+  <nav>
+    <a href="/admin-ops.html">Ops</a>
+    <a href="/preferences.html">Preferences</a>
+    <a href="/legal-hold.html">Legal hold</a>
+  </nav>
   <h1>Memory editor</h1>
-  <p>Phase 74.5 — list, edit, and delete workspace memories.</p>
+  <p>Phase 74 — edit memories, review conflicts, and inspect learned procedures.</p>
   <label>Workspace <input id="ws" value="default" /></label>
-  <button id="reload">Reload</button>
-  <ul id="list"></ul>
+  <button id="reload" type="button">Reload all</button>
+
+  <section>
+    <h2>Memories</h2>
+    <ul id="list"></ul>
+  </section>
+
+  <section>
+    <h2>Conflicts</h2>
+    <p class="muted">Conflicting facts the agent may surface as system hints. Resolve by editing or deleting one side.</p>
+    <div id="conflicts"></div>
+  </section>
+
+  <section>
+    <h2>Procedural memory</h2>
+    <p class="muted">Successful tool sequences learned from completed agent runs.</p>
+    <div class="row">
+      <input id="proc-goal" placeholder="Match goal text (optional)" />
+      <button id="proc-match" type="button">Match</button>
+      <button id="proc-list" type="button">List all</button>
+    </div>
+    <pre id="procs" class="muted">—</pre>
+  </section>
+
   <script>
     const headers = { "Content-Type": "application/json" };
     const key = localStorage.getItem("siskelbot_api_key");
     if (key) headers.Authorization = "Bearer " + key;
 
-    async function reload() {
-      const ws = document.getElementById("ws").value || "default";
-      const res = await fetch("/api/v1/memory?workspace=" + encodeURIComponent(ws), { headers, credentials: "include" });
+    function ws() {
+      return document.getElementById("ws").value || "default";
+    }
+
+    async function reloadMemories() {
+      const res = await fetch("/api/v1/memory?workspace=" + encodeURIComponent(ws()), { headers, credentials: "include" });
       const data = await res.json().catch(() => ({}));
       const list = document.getElementById("list");
       list.innerHTML = "";
@@ -33,6 +69,9 @@
         const ta = document.createElement("textarea");
         ta.value = m.content || "";
         ta.rows = 2;
+        const meta = document.createElement("div");
+        meta.className = "muted";
+        meta.textContent = (m.id || "") + (m.importance != null ? " · importance " + m.importance : "");
         const save = document.createElement("button");
         save.textContent = "Save";
         save.onclick = async () => {
@@ -40,28 +79,76 @@
             method: "PATCH",
             headers,
             credentials: "include",
-            body: JSON.stringify({ workspace: ws, content: ta.value }),
+            body: JSON.stringify({ workspace: ws(), content: ta.value }),
           });
-          reload();
+          reloadAll();
         };
         const del = document.createElement("button");
         del.textContent = "Delete";
         del.onclick = async () => {
-          await fetch("/api/v1/memory/" + encodeURIComponent(m.id) + "?workspace=" + encodeURIComponent(ws), {
+          await fetch("/api/v1/memory/" + encodeURIComponent(m.id) + "?workspace=" + encodeURIComponent(ws()), {
             method: "DELETE",
             headers,
             credentials: "include",
           });
-          reload();
+          reloadAll();
         };
+        li.appendChild(meta);
         li.appendChild(ta);
         li.appendChild(save);
         li.appendChild(del);
         list.appendChild(li);
       }
     }
-    document.getElementById("reload").onclick = reload;
-    reload();
+
+    async function reloadConflicts() {
+      const res = await fetch("/api/v1/memory/conflicts?workspace=" + encodeURIComponent(ws()), {
+        headers,
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      const root = document.getElementById("conflicts");
+      root.innerHTML = "";
+      const items = data.conflicts || data.items || [];
+      if (!items.length) {
+        root.textContent = "No conflicts detected.";
+        return;
+      }
+      for (const c of items) {
+        const div = document.createElement("div");
+        div.className = "conflict";
+        const a = c.a?.content || c.left?.content || c[0]?.content || JSON.stringify(c.a || c.left || "");
+        const b = c.b?.content || c.right?.content || c[1]?.content || JSON.stringify(c.b || c.right || "");
+        div.textContent = "A: " + a + "\nB: " + b;
+        root.appendChild(div);
+      }
+    }
+
+    async function loadProcedures(matchGoal) {
+      const pre = document.getElementById("procs");
+      let url = "/api/v1/procedural-memory?workspace=" + encodeURIComponent(ws());
+      let method = "GET";
+      let body;
+      if (matchGoal) {
+        url = "/api/v1/procedural-memory/match";
+        method = "POST";
+        body = JSON.stringify({ workspace: ws(), goal: matchGoal });
+      }
+      const res = await fetch(url, { method, headers, credentials: "include", body });
+      const data = await res.json().catch(() => ({}));
+      pre.textContent = JSON.stringify(data, null, 2);
+    }
+
+    async function reloadAll() {
+      await Promise.all([reloadMemories(), reloadConflicts(), loadProcedures("")]);
+    }
+
+    document.getElementById("reload").onclick = reloadAll;
+    document.getElementById("proc-list").onclick = () => loadProcedures("");
+    document.getElementById("proc-match").onclick = () => {
+      loadProcedures(document.getElementById("proc-goal").value.trim() || "task");
+    };
+    reloadAll();
   </script>
 </body>
 </html>

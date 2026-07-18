@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Model lifecycle — SiskelBot</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; }
+    header { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; padding: 0.75rem 1rem; background: #1e293b; border-bottom: 1px solid #334155; }
+    header h1 { margin: 0; font-size: 1.1rem; }
+    header a { color: #60a5fa; text-decoration: none; }
+    input, button { background: #0f172a; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; padding: 0.45rem 0.6rem; }
+    button { background: #1d4ed8; border-color: #1d4ed8; cursor: pointer; }
+    button.secondary { background: #334155; }
+    main { max-width: 1100px; margin: 0 auto; padding: 1rem; }
+    .tabs { display: flex; gap: 0.25rem; flex-wrap: wrap; margin-bottom: 1rem; border-bottom: 1px solid #334155; }
+    .tab { background: transparent; border: none; color: #94a3b8; padding: 0.6rem 0.9rem; border-bottom: 2px solid transparent; }
+    .tab.active { color: #60a5fa; border-bottom-color: #60a5fa; }
+    .panel { display: none; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1rem; }
+    .panel.active { display: block; }
+    pre { white-space: pre-wrap; background: #0f172a; padding: 0.75rem; border-radius: 6px; overflow: auto; max-height: 420px; }
+    .row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; }
+    .muted { color: #94a3b8; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Model lifecycle</h1>
+    <a href="/admin-ops.html">Ops</a>
+    <a href="/compliance.html">Compliance</a>
+    <label class="muted">Admin key <input id="admin-key" type="password" placeholder="ADMIN_API_KEY" style="width:14rem" /></label>
+    <button id="save-key" class="secondary" type="button">Save</button>
+  </header>
+  <main>
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="registry">Registry</button>
+      <button class="tab" data-tab="canary">Canary</button>
+      <button class="tab" data-tab="budget">Error budget</button>
+      <button class="tab" data-tab="deprec">Deprecations</button>
+    </div>
+
+    <section id="registry" class="panel active">
+      <p class="muted">Phase 80 — list models. Promotion gate uses <code>MODEL_PROMOTION_GATE=1</code>.</p>
+      <div class="row">
+        <button type="button" id="reg-list">List models</button>
+      </div>
+      <pre id="reg-out">—</pre>
+    </section>
+
+    <section id="canary" class="panel">
+      <p class="muted">Canary deployments — list and inspect health.</p>
+      <div class="row">
+        <button type="button" id="can-list">List deployments</button>
+        <input id="can-id" placeholder="deployment id" />
+        <button type="button" id="can-health">Health</button>
+        <button type="button" id="can-rollback" class="secondary">Rollback</button>
+      </div>
+      <pre id="can-out">—</pre>
+    </section>
+
+    <section id="budget" class="panel">
+      <p class="muted">Error budgets / SLO burn.</p>
+      <div class="row">
+        <button type="button" id="eb-list">List SLOs</button>
+        <input id="eb-name" placeholder="slo name" />
+        <button type="button" id="eb-budget">Budget</button>
+        <button type="button" id="eb-enforce">Enforcement</button>
+      </div>
+      <pre id="eb-out">—</pre>
+    </section>
+
+    <section id="deprec" class="panel">
+      <p class="muted">Model deprecation schedule.</p>
+      <div class="row">
+        <button type="button" id="dep-list">List deprecations</button>
+      </div>
+      <pre id="dep-out">—</pre>
+    </section>
+  </main>
+  <script>
+    const keyInput = document.getElementById("admin-key");
+    keyInput.value = sessionStorage.getItem("siskel_admin_key") || "";
+    document.getElementById("save-key").onclick = () => {
+      sessionStorage.setItem("siskel_admin_key", keyInput.value.trim());
+    };
+    function headers() {
+      const h = { Accept: "application/json", "Content-Type": "application/json" };
+      const k = keyInput.value.trim() || sessionStorage.getItem("siskel_admin_key") || "";
+      if (k) h.Authorization = "Bearer " + k;
+      return h;
+    }
+    async function show(id, path, opts) {
+      const res = await fetch(path, { ...(opts || {}), headers: headers(), credentials: "include" });
+      const j = await res.json().catch(() => ({}));
+      document.getElementById(id).textContent = JSON.stringify({ status: res.status, ...j }, null, 2);
+    }
+    document.querySelectorAll(".tab").forEach((btn) => {
+      btn.onclick = () => {
+        document.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
+        document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
+        btn.classList.add("active");
+        document.getElementById(btn.dataset.tab).classList.add("active");
+      };
+    });
+    document.getElementById("reg-list").onclick = () => show("reg-out", "/api/v1/models");
+    document.getElementById("can-list").onclick = () => show("can-out", "/api/v1/canary/deployments");
+    document.getElementById("can-health").onclick = () => {
+      const id = document.getElementById("can-id").value.trim();
+      if (id) show("can-out", "/api/v1/canary/deployments/" + encodeURIComponent(id) + "/health");
+    };
+    document.getElementById("can-rollback").onclick = () => {
+      const id = document.getElementById("can-id").value.trim();
+      if (id) show("can-out", "/api/v1/canary/deployments/" + encodeURIComponent(id) + "/rollback", { method: "POST", body: "{}" });
+    };
+    document.getElementById("eb-list").onclick = () => show("eb-out", "/api/v1/error-budget/slos");
+    document.getElementById("eb-budget").onclick = () => {
+      const n = document.getElementById("eb-name").value.trim();
+      if (n) show("eb-out", "/api/v1/error-budget/slo/" + encodeURIComponent(n) + "/budget");
+    };
+    document.getElementById("eb-enforce").onclick = () => {
+      const n = document.getElementById("eb-name").value.trim();
+      if (n) show("eb-out", "/api/v1/error-budget/slo/" + encodeURIComponent(n) + "/enforcement");
+    };
+    document.getElementById("dep-list").onclick = () => show("dep-out", "/api/v1/model-deprecations");
+  </script>
+</body>
+</html>

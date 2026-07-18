@@ -253,6 +253,7 @@
         <button class="tab active" data-framework="soc2">SOC 2</button>
         <button class="tab" data-framework="hipaa">HIPAA</button>
         <button class="tab" data-framework="gdpr">GDPR</button>
+        <button class="tab" data-framework="iso27001">ISO 27001</button>
         <button class="tab" data-framework="dashboard">Overview</button>
       </div>
 
@@ -385,7 +386,7 @@
     }
 
     function renderDashboard(dashboard) {
-      const frameworks = ["soc2", "hipaa", "gdpr"];
+      const frameworks = ["soc2", "hipaa", "gdpr", "iso27001"];
       const cards = frameworks.map((f) => {
         const d = dashboard[f] || {};
         const pct = d.coverage || 0;
@@ -450,7 +451,7 @@
       if (!report) return showError("No report loaded.");
       if (state.framework === "dashboard") {
         const rows = [["framework", "coverage", "ok", "weak", "missing"]];
-        for (const f of ["soc2", "hipaa", "gdpr"]) {
+        for (const f of ["soc2", "hipaa", "gdpr", "iso27001"]) {
           const d = report[f] || {};
           rows.push([d.framework || f, d.coverage || 0, d.ok || 0, d.weak || 0, d.missing || 0]);
         }

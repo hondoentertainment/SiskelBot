@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Legal hold — SiskelBot</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; background: #0f172a; color: #e2e8f0; }
+    main { max-width: 640px; margin: 2rem auto; padding: 1rem; background: #1e293b; border-radius: 8px; border: 1px solid #334155; }
+    input, button { padding: 0.45rem 0.7rem; margin: 0.3rem 0.3rem 0.3rem 0; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: inherit; }
+    button { background: #1d4ed8; border-color: #1d4ed8; cursor: pointer; }
+    pre { background: #0f172a; padding: 0.75rem; border-radius: 6px; white-space: pre-wrap; }
+    a { color: #60a5fa; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Legal hold</h1>
+    <p>Phase 78.4 — blocks retention enforcement while hold is active. <a href="/admin-ops.html">Ops</a></p>
+    <label>Workspace <input id="ws" value="default" /></label><br />
+    <label>API key <input id="key" type="password" /></label><br />
+    <label>Reason <input id="reason" style="width:100%" placeholder="Litigation hold…" /></label><br />
+    <label>Until (optional ISO) <input id="until" style="width:100%" placeholder="2027-01-01T00:00:00.000Z" /></label><br />
+    <button id="enable" type="button">Enable hold</button>
+    <button id="clear" type="button">Clear hold</button>
+    <button id="load" type="button">Load policy</button>
+    <pre id="out">—</pre>
+  </main>
+  <script>
+    function headers() {
+      const k = document.getElementById("key").value.trim();
+      const h = { "Content-Type": "application/json", Accept: "application/json" };
+      if (k) h.Authorization = "Bearer " + k;
+      return h;
+    }
+    async function call(method, path, body) {
+      const res = await fetch(path, { method, headers: headers(), credentials: "include", body: body ? JSON.stringify(body) : undefined });
+      const j = await res.json().catch(() => ({}));
+      document.getElementById("out").textContent = JSON.stringify({ status: res.status, ...j }, null, 2);
+    }
+    document.getElementById("load").onclick = () => {
+      const ws = document.getElementById("ws").value.trim() || "default";
+      call("GET", "/api/v1/workspaces/" + encodeURIComponent(ws) + "/retention");
+    };
+    document.getElementById("enable").onclick = () => {
+      const ws = document.getElementById("ws").value.trim() || "default";
+      call("POST", "/api/v1/workspaces/" + encodeURIComponent(ws) + "/legal-hold", {
+        enabled: true,
+        reason: document.getElementById("reason").value,
+        until: document.getElementById("until").value || null,
+      });
+    };
+    document.getElementById("clear").onclick = () => {
+      const ws = document.getElementById("ws").value.trim() || "default";
+      call("POST", "/api/v1/workspaces/" + encodeURIComponent(ws) + "/legal-hold", { enabled: false });
+    };
+  </script>
+</body>
+</html>

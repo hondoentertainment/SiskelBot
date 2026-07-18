@@ -11,6 +11,7 @@
     form { display: flex; gap: 8px; padding: 8px; border-top: 1px solid #333; }
     input { flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #444; background: #1a222c; color: inherit; }
     button { padding: 8px 12px; border-radius: 6px; border: 0; background: #c45c26; color: #fff; cursor: pointer; }
+    .sys { color: #9ca3af; font-size: 12px; }
   </style>
 </head>
 <body>
@@ -22,19 +23,57 @@
   <script>
     const params = new URLSearchParams(location.search);
     const workspace = params.get("workspace") || "default";
+    const apiKey = params.get("apiKey") || "";
     const log = document.getElementById("log");
+    const history = [];
+
     function post(type, payload) {
       parent.postMessage({ source: "siskelbot-embed", type, payload }, "*");
     }
-    function line(text) {
+    function line(text, cls) {
       const d = document.createElement("div");
+      if (cls) d.className = cls;
       d.textContent = text;
       log.appendChild(d);
       log.scrollTop = log.scrollHeight;
     }
+
     post("siskelbot:ready", { workspace });
     post("siskelbot:resize", { height: 420 });
-    document.getElementById("f").addEventListener("submit", (e) => {
+    if (!apiKey) line("Tip: pass ?apiKey=… on the iframe URL or send siskelbot:config from the host.", "sys");
+
+    let runtimeKey = apiKey;
+
+    async function chat(text) {
+      history.push({ role: "user", content: text });
+      const headers = { "Content-Type": "application/json" };
+      if (runtimeKey) headers.Authorization = "Bearer " + runtimeKey;
+      const res = await fetch("/v1/chat/completions", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model: "default",
+          stream: false,
+          messages: history.slice(-20),
+          agentOptions: { workspace },
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        const msg = err.error || err.message || ("HTTP " + res.status);
+        throw new Error(msg);
+      }
+      const data = await res.json();
+      const content =
+        data.choices?.[0]?.message?.content ||
+        data.content ||
+        data.message ||
+        "";
+      history.push({ role: "assistant", content: String(content) });
+      return String(content);
+    }
+
+    document.getElementById("f").addEventListener("submit", async (e) => {
       e.preventDefault();
       const input = document.getElementById("msg");
       const text = input.value.trim();
@@ -42,11 +81,24 @@
       line("You: " + text);
       post("siskelbot:message", { role: "user", content: text, workspace });
       input.value = "";
-      line("Assistant: (host app should handle chat via API)");
+      try {
+        const reply = await chat(text);
+        line("Assistant: " + reply);
+        post("siskelbot:message", { role: "assistant", content: reply, workspace });
+      } catch (err) {
+        const msg = String(err.message || err);
+        line("Error: " + msg, "sys");
+        post("siskelbot:error", { message: msg });
+      }
     });
+
     window.addEventListener("message", (ev) => {
       const data = ev.data;
       if (!data || data.source !== "siskelbot-host") return;
+      if (data.type === "siskelbot:config" && data.payload?.apiKey) {
+        runtimeKey = data.payload.apiKey;
+        line("API key configured by host.", "sys");
+      }
       if (data.type === "siskelbot:assistant" && data.payload?.content) {
         line("Assistant: " + data.payload.content);
       }

@@ -6,7 +6,8 @@
     const workspace = (opts && opts.workspace) || "default";
     const base = (opts && opts.baseUrl) || "";
     const iframe = document.createElement("iframe");
-    iframe.src = base + "/embed/frame.html?workspace=" + encodeURIComponent(workspace);
+    iframe.src = base + "/embed/frame.html?workspace=" + encodeURIComponent(workspace) +
+      (opts && opts.apiKey ? "&apiKey=" + encodeURIComponent(opts.apiKey) : "");
     iframe.title = "SiskelBot";
     iframe.style.cssText = "width:100%;min-height:420px;border:0;border-radius:8px;";
     iframe.allow = "clipboard-write";

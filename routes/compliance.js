@@ -21,6 +21,7 @@ import {
   generateSOC2Report,
   generateHIPAAReport,
   generateGDPRReport,
+  generateISO27001Report,
   getComplianceDashboard,
   generateDataSubjectRequest,
   executeRightToErasure,
@@ -177,6 +178,25 @@ export function mountComplianceRoutes(app, deps) {
       } catch (err) {
         console.error("Compliance GDPR error:", err.message);
         return apiError(res, 500, "INTERNAL_ERROR", err.message, "Failed to generate GDPR report.");
+      }
+    }
+  );
+
+  // GET /api/v1/compliance/iso27001
+  apiRoute(
+    "get",
+    "/compliance/iso27001",
+    limiter,
+    adminAuth,
+    logRequest,
+    async (req, res) => {
+      try {
+        const period = parsePeriodQuery(req.query);
+        const report = await generateISO27001Report(period);
+        res.json({ _version: 1, ...report });
+      } catch (err) {
+        console.error("Compliance ISO27001 error:", err.message);
+        return apiError(res, 500, "INTERNAL_ERROR", err.message, "Failed to generate ISO 27001 report.");
       }
     }
   );

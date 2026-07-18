@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SiskelBot Ops — Trust, Safety & Eval</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; }
+    header { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; padding: 0.75rem 1rem; background: #1e293b; border-bottom: 1px solid #334155; }
+    header h1 { margin: 0; font-size: 1.1rem; }
+    header a { color: #60a5fa; text-decoration: none; }
+    input, select, button, textarea { background: #0f172a; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; padding: 0.45rem 0.6rem; }
+    button { background: #1d4ed8; border-color: #1d4ed8; cursor: pointer; }
+    button.secondary { background: #334155; }
+    main { max-width: 1100px; margin: 0 auto; padding: 1rem; }
+    .tabs { display: flex; gap: 0.25rem; flex-wrap: wrap; margin-bottom: 1rem; border-bottom: 1px solid #334155; }
+    .tab { background: transparent; border: none; color: #94a3b8; padding: 0.6rem 0.9rem; border-bottom: 2px solid transparent; }
+    .tab.active { color: #60a5fa; border-bottom-color: #60a5fa; }
+    .panel { display: none; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1rem; }
+    .panel.active { display: block; }
+    pre { white-space: pre-wrap; background: #0f172a; padding: 0.75rem; border-radius: 6px; overflow: auto; max-height: 420px; }
+    .row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; }
+    .muted { color: #94a3b8; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Ops: Trust, Safety & Eval</h1>
+    <a href="/compliance.html">Compliance</a>
+    <a href="/preferences.html">Preferences</a>
+    <a href="/memory-editor.html">Memory</a>
+    <a href="/legal-hold.html">Legal hold</a>
+    <a href="/model-lifecycle.html">Model lifecycle</a>
+    <label class="muted">Admin key <input id="admin-key" type="password" placeholder="ADMIN_API_KEY" style="width:14rem" /></label>
+    <button id="save-key" class="secondary" type="button">Save</button>
+  </header>
+  <main>
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="redteam">Red team</button>
+      <button class="tab" data-tab="safety">Safety SLA</button>
+      <button class="tab" data-tab="bias">Bias eval</button>
+      <button class="tab" data-tab="judge">Judge calibration</button>
+      <button class="tab" data-tab="pref">Preferences</button>
+    </div>
+
+    <section id="redteam" class="panel active">
+      <p class="muted">Phase 72.1 — generate classifier-safe probes and list runs.</p>
+      <div class="row">
+        <button type="button" id="rt-cats">Load categories</button>
+        <button type="button" id="rt-runs">List runs</button>
+        <input id="rt-model" placeholder="modelId" value="default" />
+        <button type="button" id="rt-create">Create run</button>
+      </div>
+      <pre id="rt-out">—</pre>
+    </section>
+
+    <section id="safety" class="panel">
+      <p class="muted">Phase 72.5 — classifier status and metrics.</p>
+      <div class="row">
+        <button type="button" id="ss-list">List classifiers</button>
+        <input id="ss-id" placeholder="classifierId" />
+        <button type="button" id="ss-status">Get status</button>
+      </div>
+      <pre id="ss-out">—</pre>
+    </section>
+
+    <section id="bias" class="panel">
+      <p class="muted">Phase 72.3 — synthetic persona bias runs.</p>
+      <div class="row">
+        <button type="button" id="be-personas">List personas</button>
+        <button type="button" id="be-runs">List runs</button>
+      </div>
+      <pre id="be-out">—</pre>
+    </section>
+
+    <section id="judge" class="panel">
+      <p class="muted">Phase 75.2 — LLM-as-judge calibration.</p>
+      <div class="row">
+        <button type="button" id="jc-judges">List judges</button>
+        <input id="jc-id" placeholder="judgeId" />
+        <button type="button" id="jc-stats">Stats</button>
+      </div>
+      <pre id="jc-out">—</pre>
+    </section>
+
+    <section id="pref" class="panel">
+      <p class="muted">Phase 75.3 — pairwise preference cases. Full UI: <a href="/preferences.html">preferences.html</a></p>
+      <div class="row">
+        <button type="button" id="pf-list">List cases</button>
+      </div>
+      <pre id="pf-out">—</pre>
+    </section>
+  </main>
+  <script>
+    const keyInput = document.getElementById("admin-key");
+    keyInput.value = sessionStorage.getItem("siskel_admin_key") || "";
+    document.getElementById("save-key").onclick = () => {
+      sessionStorage.setItem("siskel_admin_key", keyInput.value.trim());
+    };
+    function headers() {
+      const k = keyInput.value.trim() || sessionStorage.getItem("siskel_admin_key") || "";
+      const h = { Accept: "application/json", "Content-Type": "application/json" };
+      if (k) { h.Authorization = "Bearer " + k; h["x-admin-api-key"] = k; }
+      return h;
+    }
+    async function api(path, opts = {}) {
+      const res = await fetch("/api/v1" + path, { ...opts, headers: { ...headers(), ...(opts.headers || {}) } });
+      const text = await res.text();
+      let body; try { body = JSON.parse(text); } catch { body = text; }
+      return { ok: res.ok, status: res.status, body };
+    }
+    function show(id, data) {
+      document.getElementById(id).textContent = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+    }
+    document.querySelectorAll(".tab").forEach((tab) => {
+      tab.onclick = () => {
+        document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+        document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
+        tab.classList.add("active");
+        document.getElementById(tab.dataset.tab).classList.add("active");
+      };
+    });
+    document.getElementById("rt-cats").onclick = async () => show("rt-out", await api("/red-team/categories"));
+    document.getElementById("rt-runs").onclick = async () => show("rt-out", await api("/red-team/runs"));
+    document.getElementById("rt-create").onclick = async () => {
+      show("rt-out", await api("/red-team/runs", {
+        method: "POST",
+        body: JSON.stringify({ modelId: document.getElementById("rt-model").value || "default", workspaceId: "default", probeCount: 5 }),
+      }));
+    };
+    document.getElementById("ss-list").onclick = async () => show("ss-out", await api("/safety-sla/classifiers"));
+    document.getElementById("ss-status").onclick = async () => {
+      const id = document.getElementById("ss-id").value.trim();
+      show("ss-out", await api("/safety-sla/" + encodeURIComponent(id) + "/status"));
+    };
+    document.getElementById("be-personas").onclick = async () => show("be-out", await api("/bias-eval/personas"));
+    document.getElementById("be-runs").onclick = async () => show("be-out", await api("/bias-eval/runs"));
+    document.getElementById("jc-judges").onclick = async () => show("jc-out", await api("/judge-calibration/judges"));
+    document.getElementById("jc-stats").onclick = async () => {
+      const id = document.getElementById("jc-id").value.trim();
+      show("jc-out", await api("/judge-calibration/" + encodeURIComponent(id) + "/stats"));
+    };
+    document.getElementById("pf-list").onclick = async () => show("pf-out", await api("/preference/cases?workspaceId=default"));
+  </script>
+</body>
+</html>

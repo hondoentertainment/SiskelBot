@@ -81,9 +81,13 @@ with failing scheduled agents; buttons in Slack resolve them.
 |---|---|
 | `WORKSPACE_BUDGET_USD` | Default per-workspace spend cap (0 = unlimited) |
 | `COST_BUDGET_PERIOD` | `month` (default) or `day` |
+| `MODEL_PROMOTION_GATE` | `1` to require golden-trace gate on model promote/status |
+| `STORAGE_KV_TABLE` | Postgres KV table name (prod: `siskelbot_storage_kv`) |
 
 Per-workspace caps: `PUT /api/v1/cost-budget` (admin).
 Scheduled agents refuse to run (`budget_exceeded`) once a workspace is over cap.
+
+Applied on production (2026-07-18): `WORKSPACE_BUDGET_USD=50`, `COST_BUDGET_PERIOD=month`, `MODEL_PROMOTION_GATE=1`, `STORAGE_KV_TABLE=siskelbot_storage_kv`.
 
 ## 6. Repository protection (GitHub — one-time)
 
