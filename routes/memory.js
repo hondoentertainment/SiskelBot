@@ -12,6 +12,8 @@ import {
   forget,
   listMemories,
   getMemoryStats,
+  updateMemory,
+  findMemoryConflicts,
 } from "../lib/agent-memory.js";
 
 export function mountMemoryRoutes(app, deps) {
@@ -108,6 +110,31 @@ export function mountMemoryRoutes(app, deps) {
       if (err.message.includes("category") || err.message.includes("importance") || err.message.includes("content")) {
         return apiError(res, 400, "INVALID_INPUT", err.message);
       }
+      return apiError(res, 500, "INTERNAL_ERROR", err.message);
+    }
+  });
+
+  // GET /api/v1/memory/conflicts — Phase 74.4
+  apiRoute("get", "/memory/conflicts", limiter, userAuth, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const userId = req.userId;
+      const { memories } = await listMemories(userId, workspace, { limit: 500 });
+      res.json({ _version: 1, conflicts: findMemoryConflicts(memories || []) });
+    } catch (err) {
+      return apiError(res, 500, "INTERNAL_ERROR", err.message);
+    }
+  });
+
+  // PATCH /api/v1/memory/:id — Phase 74.5 editor API
+  apiRoute("patch", "/memory/:id", limiter, userAuth, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.body?.workspace || req.query?.workspace);
+      const userId = req.userId;
+      const result = await updateMemory(req.params.id, req.body || {}, workspace, userId);
+      if (!result.ok) return apiError(res, 404, "NOT_FOUND", result.error || "Memory not found");
+      res.json({ _version: 1, ...result });
+    } catch (err) {
       return apiError(res, 500, "INTERNAL_ERROR", err.message);
     }
   });

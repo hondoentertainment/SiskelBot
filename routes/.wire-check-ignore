@@ -1,4 +1,4 @@
-﻿# Route modules that exist on disk but are intentionally not mounted from routes/index.js.
+# Route modules that exist on disk but are intentionally not mounted from routes/index.js.
 # See the ROUTE_AUDIT / surface-area note at the top of routes/index.js (DEFER / DELETE tiers).
 3d-assets.js
 agent-consensus.js
@@ -17,19 +17,14 @@ audit-reports.js
 audit-verify.js
 avatar-agents.js
 benchmark-runner.js
-bias-eval-suite.js
 bpe-tokenizer.js
 brand-safety.js
-branding.js
 browser-agent.js
 budget-allocation.js
-canary.js
 citation-graph.js
-constitutional-ai.js
 continuous-learning.js
 copyright-similarity.js
 cost-aware-router.js
-crdt.js
 credit-system.js
 crypto-payments.js
 csat-tracker.js
@@ -48,8 +43,6 @@ diarization.js
 differential-privacy.js
 distillation.js
 document-layout.js
-entitlement-reviews.js
-error-budget.js
 escalation-rules.js
 experiment-bridge.js
 experiments.js
@@ -63,7 +56,6 @@ freshness-sla.js
 fs-agent.js
 funnels.js
 gbrain.js
-gdpr.js
 geo-routing.js
 gesture-control.js
 graph-of-thought.js
@@ -79,8 +71,6 @@ invoicing.js
 issue-pickup.js
 jailbreak-detector.js
 jit-provisioning.js
-judge-calibration.js
-k-anonymous-telemetry.js
 karpathy-pipeline.js
 large-retrieval.js
 ldap.js
@@ -93,14 +83,10 @@ machine-snapshots.js
 meeting-bot.js
 migration-assistant.js
 mobile-automation.js
-model-approval.js
-model-card-generator.js
-model-registry.js
 multi-region.js
 multi-repo.js
 neuro-symbolic.js
 nft-gating.js
-offline-models.js
 outcome-verification.js
 output-classifiers.js
 paper-summary.js
@@ -111,8 +97,6 @@ pq-jwt.js
 pq-kyber.js
 pq-migration.js
 pq-tls.js
-preference-collection.js
-preference-datasets.js
 privacy-accounting.js
 profiling.js
 prompt-compression.js
@@ -121,10 +105,8 @@ quantization.js
 query-analyzer.js
 realtime-ws.js
 recipe-marketplace.js
-red-team-harness.js
 refactor-agent.js
 referrals.js
-regression-bisection.js
 reproducibility-checks.js
 response-drafter.js
 revenue-share.js
@@ -147,9 +129,6 @@ spatial-graph.js
 speculative-decoding.js
 status-page.js
 step-latency.js
-synthetic-tasks.js
-synthetic-users.js
-synthetic.js
 template-gallery.js
 test-gen.js
 ticket-router.js

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Preference collection — SiskelBot</title>
+  <style>
+    body { font-family: Georgia, serif; margin: 2rem; max-width: 720px; background: #f6f3ee; color: #1c1917; }
+    h1 { font-size: 1.6rem; }
+    .pair { border: 1px solid #d6d3d1; padding: 1rem; margin: 1rem 0; background: #fff; }
+    button { margin-right: 0.5rem; padding: 0.4rem 0.8rem; cursor: pointer; }
+    #status { margin-top: 1rem; min-height: 1.5em; }
+  </style>
+</head>
+<body>
+  <h1>Pairwise preferences</h1>
+  <p>Phase 75.3 — rate which response you prefer.</p>
+  <div id="pair" class="pair">Loading…</div>
+  <div id="status"></div>
+  <script>
+    const headers = { "Content-Type": "application/json" };
+    const key = localStorage.getItem("siskelbot_api_key");
+    if (key) headers.Authorization = "Bearer " + key;
+
+    async function load() {
+      const res = await fetch("/api/v1/preference/cases?workspaceId=default", { headers, credentials: "include" });
+      const el = document.getElementById("pair");
+      if (!res.ok) {
+        el.textContent = "Could not load cases (" + res.status + ").";
+        return;
+      }
+      const data = await res.json();
+      const cases = data.cases || [];
+      const pair = cases.find((c) => !c.closed) || cases[0];
+      if (!pair) {
+        el.textContent = "No comparison cases yet. Create one via POST /api/v1/preference/cases.";
+        return;
+      }
+      el.innerHTML = "";
+      const prompt = document.createElement("p");
+      prompt.textContent = pair.prompt || pair.query || pair.id;
+      el.appendChild(prompt);
+      const aText = pair.responseA || pair.a || pair.responses?.a || "";
+      const bText = pair.responseB || pair.b || pair.responses?.b || "";
+      [["a", aText], ["b", bText]].forEach(([side, text]) => {
+        const pre = document.createElement("pre");
+        pre.textContent = side.toUpperCase() + ": " + text;
+        el.appendChild(pre);
+        const btn = document.createElement("button");
+        btn.textContent = "Prefer " + side.toUpperCase();
+        btn.onclick = () => vote(pair.id, side);
+        el.appendChild(btn);
+      });
+    }
+
+    async function vote(id, choice) {
+      const status = document.getElementById("status");
+      const res = await fetch("/api/v1/preference/cases/" + encodeURIComponent(id) + "/vote", {
+        method: "POST",
+        headers,
+        credentials: "include",
+        body: JSON.stringify({ choice, preferred: choice }),
+      });
+      status.textContent = res.ok ? "Saved preference." : "Vote failed: " + res.status;
+      if (res.ok) load();
+    }
+
+    load().catch((e) => {
+      document.getElementById("pair").textContent = String(e.message || e);
+    });
+  </script>
+</body>
+</html>

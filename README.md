@@ -370,6 +370,7 @@ siskelbot/
 | [CLAUDE.md](CLAUDE.md) | AI assistant context and codebase conventions |
 | [docs/GO_LIVE.md](docs/GO_LIVE.md) | Commercial go-live checklist (Stripe, plan enforcement, trials) |
 | [docs/ROADMAP_71-80.md](docs/ROADMAP_71-80.md) | Phase 71 — next 10 product roadmap items |
+| [docs/ROADMAP_72-80_BUILD.md](docs/ROADMAP_72-80_BUILD.md) | Phases 72–80 build-out status |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Vercel, Render, and custom domain deployment |
 | [docs/DOCKER.md](docs/DOCKER.md) | Docker build, compose, and health checks |
 | [docs/DESKTOP.md](docs/DESKTOP.md) | Electron desktop app build and packaging |

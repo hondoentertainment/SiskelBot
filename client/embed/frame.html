@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SiskelBot Embed</title>
+  <style>
+    :root { color-scheme: light dark; font-family: Georgia, "Times New Roman", serif; }
+    body { margin: 0; background: #0f1419; color: #e8e6e3; }
+    #log { padding: 12px; height: calc(100vh - 64px); overflow: auto; font-size: 14px; }
+    form { display: flex; gap: 8px; padding: 8px; border-top: 1px solid #333; }
+    input { flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #444; background: #1a222c; color: inherit; }
+    button { padding: 8px 12px; border-radius: 6px; border: 0; background: #c45c26; color: #fff; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div id="log"></div>
+  <form id="f">
+    <input id="msg" placeholder="Message…" autocomplete="off" />
+    <button type="submit">Send</button>
+  </form>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const workspace = params.get("workspace") || "default";
+    const log = document.getElementById("log");
+    function post(type, payload) {
+      parent.postMessage({ source: "siskelbot-embed", type, payload }, "*");
+    }
+    function line(text) {
+      const d = document.createElement("div");
+      d.textContent = text;
+      log.appendChild(d);
+      log.scrollTop = log.scrollHeight;
+    }
+    post("siskelbot:ready", { workspace });
+    post("siskelbot:resize", { height: 420 });
+    document.getElementById("f").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const input = document.getElementById("msg");
+      const text = input.value.trim();
+      if (!text) return;
+      line("You: " + text);
+      post("siskelbot:message", { role: "user", content: text, workspace });
+      input.value = "";
+      line("Assistant: (host app should handle chat via API)");
+    });
+    window.addEventListener("message", (ev) => {
+      const data = ev.data;
+      if (!data || data.source !== "siskelbot-host") return;
+      if (data.type === "siskelbot:assistant" && data.payload?.content) {
+        line("Assistant: " + data.payload.content);
+      }
+    });
+  </script>
+</body>
+</html>

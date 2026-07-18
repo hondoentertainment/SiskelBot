@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Memory editor — SiskelBot</title>
+  <style>
+    body { font-family: Georgia, serif; margin: 2rem; max-width: 800px; background: #f6f3ee; color: #1c1917; }
+    li { margin: 0.6rem 0; }
+    input, textarea { width: 100%; margin: 0.25rem 0; }
+    button { margin-right: 0.4rem; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>Memory editor</h1>
+  <p>Phase 74.5 — list, edit, and delete workspace memories.</p>
+  <label>Workspace <input id="ws" value="default" /></label>
+  <button id="reload">Reload</button>
+  <ul id="list"></ul>
+  <script>
+    const headers = { "Content-Type": "application/json" };
+    const key = localStorage.getItem("siskelbot_api_key");
+    if (key) headers.Authorization = "Bearer " + key;
+
+    async function reload() {
+      const ws = document.getElementById("ws").value || "default";
+      const res = await fetch("/api/v1/memory?workspace=" + encodeURIComponent(ws), { headers, credentials: "include" });
+      const data = await res.json().catch(() => ({}));
+      const list = document.getElementById("list");
+      list.innerHTML = "";
+      for (const m of data.memories || []) {
+        const li = document.createElement("li");
+        const ta = document.createElement("textarea");
+        ta.value = m.content || "";
+        ta.rows = 2;
+        const save = document.createElement("button");
+        save.textContent = "Save";
+        save.onclick = async () => {
+          await fetch("/api/v1/memory/" + encodeURIComponent(m.id), {
+            method: "PATCH",
+            headers,
+            credentials: "include",
+            body: JSON.stringify({ workspace: ws, content: ta.value }),
+          });
+          reload();
+        };
+        const del = document.createElement("button");
+        del.textContent = "Delete";
+        del.onclick = async () => {
+          await fetch("/api/v1/memory/" + encodeURIComponent(m.id) + "?workspace=" + encodeURIComponent(ws), {
+            method: "DELETE",
+            headers,
+            credentials: "include",
+          });
+          reload();
+        };
+        li.appendChild(ta);
+        li.appendChild(save);
+        li.appendChild(del);
+        list.appendChild(li);
+      }
+    }
+    document.getElementById("reload").onclick = reload;
+    reload();
+  </script>
+</body>
+</html>

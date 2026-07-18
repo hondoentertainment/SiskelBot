@@ -39,3 +39,5 @@ Ten prioritized product items following [ROADMAP_51-70.md](./ROADMAP_51-70.md). 
 Durable storage: Neon store `neon-citrine-castle` connected; `STORAGE_BACKEND=postgres` + `DATABASE_URL` + `REQUIRE_DURABLE_STORAGE=1` on production.
 Redis KV alternative: `STORAGE_BACKEND=redis` + `REDIS_URL` (see `lib/storage-redis-kv.js`).
 
+See also [AGENT_WORLD_CLASS_ROADMAP.md](./AGENT_WORLD_CLASS_ROADMAP.md) for agent-capability phases 6–20.
+

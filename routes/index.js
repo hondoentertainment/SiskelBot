@@ -80,6 +80,33 @@ import mountTestGenRoutes from "./test-gen.js";
 import mountEvalInProdRoutes from "./eval-in-prod.js";
 import mountChaosEngineeringRoutes from "./chaos-engineering.js";
 import mountSafetySlaRoutes from "./safety-sla.js";
+import { mountRedTeamRoutes } from "./red-team-harness.js";
+import { mountModelCardRoutes } from "./model-card-generator.js";
+import { mountBiasEvalRoutes } from "./bias-eval-suite.js";
+import { mountKTelemetryRoutes } from "./k-anonymous-telemetry.js";
+import { mountJudgeCalibrationRoutes } from "./judge-calibration.js";
+import { mountPreferenceRoutes } from "./preference-collection.js";
+import { mountPreferenceDatasetRoutes } from "./preference-datasets.js";
+import { mountBisectionRoutes } from "./regression-bisection.js";
+import { mountSyntheticUsersRoutes } from "./synthetic-users.js";
+import { mountSyntheticRoutes } from "./synthetic.js";
+import { mountSyntheticTasksRoutes } from "./synthetic-tasks.js";
+import { mountCrdtRoutes } from "./crdt.js";
+import { mountBrandingRoutes } from "./branding.js";
+import { mountModelRegistryRoutes } from "./model-registry.js";
+import { mountModelApprovalRoutes } from "./model-approval.js";
+import { mountCanaryRoutes } from "./canary.js";
+import { mountErrorBudgetRoutes } from "./error-budget.js";
+import { mountConstitutionalAiRoutes } from "./constitutional-ai.js";
+import { mountGdprRoutes } from "./gdpr.js";
+import { mountEntitlementReviewRoutes } from "./entitlement-reviews.js";
+import { mountOfflineModelsRoutes } from "./offline-models.js";
+import { mountAgentFuzzRoutes } from "./agent-fuzz.js";
+import { mountTrajectoryAnomalyRoutes } from "./trajectory-anomaly.js";
+import { mountPostMortemRoutes } from "./post-mortem.js";
+import { mountProceduralMemoryRoutes } from "./procedural-memory.js";
+import { mountEmbedWidgetRoutes } from "./embed-widget.js";
+import { mountModelDeprecationRoutes } from "./model-deprecation.js";
 import mountComplianceRoutes from "./compliance.js";
 import mountLoadSheddingRoutes from "./load-shedding.js";
 import { mountSessionInsightsRoutes } from "./session-insights.js";
@@ -185,6 +212,33 @@ const mountFunctions = [
   mountEvalInProdRoutes,
   mountChaosEngineeringRoutes,
   mountSafetySlaRoutes,
+  mountRedTeamRoutes,
+  mountModelCardRoutes,
+  mountBiasEvalRoutes,
+  mountKTelemetryRoutes,
+  mountJudgeCalibrationRoutes,
+  mountPreferenceRoutes,
+  mountPreferenceDatasetRoutes,
+  mountBisectionRoutes,
+  mountSyntheticUsersRoutes,
+  mountSyntheticRoutes,
+  mountSyntheticTasksRoutes,
+  mountCrdtRoutes,
+  mountBrandingRoutes,
+  mountModelRegistryRoutes,
+  mountModelApprovalRoutes,
+  mountCanaryRoutes,
+  mountErrorBudgetRoutes,
+  mountConstitutionalAiRoutes,
+  mountGdprRoutes,
+  mountEntitlementReviewRoutes,
+  mountOfflineModelsRoutes,
+  mountAgentFuzzRoutes,
+  mountTrajectoryAnomalyRoutes,
+  mountPostMortemRoutes,
+  mountProceduralMemoryRoutes,
+  mountEmbedWidgetRoutes,
+  mountModelDeprecationRoutes,
   mountComplianceRoutes,
   mountLoadSheddingRoutes,
   mountSessionInsightsRoutes,
