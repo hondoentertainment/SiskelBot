@@ -106,6 +106,7 @@ import { mountAgentFuzzRoutes } from "./agent-fuzz.js";
 import { mountTrajectoryAnomalyRoutes } from "./trajectory-anomaly.js";
 import { mountPostMortemRoutes } from "./post-mortem.js";
 import { mountProceduralMemoryRoutes } from "./procedural-memory.js";
+import { mountAdviceRoutes } from "./advice.js";
 import { mountEmbedWidgetRoutes } from "./embed-widget.js";
 import { mountModelDeprecationRoutes } from "./model-deprecation.js";
 import mountComplianceRoutes from "./compliance.js";
@@ -239,6 +240,7 @@ const mountFunctions = [
   mountTrajectoryAnomalyRoutes,
   mountPostMortemRoutes,
   mountProceduralMemoryRoutes,
+  mountAdviceRoutes,
   mountEmbedWidgetRoutes,
   mountModelDeprecationRoutes,
   mountComplianceRoutes,

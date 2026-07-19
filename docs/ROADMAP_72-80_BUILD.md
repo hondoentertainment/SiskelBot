@@ -18,7 +18,14 @@ Status date: 2026-07-18 (world-class pass). Implements the product build-out fro
 
 - `/admin-ops.html` — trust/safety/eval ops shell
 - `/preferences.html`, `/memory-editor.html`, `/legal-hold.html`, `/model-lifecycle.html`, `/compliance.html` (ISO 27001 tab)
+- `/advice.html` — Daimon-style honest advice companion (persona + thought journal + challenge mode)
 - `/embed/widget.js`, `/embed/frame.html` — hostable chat iframe
+
+## Advice companion APIs
+
+- `POST /api/v1/advice/enable`, `GET /advice/status`, `GET /advice/prompt`
+- `POST/GET /api/v1/advice/thoughts`, `GET /advice/resurface`, `DELETE /advice/thoughts/:id`
+- Agent tool `capture_thought`; loop injects resurfaced thoughts when advice mode is on
 
 ## Agent / safety wiring
 
