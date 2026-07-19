@@ -11,7 +11,9 @@ import {
   resurfaceThoughts,
   formatThoughtsHint,
   enableAdviceMode,
+  disableAdviceMode,
   getAdviceModeStatus,
+  updateThought,
   ADVICE_MODE_SENTINEL,
 } from "../lib/advice-companion.js";
 
@@ -64,12 +66,29 @@ describe("advice companion", () => {
     assert.match(hint, /Call Mom/);
   });
 
-  it("enables advice mode on workspace settings", async () => {
+  it("enables and disables advice mode on workspace settings", async () => {
     const r = await enableAdviceMode(user, ws, { challenge: true });
     assert.equal(r.ok, true);
     assert.equal(r.challenge, true);
     const status = await getAdviceModeStatus(user, ws);
     assert.equal(status.enabled, true);
     assert.equal(status.challenge, true);
+    const off = await disableAdviceMode(user, ws);
+    assert.equal(off.ok, true);
+    const after = await getAdviceModeStatus(user, ws);
+    assert.equal(after.enabled, false);
+  });
+
+  it("updates thought content and kind", async () => {
+    const t = await captureThought(user, ws, { content: "draft idea", kind: "idea" });
+    const u = await updateThought(user, ws, t.id, {
+      content: "refined idea",
+      kind: "decision",
+      importance: 5,
+    });
+    assert.equal(u.ok, true);
+    assert.equal(u.memory.content, "refined idea");
+    assert.equal(u.memory.metadata.thoughtKind, "decision");
+    assert.equal(u.memory.importance, 5);
   });
 });

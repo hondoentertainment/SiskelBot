@@ -7,6 +7,7 @@ import { router } from "../router.js";
 const DEFAULT_ITEMS = [
   { path: "/home", label: "Home", icon: "◉" },
   { path: "/chat", label: "Chat", icon: "◎" },
+  { path: "/advice.html", label: "Advice", icon: "◇", external: true },
   { path: "/runs", label: "Runs", icon: "▷" },
   { path: "/knowledge", label: "Knowledge", icon: "□" },
   { path: "/recipes", label: "Recipes", icon: "≡" }
@@ -32,6 +33,10 @@ export function createNav(items = DEFAULT_ITEMS) {
     a.querySelector(".sb-nav-icon").textContent = item.icon || "•";
     a.querySelector(".sb-nav-label").textContent = item.label;
     a.addEventListener("click", (e) => {
+      if (item.external) {
+        // Full-page surfaces (not SPA routes)
+        return;
+      }
       e.preventDefault();
       router.navigate(item.path);
     });

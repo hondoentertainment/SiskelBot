@@ -9,186 +9,163 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;1,9..40,400&family=Fraunces:opsz,wght@9..144,500;9..144,650&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --bg0: #0c1210;
-      --bg1: #14201c;
-      --ink: #e8f0ec;
-      --muted: #8aa399;
-      --accent: #3dcf9a;
-      --accent-dim: #1f6b4f;
-      --warn: #e8b86d;
-      --bubble-me: #1f3d32;
-      --bubble-them: #1a2420;
-      --line: rgba(232, 240, 236, 0.12);
-      --radius: 1.1rem;
-      --font: "DM Sans", system-ui, sans-serif;
+      --bg0: #0c1210; --bg1: #14201c; --ink: #e8f0ec; --muted: #8aa399;
+      --accent: #3dcf9a; --accent-dim: #1f6b4f; --bubble-me: #1f3d32;
+      --bubble-them: #1a2420; --line: rgba(232, 240, 236, 0.12);
+      --radius: 1.1rem; --font: "DM Sans", system-ui, sans-serif;
       --display: "Fraunces", Georgia, serif;
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; }
     body {
-      font-family: var(--font);
-      color: var(--ink);
+      font-family: var(--font); color: var(--ink);
       background:
         radial-gradient(1200px 600px at 10% -10%, #1a3a2e 0%, transparent 55%),
         radial-gradient(900px 500px at 100% 0%, #243528 0%, transparent 50%),
         linear-gradient(180deg, var(--bg0), var(--bg1));
-      display: grid;
-      grid-template-rows: auto 1fr auto;
-      min-height: 100dvh;
+      display: grid; grid-template-rows: auto 1fr auto; min-height: 100dvh;
     }
     header {
-      padding: 0.9rem 1rem 0.75rem;
-      border-bottom: 1px solid var(--line);
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.6rem 1rem;
-      align-items: center;
-      justify-content: space-between;
-      backdrop-filter: blur(8px);
+      padding: 0.9rem 1rem 0.75rem; border-bottom: 1px solid var(--line);
+      display: flex; flex-wrap: wrap; gap: 0.6rem 1rem; align-items: center;
+      justify-content: space-between; backdrop-filter: blur(8px);
       background: rgba(12, 18, 16, 0.72);
     }
-    header h1 {
-      font-family: var(--display);
-      font-size: 1.35rem;
-      font-weight: 650;
-      margin: 0;
-      letter-spacing: -0.02em;
-    }
+    header h1 { font-family: var(--display); font-size: 1.35rem; font-weight: 650; margin: 0; }
     header p { margin: 0.15rem 0 0; color: var(--muted); font-size: 0.85rem; }
-    .brand-block { min-width: 12rem; }
     .controls { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; }
     input, select, button, textarea {
-      font: inherit;
-      border-radius: 0.65rem;
-      border: 1px solid var(--line);
-      background: rgba(0, 0, 0, 0.28);
-      color: var(--ink);
-      padding: 0.45rem 0.65rem;
+      font: inherit; border-radius: 0.65rem; border: 1px solid var(--line);
+      background: rgba(0, 0, 0, 0.28); color: var(--ink); padding: 0.45rem 0.65rem;
     }
-    button {
-      background: var(--accent-dim);
-      border-color: transparent;
-      cursor: pointer;
-      transition: transform 0.15s ease, background 0.15s ease;
-    }
+    button { background: var(--accent-dim); border-color: transparent; cursor: pointer; }
     button:hover { background: #25825e; }
-    button:active { transform: scale(0.98); }
     button.ghost { background: transparent; border-color: var(--line); }
     button.primary { background: var(--accent); color: #062218; font-weight: 600; }
+    button.danger { background: #5c2a2a; }
     a { color: var(--accent); }
     main {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
-      gap: 0;
-      min-height: 0;
+      display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+      gap: 0; min-height: 0;
     }
-    @media (max-width: 820px) {
+    @media (max-width: 900px) {
       main { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
-      aside { max-height: 38vh; border-left: 0; border-top: 1px solid var(--line); }
+      aside { max-height: 42vh; border-left: 0; border-top: 1px solid var(--line); }
     }
     #thread {
-      overflow: auto;
-      padding: 1rem 1rem 1.25rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.65rem;
-      scroll-behavior: smooth;
+      overflow: auto; padding: 1rem; display: flex; flex-direction: column;
+      gap: 0.65rem; scroll-behavior: smooth;
     }
     .msg {
-      max-width: min(34rem, 92%);
-      padding: 0.7rem 0.9rem;
-      border-radius: var(--radius);
-      line-height: 1.45;
-      animation: rise 0.28s ease both;
-      white-space: pre-wrap;
-      word-break: break-word;
+      max-width: min(34rem, 92%); padding: 0.7rem 0.9rem; border-radius: var(--radius);
+      line-height: 1.45; white-space: pre-wrap; word-break: break-word;
     }
-    .msg.me { align-self: flex-end; background: var(--bubble-me); border-bottom-right-radius: 0.35rem; }
-    .msg.them { align-self: flex-start; background: var(--bubble-them); border-bottom-left-radius: 0.35rem; }
-    .msg.sys { align-self: center; color: var(--muted); font-size: 0.8rem; background: transparent; max-width: 90%; text-align: center; }
-    @keyframes rise {
-      from { opacity: 0; transform: translateY(8px); }
-      to { opacity: 1; transform: none; }
-    }
+    .msg.me { align-self: flex-end; background: var(--bubble-me); }
+    .msg.them { align-self: flex-start; background: var(--bubble-them); }
+    .msg.sys { align-self: center; color: var(--muted); font-size: 0.8rem; background: transparent; text-align: center; }
     aside {
-      border-left: 1px solid var(--line);
-      padding: 0.85rem;
-      overflow: auto;
-      background: rgba(0, 0, 0, 0.18);
+      border-left: 1px solid var(--line); padding: 0.85rem; overflow: auto;
+      background: rgba(0, 0, 0, 0.18); display: flex; flex-direction: column; gap: 0.5rem;
     }
-    aside h2 {
-      font-family: var(--display);
-      font-size: 1rem;
-      margin: 0 0 0.5rem;
-    }
+    aside h2 { font-family: var(--display); font-size: 1rem; margin: 0; }
+    .row { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
     .thought {
-      border: 1px solid var(--line);
-      border-radius: 0.75rem;
-      padding: 0.55rem 0.65rem;
-      margin: 0.4rem 0;
-      font-size: 0.88rem;
-      background: rgba(20, 32, 28, 0.8);
+      border: 1px solid var(--line); border-radius: 0.75rem; padding: 0.55rem 0.65rem;
+      font-size: 0.88rem; background: rgba(20, 32, 28, 0.8);
     }
     .thought .meta { color: var(--muted); font-size: 0.75rem; margin-bottom: 0.25rem; }
-    .thought button { margin-top: 0.35rem; font-size: 0.75rem; padding: 0.25rem 0.45rem; }
+    .thought .actions { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.4rem; }
+    .thought .actions button { font-size: 0.72rem; padding: 0.22rem 0.45rem; }
+    .thought textarea { width: 100%; margin-top: 0.35rem; min-height: 3.2rem; }
     footer {
       border-top: 1px solid var(--line);
       padding: 0.65rem 0.85rem calc(0.65rem + env(safe-area-inset-bottom));
       background: rgba(12, 18, 16, 0.85);
-      backdrop-filter: blur(8px);
     }
     .compose {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 0.5rem;
-      max-width: 52rem;
-      margin: 0 auto;
+      display: grid; grid-template-columns: 1fr auto; gap: 0.5rem;
+      max-width: 52rem; margin: 0 auto;
     }
-    #msg {
-      resize: none;
-      min-height: 2.75rem;
-      max-height: 8rem;
-      field-sizing: content;
+    #msg { resize: none; min-height: 2.75rem; max-height: 8rem; }
+    .capture-grid {
+      display: grid; gap: 0.4rem; max-width: 52rem; margin: 0 auto 0.45rem;
+      grid-template-columns: auto 1fr auto auto;
     }
-    .capture-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.4rem;
-      margin-bottom: 0.45rem;
-      max-width: 52rem;
-      margin-left: auto;
-      margin-right: auto;
+    @media (max-width: 720px) {
+      .capture-grid { grid-template-columns: 1fr 1fr; }
+      .capture-grid #thought-text { grid-column: 1 / -1; }
     }
-    .capture-row input { flex: 1 1 12rem; }
     .status { color: var(--muted); font-size: 0.78rem; }
     .status.on { color: var(--accent); }
+    details.panel {
+      border: 1px solid var(--line); border-radius: 0.65rem; padding: 0.45rem 0.55rem;
+      background: rgba(0,0,0,0.15);
+    }
+    details.panel summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; }
+    #prompt-preview {
+      white-space: pre-wrap; font-size: 0.72rem; color: var(--muted);
+      max-height: 8rem; overflow: auto; margin: 0.4rem 0 0;
+    }
+    .linkish {
+      padding: 0.45rem 0.65rem; border: 1px solid var(--line); border-radius: 0.65rem;
+      text-decoration: none; color: inherit; font-size: 0.9rem;
+    }
   </style>
 </head>
 <body>
   <header>
-    <div class="brand-block">
+    <div>
       <h1>Honest advice</h1>
-      <p>Think clearer. Choose better. Won’t sugar-coat it.</p>
+      <p>Think clearer. Choose better. All companion actions live here.</p>
     </div>
     <div class="controls">
-      <label class="status" id="mode-status">Mode: …</label>
+      <span class="status" id="mode-status">Mode: …</span>
       <label>Workspace <input id="ws" value="default" style="width:7rem" /></label>
+      <label title="Stored in this browser only">API key
+        <input id="api-key" type="password" placeholder="optional" style="width:8rem" />
+      </label>
       <label><input type="checkbox" id="challenge" /> Challenge me</label>
-      <button type="button" id="enable" class="primary">Enable advice mode</button>
-      <a class="ghost" href="/" style="padding:0.45rem 0.65rem;border:1px solid var(--line);border-radius:0.65rem;text-decoration:none;color:inherit">Main chat</a>
+      <button type="button" id="enable" class="primary">Enable</button>
+      <button type="button" id="disable" class="ghost">Disable</button>
+      <button type="button" id="apply-challenge" class="ghost" title="Re-enable with current challenge setting">Apply challenge</button>
+      <button type="button" id="clear-chat" class="ghost">Clear chat</button>
+      <a class="linkish" href="/">Main chat</a>
+      <a class="linkish" href="/memory-editor.html">Memory</a>
     </div>
   </header>
   <main>
     <div id="thread" aria-live="polite"></div>
     <aside>
       <h2>Thoughts</h2>
-      <p class="status">Capture notes, ideas, reminders — they’ll resurface when useful.</p>
+      <div class="row">
+        <select id="view-mode" aria-label="Thought view">
+          <option value="all">All thoughts</option>
+          <option value="resurface">Due / resurface</option>
+        </select>
+        <select id="filter-kind" aria-label="Filter kind">
+          <option value="">All kinds</option>
+          <option value="note">Note</option>
+          <option value="idea">Idea</option>
+          <option value="reminder">Reminder</option>
+          <option value="moment">Moment</option>
+          <option value="decision">Decision</option>
+        </select>
+      </div>
+      <div class="row">
+        <input id="search-q" placeholder="Search thoughts…" style="flex:1" />
+        <button type="button" id="search-btn" class="ghost">Search</button>
+      </div>
       <div id="thoughts"></div>
-      <button type="button" id="reload-thoughts" class="ghost" style="margin-top:0.5rem;width:100%">Refresh</button>
+      <button type="button" id="reload-thoughts" class="ghost">Refresh list</button>
+      <details class="panel">
+        <summary>View system prompt</summary>
+        <pre id="prompt-preview">—</pre>
+        <button type="button" id="reload-prompt" class="ghost" style="margin-top:0.4rem">Reload prompt</button>
+      </details>
     </aside>
   </main>
   <footer>
-    <div class="capture-row">
+    <div class="capture-grid">
       <select id="thought-kind" aria-label="Thought kind">
         <option value="note">Note</option>
         <option value="idea">Idea</option>
@@ -197,7 +174,16 @@
         <option value="decision">Decision</option>
       </select>
       <input id="thought-text" placeholder="Capture a thought…" />
-      <button type="button" id="capture">Save thought</button>
+      <input id="thought-when" type="datetime-local" title="Resurface at (optional)" />
+      <select id="thought-importance" title="Importance" aria-label="Importance">
+        <option value="3">Imp 3</option>
+        <option value="1">Imp 1</option>
+        <option value="2">Imp 2</option>
+        <option value="4">Imp 4</option>
+        <option value="5">Imp 5</option>
+      </select>
+      <input id="thought-tags" placeholder="tags (comma)" />
+      <button type="button" id="capture" class="primary">Save thought</button>
     </div>
     <form class="compose" id="chat-form">
       <textarea id="msg" rows="1" placeholder="What’s on your mind?" autocomplete="off"></textarea>
@@ -209,14 +195,23 @@
     const history = [];
     let systemPrompt = "";
 
+    const keyInput = document.getElementById("api-key");
+    keyInput.value = localStorage.getItem("siskelbot_api_key") || "";
+    keyInput.addEventListener("change", () => {
+      const v = keyInput.value.trim();
+      if (v) localStorage.setItem("siskelbot_api_key", v);
+      else localStorage.removeItem("siskelbot_api_key");
+    });
+
     function headers() {
       const h = { "Content-Type": "application/json", Accept: "application/json" };
-      const key = localStorage.getItem("siskelbot_api_key");
+      const key = keyInput.value.trim() || localStorage.getItem("siskelbot_api_key");
       if (key) h.Authorization = "Bearer " + key;
       return h;
     }
-    function ws() {
-      return document.getElementById("ws").value.trim() || "default";
+    function ws() { return document.getElementById("ws").value.trim() || "default"; }
+    function errText(j, fallback) {
+      return j?.error?.message || j?.error || j?.message || fallback;
     }
     function addMsg(role, text) {
       const d = document.createElement("div");
@@ -225,10 +220,23 @@
       thread.appendChild(d);
       thread.scrollTop = thread.scrollHeight;
     }
+    function toLocalInputValue(iso) {
+      if (!iso) return "";
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return "";
+      const pad = (n) => String(n).padStart(2, "0");
+      return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) +
+        "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+    }
+    function fromLocalInputValue(v) {
+      if (!v) return null;
+      const t = Date.parse(v);
+      return Number.isNaN(t) ? null : new Date(t).toISOString();
+    }
+
     async function refreshStatus() {
       const res = await fetch("/api/v1/advice/status?workspace=" + encodeURIComponent(ws()), {
-        headers: headers(),
-        credentials: "include",
+        headers: headers(), credentials: "include",
       });
       const j = await res.json().catch(() => ({}));
       const el = document.getElementById("mode-status");
@@ -237,52 +245,59 @@
         el.className = "status on";
         systemPrompt = j.defaultSystemPrompt || systemPrompt;
         document.getElementById("challenge").checked = !!j.challenge;
+        document.getElementById("prompt-preview").textContent = systemPrompt || "—";
       } else {
-        el.textContent = "Mode: off — enable to persist persona";
+        el.textContent = "Mode: off";
         el.className = "status";
       }
     }
+
     async function loadPrompt() {
       const challenge = document.getElementById("challenge").checked;
       const res = await fetch("/api/v1/advice/prompt?challenge=" + (challenge ? "1" : "0"), {
-        headers: headers(),
-        credentials: "include",
+        headers: headers(), credentials: "include",
       });
       const j = await res.json().catch(() => ({}));
-      if (j.systemPrompt) systemPrompt = j.systemPrompt;
+      if (j.systemPrompt) {
+        systemPrompt = j.systemPrompt;
+        document.getElementById("prompt-preview").textContent = systemPrompt;
+      }
     }
+
     async function enableMode() {
       await loadPrompt();
       const res = await fetch("/api/v1/advice/enable", {
-        method: "POST",
-        headers: headers(),
-        credentials: "include",
+        method: "POST", headers: headers(), credentials: "include",
         body: JSON.stringify({
           workspace: ws(),
           challenge: document.getElementById("challenge").checked,
         }),
       });
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        addMsg("sys", j.error || j.message || "Could not enable advice mode");
-        return;
-      }
+      if (!res.ok) return addMsg("sys", errText(j, "Could not enable advice mode"));
       systemPrompt = j.defaultSystemPrompt || systemPrompt;
-      addMsg("sys", "Advice mode enabled. I’ll be honest with you.");
+      document.getElementById("prompt-preview").textContent = systemPrompt || "—";
+      addMsg("sys", "Advice mode enabled.");
       refreshStatus();
-      loadThoughts();
     }
-    async function loadThoughts() {
-      const res = await fetch("/api/v1/advice/resurface?workspace=" + encodeURIComponent(ws()) + "&limit=12", {
-        headers: headers(),
-        credentials: "include",
+
+    async function disableMode() {
+      const res = await fetch("/api/v1/advice/disable", {
+        method: "POST", headers: headers(), credentials: "include",
+        body: JSON.stringify({ workspace: ws() }),
       });
       const j = await res.json().catch(() => ({}));
+      if (!res.ok) return addMsg("sys", errText(j, "Could not disable"));
+      addMsg("sys", "Advice mode disabled.");
+      await loadPrompt();
+      refreshStatus();
+    }
+
+    function renderThoughts(items) {
       const root = document.getElementById("thoughts");
       root.innerHTML = "";
-      const items = j.thoughts || [];
       if (!items.length) {
-        root.innerHTML = '<p class="status">No thoughts yet.</p>';
+        root.innerHTML = '<p class="status">No thoughts in this view.</p>';
         return;
       }
       for (const t of items) {
@@ -290,49 +305,148 @@
         div.className = "thought";
         const meta = document.createElement("div");
         meta.className = "meta";
-        meta.textContent = (t.metadata?.thoughtKind || "note") + (t.metadata?.resurfaceAt ? " · due" : "");
+        const due = t.metadata?.resurfaceAt ? " · resurface " + t.metadata.resurfaceAt : "";
+        const tags = Array.isArray(t.metadata?.tags) && t.metadata.tags.length
+          ? " · " + t.metadata.tags.join(", ")
+          : "";
+        meta.textContent = (t.metadata?.thoughtKind || "note") +
+          " · imp " + (t.importance ?? 3) + due + tags;
+
         const body = document.createElement("div");
+        body.className = "body";
         body.textContent = t.content || "";
-        const del = document.createElement("button");
-        del.type = "button";
-        del.className = "ghost";
-        del.textContent = "Forget";
-        del.onclick = async () => {
-          await fetch("/api/v1/advice/thoughts/" + encodeURIComponent(t.id) + "?workspace=" + encodeURIComponent(ws()), {
-            method: "DELETE",
-            headers: headers(),
-            credentials: "include",
+
+        const editor = document.createElement("textarea");
+        editor.style.display = "none";
+        editor.value = t.content || "";
+
+        const actions = document.createElement("div");
+        actions.className = "actions";
+
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.className = "ghost";
+        editBtn.textContent = "Edit";
+        editBtn.onclick = () => {
+          const open = editor.style.display !== "none";
+          editor.style.display = open ? "none" : "block";
+          body.style.display = open ? "block" : "none";
+          editBtn.textContent = open ? "Edit" : "Cancel";
+          saveBtn.style.display = open ? "none" : "inline-block";
+        };
+
+        const saveBtn = document.createElement("button");
+        saveBtn.type = "button";
+        saveBtn.className = "primary";
+        saveBtn.textContent = "Save";
+        saveBtn.style.display = "none";
+        saveBtn.onclick = async () => {
+          const res = await fetch("/api/v1/advice/thoughts/" + encodeURIComponent(t.id), {
+            method: "PATCH", headers: headers(), credentials: "include",
+            body: JSON.stringify({
+              workspace: ws(),
+              content: editor.value,
+              kind: t.metadata?.thoughtKind,
+              importance: t.importance,
+              resurfaceAt: t.metadata?.resurfaceAt ?? null,
+              tags: t.metadata?.tags,
+            }),
           });
+          const j = await res.json().catch(() => ({}));
+          if (!res.ok) return addMsg("sys", errText(j, "Update failed"));
+          addMsg("sys", "Thought updated.");
           loadThoughts();
         };
+
+        const askBtn = document.createElement("button");
+        askBtn.type = "button";
+        askBtn.className = "ghost";
+        askBtn.textContent = "Ask about this";
+        askBtn.onclick = () => sendChat("I want honest advice about this thought: " + (t.content || ""));
+
+        const delBtn = document.createElement("button");
+        delBtn.type = "button";
+        delBtn.className = "danger";
+        delBtn.textContent = "Forget";
+        delBtn.onclick = async () => {
+          const res = await fetch(
+            "/api/v1/advice/thoughts/" + encodeURIComponent(t.id) +
+              "?workspace=" + encodeURIComponent(ws()),
+            { method: "DELETE", headers: headers(), credentials: "include" },
+          );
+          if (!res.ok) {
+            const j = await res.json().catch(() => ({}));
+            return addMsg("sys", errText(j, "Delete failed"));
+          }
+          loadThoughts();
+        };
+
+        actions.appendChild(editBtn);
+        actions.appendChild(saveBtn);
+        actions.appendChild(askBtn);
+        actions.appendChild(delBtn);
         div.appendChild(meta);
         div.appendChild(body);
-        div.appendChild(del);
+        div.appendChild(editor);
+        div.appendChild(actions);
         root.appendChild(div);
       }
     }
+
+    async function loadThoughts() {
+      const view = document.getElementById("view-mode").value;
+      const kind = document.getElementById("filter-kind").value;
+      const q = document.getElementById("search-q").value.trim();
+      let url;
+      if (view === "resurface" || q) {
+        url = "/api/v1/advice/resurface?workspace=" + encodeURIComponent(ws()) +
+          "&limit=50" + (q ? "&q=" + encodeURIComponent(q) : "");
+      } else {
+        url = "/api/v1/advice/thoughts?workspace=" + encodeURIComponent(ws()) +
+          "&limit=50" + (kind ? "&kind=" + encodeURIComponent(kind) : "");
+      }
+      const res = await fetch(url, { headers: headers(), credentials: "include" });
+      const j = await res.json().catch(() => ({}));
+      let items = j.thoughts || [];
+      if (view === "resurface" && kind) {
+        items = items.filter((t) => t.metadata?.thoughtKind === kind);
+      }
+      if (q && view === "all") {
+        // list endpoint has no search; filter client-side after optional resurface search path above
+        const ql = q.toLowerCase();
+        items = items.filter((t) => String(t.content || "").toLowerCase().includes(ql));
+      }
+      renderThoughts(items);
+    }
+
     async function captureThought() {
       const content = document.getElementById("thought-text").value.trim();
       if (!content) return;
+      const tags = document.getElementById("thought-tags").value
+        .split(",").map((s) => s.trim()).filter(Boolean);
+      const resurfaceAt = fromLocalInputValue(document.getElementById("thought-when").value);
       const res = await fetch("/api/v1/advice/thoughts", {
-        method: "POST",
-        headers: headers(),
-        credentials: "include",
+        method: "POST", headers: headers(), credentials: "include",
         body: JSON.stringify({
           workspace: ws(),
           content,
           kind: document.getElementById("thought-kind").value,
+          importance: Number(document.getElementById("thought-importance").value) || 3,
+          resurfaceAt,
+          tags,
         }),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        addMsg("sys", j.error || j.message || "Could not save thought");
-        return;
+        return addMsg("sys", errText(j, "Could not save thought"));
       }
       document.getElementById("thought-text").value = "";
+      document.getElementById("thought-tags").value = "";
+      document.getElementById("thought-when").value = "";
       addMsg("sys", "Thought saved.");
       loadThoughts();
     }
+
     async function sendChat(text) {
       if (!systemPrompt) await loadPrompt();
       addMsg("user", text);
@@ -347,11 +461,10 @@
         const tj = await tr.json().catch(() => ({}));
         const items = tj.thoughts || [];
         if (items.length) {
-          thoughtHint =
-            "\n\nPersonal thoughts to keep in mind:\n" +
-            items
-              .map((t, i) => (i + 1) + ". [" + (t.metadata?.thoughtKind || "note") + "] " + t.content)
-              .join("\n");
+          thoughtHint = "\n\nPersonal thoughts to keep in mind:\n" +
+            items.map((t, i) =>
+              (i + 1) + ". [" + (t.metadata?.thoughtKind || "note") + "] " + t.content
+            ).join("\n");
         }
       } catch { /* optional */ }
       const messages = [
@@ -359,9 +472,7 @@
         ...history.slice(-24),
       ];
       const res = await fetch("/v1/chat/completions", {
-        method: "POST",
-        headers: headers(),
-        credentials: "include",
+        method: "POST", headers: headers(), credentials: "include",
         body: JSON.stringify({
           model: "default",
           stream: false,
@@ -371,23 +482,33 @@
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        const msg = err.error?.message || err.error || err.message || ("HTTP " + res.status);
-        addMsg("sys", String(msg));
-        return;
+        return addMsg("sys", String(errText(err, "HTTP " + res.status)));
       }
       const data = await res.json();
-      const content =
-        data.choices?.[0]?.message?.content ||
-        data.content ||
-        "";
+      const content = data.choices?.[0]?.message?.content || data.content || "";
       history.push({ role: "assistant", content: String(content) });
       addMsg("assistant", String(content));
     }
 
     document.getElementById("enable").onclick = enableMode;
+    document.getElementById("disable").onclick = disableMode;
+    document.getElementById("apply-challenge").onclick = enableMode;
     document.getElementById("capture").onclick = captureThought;
     document.getElementById("reload-thoughts").onclick = loadThoughts;
+    document.getElementById("search-btn").onclick = loadThoughts;
+    document.getElementById("reload-prompt").onclick = loadPrompt;
+    document.getElementById("view-mode").onchange = loadThoughts;
+    document.getElementById("filter-kind").onchange = loadThoughts;
     document.getElementById("challenge").onchange = loadPrompt;
+    document.getElementById("ws").addEventListener("change", () => {
+      refreshStatus();
+      loadThoughts();
+    });
+    document.getElementById("clear-chat").onclick = () => {
+      history.length = 0;
+      thread.innerHTML = "";
+      addMsg("sys", "Chat cleared.");
+    };
     document.getElementById("chat-form").onsubmit = async (e) => {
       e.preventDefault();
       const input = document.getElementById("msg");
@@ -396,14 +517,14 @@
       input.value = "";
       await sendChat(text);
     };
+    document.getElementById("search-q").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); loadThoughts(); }
+    });
     document.getElementById("thought-text").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        captureThought();
-      }
+      if (e.key === "Enter") { e.preventDefault(); captureThought(); }
     });
 
-    addMsg("sys", "Ask for a decision, vent a dilemma, or capture a thought. Enable advice mode to keep the persona on this workspace.");
+    addMsg("sys", "Enable advice mode, capture thoughts (with optional resurface time/tags), search or edit them, then chat.");
     refreshStatus();
     loadPrompt();
     loadThoughts();
