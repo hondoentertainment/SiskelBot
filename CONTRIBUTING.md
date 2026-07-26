@@ -89,8 +89,8 @@ When adding a test, match patterns in `tests/health-deep.test.js` or `tests/serv
 ### Deployment (GitHub + Vercel)
 
 - **GitHub:** Push branches and open PRs against `main`. CI runs on every PR (lint, tests, smoke, golden evals, etc.).
-- **Vercel previews:** In the [Vercel dashboard](https://vercel.com), link this GitHub repo so each PR receives a **Preview** deployment automatically.
-- **Production:** Merge to `main` triggers Production when Git integration is enabled; you can also deploy from a trusted machine with `npx vercel deploy --prod --yes` from the repo root (requires `vercel link` once).
+- **Production for PRs:** Same-repo PRs deploy to the Vercel production target automatically after CI passes. Configure repository secret `VERCEL_TOKEN` plus repository vars `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` so the workflow can run `vercel pull/build/deploy --prod`.
+- **Production (manual fallback):** You can still deploy from a trusted machine with `npx vercel deploy --prod --yes` from the repo root (requires `vercel link` once).
 - **Smoke checks:** After deploy, `npm run smoke-test -- https://your-deployment.vercel.app` (or set `BASE_URL`). CI runs offline golden evals via `npm run eval:golden`; the **Production smoke** workflow exercises live `/health/live` and `/config` on a schedule.
 - **Workspace root:** Open the repository folder that contains `package.json` and `.git` (not an empty parent directory).
 
