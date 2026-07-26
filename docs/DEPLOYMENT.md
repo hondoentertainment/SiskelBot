@@ -16,6 +16,16 @@ This guide covers deploying the SiskelBot streaming assistant to Vercel and conf
    - `CRON_SECRET` = a strong random secret if Vercel Cron should run scheduled recipes
 4. Redeploy after adding variables
 
+### PR-driven production deploys
+
+This repository can promote same-repo pull requests directly to the Vercel production target after CI passes. To enable that automation in GitHub Actions, configure:
+
+- repository secret `VERCEL_TOKEN`
+- repository variable `VERCEL_ORG_ID`
+- repository variable `VERCEL_PROJECT_ID`
+
+Forked PRs do not use the production deploy job because the Vercel credentials stay restricted to trusted repository runs.
+
 > **Note:** Ollama and vLLM (localhost) do not work on Vercel. Use the OpenAI backend with an API key for production.
 
 After deploy, run a live smoke test from your workstation:
