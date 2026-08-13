@@ -56,3 +56,13 @@ jobs:
             } catch (err) {
               core.warning(`Could not post regression comment: ${err.message}`);
             }
+
+  # Branch protection requires a check named "agent-regression" in addition to
+  # the existing job id "regression". This alias reports that context.
+  agent-regression:
+    name: agent-regression
+    needs: regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - run: echo "Required-check alias for job regression"
