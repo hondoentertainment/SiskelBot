@@ -399,53 +399,58 @@ jobs:
           path: eval-results.json
           retention-days: 14
 
+  # Optional: requires VERCEL_TOKEN secret and VERCEL_ORG_ID / VERCEL_PROJECT_ID vars.
+  # Job is skipped on Dependabot PRs and when the Vercel vars are unset.
+  # VERCEL_TOKEN is checked in a step (secrets cannot be used in job-level if).
   deploy-prod:
     name: Deploy PR to production
     runs-on: ubuntu-latest
     needs: [lint, trivy-fs, test, smoke, e2e, load-test, eval]
     if: >-
       github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      vars.VERCEL_ORG_ID != '' &&
+      vars.VERCEL_PROJECT_ID != ''
     timeout-minutes: 15
     steps:
+      - name: Check Vercel token
+        id: vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "Skipping production deploy: VERCEL_TOKEN is not configured."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@v7
+        if: steps.vercel.outputs.skip != 'true'
       - uses: actions/setup-node@v7
+        if: steps.vercel.outputs.skip != 'true'
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
-      - name: Validate Vercel production settings
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
-        run: |
-          set -e
-          missing=0
-          for key in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
-            if [ -z "${!key}" ]; then
-              echo "::error::Missing required setting: $key"
-              missing=1
-            fi
-          done
-          if [ "$missing" -ne 0 ]; then
-            echo "Configure repository secret VERCEL_TOKEN and repository vars VERCEL_ORG_ID / VERCEL_PROJECT_ID."
-            exit 1
-          fi
       - name: Install Vercel CLI
+        if: steps.vercel.outputs.skip != 'true'
         run: npm install --global vercel@latest
       - name: Pull Vercel production config
+        if: steps.vercel.outputs.skip != 'true'
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
         run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
       - name: Build Vercel production artifacts
+        if: steps.vercel.outputs.skip != 'true'
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
         run: vercel build --prod --token="$VERCEL_TOKEN"
       - name: Deploy PR to Vercel production
+        if: steps.vercel.outputs.skip != 'true'
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
