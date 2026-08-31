@@ -75,6 +75,19 @@ In the Slack app config:
 **Verify:** `POST /api/v1/initiatives/run` returns proposals for a workspace
 with failing scheduled agents; buttons in Slack resolve them.
 
+## 4b. Advice companion + scheduled agents
+
+| Variable | Effect |
+|---|---|
+| `ADVICE_BRIEF_CRON` | Cron for morning brief agent (default `0 8 * * *`) |
+| `SCHEDULED_AGENT_WORKSPACES` | Workspaces scanned on `/api/cron` (falls back to `INITIATIVE_WORKSPACES`) |
+| `AGENT_GOOGLE_WORKSPACE=1` | Expose Gmail/Calendar tools |
+| `GOOGLE_WORKSPACE_ACCESS_TOKEN` | User OAuth token (Gmail + Calendar scopes) |
+| `AGENT_GOOGLE_HITL=0` | Disable HITL for send/create (default: HITL on) |
+
+**UI:** `/advice.html` — Enable mode, journal, **Preview / Schedule daily** morning brief, install PWA.
+**Verify:** `GET /api/v1/advice/brief`, `POST /api/v1/advice/brief/schedule`, then `/api/cron` after `nextRun`.
+
 ## 5. Cost controls
 
 | Variable | Effect |

@@ -421,6 +421,15 @@
           btn.onclick = function () { showTrajectoryJsonModal(it.runId); };
           li.appendChild(btn);
           li.appendChild(document.createTextNode(' · ' + (it.stepCount || 0) + ' steps'));
+          const sid = it.sessionId || it.payload?.sessionId || it.runId;
+          if (sid) {
+            const op = document.createElement('a');
+            op.href = '/app#/runs/' + encodeURIComponent(sid);
+            op.textContent = 'Operator';
+            op.style.marginLeft = '0.35rem';
+            op.style.color = '#3dcf9a';
+            li.appendChild(op);
+          }
           ul.appendChild(li);
         });
       } catch (_) {

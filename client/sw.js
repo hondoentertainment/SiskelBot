@@ -1,9 +1,10 @@
-const CACHE_NAME = "siskelbot-v1";
+const CACHE_NAME = "siskelbot-v2";
 const CONVOS_CACHE_NAME = "siskelbot-convos-v1";
 const CONVOS_PATH = "/__siskelbot-offline-convos__";
 const APP_ASSETS = [
   "/",
   "/index.html",
+  "/advice.html",
   "/app.webmanifest",
   "/icon.svg",
   "/icon-maskable.svg",

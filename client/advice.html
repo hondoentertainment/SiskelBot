@@ -3,7 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0c1210" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Honest advice — SiskelBot</title>
+  <link rel="manifest" href="/app.webmanifest" />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;1,9..40,400&family=Fraunces:opsz,wght@9..144,500;9..144,650&display=swap" rel="stylesheet" />
@@ -110,6 +116,12 @@
       padding: 0.45rem 0.65rem; border: 1px solid var(--line); border-radius: 0.65rem;
       text-decoration: none; color: inherit; font-size: 0.9rem;
     }
+    #install-btn { display: none; }
+    @media (max-width: 900px) {
+      header { padding-top: calc(0.9rem + env(safe-area-inset-top)); }
+      .controls { width: 100%; }
+      #thread { padding-bottom: 0.5rem; }
+    }
   </style>
 </head>
 <body>
@@ -129,7 +141,9 @@
       <button type="button" id="disable" class="ghost">Disable</button>
       <button type="button" id="apply-challenge" class="ghost" title="Re-enable with current challenge setting">Apply challenge</button>
       <button type="button" id="clear-chat" class="ghost">Clear chat</button>
+      <button type="button" id="install-btn" class="ghost">Install app</button>
       <a class="linkish" href="/">Main chat</a>
+      <a class="linkish" href="/app#/runs">Operator View</a>
       <a class="linkish" href="/memory-editor.html">Memory</a>
     </div>
   </header>
@@ -157,6 +171,16 @@
       </div>
       <div id="thoughts"></div>
       <button type="button" id="reload-thoughts" class="ghost">Refresh list</button>
+      <details class="panel" open>
+        <summary>Morning brief</summary>
+        <pre id="brief-preview" style="white-space:pre-wrap;font-size:0.75rem;color:var(--muted);max-height:10rem;overflow:auto;margin:0.4rem 0;">—</pre>
+        <div class="row">
+          <button type="button" id="load-brief" class="ghost">Preview brief</button>
+          <button type="button" id="ask-brief" class="ghost">Ask about brief</button>
+          <button type="button" id="schedule-brief" class="primary">Schedule daily</button>
+        </div>
+        <p class="status" id="brief-status" style="margin:0.35rem 0 0;"></p>
+      </details>
       <details class="panel">
         <summary>View system prompt</summary>
         <pre id="prompt-preview">—</pre>
@@ -509,6 +533,64 @@
       thread.innerHTML = "";
       addMsg("sys", "Chat cleared.");
     };
+
+    let lastBriefText = "";
+    async function loadBrief() {
+      const res = await fetch("/api/v1/advice/brief?workspace=" + encodeURIComponent(ws()), {
+        headers: headers(), credentials: "include",
+      });
+      const j = await res.json().catch(() => ({}));
+      const el = document.getElementById("brief-preview");
+      if (!res.ok) {
+        el.textContent = errText(j, "Failed to load brief");
+        return null;
+      }
+      lastBriefText = j.text || "";
+      el.textContent = lastBriefText;
+      return j;
+    }
+    async function scheduleBrief() {
+      const st = document.getElementById("brief-status");
+      const res = await fetch("/api/v1/advice/brief/schedule", {
+        method: "POST", headers: headers(), credentials: "include",
+        body: JSON.stringify({ workspace: ws() }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        st.textContent = errText(j, "Schedule failed");
+        return;
+      }
+      st.textContent = j.created
+        ? "Daily morning brief scheduled (cron " + (j.agent?.cron || "0 8 * * *") + ")."
+        : "Morning brief already scheduled.";
+      addMsg("sys", st.textContent);
+    }
+    document.getElementById("load-brief").onclick = loadBrief;
+    document.getElementById("schedule-brief").onclick = scheduleBrief;
+    document.getElementById("ask-brief").onclick = async () => {
+      const brief = await loadBrief();
+      if (!brief?.text) return;
+      await sendChat("Here's my morning brief — give me one concrete recommendation for today:\n\n" + brief.text);
+    };
+
+    let deferredInstall = null;
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      deferredInstall = e;
+      const btn = document.getElementById("install-btn");
+      if (btn) btn.style.display = "inline-block";
+    });
+    document.getElementById("install-btn").onclick = async () => {
+      if (!deferredInstall) return;
+      deferredInstall.prompt();
+      await deferredInstall.userChoice.catch(() => ({}));
+      deferredInstall = null;
+      document.getElementById("install-btn").style.display = "none";
+    };
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+
     document.getElementById("chat-form").onsubmit = async (e) => {
       e.preventDefault();
       const input = document.getElementById("msg");
