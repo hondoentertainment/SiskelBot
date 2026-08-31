@@ -24,6 +24,9 @@ const FLAGS = [
   { key: "QUOTA_ENABLED", value: "1" },
   { key: "HEALTH_DEEP_BACKEND_OPTIONAL", value: "1" },
   { key: "OTEL_ENABLED", value: "1" },
+  { key: "ENABLE_INITIATIVE_ENGINE", value: "1" },
+  { key: "INITIATIVE_CRON", value: "0 */6 * * *" },
+  { key: "INITIATIVE_WORKSPACES", value: "default" },
 ];
 
 function vercelEnvAdd(key, value, { sensitive = false } = {}) {
@@ -90,6 +93,20 @@ async function main() {
   }
   if (stripeEnt) {
     if (!vercelEnvAdd("STRIPE_ENTERPRISE_PRICE_ID", stripeEnt)) ok = false;
+  }
+
+  const openaiKey = process.env.OPENAI_API_KEY?.trim();
+  if (openaiKey) {
+    if (!vercelEnvAdd("OPENAI_API_KEY", openaiKey, { sensitive: true })) ok = false;
+    if (!vercelEnvAdd("OPENAI_BASE_URL", process.env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1")) ok = false;
+  } else {
+    console.log("Skip OPENAI_API_KEY (export and re-run to enable live chat on Vercel)");
+  }
+
+  const googleWs = process.env.GOOGLE_WORKSPACE_ACCESS_TOKEN?.trim();
+  if (googleWs) {
+    if (!vercelEnvAdd("GOOGLE_WORKSPACE_ACCESS_TOKEN", googleWs, { sensitive: true })) ok = false;
+    if (!vercelEnvAdd("AGENT_GOOGLE_WORKSPACE", "1")) ok = false;
   }
 
   if (!FLAGS_ONLY) {

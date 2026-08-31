@@ -8,7 +8,7 @@ const DEFAULT_ITEMS = [
   { path: "/home", label: "Home", icon: "◉" },
   { path: "/chat", label: "Chat", icon: "◎" },
   { path: "/advice.html", label: "Advice", icon: "◇", external: true },
-  { path: "/runs", label: "Runs", icon: "▷" },
+  { path: "/runs", label: "Operator", icon: "▷" },
   { path: "/knowledge", label: "Knowledge", icon: "□" },
   { path: "/recipes", label: "Recipes", icon: "≡" }
 ];

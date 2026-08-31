@@ -1,12 +1,12 @@
 {
   "name": "Siskel Bot",
   "short_name": "Siskel Bot",
-  "description": "Streaming assistant for Ollama, vLLM, or OpenAI.",
+  "description": "Streaming assistant and honest advice companion.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#0f172a",
+  "background_color": "#0c1210",
+  "theme_color": "#0c1210",
   "icons": [
     {
       "src": "/icon.svg",
@@ -18,6 +18,20 @@
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Honest advice",
+      "short_name": "Advice",
+      "url": "/advice.html",
+      "description": "Open the advice companion"
+    },
+    {
+      "name": "Operator View",
+      "short_name": "Runs",
+      "url": "/app#/runs",
+      "description": "Open agent Operator View"
     }
   ]
 }
