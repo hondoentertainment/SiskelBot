@@ -193,7 +193,13 @@ export default function mountRecipeRoutes(app, deps) {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace) || "default";
       const result = await runDueJobsVercel(workspace);
-      res.json({ ok: true, ran: result.ran, skipped: result.skipped || false });
+      res.json({
+        ok: true,
+        ran: result.ran,
+        skipped: result.skipped || false,
+        scheduledAgents: result.scheduledAgents || null,
+        initiative: result.initiative || null,
+      });
     } catch (err) {
       console.error("Cron tick error:", err.message);
       return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/RUNBOOK.md.");

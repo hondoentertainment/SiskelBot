@@ -10,6 +10,8 @@
  * GET    /api/v1/advice/resurface
  * DELETE /api/v1/advice/thoughts/:id
  * GET    /api/v1/advice/prompt
+ * GET    /api/v1/advice/brief
+ * POST   /api/v1/advice/brief/schedule
  */
 import {
   enableAdviceMode,
@@ -22,6 +24,7 @@ import {
   updateThought,
   buildAdviceSystemPrompt,
 } from "../lib/advice-companion.js";
+import { buildMorningBrief, ensureMorningBriefSchedule } from "../lib/advice-brief.js";
 import { resolveStorageUserId } from "../lib/teams.js";
 
 export function mountAdviceRoutes(app, deps) {
@@ -154,6 +157,31 @@ export function mountAdviceRoutes(app, deps) {
       res.json(result);
     } catch (err) {
       return apiError(res, 500, "INTERNAL_ERROR", err.message);
+    }
+  });
+
+  apiRoute("get", "/advice/brief", limiter, userAuth, logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const userId = req.userId || "anonymous";
+      const brief = await buildMorningBrief(userId, workspace);
+      res.json(brief);
+    } catch (err) {
+      return apiError(res, 500, "INTERNAL_ERROR", err.message);
+    }
+  });
+
+  apiRoute("post", "/advice/brief/schedule", limiter, userAuth, logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.body?.workspace || req.query?.workspace);
+      const userId = req.userId || "anonymous";
+      const result = await ensureMorningBriefSchedule(workspace, {
+        userId,
+        cron: typeof req.body?.cron === "string" ? req.body.cron : undefined,
+      });
+      res.status(result.created ? 201 : 200).json(result);
+    } catch (err) {
+      return apiError(res, 400, "INVALID_INPUT", err.message);
     }
   });
 }
