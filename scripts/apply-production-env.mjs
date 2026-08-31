@@ -99,6 +99,8 @@ async function main() {
   if (openaiKey) {
     if (!vercelEnvAdd("OPENAI_API_KEY", openaiKey, { sensitive: true })) ok = false;
     if (!vercelEnvAdd("OPENAI_BASE_URL", process.env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1")) ok = false;
+    if (!vercelEnvAdd("BACKEND", process.env.BACKEND?.trim() || "openai")) ok = false;
+    if (!vercelEnvAdd("FALLBACK_BACKEND", process.env.FALLBACK_BACKEND?.trim() || "openai")) ok = false;
   } else {
     console.log("Skip OPENAI_API_KEY (export and re-run to enable live chat on Vercel)");
   }
