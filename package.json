@@ -97,7 +97,7 @@
   },
   "optionalDependencies": {
     "better-sqlite3": "^11.8.1",
-    "nodemailer": "^7.0.11",
+    "nodemailer": "^10.2.1",
     "playwright": "^1.62.0",
     "redis": "^4.7.1"
   },
