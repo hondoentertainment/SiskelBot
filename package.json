@@ -113,6 +113,9 @@
     "globals": "^17.13.0",
     "supertest": "^7.3.0"
   },
+  "overrides": {
+    "builder-util-runtime": "9.7.0"
+  },
   "build": {
     "appId": "com.hondoentertainment.siskelbot",
     "productName": "Siskel Bot",
