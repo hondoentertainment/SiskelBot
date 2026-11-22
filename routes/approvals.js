@@ -8,8 +8,10 @@ import { listApprovals, decideApproval } from "../lib/approval-queue.js";
 import { sanitizeWorkspace } from "../lib/storage.js";
 
 export function mountApprovalRoutes(app, deps) {
-  const { apiRoute, apiError, userAuth, logRequest } = deps;
-  const auth = userAuth || ((_req, _res, next) => next());
+  const { apiRoute, apiError, adminAuth, logRequest } = deps;
+  const auth = adminAuth || ((_req, res) => {
+    res.status(401).json({ error: "Admin access required", code: "ADMIN_REQUIRED" });
+  });
   const log = logRequest || ((_req, _res, next) => next());
 
   function workspaceOf(req) {
@@ -31,7 +33,7 @@ export function mountApprovalRoutes(app, deps) {
     try {
       const row = await decideApproval(workspaceOf(req), req.params.id, {
         status,
-        by: req.userId || "admin",
+        by: req.adminUserId || req.userId || "admin",
       });
       if (!row) return apiError(res, 404, "NOT_FOUND", "Approval not found");
       res.json({ approval: row });
