@@ -58,7 +58,7 @@ Realtime streaming assistant proxy for Ollama, vLLM, or OpenAI. Node.js proxy th
 - **Model quality routing** -- Route requests to the best backend based on quality metrics
 - **Collaborative workspaces** -- Team workspaces with roles, invite codes, activity feeds
 - **RBAC** -- Role-based access control with granular permissions
-- **Agent memory** -- Long-term memory injection across agent sessions
+- **Agent memory** -- Long-term memory injection across agent sessions. `/memory.html` lets each user edit, pin, and forget their own facts.
 - **Agent sessions** -- Durable run grouping with plan persistence and cancellation
 - **Conversation management** -- Branching, export, sharing, search
 - **API versioning** -- v1 (stable), v2 (next-gen with structured errors)

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Your memory</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; }
+    main { max-width: 44rem; margin: 0 auto; padding: 1.25rem; }
+    a { color: #93c5fd; }
+    .card { border: 1px solid #334155; border-radius: 10px; padding: 0.75rem; margin: 0.5rem 0; }
+    textarea, input, button { font: inherit; }
+    textarea { width: 100%; background: #020617; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; }
+    button { border: 0; border-radius: 6px; padding: 0.35rem 0.6rem; color: white; background: #1d4ed8; cursor: pointer; }
+    .ghost { background: #334155; }
+    .status { color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <main>
+    <p><a href="/">Back</a></p>
+    <h1>What the assistant remembers</h1>
+    <p class="status">Edit a fact, pin it so it stays first, or forget it. This is your memory for the current workspace.</p>
+    <label>Workspace <input id="ws" value="default" /></label>
+    <p><button type="button" id="reload">Reload</button></p>
+    <div id="list"></div>
+  </main>
+  <script>
+    function headers() {
+      const h = { "Content-Type": "application/json", Accept: "application/json" };
+      const key = localStorage.getItem("siskelbot_api_key");
+      if (key) h.Authorization = "Bearer " + key;
+      return h;
+    }
+    function ws() { return document.getElementById("ws").value.trim() || "default"; }
+    async function patch(id, body) {
+      await fetch("/api/v1/memory/" + encodeURIComponent(id) + "?workspace=" + encodeURIComponent(ws()), {
+        method: "PATCH", headers: headers(), credentials: "include",
+        body: JSON.stringify({ workspace: ws(), ...body }),
+      });
+      reload();
+    }
+    async function forget(id) {
+      await fetch("/api/v1/memory/" + encodeURIComponent(id) + "?workspace=" + encodeURIComponent(ws()), {
+        method: "DELETE", headers: headers(), credentials: "include",
+      });
+      reload();
+    }
+    async function reload() {
+      const res = await fetch("/api/v1/memory?workspace=" + encodeURIComponent(ws()), {
+        headers: headers(), credentials: "include",
+      });
+      const body = await res.json().catch(() => ({}));
+      const list = document.getElementById("list");
+      list.innerHTML = "";
+      const items = body.memories || body.items || [];
+      if (!res.ok) {
+        list.textContent = body.error || "Could not load memory";
+        return;
+      }
+      if (!items.length) {
+        list.innerHTML = '<p class="status">Nothing stored yet.</p>';
+        return;
+      }
+      for (const item of items) {
+        const card = document.createElement("div");
+        card.className = "card";
+        const box = document.createElement("textarea");
+        box.rows = 2;
+        box.value = item.content || "";
+        const row = document.createElement("p");
+        const save = document.createElement("button");
+        save.textContent = "Save";
+        save.onclick = () => patch(item.id, { content: box.value });
+        const pin = document.createElement("button");
+        pin.className = "ghost";
+        pin.textContent = item.metadata?.pinned ? "Unpin" : "Pin";
+        pin.style.marginLeft = "0.4rem";
+        pin.onclick = () => patch(item.id, { pinned: !item.metadata?.pinned });
+        const drop = document.createElement("button");
+        drop.className = "ghost";
+        drop.textContent = "Forget";
+        drop.style.marginLeft = "0.4rem";
+        drop.onclick = () => forget(item.id);
+        row.append(save, pin, drop);
+        card.append(box, row);
+        list.append(card);
+      }
+    }
+    document.getElementById("reload").onclick = reload;
+    document.getElementById("ws").onchange = reload;
+    reload();
+  </script>
+</body>
+</html>
