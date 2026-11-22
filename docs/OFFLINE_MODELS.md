@@ -185,9 +185,10 @@ mutate at runtime.
 memory and answers with the catalog engine, which does not call
 `/v1/chat/completions`.
 
-Full weights are a separate step. Vendor a WebLLM build and set
-`window.webllm.CreateMLCEngine` before the page loads. The page then calls
-that factory with the model's `webllmId`. This repository does not download
-those weights and does not add the WebLLM package. Delta sync of GGUF files
-into the browser is still open. The embed widget (`client/embed/widget.js`)
-still talks to the server.
+The page asks before loading weights. The prompt shows the catalog size.
+Nothing is fetched until you confirm, and only when `navigator.gpu` exists.
+Otherwise the page stays on the catalog reply. After consent it imports
+`@mlc-ai/web-llm` in the browser and reports init progress. The library
+caches the weights. A vendored `window.webllm.CreateMLCEngine` is used when
+it is already present. Delta sync of GGUF files is still open. The embed
+widget (`client/embed/widget.js`) still talks to the server.

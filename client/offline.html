@@ -23,6 +23,9 @@
     <h1>Offline chat</h1>
     <p class="status" id="runtime">Answers stay in this page. Catalog mode does not call the server chat API. A vendored WebLLM runtime is used when window.webllm.CreateMLCEngine is present.</p>
     <label>Model <select id="model"></select></label>
+    <p class="status" id="plan"></p>
+    <p class="status" id="progress"></p>
+    <p><button type="button" id="consent" style="display:none">Download weights</button></p>
     <div id="thread"></div>
     <form id="form">
       <label>Message <textarea id="text" rows="3"></textarea></label>
@@ -46,12 +49,25 @@
     }
 
     async function webllmReply(model, history) {
-      const create = window.webllm && window.webllm.CreateMLCEngine;
-      if (typeof create !== "function" || !model.webllmId) return null;
+      if (localStorage.getItem("siskelbot_webllm_consent_" + model.id) !== "1") return null;
+      if (!navigator.gpu || !model.webllmId) return null;
+      let create = window.webllm && window.webllm.CreateMLCEngine;
+      if (typeof create !== "function") {
+        const mod = await import("https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.79/+esm");
+        window.webllm = mod;
+        create = mod.CreateMLCEngine;
+      }
+      if (typeof create !== "function") return null;
       let engine = engines.get(model.id);
       if (!engine) {
-        engine = await create(model.webllmId);
+        engine = await create(model.webllmId, {
+          initProgressCallback(report) {
+            const pct = Math.round(Number(report?.progress || 0) * 100);
+            document.getElementById("progress").textContent = (report?.text || "Loading weights") + " " + pct + "%";
+          },
+        });
         engines.set(model.id, engine);
+        document.getElementById("progress").textContent = "Weights cached in this browser.";
       }
       const out = await engine.chat.completions.create({ messages: history, stream: false });
       return out?.choices?.[0]?.message?.content || "";
@@ -81,14 +97,62 @@
         option.textContent = item.name;
         option.dataset.webllm = item.webllmId || "";
         option.dataset.label = item.name;
+        option.dataset.bytes = String(item.sizeBytes || 0);
         select.append(option);
       }
-      const usingWebllm = Boolean(window.webllm && window.webllm.CreateMLCEngine);
-      document.getElementById("runtime").textContent = usingWebllm
-        ? "WebLLM runtime detected. The first reply loads the selected model in this browser."
-        : "Catalog mode. Replies stay in this page and do not call /v1/chat/completions. Vendor WebLLM and set window.webllm.CreateMLCEngine to use weights.";
+      refreshPlan();
     }
 
+    function mb(bytes) {
+      const n = Number(bytes) || 0;
+      if (n <= 0) return "the model";
+      return Math.max(1, Math.round(n / 1e6)) + " MB";
+    }
+    function selectedModel() {
+      const option = document.getElementById("model").selectedOptions[0];
+      if (!option) return null;
+      return {
+        id: option.value,
+        name: option.dataset.label || option.textContent,
+        webllmId: option.dataset.webllm || "",
+        sizeBytes: Number(option.dataset.bytes || 0),
+      };
+    }
+    function refreshPlan() {
+      const model = selectedModel();
+      const button = document.getElementById("consent");
+      const plan = document.getElementById("plan");
+      if (!model) return;
+      const gpu = Boolean(navigator.gpu);
+      const consent = localStorage.getItem("siskelbot_webllm_consent_" + model.id) === "1";
+      if (!gpu) {
+        button.style.display = "none";
+        plan.textContent = "WebGPU is not available. Answers stay on the catalog reply and no weights are downloaded.";
+        document.getElementById("runtime").textContent = "Catalog fallback. This browser has no WebGPU.";
+        return;
+      }
+      if (!model.webllmId) {
+        button.style.display = "none";
+        plan.textContent = "This model has no in-browser weight build.";
+        return;
+      }
+      if (!consent) {
+        button.style.display = "inline-block";
+        button.textContent = "Download weights (" + mb(model.sizeBytes) + ")";
+        plan.textContent = "Weights stay unloaded until you confirm. After the first download they are cached in this browser.";
+        return;
+      }
+      button.style.display = "none";
+      plan.textContent = "Weights are allowed for " + model.name + " (" + mb(model.sizeBytes) + "). The first reply loads them.";
+    }
+
+    document.getElementById("model").onchange = refreshPlan;
+    document.getElementById("consent").onclick = () => {
+      const model = selectedModel();
+      if (!model) return;
+      localStorage.setItem("siskelbot_webllm_consent_" + model.id, "1");
+      refreshPlan();
+    };
     document.getElementById("form").onsubmit = async (event) => {
       event.preventDefault();
       const input = document.getElementById("text");

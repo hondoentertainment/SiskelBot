@@ -6,8 +6,23 @@ import {
   listBrowserChatModels,
   completeOfflineTurn,
   webllmEngine,
+  webllmLoadPlan,
 } from "../lib/offline-browser-chat.js";
 import { mountOfflineModelsRoutes } from "../routes/offline-models.js";
+
+test("weight download waits for consent and skips browsers without WebGPU", () => {
+  const model = listBrowserChatModels().find((item) => item.id === "tinyllama-1.1b-q4");
+  assert.ok(model.sizeBytes > 0);
+  const noGpu = webllmLoadPlan({ model, webgpuAvailable: false, consent: true });
+  assert.equal(noGpu.mode, "catalog");
+  assert.match(noGpu.reason, /WebGPU/);
+  const ask = webllmLoadPlan({ model, webgpuAvailable: true, consent: false });
+  assert.equal(ask.mode, "consent");
+  assert.equal(ask.bytes, model.sizeBytes);
+  const go = webllmLoadPlan({ model, webgpuAvailable: true, consent: true });
+  assert.equal(go.mode, "webllm");
+  assert.equal(go.webllmId, model.webllmId);
+});
 
 test("browser catalog lists chat models and skips the embedding model", () => {
   const items = listBrowserChatModels();

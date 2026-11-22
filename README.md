@@ -75,7 +75,7 @@ Realtime streaming assistant proxy for Ollama, vLLM, or OpenAI. Node.js proxy th
 - **Governed SQL** -- `query_database` runs a single capped SELECT against a workspace read-only URL. It stays off unless `AGENT_DB_QUERY=1` and the workspace policy enables it. The app database URL is not used.
 - **Policy builder** -- workspace admins edit tool denials, category caps, fetch limits, browser hosts, and SQL on `/policy.html`. Each save is audited.
 - **Browser file transfer** -- agent tools `browser_download_file` and `browser_upload_file` stay off until `BROWSER_FILE_TRANSFER=1` and the workspace policy enables them. Downloads need an allowlist and do not follow redirects. Uploads must stay inside `BROWSER_UPLOAD_ROOT` or `WORKSPACE_ROOT`. New hosts can require approval.
-- **Offline browser chat** -- `/offline.html` chats with a catalog model in the page. Catalog mode does not call the server. A vendored WebLLM runtime is used when `window.webllm.CreateMLCEngine` exists. Weights are not downloaded by the server.
+- **Offline browser chat** -- `/offline.html` chats in the page. Catalog mode does not call the server. WebLLM weights load only after you confirm the size, with progress and browser caching, and only when WebGPU is available.
 - **MCP** -- Model Context Protocol server and client for tool interop
 - **Plugins** -- Marketplace, sandboxed execution, custom actions
 - **Scheduled recipes** -- Cron-based recipe execution with audit logging
