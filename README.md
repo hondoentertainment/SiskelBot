@@ -70,7 +70,7 @@ Realtime streaming assistant proxy for Ollama, vLLM, or OpenAI. Node.js proxy th
 - **Initiative inbox** -- open proposals from the initiative engine on `/advice.html`, with approve and dismiss
 - **Workspace BYOK** -- per-workspace OpenAI, Anthropic, Groq, and OpenRouter keys in the secrets store (`/byok.html`). Stripe live keys stay an operator environment setting.
 - **Workspace MCP** -- attach an HTTPS MCP server per workspace (`/mcp.html`). Tool calls stay off until `WORKSPACE_MCP_ENABLED=1` and the server is enabled, then run under agent policy.
-- **OpenAPI tools** -- import an OpenAPI 3 spec as tools (`/openapi-tools.html`). Bearer auth comes from the secrets store. Calls need `OPENAPI_TOOLS_ENABLED=1`, non-GET also needs `OPENAPI_TOOLS_WRITE=1`, and each host has a per-minute cap.
+- **OpenAPI tools** -- import an OpenAPI 3 spec as tools (`/openapi-tools.html`). Bearer auth comes from the secrets store. Calls need `OPENAPI_TOOLS_ENABLED=1`, non-GET also needs `OPENAPI_TOOLS_WRITE=1` and sends a JSON body built from the operation's requestBody schema, and each host has a per-minute cap.
 - **Governed SQL** -- `query_database` runs a single capped SELECT against a workspace read-only URL. It stays off unless `AGENT_DB_QUERY=1` and the workspace policy enables it. The app database URL is not used.
 - **Policy builder** -- workspace admins edit tool denials, category caps, fetch limits, browser hosts, and SQL on `/policy.html`. Each save is audited.
 - **Browser file transfer** -- `downloadFile` and `uploadFile` stay off until `BROWSER_FILE_TRANSFER=1`. Downloads need an allowlist and do not follow redirects. Uploads must stay inside an allowlisted directory. New hosts can require approval.
