@@ -178,8 +178,11 @@
           <button type="button" id="load-brief" class="ghost">Preview brief</button>
           <button type="button" id="ask-brief" class="ghost">Ask about brief</button>
           <button type="button" id="schedule-brief" class="primary">Schedule daily</button>
+          <button type="button" id="connect-google" class="ghost">Connect Google</button>
+          <button type="button" id="disconnect-google" class="ghost">Disconnect</button>
         </div>
         <p class="status" id="brief-sources" style="margin:0.35rem 0 0;"></p>
+        <p class="status" id="google-status" style="margin:0.35rem 0 0;"></p>
         <p class="status" id="brief-status" style="margin:0.35rem 0 0;"></p>
       </details>
       <details class="panel">
@@ -573,6 +576,48 @@
         : "Morning brief already scheduled.";
       addMsg("sys", st.textContent);
     }
+    async function loadGoogleStatus() {
+      const el = document.getElementById("google-status");
+      const res = await fetch("/api/v1/google/workspace/status", {
+        headers: headers(), credentials: "include",
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        el.textContent = errText(j, "Google status unavailable");
+        return j;
+      }
+      if (j.connected && j.source === "user") {
+        el.textContent = "Google connected" + (j.email ? " as " + j.email : "") + " for this account.";
+      } else if (j.connected && j.source === "env") {
+        el.textContent = "Using the server Google token. Connect your account to use your own mailbox and calendar.";
+      } else if (!j.oauthConfigured) {
+        el.textContent = "Google OAuth is not configured on this server. An operator sets GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.";
+      } else {
+        el.textContent = "Google is not connected for this account.";
+      }
+      return j;
+    }
+    document.getElementById("connect-google").onclick = async () => {
+      const status = await loadGoogleStatus();
+      if (status && status.oauthConfigured === false) return;
+      window.location.href = "/api/v1/google/workspace/connect";
+    };
+    document.getElementById("disconnect-google").onclick = async () => {
+      const res = await fetch("/api/v1/google/workspace/connection", {
+        method: "DELETE", headers: headers(), credentials: "include",
+      });
+      const j = await res.json().catch(() => ({}));
+      const el = document.getElementById("google-status");
+      if (!res.ok) {
+        el.textContent = errText(j, "Disconnect failed");
+        return;
+      }
+      await loadGoogleStatus();
+      await loadBrief();
+    };
+    const googleQuery = new URLSearchParams(window.location.search).get("google");
+    if (googleQuery === "connected") addMsg("sys", "Google Workspace connected for this account.");
+    if (googleQuery === "error") addMsg("sys", "Google connection failed. Try again.");
     document.getElementById("load-brief").onclick = loadBrief;
     document.getElementById("schedule-brief").onclick = scheduleBrief;
     document.getElementById("ask-brief").onclick = async () => {
@@ -619,6 +664,7 @@
     loadPrompt();
     loadThoughts();
     loadBrief();
+    loadGoogleStatus();
   </script>
 </body>
 </html>

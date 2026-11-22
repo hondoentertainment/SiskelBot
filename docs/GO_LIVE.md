@@ -82,12 +82,16 @@ with failing scheduled agents; buttons in Slack resolve them.
 | `ADVICE_BRIEF_CRON` | Cron for morning brief agent (default `0 8 * * *`) |
 | `SCHEDULED_AGENT_WORKSPACES` | Workspaces scanned on `/api/cron` (falls back to `INITIATIVE_WORKSPACES`) |
 | `AGENT_GOOGLE_WORKSPACE=1` | Expose Gmail/Calendar tools |
-| `GOOGLE_WORKSPACE_ACCESS_TOKEN` | User OAuth token (Gmail + Calendar scopes) |
+| `GOOGLE_WORKSPACE_ACCESS_TOKEN` | Fallback token when a user has not connected their own account |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | OAuth client so each user can connect Gmail + Calendar |
+| `GOOGLE_WORKSPACE_CALLBACK_URL` | Optional. Default `{BASE_URL}/api/v1/google/workspace/callback` |
+| `GOOGLE_WORKSPACE_WRITE_SCOPES=1` | Also request send/create scopes (default: readonly) |
 | `AGENT_GOOGLE_HITL=0` | Disable HITL for send/create (default: HITL on) |
 
-**UI:** `/advice.html` — Enable mode, journal, **Preview / Schedule daily** morning brief, install PWA.
-The brief is journal-only until `GOOGLE_WORKSPACE_ACCESS_TOKEN` is set; then preview and the daily run include today's calendar (UTC day) and unread mail from the last two days. Each user gets their own schedule (`ownerUserId`). A legacy schedule with an empty owner can be claimed once; a second user does not replace an owner who is already set. Each run rebuilds that owner's prompt, and calendar, mail, and the closing instructions stay inside the 10k prompt cap.
-**Verify:** `GET /api/v1/advice/brief` (`sources.googleConnected`, `calendar`, `inbox`), `POST /api/v1/advice/brief/schedule`, then `/api/cron` after `nextRun`.
+**UI:** `/advice.html` — Enable mode, journal, **Preview / Schedule daily** morning brief, **Connect Google**, install PWA.
+Each signed-in user stores an OAuth token in the secrets store (`user` / `google_workspace_oauth`). The brief and Gmail/Calendar tools use that token and fall back to `GOOGLE_WORKSPACE_ACCESS_TOKEN`. Readonly scopes are the default. In Google Cloud Console, add the workspace callback as an authorized redirect URI. This is separate from the login callback at `/auth/google/callback`.
+The brief is journal-only until a user token or the env fallback is present; then preview and the daily run include today's calendar (UTC day) and unread mail from the last two days. Each user gets their own schedule (`ownerUserId`). A legacy schedule with an empty owner can be claimed once; a second user does not replace an owner who is already set. Each run rebuilds that owner's prompt, and calendar, mail, and the closing instructions stay inside the 10k prompt cap.
+**Verify:** `GET /api/v1/google/workspace/status` (no token in the body), `GET /api/v1/advice/brief` (`sources.googleConnected`, `calendar`, `inbox`), `POST /api/v1/advice/brief/schedule`, then `/api/cron` after `nextRun`.
 
 ## 5. Cost controls
 
