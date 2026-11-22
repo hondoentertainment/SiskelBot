@@ -72,6 +72,7 @@ Realtime streaming assistant proxy for Ollama, vLLM, or OpenAI. Node.js proxy th
 - **Workspace MCP** -- attach an HTTPS MCP server per workspace (`/mcp.html`). Tool calls stay off until `WORKSPACE_MCP_ENABLED=1` and the server is enabled, then run under agent policy.
 - **OpenAPI tools** -- import an OpenAPI 3 spec as tools (`/openapi-tools.html`). Bearer auth comes from the secrets store. Calls need `OPENAPI_TOOLS_ENABLED=1`, non-GET also needs `OPENAPI_TOOLS_WRITE=1`, and each host has a per-minute cap.
 - **Governed SQL** -- `query_database` runs a single capped SELECT against a workspace read-only URL. It stays off unless `AGENT_DB_QUERY=1` and the workspace policy enables it. The app database URL is not used.
+- **Policy builder** -- workspace admins edit tool denials, category caps, fetch limits, browser hosts, and SQL on `/policy.html`. Each save is audited.
 - **MCP** -- Model Context Protocol server and client for tool interop
 - **Plugins** -- Marketplace, sandboxed execution, custom actions
 - **Scheduled recipes** -- Cron-based recipe execution with audit logging

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Workspace policy</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; }
+    main { max-width: 44rem; margin: 0 auto; padding: 1.25rem; }
+    a { color: #93c5fd; }
+    label { display: block; margin: 0.55rem 0 0.2rem; }
+    input, textarea, button { font: inherit; padding: 0.4rem 0.55rem; border-radius: 6px; }
+    input, textarea { background: #020617; color: #e2e8f0; border: 1px solid #334155; width: 100%; }
+    button { background: #1d4ed8; color: white; border: 0; cursor: pointer; }
+    .status { color: #94a3b8; font-size: 0.9rem; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <p><a href="/">Back</a> · <a href="/openapi-tools.html">OpenAPI</a></p>
+    <h1>Workspace policy</h1>
+    <p class="status">Admins edit tool denials, category caps, fetch limits, browser hosts, and read-only SQL. Saves are audited. Deployment caps still clamp these values at runtime.</p>
+    <label>Workspace <input id="ws" value="default" /></label>
+    <p class="status" id="role"></p>
+    <label>Denied tools (one per line) <textarea id="denied" rows="4"></textarea></label>
+    <div class="grid">
+      <label>Read cap <input id="cap-read" type="number" min="0" /></label>
+      <label>Write cap <input id="cap-write" type="number" min="0" /></label>
+      <label>Network cap <input id="cap-network" type="number" min="0" /></label>
+    </div>
+    <label>Max external fetches <input id="fetches" type="number" min="0" /></label>
+    <label>Browser hosts (one per line) <textarea id="hosts" rows="3"></textarea></label>
+    <label><input id="sql" type="checkbox" /> Allow governed read-only SQL</label>
+    <p><button type="button" id="save">Save policy</button> <button type="button" id="reload">Reload</button></p>
+    <p class="status" id="status"></p>
+    <h2>Recent edits</h2>
+    <ul id="audit"></ul>
+  </main>
+  <script>
+    function headers() {
+      const h = { "Content-Type": "application/json", Accept: "application/json" };
+      const key = localStorage.getItem("siskelbot_api_key");
+      if (key) h.Authorization = "Bearer " + key;
+      return h;
+    }
+    function ws() { return document.getElementById("ws").value.trim() || "default"; }
+    function lines(id) {
+      return document.getElementById(id).value.split("\n").map((s) => s.trim()).filter(Boolean);
+    }
+    async function reload() {
+      const res = await fetch("/api/v1/workspaces/" + encodeURIComponent(ws()) + "/agent-policy", {
+        headers: headers(), credentials: "include",
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        document.getElementById("status").textContent = j.error || "Could not load policy";
+        return;
+      }
+      const p = j.agentPolicy || {};
+      document.getElementById("role").textContent = j.canEdit ? "You can edit this policy." : "You can view this policy. Saving requires a workspace admin.";
+      document.getElementById("save").disabled = !j.canEdit;
+      document.getElementById("denied").value = (p.deniedTools || []).join("\n");
+      document.getElementById("hosts").value = (p.browserAllowedHosts || []).join("\n");
+      document.getElementById("cap-read").value = p.toolCategoryCaps?.read || 0;
+      document.getElementById("cap-write").value = p.toolCategoryCaps?.write || 0;
+      document.getElementById("cap-network").value = p.toolCategoryCaps?.network || 0;
+      document.getElementById("fetches").value = p.maxExternalFetches || 0;
+      document.getElementById("sql").checked = p.sqlQueryEnabled === true;
+      const audit = await fetch("/api/v1/workspaces/" + encodeURIComponent(ws()) + "/agent-policy/audit", {
+        headers: headers(), credentials: "include",
+      });
+      const body = await audit.json().catch(() => ({}));
+      const list = document.getElementById("audit");
+      list.innerHTML = "";
+      for (const edit of body.edits || []) {
+        const li = document.createElement("li");
+        const when = edit.timestamp ? new Date(edit.timestamp).toISOString() : "";
+        li.textContent = when + " · " + (edit.userId || "admin") + " · network cap " +
+          (edit.after?.toolCategoryCaps?.network ?? "—") + " · sql " + (edit.after?.sqlQueryEnabled ? "on" : "off");
+        list.append(li);
+      }
+    }
+    document.getElementById("reload").onclick = reload;
+    document.getElementById("ws").onchange = reload;
+    document.getElementById("save").onclick = async () => {
+      const res = await fetch("/api/v1/workspaces/" + encodeURIComponent(ws()) + "/agent-policy", {
+        method: "PUT", headers: headers(), credentials: "include",
+        body: JSON.stringify({
+          deniedTools: lines("denied"),
+          browserAllowedHosts: lines("hosts"),
+          toolCategoryCaps: {
+            read: Number(document.getElementById("cap-read").value) || 0,
+            write: Number(document.getElementById("cap-write").value) || 0,
+            network: Number(document.getElementById("cap-network").value) || 0,
+          },
+          maxExternalFetches: Number(document.getElementById("fetches").value) || 0,
+          sqlQueryEnabled: document.getElementById("sql").checked,
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      document.getElementById("status").textContent = res.ok ? "Policy saved and audited." : (j.error || "Save failed");
+      if (res.ok) reload();
+    };
+    reload();
+  </script>
+</body>
+</html>
