@@ -68,6 +68,7 @@ Realtime streaming assistant proxy for Ollama, vLLM, or OpenAI. Node.js proxy th
 - **Per-user Google Workspace** -- Gmail and Calendar tokens in the secrets store, with the env token as fallback (`/advice.html`)
 - **Morning brief delivery** -- finished scheduled runs show on `/advice.html`; email, push, and Slack are opt-in
 - **Initiative inbox** -- open proposals from the initiative engine on `/advice.html`, with approve and dismiss
+- **Workspace BYOK** -- per-workspace OpenAI, Anthropic, Groq, and OpenRouter keys in the secrets store (`/byok.html`). Stripe live keys stay an operator environment setting.
 - **MCP** -- Model Context Protocol server and client for tool interop
 - **Plugins** -- Marketplace, sandboxed execution, custom actions
 - **Scheduled recipes** -- Cron-based recipe execution with audit logging

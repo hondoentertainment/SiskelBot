@@ -17,7 +17,7 @@ Set in the production environment (Vercel → Settings → Environment Variables
 
 | Variable | Value |
 |---|---|
-| `STRIPE_SECRET_KEY` | Live secret key (`sk_live_...`) |
+| `STRIPE_SECRET_KEY` | Live secret key (`sk_live_...`). Operator task: paste it in the host environment. The app does not generate or store live Stripe keys, and workspace BYOK does not accept them. |
 | `STRIPE_WEBHOOK_SECRET` | Signing secret for the webhook below |
 | `STRIPE_PRO_PRICE_ID` | Price ID for Pro ($29/mo) |
 | `STRIPE_ENTERPRISE_PRICE_ID` | Price ID for Enterprise |

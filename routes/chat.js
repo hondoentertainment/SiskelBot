@@ -16,6 +16,7 @@ import {
   recordTokens as recordTenantTokens,
 } from "../lib/tenant-quotas.js";
 import { createBillingManager } from "../lib/billing.js";
+import { applyWorkspaceByok } from "../lib/workspace-byok.js";
 
 const ENABLE_PROMPT_GUARD = process.env.ENABLE_PROMPT_GUARD === "1";
 const ENABLE_OUTPUT_GUARD = process.env.ENABLE_OUTPUT_GUARD === "1";
@@ -189,7 +190,12 @@ export default function mountChatRoutes(app, deps) {
         logRouting(requestId, activeBackend, MODEL_ROUTING_CONFIG);
       }
 
-      const config = buildProxyConfig(activeBackend);
+      let config = buildProxyConfig(activeBackend);
+      try {
+        config = await applyWorkspaceByok(config, workspace, activeBackend);
+      } catch (err) {
+        console.warn("[byok] chat config unchanged:", err.message);
+      }
       const url = `${config.baseUrl}${config.path}`;
       let model = req.body?.model || MODEL_PRESETS[activeBackend]?.[0] || "unknown";
 
@@ -639,7 +645,12 @@ export default function mountChatRoutes(app, deps) {
         }
       }
 
-      const config = buildProxyConfig(BACKEND);
+      let config = buildProxyConfig(BACKEND);
+      try {
+        config = await applyWorkspaceByok(config, workspace, BACKEND);
+      } catch (err) {
+        console.warn("[byok] swarm config unchanged:", err.message);
+      }
       const model = req.body?.model || MODEL_PRESETS[BACKEND]?.[0] || "unknown";
       const swarmMaxIter = resolveAgentMaxIterations(req.body?.agentOptions || {}, process.env.MAX_AGENT_ITERATIONS);
       const { content, iteration } = await runSwarm(req, res, config, model, {

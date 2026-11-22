@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Workspace model keys</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; }
+    main { max-width: 40rem; margin: 0 auto; padding: 1.25rem; }
+    a { color: #93c5fd; }
+    label { display: block; margin: 0.6rem 0 0.2rem; }
+    input, select, button { font: inherit; padding: 0.4rem 0.55rem; border-radius: 6px; }
+    input, select { background: #020617; color: #e2e8f0; border: 1px solid #334155; width: 100%; }
+    button { background: #1d4ed8; color: white; border: 0; cursor: pointer; }
+    .row { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.6rem; }
+    .status { color: #94a3b8; font-size: 0.9rem; }
+    li { margin: 0.35rem 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <p><a href="/">Back</a> · <a href="/advice.html">Advice</a></p>
+    <h1>Workspace model keys</h1>
+    <p class="status">Keys are stored encrypted for this workspace and used before the server environment key. They are never shown again after save. Stripe live keys are not entered here.</p>
+    <label>Workspace <input id="ws" value="default" /></label>
+    <ul id="list"></ul>
+    <label>Provider
+      <select id="provider">
+        <option value="openai">OpenAI</option>
+        <option value="anthropic">Anthropic</option>
+        <option value="groq">Groq</option>
+        <option value="openrouter">OpenRouter</option>
+      </select>
+    </label>
+    <label>API key <input id="key" type="password" autocomplete="off" /></label>
+    <div class="row">
+      <button type="button" id="save">Save key</button>
+      <button type="button" id="reload">Reload</button>
+    </div>
+    <p class="status" id="status"></p>
+  </main>
+  <script>
+    const keyInput = document.getElementById("key");
+    function headers() {
+      const h = { "Content-Type": "application/json", Accept: "application/json" };
+      const key = localStorage.getItem("siskelbot_api_key");
+      if (key) h.Authorization = "Bearer " + key;
+      return h;
+    }
+    function ws() { return document.getElementById("ws").value.trim() || "default"; }
+    async function reload() {
+      const res = await fetch("/api/v1/workspaces/" + encodeURIComponent(ws()) + "/byok", {
+        headers: headers(), credentials: "include",
+      });
+      const j = await res.json().catch(() => ({}));
+      const list = document.getElementById("list");
+      list.innerHTML = "";
+      if (!res.ok) {
+        document.getElementById("status").textContent = j.error || "Could not load keys";
+        return;
+      }
+      for (const item of j.items || []) {
+        const li = document.createElement("li");
+        const label = item.configured
+          ? item.provider + " · workspace · ···" + item.last4
+          : item.provider + (item.source === "env" ? " · server environment key" : " · not set");
+        li.textContent = label;
+        if (item.configured) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.textContent = "Remove";
+          btn.style.marginLeft = "0.5rem";
+          btn.onclick = async () => {
+            await fetch("/api/v1/workspaces/" + encodeURIComponent(ws()) + "/byok/" + encodeURIComponent(item.provider), {
+              method: "DELETE", headers: headers(), credentials: "include",
+            });
+            reload();
+          };
+          li.append(btn);
+        }
+        list.append(li);
+      }
+    }
+    document.getElementById("reload").onclick = reload;
+    document.getElementById("ws").onchange = reload;
+    document.getElementById("save").onclick = async () => {
+      const res = await fetch("/api/v1/workspaces/" + encodeURIComponent(ws()) + "/byok", {
+        method: "PUT", headers: headers(), credentials: "include",
+        body: JSON.stringify({ provider: document.getElementById("provider").value, apiKey: keyInput.value }),
+      });
+      const j = await res.json().catch(() => ({}));
+      document.getElementById("status").textContent = res.ok
+        ? "Saved " + j.provider + " ···" + j.last4
+        : (j.error || "Save failed");
+      keyInput.value = "";
+      reload();
+    };
+    reload();
+  </script>
+</body>
+</html>
