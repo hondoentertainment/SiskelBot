@@ -64,12 +64,20 @@ jobs:
           exit 1
 
       - name: Run load test and update baseline
+        env:
+          LOAD_DURATION: ${{ github.event.inputs.duration }}
+          LOAD_CONCURRENCY: ${{ github.event.inputs.concurrency }}
+          LOAD_RPS: ${{ github.event.inputs.rps }}
         run: |
+          set -e
+          case "$LOAD_DURATION" in ''|*[!0-9]*) echo "duration must be digits"; exit 1;; esac
+          case "$LOAD_CONCURRENCY" in ''|*[!0-9]*) echo "concurrency must be digits"; exit 1;; esac
+          case "$LOAD_RPS" in ''|*[!0-9]*) echo "rps must be digits"; exit 1;; esac
           npm run test:load -- \
-            --url=http://127.0.0.1:${{ env.PORT }} \
-            --duration=${{ github.event.inputs.duration }} \
-            --concurrency=${{ github.event.inputs.concurrency }} \
-            --rps=${{ github.event.inputs.rps }} \
+            --url=http://127.0.0.1:${PORT} \
+            --duration="$LOAD_DURATION" \
+            --concurrency="$LOAD_CONCURRENCY" \
+            --rps="$LOAD_RPS" \
             --max-error-rate=1 --max-p99=3000 \
             --json-output=load-results.json \
             --update-baseline=tests/load-baseline.json
