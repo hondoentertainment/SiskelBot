@@ -129,15 +129,16 @@ test("imported tools use the workspace bearer token, cap the host, and block wri
   assert.equal(JSON.parse(blocked.content).code, "OPENAPI_WRITE_DISABLED");
 
   const calls = [];
+  const lookup = async () => [{ address: "93.184.216.34", family: 4 }];
   const fetcher = async (url, opts) => {
     calls.push({ url, auth: opts.headers.Authorization });
     return { ok: true, status: 200, text: async () => "{\"items\":[1]}" };
   };
-  const first = await invokeOpenApiTool(getName, { q: "kit" }, { workspace: "default", workspaceUserId: "ada" }, { fetchImpl: fetcher });
+  const first = await invokeOpenApiTool(getName, { q: "kit" }, { workspace: "default", workspaceUserId: "ada" }, { fetchImpl: fetcher, lookup });
   assert.equal(first.ok, true);
   assert.equal(calls[0].auth, "Bearer partner-secret-token");
   assert.match(calls[0].url, /https:\/\/api\.example\.com\/v1\/items\?q=kit/);
-  await invokeOpenApiTool(getName, {}, { workspace: "default", workspaceUserId: "ada" }, { fetchImpl: fetcher });
+  await invokeOpenApiTool(getName, {}, { workspace: "default", workspaceUserId: "ada" }, { fetchImpl: fetcher, lookup });
   const limited = await invokeOpenApiTool(getName, {}, { workspace: "default", workspaceUserId: "ada" }, { fetchImpl: fetcher });
   assert.equal(JSON.parse(limited.content).code, "HOST_RATE_LIMIT");
   assert.equal(calls.length, 2);
@@ -188,6 +189,7 @@ test("POST sends the JSON request body when writes are enabled", isolate(async (
       sent = { url, method: opts.method, type: opts.headers["Content-Type"], body: opts.body };
       return { ok: true, status: 201, text: async () => "{}" };
     },
+    lookup: async () => [{ address: "93.184.216.34", family: 4 }],
   });
   assert.equal(ok.ok, true);
   assert.equal(sent.method, "POST");

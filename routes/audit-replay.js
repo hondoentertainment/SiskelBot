@@ -8,8 +8,10 @@ import { loadTrajectory } from "../lib/agent-trajectory.js";
 import { sanitizeWorkspace } from "../lib/storage.js";
 
 export function mountAuditReplayRoutes(app, deps) {
-  const { apiRoute, apiError, userAuth, logRequest } = deps;
-  const auth = userAuth || ((_req, _res, next) => next());
+  const { apiRoute, apiError, adminAuth, logRequest } = deps;
+  const auth = adminAuth || ((_req, res) => {
+    res.status(401).json({ error: "Admin access required", code: "ADMIN_REQUIRED" });
+  });
   const log = logRequest || ((_req, _res, next) => next());
 
   apiRoute("get", "/audit/search", log, auth, async (req, res) => {

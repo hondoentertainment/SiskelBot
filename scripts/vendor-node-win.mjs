@@ -9,10 +9,7 @@ import { createWriteStream, mkdirSync, existsSync, copyFileSync, rmSync } from "
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { pipeline } from "stream/promises";
-import { createRequire } from "module";
-
-const require = createRequire(import.meta.url);
-const extractZip = require("extract-zip");
+import { extractZipSafe } from "../lib/safe-unzip.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -44,7 +41,7 @@ async function downloadForArch(arch) {
 
   if (existsSync(extractDir)) rmSync(extractDir, { recursive: true, force: true });
   mkdirSync(extractDir, { recursive: true });
-  await extractZip(zipPath, { dir: extractDir });
+  await extractZipSafe(zipPath, extractDir, { maxFiles: 20000, maxBytes: 500_000_000 });
 
   const inner = join(extractDir, `node-v${VERSION}-win-${arch}`);
   const exe = join(inner, "node.exe");

@@ -16,6 +16,8 @@ test("read-only validator rejects writes, extra statements, and hidden keywords"
   assert.equal(validateReadOnlySelect("SELECT 1 /* DELETE */ ").ok, true);
   assert.equal(validateReadOnlySelect("/* ok */ DELETE FROM notes").ok, false);
   assert.equal(validateReadOnlySelect("SELECT pg_read_file('secret')").ok, false);
+  assert.equal(validateReadOnlySelect("SELECT 1) AS governed_sql").ok, false);
+  assert.equal(validateReadOnlySelect("SELECT dblink_connect('host=127.0.0.1')").ok, false);
   const capped = capSelect("SELECT id FROM notes", 5000);
   assert.match(capped.sql, /LIMIT 200$/);
   assert.equal(capped.maxRows, 200);
