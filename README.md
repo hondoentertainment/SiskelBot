@@ -73,7 +73,8 @@ Realtime streaming assistant proxy for Ollama, vLLM, or OpenAI. Node.js proxy th
 - **OpenAPI tools** -- import an OpenAPI 3 spec as tools (`/openapi-tools.html`). Bearer auth comes from the secrets store. Calls need `OPENAPI_TOOLS_ENABLED=1`, non-GET also needs `OPENAPI_TOOLS_WRITE=1` and sends a JSON body built from the operation's requestBody schema, and each host has a per-minute cap.
 - **Operator setup** -- `/setup.html` checks Google OAuth, SMTP, Slack, and Stripe plus the off-by-default flags. Responses never include secret values.
 - **Governed SQL** -- `query_database` runs a single capped SELECT against a workspace read-only URL. It stays off unless `AGENT_DB_QUERY=1` and the workspace policy enables it. The app database URL is not used.
-- **Policy builder** -- workspace admins edit tool denials, category caps, fetch limits, browser hosts, and SQL on `/policy.html`. Each save is audited.
+- **Policy builder** -- workspace admins edit tool denials, category caps, fetch limits, browser hosts, SQL, and approval-required tools on `/policy.html`. Each save is audited.
+- **Approval queue** -- when `APPROVAL_QUEUE=1`, listed tools pause until someone approves or denies them at `/approvals.html`. Timeouts and decisions are audited. Email and Slack notices need `APPROVAL_NOTIFY=1`.
 - **Browser file transfer** -- agent tools `browser_download_file` and `browser_upload_file` stay off until `BROWSER_FILE_TRANSFER=1` and the workspace policy enables them. Downloads need an allowlist and do not follow redirects. Uploads must stay inside `BROWSER_UPLOAD_ROOT` or `WORKSPACE_ROOT`. New hosts can require approval.
 - **Offline browser chat** -- `/offline.html` chats in the page. Catalog mode does not call the server. WebLLM weights load only after you confirm the size, with progress and browser caching, and only when WebGPU is available.
 - **MCP** -- Model Context Protocol server and client for tool interop
