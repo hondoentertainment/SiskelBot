@@ -82,7 +82,7 @@ Realtime streaming assistant proxy for Ollama, vLLM, or OpenAI. Node.js proxy th
 - **Scheduled recipes** -- Cron-based recipe execution with audit logging
 - **Scheduled agents** -- any prompt can run on a cron schedule, with run history. Failure alerts stay off until `SCHEDULED_RUN_ALERTS=1`, then use `SCHEDULED_ALERT_EMAIL` and Slack.
 - **Real-time sync** -- WebSocket presence and live notifications
-- **Admin dashboard** -- Users, workspaces, quotas, usage, audit log
+- **Admin dashboard** -- Users, workspaces, quotas, usage, audit log. `/usage.html` shows tokens and estimated spend by user, model, and BYOK key. `USER_BUDGET_USD` warns at 80% and can block chat.. `/usage.html` shows tokens and estimated spend by user, model, and BYOK key. `USER_BUDGET_USD` warns at 80% and can block chat.
 - **Observability** -- OpenTelemetry, Prometheus metrics, Grafana dashboards
 - **PWA** -- Service worker, offline support, installable
 - **Desktop app** -- Electron wrapper for Windows, macOS, Linux

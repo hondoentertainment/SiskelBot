@@ -88,6 +88,19 @@ export default function mountChatRoutes(app, deps) {
     try {
       const workspace = req.body?.agentOptions?.workspace || "default";
       const userId = req.userId || null;
+      if (process.env.USER_BUDGET_USD) {
+        const { userBudgetStatus } = await import("../lib/usage-dashboard.js");
+        const budget = await userBudgetStatus(userId || "anonymous");
+        if (budget.state === "block") {
+          return res.status(429).json({
+            error: "User budget exceeded",
+            code: "USER_BUDGET_EXCEEDED",
+            spentUsd: budget.spentUsd,
+            limitUsd: budget.limitUsd,
+          });
+        }
+        if (budget.state === "warn") res.setHeader("X-Budget-Warning", "approaching");
+      }
 
       // Per-tenant rate/token quota check (lib/tenant-quotas.js)
       try {
@@ -362,7 +375,7 @@ export default function mountChatRoutes(app, deps) {
         outputTokens = estimate.outputFromChars(content?.length || 0);
         recordTokensUsed(inputTokens, outputTokens);
         try { recordTenantTokens(workspace, (inputTokens || 0) + (outputTokens || 0)); } catch (_) {}
-        await recordUsage({ timestamp: new Date().toISOString(), model, inputTokens, outputTokens, backend: BACKEND, workspace, userId }).catch(() => {});
+        await recordUsage({ timestamp: new Date().toISOString(), model, inputTokens, outputTokens, backend: BACKEND, workspace, userId, byok: config.byokProvider }).catch(() => {});
         await recordBillingUsage(workspace, inputTokens, outputTokens, model);
 
         // Phase 26: Output guard — check response safety

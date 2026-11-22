@@ -55,6 +55,7 @@ import { mountEvalRoutes } from "./eval.js";
 import { mountCollaborationRoutes } from "./collaboration.js";
 import { mountPresenceRoutes } from "./presence.js";
 import mountUsageRoutes from "./usage.js";
+import { mountUsageDashboardRoutes } from "./usage-dashboard.js";
 import { mountAnalyticsRoutes } from "./analytics.js";
 import { mountBackupRoutes } from "./backup.js";
 import mountMultimodalRoutes from "./multimodal.js";
@@ -193,6 +194,7 @@ const mountFunctions = [
 
   // SUPPORTING — observability for users
   mountUsageRoutes,
+  mountUsageDashboardRoutes,
   mountAnalyticsRoutes,
   mountBackupRoutes,
   mountMultimodalRoutes,
