@@ -80,6 +80,7 @@ Realtime streaming assistant proxy for Ollama, vLLM, or OpenAI. Node.js proxy th
 - **MCP** -- Model Context Protocol server and client for tool interop
 - **Plugins** -- Marketplace, sandboxed execution, custom actions
 - **Scheduled recipes** -- Cron-based recipe execution with audit logging
+- **Scheduled agents** -- any prompt can run on a cron schedule, with run history. Failure alerts stay off until `SCHEDULED_RUN_ALERTS=1`, then use `SCHEDULED_ALERT_EMAIL` and Slack.
 - **Real-time sync** -- WebSocket presence and live notifications
 - **Admin dashboard** -- Users, workspaces, quotas, usage, audit log
 - **Observability** -- OpenTelemetry, Prometheus metrics, Grafana dashboards
