@@ -290,13 +290,22 @@ test("extractTable returns an array for mock driver", async () => {
   await page.close();
 });
 
-test("downloadFile and uploadFile return deterministic mock results", async () => {
+test("downloadFile and uploadFile stay disabled until BROWSER_FILE_TRANSFER=1", async () => {
+  const prev = process.env.BROWSER_FILE_TRANSFER;
+  delete process.env.BROWSER_FILE_TRANSFER;
   const { page } = await openPage("https://example.com/", { driver: "mock" });
-  const dl = await downloadFile(page, "https://example.com/file.zip");
-  assert.equal(dl.ok, true);
-  const up = await uploadFile(page, "input[type=file]", "/tmp/x");
-  assert.equal(up.ok, true);
-  await page.close();
+  try {
+    const dl = await downloadFile(page, "https://example.com/file.zip");
+    assert.equal(dl.ok, false);
+    assert.equal(dl.code, "BROWSER_FILE_TRANSFER_DISABLED");
+    const up = await uploadFile(page, "input[type=file]", "/tmp/x");
+    assert.equal(up.ok, false);
+    assert.equal(up.code, "BROWSER_FILE_TRANSFER_DISABLED");
+  } finally {
+    if (prev === undefined) delete process.env.BROWSER_FILE_TRANSFER;
+    else process.env.BROWSER_FILE_TRANSFER = prev;
+    await page.close();
+  }
 });
 
 test("downloadFile rejects disallowed URLs", async () => {
