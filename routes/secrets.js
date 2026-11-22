@@ -1,4 +1,5 @@
 import { setSecret, listSecrets, deleteSecret } from "../lib/secrets-store.js";
+import { getWorkspaceAgentAccess, canEditWorkspaceAgentSettings } from "../lib/workspace-agent-settings.js";
 
 const VALID_SCOPE_TYPES = new Set(["org", "workspace", "session"]);
 
@@ -8,9 +9,26 @@ export function mountSecretsRoutes(app, deps) {
   const handlers = [logRequest];
   if (isAuthConfigured()) handlers.push(userAuth);
 
+  async function scopeAllowed(req, scopeType, scopeId, write) {
+    if (!isAuthConfigured()) return true;
+    const userId = req.userId;
+    if (!userId || userId === "anonymous") return false;
+    if (scopeType === "workspace") {
+      const gate = await getWorkspaceAgentAccess(userId, scopeId);
+      if (!gate.allowed) return false;
+      return write ? canEditWorkspaceAgentSettings(gate.role) : true;
+    }
+    if (scopeType === "session") return scopeId === userId;
+    const admins = new Set(String(process.env.QUOTA_ADMIN_USER_IDS || "").split(",").map((s) => s.trim()).filter(Boolean));
+    return admins.has(userId);
+  }
+
   apiRoute("post", "/secrets", ...handlers, async (req, res) => {
     try {
       const { scopeType, scopeId, name, value, description } = req.body || {};
+      if (scopeType && scopeId && !(await scopeAllowed(req, scopeType, scopeId, true))) {
+        return apiError(res, 403, "FORBIDDEN", "Secret scope is not available to this user", null);
+      }
       if (!scopeType || !VALID_SCOPE_TYPES.has(scopeType)) {
         return apiError(res, 400, "INVALID_INPUT", "scopeType must be org, workspace, or session", null);
       }
@@ -42,6 +60,9 @@ export function mountSecretsRoutes(app, deps) {
       if (!scopeId || typeof scopeId !== "string") {
         return apiError(res, 400, "INVALID_INPUT", "scopeId required", null);
       }
+      if (!(await scopeAllowed(req, scopeType, scopeId, false))) {
+        return apiError(res, 403, "FORBIDDEN", "Secret scope is not available to this user", null);
+      }
       const items = await listSecrets(scopeType, scopeId);
       res.json({ _version: 1, items });
     } catch (err) {
@@ -61,6 +82,9 @@ export function mountSecretsRoutes(app, deps) {
       }
       if (!name) {
         return apiError(res, 400, "INVALID_INPUT", "name param required", null);
+      }
+      if (!(await scopeAllowed(req, scopeType, scopeId, true))) {
+        return apiError(res, 403, "FORBIDDEN", "Secret scope is not available to this user", null);
       }
       const result = await deleteSecret(scopeType, scopeId, name);
       if (!result.deleted) return apiError(res, 404, "NOT_FOUND", "Secret not found", null);

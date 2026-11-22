@@ -12,7 +12,8 @@
  * POST /api/v1/billing/checkout      — create Stripe Checkout Session (auth required)
  * POST /api/v1/billing/webhook       — Stripe webhook (raw body, signature verified)
  */
-import { createBillingManager, createCheckoutSession, createPortalSession, handleWebhookEvent, getWorkspaceSubscription, getPlanCatalog, writeTenantBillingPlanToStorage } from "../lib/billing.js";
+import { createBillingManager, createCheckoutSession, createPortalSession, handleWebhookEvent, getWorkspaceSubscription, getPlanCatalog, writeTenantBillingPlanToStorage, billingReturnUrl } from "../lib/billing.js";
+import { getWorkspaceAgentAccess, canEditWorkspaceAgentSettings } from "../lib/workspace-agent-settings.js";
 import { listPlans, getPlan, setPlan } from "../lib/plans.js";
 import express from "express";
 import { join } from "path";
@@ -44,12 +45,32 @@ export function mountBillingRoutes(app, deps) {
   });
 
   const limiter = storageRateLimiter || ((req, res, next) => next());
+  const auth = userAuth || ((_req, _res, next) => next());
   const billing = createBillingManager();
 
+  async function canRead(req, res, workspace) {
+    const gate = await getWorkspaceAgentAccess(req.userId || "anonymous", workspace);
+    if (!gate.allowed) {
+      apiError(res, 403, "FORBIDDEN", "Workspace not found or access denied");
+      return false;
+    }
+    return true;
+  }
+
+  async function canWrite(req, res, workspace) {
+    const gate = await getWorkspaceAgentAccess(req.userId || "anonymous", workspace);
+    if (!gate.allowed || !canEditWorkspaceAgentSettings(gate.role)) {
+      apiError(res, 403, "FORBIDDEN", "Workspace editor role required");
+      return false;
+    }
+    return true;
+  }
+
   // GET /api/v1/billing/usage?workspace=X&period=30d
-  apiRoute("get", "/billing/usage", limiter, logRequest, async (req, res) => {
+  apiRoute("get", "/billing/usage", limiter, auth, logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
+      if (!(await canRead(req, res, workspace))) return;
       const period = req.query?.period || "30d";
       const summary = await billing.getUsageSummary(workspace, period);
       res.json(summary);
@@ -59,9 +80,10 @@ export function mountBillingRoutes(app, deps) {
   });
 
   // GET /api/v1/billing/invoice?workspace=X&period=2026-03
-  apiRoute("get", "/billing/invoice", limiter, logRequest, async (req, res) => {
+  apiRoute("get", "/billing/invoice", limiter, auth, logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
+      if (!(await canRead(req, res, workspace))) return;
       const period = req.query?.period || undefined;
       const invoice = await billing.getInvoice(workspace, period);
       res.json(invoice);
@@ -82,9 +104,10 @@ export function mountBillingRoutes(app, deps) {
   });
 
   // GET /api/v1/billing/plan?workspace=X — current plan
-  apiRoute("get", "/billing/plan", limiter, logRequest, async (req, res) => {
+  apiRoute("get", "/billing/plan", limiter, auth, logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.query?.workspace);
+      if (!(await canRead(req, res, workspace))) return;
       const plan = await getPlan(workspace);
       res.json({ workspaceId: workspace, plan });
     } catch (err) {
@@ -93,9 +116,10 @@ export function mountBillingRoutes(app, deps) {
   });
 
   // PUT /api/v1/billing/plan — change plan
-  apiRoute("put", "/billing/plan", limiter, logRequest, async (req, res) => {
+  apiRoute("put", "/billing/plan", limiter, auth, logRequest, async (req, res) => {
     try {
       const workspace = sanitizeWorkspace(req.body?.workspace);
+      if (!(await canWrite(req, res, workspace))) return;
       const planId = req.body?.planId;
 
       if (!planId || typeof planId !== "string") {
@@ -121,6 +145,7 @@ export function mountBillingRoutes(app, deps) {
   apiRoute("get", "/billing/subscription", userAuth, logRequest, async (req, res) => {
     try {
       const workspaceId = sanitizeWorkspace(req.query?.workspace || req.body?.workspaceId || "default");
+      if (!(await canRead(req, res, workspaceId))) return;
       const subscription = await getWorkspaceSubscription(workspaceId);
       res.json({ workspaceId, subscription });
     } catch (err) {
@@ -133,9 +158,13 @@ export function mountBillingRoutes(app, deps) {
     try {
       const { planId, workspaceId: bodyWs } = req.body || {};
       const baseUrl = process.env.APP_BASE_URL || "";
-      const successUrl = req.body?.successUrl || `${baseUrl}/billing/success`;
-      const cancelUrl = req.body?.cancelUrl || `${baseUrl}/billing/cancel`;
+      const successUrl = billingReturnUrl(req.body?.successUrl || `${baseUrl}/billing/success`, baseUrl);
+      const cancelUrl = billingReturnUrl(req.body?.cancelUrl || `${baseUrl}/billing/cancel`, baseUrl);
+      if (!successUrl || !cancelUrl) {
+        return apiError(res, 400, "INVALID_INPUT", "successUrl and cancelUrl must stay on APP_BASE_URL");
+      }
       const workspaceId = sanitizeWorkspace(bodyWs || "default");
+      if (!(await canWrite(req, res, workspaceId))) return;
       const userId = req.userId || "anonymous";
       const userEmail = req.user?.email || req.userEmail || undefined;
 
@@ -170,10 +199,11 @@ export function mountBillingRoutes(app, deps) {
         return apiError(res, 503, "STRIPE_DISABLED", "Stripe is not configured on this server");
       }
       const workspaceId = sanitizeWorkspace(req.body?.workspaceId || "default");
+      if (!(await canWrite(req, res, workspaceId))) return;
       const baseUrl = process.env.APP_BASE_URL || "";
-      const returnUrl = req.body?.returnUrl || `${baseUrl}/billing`;
+      const returnUrl = billingReturnUrl(req.body?.returnUrl || `${baseUrl}/billing`, baseUrl);
       if (!returnUrl) {
-        return apiError(res, 400, "INVALID_INPUT", "returnUrl is required (or set APP_BASE_URL)");
+        return apiError(res, 400, "INVALID_INPUT", "returnUrl must stay on APP_BASE_URL");
       }
       const subscription = await getWorkspaceSubscription(workspaceId);
       if (!subscription.stripeCustomerId) {
@@ -201,7 +231,15 @@ export function mountBillingRoutes(app, deps) {
         return res.status(400).json({ error: "Missing stripe-signature header" });
       }
       try {
-        const result = await handleWebhookEvent(req.body, signature, { storage });
+        const payload = Buffer.isBuffer(req.rawBody)
+          ? req.rawBody
+          : Buffer.isBuffer(req.body)
+            ? req.body
+            : null;
+        if (!payload) {
+          return res.status(400).json({ error: "Webhook body must be the raw payload" });
+        }
+        const result = await handleWebhookEvent(payload, signature, { storage });
         res.json({ received: true, ...result });
       } catch (err) {
         const msg = err.message || "Webhook processing failed";

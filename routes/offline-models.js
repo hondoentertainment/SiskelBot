@@ -21,8 +21,11 @@ import {
 import { listBrowserChatModels } from "../lib/offline-browser-chat.js";
 
 export function mountOfflineModelsRoutes(app, deps) {
-  const { apiRoute, apiError } = deps;
+  const { apiRoute, apiError, adminAuth } = deps;
   const limiter = deps.storageRateLimiter || ((_req, _res, next) => next());
+  const admin = adminAuth || ((_req, res) => {
+    res.status(401).json({ error: "Admin access required", code: "ADMIN_REQUIRED" });
+  });
 
   // GET /api/v1/models/offline/browser — chat models that can run in the page
   apiRoute("get", "/models/offline/browser", limiter, async (_req, res) => {
@@ -76,7 +79,7 @@ export function mountOfflineModelsRoutes(app, deps) {
 
   // POST /api/v1/models/offline/:id/download
   // Streams progress as Server-Sent Events when Accept: text/event-stream.
-  apiRoute("post", "/models/offline/:id/download", limiter, async (req, res) => {
+  apiRoute("post", "/models/offline/:id/download", limiter, admin, async (req, res) => {
     const id = req.params.id;
     if (!OFFLINE_MODELS[id]) {
       return apiError(res, 404, "NOT_FOUND", `unknown model: ${id}`);
@@ -134,7 +137,7 @@ export function mountOfflineModelsRoutes(app, deps) {
   });
 
   // GET /api/v1/models/offline/:id/verify
-  apiRoute("get", "/models/offline/:id/verify", limiter, async (req, res) => {
+  apiRoute("get", "/models/offline/:id/verify", limiter, admin, async (req, res) => {
     try {
       const result = await verifyModelIntegrity(req.params.id);
       res.json({ _version: 1, id: req.params.id, ...result });
@@ -144,7 +147,7 @@ export function mountOfflineModelsRoutes(app, deps) {
   });
 
   // DELETE /api/v1/models/offline/:id
-  apiRoute("delete", "/models/offline/:id", limiter, async (req, res) => {
+  apiRoute("delete", "/models/offline/:id", limiter, admin, async (req, res) => {
     try {
       const result = await deleteDownloadedModel(req.params.id);
       res.json({ _version: 1, id: req.params.id, ...result });
