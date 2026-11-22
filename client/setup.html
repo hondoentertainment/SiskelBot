@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Operator setup</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; }
+    main { max-width: 44rem; margin: 0 auto; padding: 1.25rem; }
+    a { color: #93c5fd; }
+    .card { border: 1px solid #334155; border-radius: 10px; padding: 0.8rem 1rem; margin: 0.6rem 0; }
+    .state { font-weight: 700; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.04em; }
+    .missing, .error { color: #fca5a5; }
+    .configured, .on { color: #fde68a; }
+    .working, .off { color: #86efac; }
+    .detail { color: #94a3b8; margin: 0.25rem 0 0; }
+    button { font: inherit; background: #1d4ed8; color: white; border: 0; border-radius: 6px; padding: 0.4rem 0.7rem; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <main>
+    <p><a href="/">Back</a> · <a href="/policy.html">Policy</a></p>
+    <h1>Operator setup</h1>
+    <p class="detail">Live checks for Google OAuth, email, Slack, and Stripe. Secret values are not shown. Risky flags stay off until you enable them in the host environment.</p>
+    <p><button type="button" id="reload">Check again</button></p>
+    <div id="checks"></div>
+    <h2>Flags</h2>
+    <div id="flags"></div>
+    <p class="detail" id="status"></p>
+  </main>
+  <script>
+    function headers() {
+      const h = { Accept: "application/json" };
+      const key = localStorage.getItem("siskelbot_api_key");
+      if (key) h.Authorization = "Bearer " + key;
+      return h;
+    }
+    function card(item) {
+      const el = document.createElement("div");
+      el.className = "card";
+      const state = document.createElement("div");
+      state.className = "state " + item.state;
+      state.textContent = item.state;
+      const title = document.createElement("strong");
+      title.textContent = " " + item.label;
+      const detail = document.createElement("p");
+      detail.className = "detail";
+      detail.textContent = item.detail || "";
+      el.append(state, title, detail);
+      return el;
+    }
+    async function reload() {
+      const res = await fetch("/api/v1/admin/setup", { headers: headers(), credentials: "include" });
+      const body = await res.json().catch(() => ({}));
+      const checks = document.getElementById("checks");
+      const flags = document.getElementById("flags");
+      checks.innerHTML = "";
+      flags.innerHTML = "";
+      if (!res.ok) {
+        document.getElementById("status").textContent = body.error || "Setup check failed";
+        return;
+      }
+      for (const item of body.checks || []) checks.append(card(item));
+      for (const item of body.flags || []) flags.append(card(item));
+      document.getElementById("status").textContent = "Checked " + new Date().toLocaleTimeString() + ".";
+    }
+    document.getElementById("reload").onclick = reload;
+    reload();
+  </script>
+</body>
+</html>
