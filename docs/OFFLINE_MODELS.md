@@ -177,3 +177,17 @@ To add a new model to the catalog:
 The catalog is intentionally a static map (not a database) so it ships with
 the source. This means upgrades are reproducible and there is nothing to
 mutate at runtime.
+
+## In-browser chat
+
+`/offline.html` lists chat models from `GET /api/v1/models/offline/browser`
+(the same catalog, chat capability only). The page keeps the transcript in
+memory and answers with the catalog engine, which does not call
+`/v1/chat/completions`.
+
+Full weights are a separate step. Vendor a WebLLM build and set
+`window.webllm.CreateMLCEngine` before the page loads. The page then calls
+that factory with the model's `webllmId`. This repository does not download
+those weights and does not add the WebLLM package. Delta sync of GGUF files
+into the browser is still open. The embed widget (`client/embed/widget.js`)
+still talks to the server.

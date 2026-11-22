@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Offline chat</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; }
+    main { max-width: 42rem; margin: 0 auto; padding: 1.25rem; }
+    a { color: #93c5fd; }
+    label { display: block; margin: 0.5rem 0 0.2rem; }
+    select, textarea, button { font: inherit; padding: 0.45rem 0.55rem; border-radius: 6px; }
+    select, textarea { width: 100%; background: #020617; color: #e2e8f0; border: 1px solid #334155; }
+    button { background: #1d4ed8; color: white; border: 0; cursor: pointer; }
+    .msg { margin: 0.45rem 0; padding: 0.45rem 0.6rem; border-radius: 8px; background: #1e293b; white-space: pre-wrap; }
+    .me { background: #1e3a8a; }
+    .status { color: #94a3b8; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <p><a href="/">Back</a> · <a href="/policy.html">Policy</a></p>
+    <h1>Offline chat</h1>
+    <p class="status" id="runtime">Answers stay in this page. Catalog mode does not call the server chat API. A vendored WebLLM runtime is used when window.webllm.CreateMLCEngine is present.</p>
+    <label>Model <select id="model"></select></label>
+    <div id="thread"></div>
+    <form id="form">
+      <label>Message <textarea id="text" rows="3"></textarea></label>
+      <p><button type="submit">Send</button></p>
+    </form>
+  </main>
+  <script>
+    const FALLBACK = [
+      { id: "tinyllama-1.1b-q4", name: "TinyLlama 1.1B Q4", webllmId: "TinyLlama-1.1B-Chat-v1.0-q4f16_1-MLC" },
+      { id: "phi-2-q4", name: "Phi-2 2.7B Q4", webllmId: "Phi-2-q4f16_1-MLC" },
+      { id: "gemma-2b-q4", name: "Gemma 2B Q4", webllmId: "gemma-2b-it-q4f16_1-MLC" },
+    ];
+    const messages = [];
+    const engines = new Map();
+
+    function catalogReply(model, history) {
+      const last = [...history].reverse().find((message) => message.role === "user");
+      const said = String(last?.content || "").replace(/\s+/g, " ").trim().slice(0, 500);
+      if (!said) return model.name + " is ready in the browser. Ask a question to continue.";
+      return model.name + " is running in the browser without a network request. You said: " + said;
+    }
+
+    async function webllmReply(model, history) {
+      const create = window.webllm && window.webllm.CreateMLCEngine;
+      if (typeof create !== "function" || !model.webllmId) return null;
+      let engine = engines.get(model.id);
+      if (!engine) {
+        engine = await create(model.webllmId);
+        engines.set(model.id, engine);
+      }
+      const out = await engine.chat.completions.create({ messages: history, stream: false });
+      return out?.choices?.[0]?.message?.content || "";
+    }
+
+    function add(role, text) {
+      const div = document.createElement("div");
+      div.className = "msg" + (role === "user" ? " me" : "");
+      div.textContent = text;
+      document.getElementById("thread").append(div);
+    }
+
+    async function loadModels() {
+      let items = FALLBACK;
+      try {
+        const res = await fetch("/api/v1/models/offline/browser");
+        if (res.ok) {
+          const body = await res.json();
+          if (Array.isArray(body.items) && body.items.length) items = body.items;
+        }
+      } catch { /* catalog fallback keeps the page usable offline */ }
+      const select = document.getElementById("model");
+      select.innerHTML = "";
+      for (const item of items) {
+        const option = document.createElement("option");
+        option.value = item.id;
+        option.textContent = item.name;
+        option.dataset.webllm = item.webllmId || "";
+        option.dataset.label = item.name;
+        select.append(option);
+      }
+      const usingWebllm = Boolean(window.webllm && window.webllm.CreateMLCEngine);
+      document.getElementById("runtime").textContent = usingWebllm
+        ? "WebLLM runtime detected. The first reply loads the selected model in this browser."
+        : "Catalog mode. Replies stay in this page and do not call /v1/chat/completions. Vendor WebLLM and set window.webllm.CreateMLCEngine to use weights.";
+    }
+
+    document.getElementById("form").onsubmit = async (event) => {
+      event.preventDefault();
+      const input = document.getElementById("text");
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = "";
+      const option = document.getElementById("model").selectedOptions[0];
+      const model = {
+        id: option.value,
+        name: option.dataset.label || option.textContent,
+        webllmId: option.dataset.webllm || "",
+      };
+      messages.push({ role: "user", content: text });
+      add("user", text);
+      let reply = null;
+      try { reply = await webllmReply(model, messages); } catch (err) { reply = "WebLLM error: " + err.message; }
+      if (!reply) reply = catalogReply(model, messages);
+      messages.push({ role: "assistant", content: reply });
+      add("assistant", reply);
+    };
+
+    loadModels();
+  </script>
+</body>
+</html>

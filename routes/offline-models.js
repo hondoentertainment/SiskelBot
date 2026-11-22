@@ -18,10 +18,27 @@ import {
   getModelRecommendations,
   OFFLINE_MODELS,
 } from "../lib/offline-models.js";
+import { listBrowserChatModels } from "../lib/offline-browser-chat.js";
 
 export function mountOfflineModelsRoutes(app, deps) {
   const { apiRoute, apiError } = deps;
   const limiter = deps.storageRateLimiter || ((_req, _res, next) => next());
+
+  // GET /api/v1/models/offline/browser — chat models that can run in the page
+  apiRoute("get", "/models/offline/browser", limiter, async (_req, res) => {
+    try {
+      const items = listBrowserChatModels();
+      res.json({
+        _version: 1,
+        items,
+        total: items.length,
+        runtime: "catalog",
+        webllm: "optional",
+      });
+    } catch (err) {
+      return apiError(res, 500, "INTERNAL_ERROR", err.message, "See docs/OFFLINE_MODELS.md.");
+    }
+  });
 
   // GET /api/v1/models/offline/available
   apiRoute("get", "/models/offline/available", limiter, async (_req, res) => {
