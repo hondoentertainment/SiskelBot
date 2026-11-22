@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { readFileSync, writeFileSync } from "node:fs";
 import { captureThought, enableAdviceMode } from "../lib/advice-companion.js";
-import { buildMorningBrief, ensureMorningBriefSchedule, MORNING_BRIEF_AGENT_NAME } from "../lib/advice-brief.js";
+import { buildMorningBrief, ensureMorningBriefSchedule, MORNING_BRIEF_AGENT_NAME, MORNING_BRIEF_PROMPT_MAX } from "../lib/advice-brief.js";
 import { createScheduledAgent, listScheduledAgents, runDueScheduledAgents } from "../lib/scheduled-agents.js";
 import {
   googleWorkspaceConfigured,
@@ -116,6 +116,49 @@ describe("advice morning brief", () => {
     assert.match(agent.prompt, /Call the design partner before noon/);
     assert.equal(agent.prompt.includes("ANON-ONLY-MARKER"), false);
     assert.equal(agent.prompt.includes("stale prompt from schedule creation"), false);
+  });
+
+  it("does not replace another user's morning brief", async () => {
+    const shared = "brief-shared";
+    const alice = await ensureMorningBriefSchedule(shared, { userId: "alice" });
+    const bob = await ensureMorningBriefSchedule(shared, { userId: "bob" });
+    assert.equal(alice.created, true);
+    assert.equal(bob.created, true);
+    assert.notEqual(alice.agent.id, bob.agent.id);
+    assert.equal(alice.agent.ownerUserId, "alice");
+    assert.equal(bob.agent.ownerUserId, "bob");
+    const again = await ensureMorningBriefSchedule(shared, { userId: "alice" });
+    assert.equal(again.created, false);
+    assert.equal(again.agent.id, alice.agent.id);
+    assert.equal(again.agent.ownerUserId, "alice");
+  });
+
+  it("keeps calendar and mail in the prompt when the journal is long", async () => {
+    const longUser = "brief-long";
+    const longWs = "brief-long-ws";
+    for (let i = 0; i < 8; i++) {
+      await captureThought(longUser, longWs, {
+        content: `THOUGHT-${i}-` + "x".repeat(1500),
+        kind: "reminder",
+        resurfaceAt: new Date(Date.now() - 1000).toISOString(),
+      });
+    }
+    const brief = await buildMorningBrief(longUser, longWs, {
+      calendarListEvents: async () => ({
+        ok: true,
+        events: [{ id: "e1", summary: "Standup", start: "2026-11-22T09:00:00-08:00" }],
+      }),
+      gmailListMessages: async () => ({
+        ok: true,
+        messages: [{ id: "m1", from: "Ada", subject: "KEEP-MAIL-SUBJECT" }],
+      }),
+    });
+    assert.ok(brief.promptForAgent.length <= MORNING_BRIEF_PROMPT_MAX);
+    assert.match(brief.promptForAgent, /09:00 Standup/);
+    assert.match(brief.promptForAgent, /KEEP-MAIL-SUBJECT/);
+    assert.match(brief.promptForAgent, /Do not invent meetings/);
+    assert.match(brief.text, /THOUGHT-0-/);
+    assert.ok(brief.text.length > brief.promptForAgent.length);
   });
 });
 
