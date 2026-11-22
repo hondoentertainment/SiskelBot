@@ -194,6 +194,11 @@
         <p class="status" id="google-status" style="margin:0.35rem 0 0;"></p>
         <p class="status" id="brief-status" style="margin:0.35rem 0 0;"></p>
       </details>
+      <details class="panel" open>
+        <summary>Initiative inbox</summary>
+        <div id="initiative-inbox"><p class="status">No open proposals.</p></div>
+        <button type="button" id="reload-initiatives" class="ghost">Refresh proposals</button>
+      </details>
       <details class="panel">
         <summary>View system prompt</summary>
         <pre id="prompt-preview">—</pre>
@@ -666,6 +671,67 @@
         ? "Delivery saved. Email, push, and Slack stay off until you turn them on."
         : errText(j, "Could not save delivery");
     };
+    function renderInitiatives(items) {
+      const root = document.getElementById("initiative-inbox");
+      root.innerHTML = "";
+      if (!items.length) {
+        root.innerHTML = '<p class="status">No open proposals.</p>';
+        return;
+      }
+      for (const item of items) {
+        const card = document.createElement("div");
+        card.className = "thought";
+        const title = document.createElement("div");
+        title.textContent = item.title || "Proposal";
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        meta.textContent = (item.status || "pending") + " · " + (item.category || "investigate") +
+          (item.confidence != null ? " · confidence " + item.confidence : "");
+        const why = document.createElement("div");
+        why.textContent = item.rationale || "";
+        const row = document.createElement("div");
+        row.className = "row";
+        const approve = document.createElement("button");
+        approve.type = "button";
+        approve.className = "primary";
+        approve.textContent = "Approve";
+        const dismiss = document.createElement("button");
+        dismiss.type = "button";
+        dismiss.className = "ghost";
+        dismiss.textContent = "Dismiss";
+        const act = async (path) => {
+          const res = await fetch("/api/v1/initiatives/" + encodeURIComponent(item.id) + "/" + path, {
+            method: "POST",
+            headers: { ...headers(), "X-Workspace-Id": ws() },
+            credentials: "include",
+            body: JSON.stringify({ workspaceId: ws() }),
+          });
+          if (!res.ok) {
+            const j = await res.json().catch(() => ({}));
+            addMsg("sys", errText(j, "Could not update proposal"));
+            return;
+          }
+          await loadInitiatives();
+        };
+        approve.onclick = () => act("approve");
+        dismiss.onclick = () => act("dismiss");
+        row.append(approve, dismiss);
+        card.append(title, meta, why, row);
+        root.append(card);
+      }
+    }
+    async function loadInitiatives() {
+      const res = await fetch("/api/v1/advice/initiatives?workspace=" + encodeURIComponent(ws()), {
+        headers: headers(), credentials: "include",
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        document.getElementById("initiative-inbox").textContent = errText(j, "Could not load proposals");
+        return;
+      }
+      renderInitiatives(j.proposals || []);
+    }
+    document.getElementById("reload-initiatives").onclick = loadInitiatives;
     document.getElementById("load-brief").onclick = loadBrief;
     document.getElementById("schedule-brief").onclick = scheduleBrief;
     document.getElementById("ask-brief").onclick = async () => {
@@ -715,6 +781,7 @@
     loadLatestBrief();
     loadDeliveryPrefs();
     loadGoogleStatus();
+    loadInitiatives();
   </script>
 </body>
 </html>

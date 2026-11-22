@@ -30,6 +30,7 @@ import {
   getBriefDeliveryPrefs,
   saveBriefDeliveryPrefs,
 } from "../lib/advice-brief-delivery.js";
+import { loadAdviceInbox } from "../lib/initiative-inbox.js";
 import { resolveStorageUserId } from "../lib/teams.js";
 
 export function mountAdviceRoutes(app, deps) {
@@ -171,6 +172,16 @@ export function mountAdviceRoutes(app, deps) {
       const userId = req.userId || "anonymous";
       const brief = await buildMorningBrief(userId, workspace);
       res.json(brief);
+    } catch (err) {
+      return apiError(res, 500, "INTERNAL_ERROR", err.message);
+    }
+  });
+
+  apiRoute("get", "/advice/initiatives", limiter, userAuth, logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const proposals = await loadAdviceInbox(workspace, { limit: Number(req.query?.limit) || 20 });
+      res.json({ proposals });
     } catch (err) {
       return apiError(res, 500, "INTERNAL_ERROR", err.message);
     }
