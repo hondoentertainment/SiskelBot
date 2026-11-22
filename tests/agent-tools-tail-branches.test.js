@@ -201,10 +201,10 @@ test("send_notification: requires message and reports channels", async () => {
 
 // --- query_database ---
 
-test("query_database: requires postgres backend", async () => {
+test("query_database: stays disabled until AGENT_DB_QUERY=1", async () => {
   const off = parse(await mod.runTool("query_database", { query: "SELECT 1" }, {}));
   assert.equal(off.ok, false);
-  assert.match(off.error, /postgres/i);
+  assert.match(off.error, /disabled/i);
 });
 
 // --- workspace file tools ---
