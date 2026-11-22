@@ -86,7 +86,8 @@ with failing scheduled agents; buttons in Slack resolve them.
 | `AGENT_GOOGLE_HITL=0` | Disable HITL for send/create (default: HITL on) |
 
 **UI:** `/advice.html` — Enable mode, journal, **Preview / Schedule daily** morning brief, install PWA.
-**Verify:** `GET /api/v1/advice/brief`, `POST /api/v1/advice/brief/schedule`, then `/api/cron` after `nextRun`.
+The brief is journal-only until `GOOGLE_WORKSPACE_ACCESS_TOKEN` is set; then preview and the daily run include today's calendar (UTC day) and unread mail from the last two days. The schedule stores `ownerUserId` and rebuilds the prompt for that user on each run (not `anonymous`, and not the text frozen at schedule time).
+**Verify:** `GET /api/v1/advice/brief` (`sources.googleConnected`, `calendar`, `inbox`), `POST /api/v1/advice/brief/schedule`, then `/api/cron` after `nextRun`.
 
 ## 5. Cost controls
 

@@ -79,7 +79,10 @@ export function mountScheduledAgentRoutes(app, deps) {
   apiRoute("put", "/scheduled-agents/:id", limiter, async (req, res) => {
     try {
       const workspace = req.headers["x-workspace-id"] || req.query?.workspace || "default";
-      const updated = await updateScheduledAgent(workspace, req.params.id, req.body || {});
+      // ownerUserId is set by the advice schedule route from the authenticated user.
+      const body = { ...(req.body || {}) };
+      delete body.ownerUserId;
+      const updated = await updateScheduledAgent(workspace, req.params.id, body);
       if (!updated) return apiError(res, 404, "NOT_FOUND", "Scheduled agent not found");
       res.json({ ok: true, agent: updated });
     } catch (err) {
