@@ -73,7 +73,10 @@ In the Slack app config:
       (signature-verified with the existing `SLACK_SIGNING_SECRET`).
 
 **Verify:** `POST /api/v1/initiatives/run` returns proposals for a workspace
-with failing scheduled agents; buttons in Slack resolve them.
+with failing scheduled agents; buttons in Slack resolve them. The same open
+proposals appear on `/advice.html` (`GET /api/v1/advice/initiatives`) where
+approve and dismiss call the initiative routes. Slack delivery stays behind
+`INITIATIVE_NOTIFY_SLACK=1`.
 
 ## 4b. Advice companion + scheduled agents
 

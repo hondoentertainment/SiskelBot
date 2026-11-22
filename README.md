@@ -67,6 +67,7 @@ Realtime streaming assistant proxy for Ollama, vLLM, or OpenAI. Node.js proxy th
 - **OAuth and SSO** -- GitHub, Google OAuth; OIDC and SAML support
 - **Per-user Google Workspace** -- Gmail and Calendar tokens in the secrets store, with the env token as fallback (`/advice.html`)
 - **Morning brief delivery** -- finished scheduled runs show on `/advice.html`; email, push, and Slack are opt-in
+- **Initiative inbox** -- open proposals from the initiative engine on `/advice.html`, with approve and dismiss
 - **MCP** -- Model Context Protocol server and client for tool interop
 - **Plugins** -- Marketplace, sandboxed execution, custom actions
 - **Scheduled recipes** -- Cron-based recipe execution with audit logging
