@@ -25,7 +25,9 @@ Status date: 2026-07-18 (world-class pass). Implements the product build-out fro
 
 - `POST /api/v1/advice/enable`, `GET /advice/status`, `GET /advice/prompt`
 - `POST/GET /api/v1/advice/thoughts`, `GET /advice/resurface`, `DELETE /advice/thoughts/:id`
+- `GET /api/v1/advice/brief` — journal plus today's calendar and unread mail when Google Workspace is connected
 - Agent tool `capture_thought`; loop injects resurfaced thoughts when advice mode is on
+- Morning-brief scheduled runs refresh from the stored `ownerUserId` (journal + calendar + inbox)
 
 ## Agent / safety wiring
 

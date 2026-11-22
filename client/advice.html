@@ -179,6 +179,7 @@
           <button type="button" id="ask-brief" class="ghost">Ask about brief</button>
           <button type="button" id="schedule-brief" class="primary">Schedule daily</button>
         </div>
+        <p class="status" id="brief-sources" style="margin:0.35rem 0 0;"></p>
         <p class="status" id="brief-status" style="margin:0.35rem 0 0;"></p>
       </details>
       <details class="panel">
@@ -547,6 +548,13 @@
       }
       lastBriefText = j.text || "";
       el.textContent = lastBriefText;
+      const sources = document.getElementById("brief-sources");
+      if (sources) {
+        const src = j.sources || {};
+        sources.textContent = src.googleConnected
+          ? "Includes today's calendar (" + ((j.calendar && j.calendar.length) || 0) + ") and unread mail (" + ((j.inbox && j.inbox.length) || 0) + ")."
+          : "Journal only. Connect Google Workspace to add today's calendar and unread mail.";
+      }
       return j;
     }
     async function scheduleBrief() {
@@ -610,6 +618,7 @@
     refreshStatus();
     loadPrompt();
     loadThoughts();
+    loadBrief();
   </script>
 </body>
 </html>

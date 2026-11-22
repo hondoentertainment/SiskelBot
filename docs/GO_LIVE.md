@@ -86,7 +86,8 @@ with failing scheduled agents; buttons in Slack resolve them.
 | `AGENT_GOOGLE_HITL=0` | Disable HITL for send/create (default: HITL on) |
 
 **UI:** `/advice.html` — Enable mode, journal, **Preview / Schedule daily** morning brief, install PWA.
-**Verify:** `GET /api/v1/advice/brief`, `POST /api/v1/advice/brief/schedule`, then `/api/cron` after `nextRun`.
+The brief is journal-only until `GOOGLE_WORKSPACE_ACCESS_TOKEN` is set; then preview and the daily run include today's calendar (UTC day) and unread mail from the last two days. Each user gets their own schedule (`ownerUserId`). A legacy schedule with an empty owner can be claimed once; a second user does not replace an owner who is already set. Each run rebuilds that owner's prompt, and calendar, mail, and the closing instructions stay inside the 10k prompt cap.
+**Verify:** `GET /api/v1/advice/brief` (`sources.googleConnected`, `calendar`, `inbox`), `POST /api/v1/advice/brief/schedule`, then `/api/cron` after `nextRun`.
 
 ## 5. Cost controls
 
