@@ -11,6 +11,7 @@ import {
   openApiToolDefs,
   resetOpenApiHostBudgets,
   parseOpenApiSpec,
+  buildJsonRequestBody,
 } from "../lib/openapi-tool-factory.js";
 
 const spec = {
@@ -52,6 +53,48 @@ function isolate(fn) {
     }
   };
 }
+
+test("request bodies follow schema refs and skip query fields", () => {
+  const parsed = parseOpenApiSpec({
+    openapi: "3.0.3",
+    servers: [{ url: "https://api.example.com" }],
+    components: {
+      schemas: {
+        Item: {
+          type: "object",
+          required: ["name"],
+          properties: {
+            name: { type: "string" },
+            count: { type: "integer" },
+            active: { type: "boolean" },
+          },
+        },
+      },
+    },
+    paths: {
+      "/items": {
+        post: {
+          operationId: "createItem",
+          parameters: [{ name: "dryRun", in: "query", schema: { type: "boolean" } }],
+          requestBody: {
+            required: true,
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Item" } } },
+          },
+        },
+      },
+    },
+  });
+  const fields = parsed.operations[0].bodyFields;
+  assert.deepEqual(fields.map((field) => field.name), ["name", "count", "active"]);
+  const built = buildJsonRequestBody(
+    { dryRun: "true", name: "Kit", count: "3", active: "true" },
+    fields,
+    ["dryRun"],
+  );
+  assert.deepEqual(built.missing, []);
+  assert.deepEqual(built.body, { name: "Kit", count: 3, active: true });
+  assert.equal("dryRun" in built.body, false);
+});
 
 test("localhost and non-https specs are rejected", () => {
   assert.throws(() => parseOpenApiSpec({
@@ -102,4 +145,53 @@ test("imported tools use the workspace bearer token, cap the host, and block wri
   delete process.env.OPENAPI_TOOLS_ENABLED;
   const disabled = await invokeOpenApiTool(getName, {}, { workspace: "default", workspaceUserId: "ada" }, { fetchImpl: fetcher });
   assert.equal(JSON.parse(disabled.content).code, "OPENAPI_DISABLED");
+}));
+
+test("POST sends the JSON request body when writes are enabled", isolate(async () => {
+  process.env.OPENAPI_TOOLS_ENABLED = "1";
+  process.env.OPENAPI_TOOLS_WRITE = "1";
+  const imported = await importOpenApiSpec("default", {
+    name: "Example",
+    enabled: true,
+    spec: {
+      openapi: "3.0.3",
+      servers: [{ url: "https://api.example.com/v1" }],
+      paths: {
+        "/items": {
+          post: {
+            operationId: "createItem",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["name"],
+                    properties: { name: { type: "string" }, note: { type: "string" } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  const postName = imported.operations[0].name;
+  const missing = await invokeOpenApiTool(postName, {}, { workspace: "default", workspaceUserId: "ada" }, {
+    fetchImpl: async () => { throw new Error("should not send"); },
+  });
+  assert.equal(JSON.parse(missing.content).code, "INVALID_INPUT");
+  let sent = null;
+  const ok = await invokeOpenApiTool(postName, { name: "Kit", note: "ship" }, { workspace: "default", workspaceUserId: "ada" }, {
+    fetchImpl: async (url, opts) => {
+      sent = { url, method: opts.method, type: opts.headers["Content-Type"], body: opts.body };
+      return { ok: true, status: 201, text: async () => "{}" };
+    },
+  });
+  assert.equal(ok.ok, true);
+  assert.equal(sent.method, "POST");
+  assert.equal(sent.type, "application/json");
+  assert.deepEqual(JSON.parse(sent.body), { name: "Kit", note: "ship" });
+  assert.equal(sent.url.includes("?"), false);
 }));
