@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Approvals</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; }
+    main { max-width: 44rem; margin: 0 auto; padding: 1.25rem; }
+    a { color: #93c5fd; }
+    .card { border: 1px solid #334155; border-radius: 10px; padding: 0.8rem; margin: 0.5rem 0; }
+    button { font: inherit; border: 0; border-radius: 6px; padding: 0.35rem 0.6rem; cursor: pointer; color: white; }
+    .yes { background: #15803d; }
+    .no { background: #b91c1c; }
+    .status { color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <main>
+    <p><a href="/">Back</a> · <a href="/policy.html">Policy</a></p>
+    <h1>Approvals</h1>
+    <label>Workspace <input id="ws" value="default" /></label>
+    <p><button type="button" id="reload">Refresh</button></p>
+    <div id="list"></div>
+  </main>
+  <script>
+    function headers() {
+      const h = { "Content-Type": "application/json", Accept: "application/json" };
+      const key = localStorage.getItem("siskelbot_api_key");
+      if (key) h.Authorization = "Bearer " + key;
+      return h;
+    }
+    function ws() { return document.getElementById("ws").value.trim() || "default"; }
+    async function act(id, verb) {
+      await fetch("/api/v1/approvals/" + encodeURIComponent(id) + "/" + verb, {
+        method: "POST", headers: headers(), credentials: "include",
+        body: JSON.stringify({ workspace: ws() }),
+      });
+      reload();
+    }
+    async function reload() {
+      const res = await fetch("/api/v1/approvals?workspace=" + encodeURIComponent(ws()) + "&status=pending", {
+        headers: headers(), credentials: "include",
+      });
+      const body = await res.json().catch(() => ({}));
+      const list = document.getElementById("list");
+      list.innerHTML = "";
+      if (!res.ok) {
+        list.textContent = body.error || "Could not load approvals";
+        return;
+      }
+      if (!(body.items || []).length) {
+        list.innerHTML = '<p class="status">No pending approvals.</p>';
+        return;
+      }
+      for (const item of body.items) {
+        const card = document.createElement("div");
+        card.className = "card";
+        const title = document.createElement("strong");
+        title.textContent = item.tool;
+        const meta = document.createElement("p");
+        meta.className = "status";
+        meta.textContent = "Expires " + new Date(item.expiresAt).toLocaleString();
+        const yes = document.createElement("button");
+        yes.className = "yes";
+        yes.textContent = "Approve";
+        yes.onclick = () => act(item.id, "approve");
+        const no = document.createElement("button");
+        no.className = "no";
+        no.textContent = "Deny";
+        no.style.marginLeft = "0.4rem";
+        no.onclick = () => act(item.id, "deny");
+        card.append(title, meta, yes, no);
+        list.append(card);
+      }
+    }
+    document.getElementById("reload").onclick = reload;
+    document.getElementById("ws").onchange = reload;
+    reload();
+  </script>
+</body>
+</html>
