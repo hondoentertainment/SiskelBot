@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpenAPI tools</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; }
+    main { max-width: 44rem; margin: 0 auto; padding: 1.25rem; }
+    a { color: #93c5fd; }
+    label { display: block; margin: 0.55rem 0 0.2rem; }
+    input, textarea, button { font: inherit; padding: 0.4rem 0.55rem; border-radius: 6px; }
+    input, textarea { background: #020617; color: #e2e8f0; border: 1px solid #334155; width: 100%; }
+    button { background: #1d4ed8; color: white; border: 0; cursor: pointer; }
+    .status { color: #94a3b8; font-size: 0.9rem; }
+    li { margin: 0.4rem 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <p><a href="/">Back</a> · <a href="/mcp.html">MCP</a></p>
+    <h1>OpenAPI tools</h1>
+    <p class="status">Import an OpenAPI 3 spec. Calls stay off until OPENAPI_TOOLS_ENABLED=1 and this import is enabled. POST, PUT, PATCH, and DELETE also need OPENAPI_TOOLS_WRITE=1. Auth is a workspace secret name. Each host is rate limited.</p>
+    <label>Workspace <input id="ws" value="default" /></label>
+    <p class="status" id="flag"></p>
+    <ul id="list"></ul>
+    <label>Name <input id="name" placeholder="Partner API" /></label>
+    <label>Auth secret name <input id="secret" placeholder="partner_api_token" /></label>
+    <label>Max calls per minute per host <input id="cap" value="10" /></label>
+    <label><input id="enabled" type="checkbox" /> Enable these tools</label>
+    <label>OpenAPI JSON <textarea id="spec" rows="10" placeholder='{"openapi":"3.0.3","servers":[{"url":"https://api.example.com"}],"paths":{"/items":{"get":{"operationId":"listItems"}}}}'></textarea></label>
+    <p><button type="button" id="save">Import</button> <button type="button" id="reload">Reload</button></p>
+    <p class="status" id="status"></p>
+  </main>
+  <script>
+    function headers() {
+      const h = { "Content-Type": "application/json", Accept: "application/json" };
+      const key = localStorage.getItem("siskelbot_api_key");
+      if (key) h.Authorization = "Bearer " + key;
+      return h;
+    }
+    function ws() { return document.getElementById("ws").value.trim() || "default"; }
+    async function reload() {
+      const res = await fetch("/api/v1/workspaces/" + encodeURIComponent(ws()) + "/openapi-tools", {
+        headers: headers(), credentials: "include",
+      });
+      const j = await res.json().catch(() => ({}));
+      const list = document.getElementById("list");
+      list.innerHTML = "";
+      if (!res.ok) {
+        document.getElementById("status").textContent = j.error || "Could not load imports";
+        return;
+      }
+      document.getElementById("flag").textContent = "Calls " + (j.enabled ? "allowed" : "off") +
+        ". Writes " + (j.writeEnabled ? "allowed" : "off") + ".";
+      for (const item of j.imports || []) {
+        const li = document.createElement("li");
+        li.textContent = item.name + " · " + item.host + " · " + (item.operations || []).length + " ops · " +
+          (item.enabled ? "enabled" : "disabled") + " · " + item.maxPerMinute + "/min";
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "Remove";
+        remove.style.marginLeft = "0.4rem";
+        remove.onclick = async () => {
+          await fetch("/api/v1/workspaces/" + encodeURIComponent(ws()) + "/openapi-tools/" + encodeURIComponent(item.id), {
+            method: "DELETE", headers: headers(), credentials: "include",
+          });
+          reload();
+        };
+        li.append(remove);
+        list.append(li);
+      }
+    }
+    document.getElementById("reload").onclick = reload;
+    document.getElementById("ws").onchange = reload;
+    document.getElementById("save").onclick = async () => {
+      let spec;
+      try { spec = JSON.parse(document.getElementById("spec").value); }
+      catch { document.getElementById("status").textContent = "Spec is not JSON"; return; }
+      const res = await fetch("/api/v1/workspaces/" + encodeURIComponent(ws()) + "/openapi-tools", {
+        method: "POST", headers: headers(), credentials: "include",
+        body: JSON.stringify({
+          name: document.getElementById("name").value,
+          authSecretName: document.getElementById("secret").value.trim(),
+          maxPerMinute: Number(document.getElementById("cap").value) || 10,
+          enabled: document.getElementById("enabled").checked,
+          spec,
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      document.getElementById("status").textContent = res.ok
+        ? "Imported " + (j.import.operations || []).length + " operations"
+        : (j.error || "Import failed");
+      if (res.ok) reload();
+    };
+    reload();
+  </script>
+</body>
+</html>

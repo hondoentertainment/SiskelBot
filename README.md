@@ -70,6 +70,7 @@ Realtime streaming assistant proxy for Ollama, vLLM, or OpenAI. Node.js proxy th
 - **Initiative inbox** -- open proposals from the initiative engine on `/advice.html`, with approve and dismiss
 - **Workspace BYOK** -- per-workspace OpenAI, Anthropic, Groq, and OpenRouter keys in the secrets store (`/byok.html`). Stripe live keys stay an operator environment setting.
 - **Workspace MCP** -- attach an HTTPS MCP server per workspace (`/mcp.html`). Tool calls stay off until `WORKSPACE_MCP_ENABLED=1` and the server is enabled, then run under agent policy.
+- **OpenAPI tools** -- import an OpenAPI 3 spec as tools (`/openapi-tools.html`). Bearer auth comes from the secrets store. Calls need `OPENAPI_TOOLS_ENABLED=1`, non-GET also needs `OPENAPI_TOOLS_WRITE=1`, and each host has a per-minute cap.
 - **MCP** -- Model Context Protocol server and client for tool interop
 - **Plugins** -- Marketplace, sandboxed execution, custom actions
 - **Scheduled recipes** -- Cron-based recipe execution with audit logging
