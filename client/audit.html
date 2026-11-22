@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Audit</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; }
+    main { max-width: 48rem; margin: 0 auto; padding: 1.25rem; }
+    a { color: #93c5fd; }
+    input, button { font: inherit; padding: 0.4rem; border-radius: 6px; }
+    input { background: #020617; color: #e2e8f0; border: 1px solid #334155; }
+    button { background: #1d4ed8; color: white; border: 0; cursor: pointer; }
+    pre { white-space: pre-wrap; background: #020617; padding: 0.6rem; border-radius: 8px; }
+    .status { color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <main>
+    <p><a href="/">Back</a></p>
+    <h1>Audit and replay</h1>
+    <p class="status">Tool calls, SQL, file transfers, and approvals. Secrets are redacted in this view.</p>
+    <p>
+      <input id="q" placeholder="Search" />
+      <input id="action" placeholder="Action" />
+      <button type="button" id="search">Search</button>
+    </p>
+    <div id="results"></div>
+    <h2>Replay a run</h2>
+    <p>
+      <input id="run" placeholder="Run id" />
+      <button type="button" id="replay">Replay</button>
+    </p>
+    <div id="steps"></div>
+  </main>
+  <script>
+    function headers() {
+      const h = { Accept: "application/json" };
+      const key = localStorage.getItem("siskelbot_api_key");
+      if (key) h.Authorization = "Bearer " + key;
+      return h;
+    }
+    document.getElementById("search").onclick = async () => {
+      const params = new URLSearchParams();
+      const q = document.getElementById("q").value.trim();
+      const action = document.getElementById("action").value.trim();
+      if (q) params.set("q", q);
+      if (action) params.set("action", action);
+      const res = await fetch("/api/v1/audit/search?" + params, { headers: headers(), credentials: "include" });
+      const body = await res.json().catch(() => ({}));
+      const root = document.getElementById("results");
+      root.innerHTML = "";
+      const pre = document.createElement("pre");
+      pre.textContent = res.ok ? JSON.stringify(body.entries || [], null, 2) : (body.error || "Search failed");
+      root.append(pre);
+    };
+    document.getElementById("replay").onclick = async () => {
+      const id = document.getElementById("run").value.trim();
+      const res = await fetch("/api/v1/audit/replay/" + encodeURIComponent(id), { headers: headers(), credentials: "include" });
+      const body = await res.json().catch(() => ({}));
+      const root = document.getElementById("steps");
+      root.innerHTML = "";
+      const pre = document.createElement("pre");
+      pre.textContent = res.ok ? JSON.stringify(body.steps || [], null, 2) : (body.error || "Replay failed");
+      root.append(pre);
+    };
+  </script>
+</body>
+</html>
