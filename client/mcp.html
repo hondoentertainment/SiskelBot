@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Workspace MCP</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; }
+    main { max-width: 42rem; margin: 0 auto; padding: 1.25rem; }
+    a { color: #93c5fd; }
+    label { display: block; margin: 0.55rem 0 0.2rem; }
+    input, button { font: inherit; padding: 0.4rem 0.55rem; border-radius: 6px; }
+    input { background: #020617; color: #e2e8f0; border: 1px solid #334155; width: 100%; }
+    button { background: #1d4ed8; color: white; border: 0; cursor: pointer; }
+    .status { color: #94a3b8; font-size: 0.9rem; }
+    li { margin: 0.45rem 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <p><a href="/">Back</a> · <a href="/byok.html">Model keys</a></p>
+    <h1>Workspace MCP</h1>
+    <p class="status">Attach an HTTPS MCP server. Calls stay off until an operator sets WORKSPACE_MCP_ENABLED=1 and you enable the server. The host must be on the allowlist. Bearer auth is a workspace secret name, not the token itself.</p>
+    <label>Workspace <input id="ws" value="default" /></label>
+    <p class="status" id="flag"></p>
+    <ul id="list"></ul>
+    <label>Name <input id="name" placeholder="Docs server" /></label>
+    <label>HTTPS URL <input id="url" placeholder="https://mcp.example.com/mcp" /></label>
+    <label>Allowed hosts (comma-separated) <input id="hosts" placeholder="mcp.example.com" /></label>
+    <label>Auth secret name (optional) <input id="secret" placeholder="mcp_docs_token" /></label>
+    <label><input id="enabled" type="checkbox" /> Enable this server</label>
+    <p><button type="button" id="add">Attach server</button> <button type="button" id="reload">Reload</button></p>
+    <p class="status" id="status"></p>
+  </main>
+  <script>
+    function headers() {
+      const h = { "Content-Type": "application/json", Accept: "application/json" };
+      const key = localStorage.getItem("siskelbot_api_key");
+      if (key) h.Authorization = "Bearer " + key;
+      return h;
+    }
+    function ws() { return document.getElementById("ws").value.trim() || "default"; }
+    async function reload() {
+      const res = await fetch("/api/v1/workspaces/" + encodeURIComponent(ws()) + "/mcp-servers", {
+        headers: headers(), credentials: "include",
+      });
+      const j = await res.json().catch(() => ({}));
+      const list = document.getElementById("list");
+      list.innerHTML = "";
+      if (!res.ok) {
+        document.getElementById("status").textContent = j.error || "Could not load servers";
+        return;
+      }
+      document.getElementById("flag").textContent = j.enabled
+        ? "Deployment flag is on. Enabled servers can be called under policy."
+        : "Deployment flag is off. Servers can be saved, and the agent will not call them.";
+      for (const server of j.servers || []) {
+        const li = document.createElement("li");
+        li.textContent = server.name + " · " + server.url + " · " + (server.enabled ? "enabled" : "disabled") +
+          " · " + server.toolCount + " tools" + (server.authConfigured ? " · auth secret" : "");
+        const discover = document.createElement("button");
+        discover.type = "button";
+        discover.textContent = "Discover";
+        discover.style.marginLeft = "0.4rem";
+        discover.onclick = async () => {
+          const r = await fetch("/api/v1/workspaces/" + encodeURIComponent(ws()) + "/mcp-servers/" + encodeURIComponent(server.id) + "/discover", {
+            method: "POST", headers: headers(), credentials: "include", body: "{}",
+          });
+          const body = await r.json().catch(() => ({}));
+          document.getElementById("status").textContent = r.ok
+            ? "Discovered " + (body.tools || []).length + " tools"
+            : (body.error || "Discover failed");
+          if (r.ok) reload();
+        };
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "Remove";
+        remove.style.marginLeft = "0.4rem";
+        remove.onclick = async () => {
+          await fetch("/api/v1/workspaces/" + encodeURIComponent(ws()) + "/mcp-servers/" + encodeURIComponent(server.id), {
+            method: "DELETE", headers: headers(), credentials: "include",
+          });
+          reload();
+        };
+        li.append(discover, remove);
+        list.append(li);
+      }
+    }
+    document.getElementById("reload").onclick = reload;
+    document.getElementById("ws").onchange = reload;
+    document.getElementById("add").onclick = async () => {
+      const res = await fetch("/api/v1/workspaces/" + encodeURIComponent(ws()) + "/mcp-servers", {
+        method: "POST", headers: headers(), credentials: "include",
+        body: JSON.stringify({
+          name: document.getElementById("name").value,
+          url: document.getElementById("url").value,
+          allowedHosts: document.getElementById("hosts").value.split(",").map((s) => s.trim()).filter(Boolean),
+          authSecretName: document.getElementById("secret").value.trim(),
+          enabled: document.getElementById("enabled").checked,
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      document.getElementById("status").textContent = res.ok ? "Attached " + j.server.name : (j.error || "Attach failed");
+      if (res.ok) reload();
+    };
+    reload();
+  </script>
+</body>
+</html>

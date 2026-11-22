@@ -109,6 +109,7 @@ import { mountProceduralMemoryRoutes } from "./procedural-memory.js";
 import { mountAdviceRoutes } from "./advice.js";
 import { mountGoogleConnectRoutes } from "./google-connect.js";
 import { mountByokRoutes } from "./byok.js";
+import { mountWorkspaceMcpRoutes } from "./workspace-mcp.js";
 import { mountEmbedWidgetRoutes } from "./embed-widget.js";
 import { mountModelDeprecationRoutes } from "./model-deprecation.js";
 import mountComplianceRoutes from "./compliance.js";
@@ -245,6 +246,7 @@ const mountFunctions = [
   mountAdviceRoutes,
   mountGoogleConnectRoutes,
   mountByokRoutes,
+  mountWorkspaceMcpRoutes,
   mountEmbedWidgetRoutes,
   mountModelDeprecationRoutes,
   mountComplianceRoutes,
