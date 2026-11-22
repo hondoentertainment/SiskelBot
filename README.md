@@ -65,6 +65,7 @@ Realtime streaming assistant proxy for Ollama, vLLM, or OpenAI. Node.js proxy th
 - **Webhook delivery** -- Reliable delivery with retries and dead-letter queue
 - **Database migrations** -- Schema migration support for SQLite and PostgreSQL
 - **OAuth and SSO** -- GitHub, Google OAuth; OIDC and SAML support
+- **Per-user Google Workspace** -- Gmail and Calendar tokens in the secrets store, with the env token as fallback (`/advice.html`)
 - **MCP** -- Model Context Protocol server and client for tool interop
 - **Plugins** -- Marketplace, sandboxed execution, custom actions
 - **Scheduled recipes** -- Cron-based recipe execution with audit logging

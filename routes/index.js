@@ -107,6 +107,7 @@ import { mountTrajectoryAnomalyRoutes } from "./trajectory-anomaly.js";
 import { mountPostMortemRoutes } from "./post-mortem.js";
 import { mountProceduralMemoryRoutes } from "./procedural-memory.js";
 import { mountAdviceRoutes } from "./advice.js";
+import { mountGoogleConnectRoutes } from "./google-connect.js";
 import { mountEmbedWidgetRoutes } from "./embed-widget.js";
 import { mountModelDeprecationRoutes } from "./model-deprecation.js";
 import mountComplianceRoutes from "./compliance.js";
@@ -241,6 +242,7 @@ const mountFunctions = [
   mountPostMortemRoutes,
   mountProceduralMemoryRoutes,
   mountAdviceRoutes,
+  mountGoogleConnectRoutes,
   mountEmbedWidgetRoutes,
   mountModelDeprecationRoutes,
   mountComplianceRoutes,
