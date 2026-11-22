@@ -32,6 +32,7 @@
     <label>Max external fetches <input id="fetches" type="number" min="0" /></label>
     <label>Browser hosts (one per line) <textarea id="hosts" rows="3"></textarea></label>
     <label><input id="sql" type="checkbox" /> Allow governed read-only SQL</label>
+    <label><input id="files" type="checkbox" /> Allow browser file download and upload</label>
     <p><button type="button" id="save">Save policy</button> <button type="button" id="reload">Reload</button></p>
     <p class="status" id="status"></p>
     <h2>Recent edits</h2>
@@ -67,6 +68,7 @@
       document.getElementById("cap-network").value = p.toolCategoryCaps?.network || 0;
       document.getElementById("fetches").value = p.maxExternalFetches || 0;
       document.getElementById("sql").checked = p.sqlQueryEnabled === true;
+      document.getElementById("files").checked = p.browserFileTransferEnabled === true;
       const audit = await fetch("/api/v1/workspaces/" + encodeURIComponent(ws()) + "/agent-policy/audit", {
         headers: headers(), credentials: "include",
       });
@@ -96,6 +98,7 @@
           },
           maxExternalFetches: Number(document.getElementById("fetches").value) || 0,
           sqlQueryEnabled: document.getElementById("sql").checked,
+          browserFileTransferEnabled: document.getElementById("files").checked,
         }),
       });
       const j = await res.json().catch(() => ({}));
