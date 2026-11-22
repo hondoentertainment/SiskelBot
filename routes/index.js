@@ -112,6 +112,7 @@ import { mountByokRoutes } from "./byok.js";
 import { mountWorkspaceMcpRoutes } from "./workspace-mcp.js";
 import { mountOpenApiToolRoutes } from "./openapi-tools.js";
 import { mountPolicyBuilderRoutes } from "./policy-builder.js";
+import { mountSetupWizardRoutes } from "./setup-wizard.js";
 import { mountEmbedWidgetRoutes } from "./embed-widget.js";
 import { mountModelDeprecationRoutes } from "./model-deprecation.js";
 import mountComplianceRoutes from "./compliance.js";
@@ -251,6 +252,7 @@ const mountFunctions = [
   mountWorkspaceMcpRoutes,
   mountOpenApiToolRoutes,
   mountPolicyBuilderRoutes,
+  mountSetupWizardRoutes,
   mountEmbedWidgetRoutes,
   mountModelDeprecationRoutes,
   mountComplianceRoutes,
