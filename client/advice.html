@@ -181,6 +181,15 @@
           <button type="button" id="connect-google" class="ghost">Connect Google</button>
           <button type="button" id="disconnect-google" class="ghost">Disconnect</button>
         </div>
+        <p class="status" style="margin:0.6rem 0 0.2rem;font-weight:600;">Latest recommendation</p>
+        <pre id="brief-result" style="white-space:pre-wrap;font-size:0.75rem;color:var(--muted);max-height:10rem;overflow:auto;margin:0.2rem 0;">—</pre>
+        <div class="row">
+          <label><input type="checkbox" id="deliver-email"> Email</label>
+          <input id="deliver-email-to" placeholder="you@example.com" style="flex:1" />
+          <label><input type="checkbox" id="deliver-push"> Push</label>
+          <label><input type="checkbox" id="deliver-slack"> Slack</label>
+          <button type="button" id="save-delivery" class="ghost">Save delivery</button>
+        </div>
         <p class="status" id="brief-sources" style="margin:0.35rem 0 0;"></p>
         <p class="status" id="google-status" style="margin:0.35rem 0 0;"></p>
         <p class="status" id="brief-status" style="margin:0.35rem 0 0;"></p>
@@ -618,6 +627,45 @@
     const googleQuery = new URLSearchParams(window.location.search).get("google");
     if (googleQuery === "connected") addMsg("sys", "Google Workspace connected for this account.");
     if (googleQuery === "error") addMsg("sys", "Google connection failed. Try again.");
+    async function loadLatestBrief() {
+      const el = document.getElementById("brief-result");
+      const res = await fetch("/api/v1/advice/brief/latest?workspace=" + encodeURIComponent(ws()), {
+        headers: headers(), credentials: "include",
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        el.textContent = errText(j, "Could not load the latest brief");
+        return;
+      }
+      el.textContent = j.run?.response || "No finished brief yet. Schedule the daily run, then check back after it completes.";
+    }
+    async function loadDeliveryPrefs() {
+      const res = await fetch("/api/v1/advice/brief/delivery", {
+        headers: headers(), credentials: "include",
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      document.getElementById("deliver-email").checked = j.email === true;
+      document.getElementById("deliver-push").checked = j.push === true;
+      document.getElementById("deliver-slack").checked = j.slack === true;
+      document.getElementById("deliver-email-to").value = j.emailTo || "";
+    }
+    document.getElementById("save-delivery").onclick = async () => {
+      const st = document.getElementById("brief-status");
+      const res = await fetch("/api/v1/advice/brief/delivery", {
+        method: "PUT", headers: headers(), credentials: "include",
+        body: JSON.stringify({
+          email: document.getElementById("deliver-email").checked,
+          push: document.getElementById("deliver-push").checked,
+          slack: document.getElementById("deliver-slack").checked,
+          emailTo: document.getElementById("deliver-email-to").value.trim(),
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      st.textContent = res.ok
+        ? "Delivery saved. Email, push, and Slack stay off until you turn them on."
+        : errText(j, "Could not save delivery");
+    };
     document.getElementById("load-brief").onclick = loadBrief;
     document.getElementById("schedule-brief").onclick = scheduleBrief;
     document.getElementById("ask-brief").onclick = async () => {
@@ -664,6 +712,8 @@
     loadPrompt();
     loadThoughts();
     loadBrief();
+    loadLatestBrief();
+    loadDeliveryPrefs();
     loadGoogleStatus();
   </script>
 </body>

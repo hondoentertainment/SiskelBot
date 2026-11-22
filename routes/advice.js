@@ -25,6 +25,11 @@ import {
   buildAdviceSystemPrompt,
 } from "../lib/advice-companion.js";
 import { buildMorningBrief, ensureMorningBriefSchedule } from "../lib/advice-brief.js";
+import {
+  latestMorningBriefRun,
+  getBriefDeliveryPrefs,
+  saveBriefDeliveryPrefs,
+} from "../lib/advice-brief-delivery.js";
 import { resolveStorageUserId } from "../lib/teams.js";
 
 export function mountAdviceRoutes(app, deps) {
@@ -168,6 +173,38 @@ export function mountAdviceRoutes(app, deps) {
       res.json(brief);
     } catch (err) {
       return apiError(res, 500, "INTERNAL_ERROR", err.message);
+    }
+  });
+
+  apiRoute("get", "/advice/brief/latest", limiter, userAuth, logRequest, async (req, res) => {
+    try {
+      const workspace = sanitizeWorkspace(req.query?.workspace);
+      const userId = req.userId || "anonymous";
+      const latest = await latestMorningBriefRun(workspace, userId);
+      res.json(latest);
+    } catch (err) {
+      return apiError(res, 500, "INTERNAL_ERROR", err.message);
+    }
+  });
+
+  apiRoute("get", "/advice/brief/delivery", limiter, userAuth, logRequest, async (req, res) => {
+    try {
+      const userId = req.userId || "anonymous";
+      const prefs = await getBriefDeliveryPrefs(userId);
+      res.json(prefs);
+    } catch (err) {
+      return apiError(res, 500, "INTERNAL_ERROR", err.message);
+    }
+  });
+
+  apiRoute("put", "/advice/brief/delivery", limiter, userAuth, logRequest, async (req, res) => {
+    try {
+      const userId = req.userId || "anonymous";
+      const prefs = await saveBriefDeliveryPrefs(userId, req.body || {});
+      res.json(prefs);
+    } catch (err) {
+      const status = err.code === "INVALID_INPUT" ? 400 : 500;
+      return apiError(res, status, err.code || "INTERNAL_ERROR", err.message);
     }
   });
 

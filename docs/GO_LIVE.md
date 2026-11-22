@@ -91,7 +91,8 @@ with failing scheduled agents; buttons in Slack resolve them.
 **UI:** `/advice.html` — Enable mode, journal, **Preview / Schedule daily** morning brief, **Connect Google**, install PWA.
 Each signed-in user stores an OAuth token in the secrets store (`user` / `google_workspace_oauth`). The brief and Gmail/Calendar tools use that token and fall back to `GOOGLE_WORKSPACE_ACCESS_TOKEN`. Readonly scopes are the default. In Google Cloud Console, add the workspace callback as an authorized redirect URI. This is separate from the login callback at `/auth/google/callback`.
 The brief is journal-only until a user token or the env fallback is present; then preview and the daily run include today's calendar (UTC day) and unread mail from the last two days. Each user gets their own schedule (`ownerUserId`). A legacy schedule with an empty owner can be claimed once; a second user does not replace an owner who is already set. Each run rebuilds that owner's prompt, and calendar, mail, and the closing instructions stay inside the 10k prompt cap.
-**Verify:** `GET /api/v1/google/workspace/status` (no token in the body), `GET /api/v1/advice/brief` (`sources.googleConnected`, `calendar`, `inbox`), `POST /api/v1/advice/brief/schedule`, then `/api/cron` after `nextRun`.
+When a scheduled run finishes, `GET /api/v1/advice/brief/latest` shows that recommendation on `/advice.html`. Email, push, and Slack are off until the user opts in (`PUT /api/v1/advice/brief/delivery`). Email needs `SMTP_HOST` and an address. Push needs a registered device. Slack needs `SLACK_BOT_TOKEN` or `SLACK_WEBHOOK_URL`.
+**Verify:** `GET /api/v1/google/workspace/status` (no token in the body), `GET /api/v1/advice/brief` (`sources.googleConnected`, `calendar`, `inbox`), `POST /api/v1/advice/brief/schedule`, then `/api/cron` after `nextRun`, then `GET /api/v1/advice/brief/latest`.
 
 ## 5. Cost controls
 
