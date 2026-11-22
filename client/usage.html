@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Usage</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; }
+    main { max-width: 48rem; margin: 0 auto; padding: 1.25rem; }
+    a { color: #93c5fd; }
+    table { width: 100%; border-collapse: collapse; }
+    td, th { text-align: left; padding: 0.35rem; border-bottom: 1px solid #334155; }
+    .status { color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <main>
+    <p><a href="/">Back</a></p>
+    <h1>Usage and cost</h1>
+    <p class="status" id="summary"></p>
+    <h2>By user</h2><table id="users"></table>
+    <h2>By model</h2><table id="models"></table>
+    <h2>By key</h2><table id="keys"></table>
+  </main>
+  <script>
+    function headers() {
+      const h = { Accept: "application/json" };
+      const key = localStorage.getItem("siskelbot_api_key");
+      if (key) h.Authorization = "Bearer " + key;
+      return h;
+    }
+    function table(id, rows) {
+      const el = document.getElementById(id);
+      el.innerHTML = "<tr><th>Name</th><th>Tokens</th><th>USD</th><th>Requests</th></tr>";
+      for (const [name, row] of Object.entries(rows || {})) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = "<td></td><td></td><td></td><td></td>";
+        tr.children[0].textContent = name;
+        tr.children[1].textContent = String(row.tokens);
+        tr.children[2].textContent = String(row.usd);
+        tr.children[3].textContent = String(row.requests);
+        el.append(tr);
+      }
+    }
+    async function load() {
+      const res = await fetch("/api/v1/usage/dashboard?days=30", { headers: headers(), credentials: "include" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        document.getElementById("summary").textContent = body.error || "Could not load usage";
+        return;
+      }
+      document.getElementById("summary").textContent =
+        body.tokens + " tokens, about $" + body.usd + ". Your budget is " + (body.you?.state || "open") + ".";
+      table("users", body.byUser);
+      table("models", body.byModel);
+      table("keys", body.byKey);
+    }
+    load();
+  </script>
+</body>
+</html>
