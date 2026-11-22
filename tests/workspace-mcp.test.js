@@ -11,6 +11,7 @@ import { getToolCategory } from "../lib/agent-policy.js";
 import { runTool } from "../lib/agent-tools.js";
 import {
   validateMcpUrl,
+  validateStdioCommand,
   registerWorkspaceMcpServer,
   discoverWorkspaceMcpTools,
   invokeWorkspaceMcpTool,
@@ -127,4 +128,48 @@ test("MCP attach route rejects a non-https server", isolate(async () => {
   assert.equal(saved.status, 201);
   assert.equal(saved.body.server.enabled, false);
   assert.equal(saved.body.server.authConfigured, false);
+}));
+
+test("stdio MCP stays off unless the command is an allowlisted bare name", isolate(async () => {
+  const prevStdio = process.env.WORKSPACE_MCP_STDIO;
+  const prevAllow = process.env.WORKSPACE_MCP_STDIO_ALLOWLIST;
+  delete process.env.WORKSPACE_MCP_STDIO;
+  delete process.env.WORKSPACE_MCP_STDIO_ALLOWLIST;
+  try {
+    assert.equal(validateStdioCommand("mcp-server", []).ok, false);
+    process.env.WORKSPACE_MCP_STDIO = "1";
+    assert.match(validateStdioCommand("mcp-server", []).error, /ALLOWLIST/);
+    process.env.WORKSPACE_MCP_STDIO_ALLOWLIST = "mcp-server";
+    assert.equal(validateStdioCommand("/usr/bin/mcp-server", []).ok, false);
+    assert.equal(validateStdioCommand("bash", ["-c", "id"]).ok, false);
+    const ok = validateStdioCommand("mcp-server", ["--stdio"]);
+    assert.equal(ok.ok, true);
+    process.env.WORKSPACE_MCP_ENABLED = "1";
+    const server = await registerWorkspaceMcpServer("default", {
+      type: "stdio",
+      command: "mcp-server",
+      args: ["--stdio"],
+      enabled: true,
+    });
+    assert.equal(server.type, "stdio");
+    assert.equal(server.command, "mcp-server");
+    const tools = await discoverWorkspaceMcpTools("default", server.id, {
+      listTools: async (row) => {
+        assert.equal(row.type, "stdio");
+        assert.equal(row.command, "mcp-server");
+        return [{ name: "ping", description: "Ping" }];
+      },
+    });
+    assert.equal(tools[0].originalName, "ping");
+    delete process.env.WORKSPACE_MCP_STDIO;
+    const blocked = await invokeWorkspaceMcpTool(tools[0].name, {}, { workspace: "default", workspaceUserId: "ada" }, {
+      callTool: async () => { throw new Error("should not spawn"); },
+    });
+    assert.equal(JSON.parse(blocked.content).code, "MCP_STDIO_DISABLED");
+  } finally {
+    if (prevStdio === undefined) delete process.env.WORKSPACE_MCP_STDIO;
+    else process.env.WORKSPACE_MCP_STDIO = prevStdio;
+    if (prevAllow === undefined) delete process.env.WORKSPACE_MCP_STDIO_ALLOWLIST;
+    else process.env.WORKSPACE_MCP_STDIO_ALLOWLIST = prevAllow;
+  }
 }));

@@ -36,7 +36,12 @@ export function mountWorkspaceMcpRoutes(app, deps) {
     try {
       const workspaceId = sanitizeWorkspace(req.params.id);
       if (!(await access(req, res, workspaceId, false))) return;
-      res.json({ workspaceId, enabled: process.env.WORKSPACE_MCP_ENABLED === "1", servers: await listWorkspaceMcpServers(workspaceId) });
+      res.json({
+        workspaceId,
+        enabled: process.env.WORKSPACE_MCP_ENABLED === "1",
+        stdioEnabled: process.env.WORKSPACE_MCP_STDIO === "1",
+        servers: await listWorkspaceMcpServers(workspaceId),
+      });
     } catch (err) {
       return apiError(res, 500, "INTERNAL_ERROR", err.message);
     }
